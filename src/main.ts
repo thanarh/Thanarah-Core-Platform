@@ -3,7 +3,9 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from '@fastify/helmet';
+import fastifyStatic from '@fastify/static';
 import { Logger } from 'nestjs-pino';
+import { join } from 'path';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
 import { APP_CONSTANTS } from './common/constants/app.constants';
@@ -25,7 +27,13 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.register(helmet, {
-    contentSecurityPolicy: config.isProduction,
+    contentSecurityPolicy: false,
+  });
+
+  await app.register(fastifyStatic, {
+    root: join(process.cwd(), 'public'),
+    prefix: '/',
+    decorateReply: false,
   });
 
   app.enableCors({

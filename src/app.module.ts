@@ -1,5 +1,5 @@
 import { Module } from '@nestjs/common';
-import { APP_FILTER, APP_INTERCEPTOR, APP_PIPE } from '@nestjs/core';
+import { APP_FILTER, APP_INTERCEPTOR } from '@nestjs/core';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { AppController } from './app.controller';
 import { ConfigModule } from './config/config.module';
@@ -8,13 +8,14 @@ import { DatabaseModule } from './database/database.module';
 import { LoggerModule } from './common/logger/logger.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
-import { ZodValidationPipe } from './common/pipes/zod-validation.pipe';
+
+const hasMongo = !!process.env['MONGO_URI'];
 
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
-    DatabaseModule,
+    ...(hasMongo ? [DatabaseModule] : []),
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -32,7 +33,6 @@ import { ZodValidationPipe } from './common/pipes/zod-validation.pipe';
   providers: [
     { provide: APP_FILTER, useClass: GlobalExceptionFilter },
     { provide: APP_INTERCEPTOR, useClass: RequestIdInterceptor },
-    { provide: APP_PIPE, useClass: ZodValidationPipe },
   ],
 })
 export class AppModule {}
