@@ -1,0 +1,298 @@
+Create ONLY the Thanarah Splash Experience.
+
+Do not modify backend.
+
+Do not modify authentication.
+
+Do not modify APIs.
+
+Do not modify routing except adding this splash before the login page.
+
+Do not create any dashboard.
+
+Do not create any business logic.
+
+This task is ONLY for the visual identity.
+
+====================================================
+
+DESIGN GOAL
+
+This splash screen should feel like:
+
+Apple
+Porsche
+Rolex
+Nothing
+Stripe
+
+Minimal.
+
+Elegant.
+
+Luxury.
+
+Medical Technology.
+
+Human.
+
+Premium.
+
+Not futuristic sci-fi.
+
+Not AI-looking.
+
+Not generic SaaS.
+
+No glassmorphism overload.
+
+No neon.
+
+No gradients that look cheap.
+
+====================================================
+
+BACKGROUND
+
+Use a solid premium Off White background.
+
+Primary background:
+
+#F7F6F2
+
+Secondary accents:
+
+#F3F1EC
+
+Primary Green:
+
+Use the official Thanarah brand green from the uploaded logo.
+
+Never invent another green.
+
+====================================================
+
+CENTER
+
+Display the official Thanarah logo only.
+
+Use the uploaded logo.
+
+Never recreate it.
+
+Never redesign it.
+
+Never replace it.
+
+====================================================
+
+LOGO ANIMATION
+
+The logo should appear elegantly.
+
+Animation sequence:
+
+1.
+
+Fade in
+
+2.
+
+Scale from 96% to 100%
+
+3.
+
+Very subtle breathing effect
+
+4.
+
+Very soft lighting sweep across the logo
+
+5.
+
+Logo stays perfectly centered
+
+Animation must feel expensive.
+
+No bounce.
+
+No spin.
+
+No zoom effects.
+
+====================================================
+
+BACKGROUND ANIMATION
+
+Very subtle.
+
+Almost invisible.
+
+Use soft moving organic shapes inspired by healthcare and precision.
+
+Do NOT use particles.
+
+Do NOT use floating icons.
+
+Do NOT use medical illustrations.
+
+Do NOT use DNA.
+
+Do NOT use crosses.
+
+The background should simply feel alive.
+
+====================================================
+
+TEXT
+
+Below the logo display one short line only.
+
+Rotate between the following messages every 2 seconds with a soft fade.
+
+Arabic:
+
+المستقبل الطبي يبدأ من هنا
+
+ثناره... حيث تعمل التقنية لخدمة الرعاية الصحية
+
+منصة واحدة لإدارة منشأتك بثقة
+
+نبني التقنية... لتبقى الرعاية أولاً
+
+English:
+
+The Future of Healthcare Starts Here
+
+Technology Designed Around Care
+
+One Platform.
+Infinite Possibilities.
+
+Building the Future of Healthcare.
+
+Typography:
+
+Elegant.
+
+Light weight.
+
+Excellent spacing.
+
+Do not use bold.
+
+====================================================
+
+LOADING
+
+At the bottom center create a premium loading indicator.
+
+Do NOT use a spinner.
+
+Instead create a thin green progress line.
+
+Height:
+
+2px
+
+Rounded edges.
+
+Smooth animation.
+
+When loading completes:
+
+Fade everything.
+
+Transition naturally to Login.
+
+====================================================
+
+TIMING
+
+Total splash duration:
+
+Approximately 5 seconds.
+
+Allow skipping automatically only after initialization completes.
+
+====================================================
+
+PERFORMANCE
+
+60 FPS.
+
+No heavy animations.
+
+No layout shifts.
+
+GPU accelerated animations only.
+
+Respect prefers-reduced-motion.
+
+====================================================
+
+RESPONSIVE
+
+Perfect on:
+
+iPhone
+
+Android
+
+Tablet
+
+Desktop
+
+Ultra Wide
+
+====================================================
+
+ACCESSIBILITY
+
+Proper contrast.
+
+Screen reader friendly.
+
+Keyboard safe.
+
+====================================================
+
+IMPORTANT
+
+Never use AI-generated illustrations.
+
+Never use stock medical graphics.
+
+Never use floating dashboards.
+
+Never use generic startup design.
+
+Everything should feel handcrafted specifically for Thanarah.
+
+The first impression must communicate:
+
+Trust.
+
+Precision.
+
+Care.
+
+Technology.
+
+Stability.
+
+Premium Quality.
+
+====================================================
+
+At the end:
+
+Run the application.
+
+Verify there are no console errors.
+
+Verify there are no layout shifts.
+
+Verify the animation remains smooth on desktop and mobile.
+
+Do not modify any unrelated file.
