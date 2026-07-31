@@ -1,58 +1,73 @@
-# Thanarah Backend
+# Thanarah Core Platform
 
-Enterprise healthcare SaaS platform backend — **ثناره**.
+Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MongoDB, targeting Saudi Arabia and the wider region.
 
 ## Stack
 
-- **Runtime:** Node.js 22+, TypeScript 5 (strict)
-- **Framework:** NestJS 11 with Fastify adapter (port **5000**)
-- **Database:** MongoDB 7 via Mongoose
-- **Validation:** Zod
-- **Logging:** Pino via nestjs-pino
-- **API docs:** Swagger at `/api/docs`
-- **Testing:** Vitest
+| Layer | Technology |
+|-------|-----------|
+| Runtime | Node.js 22+ |
+| Framework | NestJS 11 + Fastify 5 |
+| Database | MongoDB via Mongoose |
+| Language | TypeScript 5 (strict) |
+| Validation | Zod |
+| API Docs | Swagger / OpenAPI at `/api-docs` |
+| Testing | Vitest |
 
-## Running the app
+## How to run on Replit
 
-```bash
-npx nest build && node dist/main   # production build
-npm run start:dev                   # development with file watching
-```
+**Workflow:** `Start application` — runs `npx nest build && node dist/main`
 
-The workflow **"Start application"** runs `npx nest build && node dist/main` and serves on port 5000.
+The app serves on **port 5000** in development mode.
 
-## Environment variables
+### Required secrets (set via Replit Secrets)
 
-Set in Replit Secrets / env:
+| Secret | Description |
+|--------|-------------|
+| `MONGO_URI` | MongoDB connection string (Atlas or self-hosted) |
+| `JWT_SECRET` | JWT signing secret — minimum 32 characters |
+| `SESSION_SECRET` | Session signing secret — already configured ✅ |
 
-| Key | Required | Notes |
-|-----|----------|-------|
-| `MONGO_URI` | Yes | MongoDB connection string |
-| `JWT_SECRET` | Yes | ≥ 32 characters |
-| `JWT_EXPIRES_IN` | No | Default `7d` |
-| `THROTTLE_TTL` | No | Default `60000` ms |
-| `THROTTLE_LIMIT` | No | Default `100` req/window |
-| `PORT` | No | Default `5000` |
+### Non-secret env vars (already set)
 
-## Front-end entry point
+| Variable | Value |
+|----------|-------|
+| `NODE_ENV` | `development` |
+| `PORT` | `5000` |
 
-`public/index.html` — Thanarah splash screen (pure HTML/CSS/JS, served as a static file by Fastify). Displays for ~5 seconds then redirects to `/login`.
+### Optional env vars (have defaults)
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `JWT_EXPIRES_IN` | `7d` | Token lifetime |
+| `THROTTLE_TTL` | `60000` | Rate limit window (ms) |
+| `THROTTLE_LIMIT` | `100` | Max requests per window |
 
 ## Project structure
 
 ```
 src/
-  app.module.ts          — root module
-  main.ts                — bootstrap (Fastify, Swagger, static files)
-  config/                — Zod env schema + ConfigService
-  database/              — Mongoose connection module
-  common/                — filters, interceptors, pipes, logger
-public/
-  index.html             — splash screen
+├── main.ts              # Entry point — Fastify adapter, Swagger, static files
+├── app.module.ts        # Root module
+├── app.controller.ts    # Health check route (/health)
+├── config/              # Env validation (Zod schema), ConfigService
+├── database/            # Mongoose connection module
+└── common/              # Shared constants, utilities
+public/                  # Static files — Coming Soon splash page + assets
 ```
+
+## Key URLs (development)
+
+- `/` — Coming Soon splash page (static)
+- `/health` — Health check endpoint
+- `/api-docs` — Swagger UI
+
+## Render deployment notes
+
+- The `prepare` script uses `husky || true` to prevent build failures in CI/production where git hooks are unnecessary.
+- Set `NODE_ENV` to `development`, `staging`, or `production` — other values will fail env validation.
+- `JWT_SECRET` is required with no default; deployment will exit immediately if missing.
 
 ## User preferences
 
-- Do not modify backend logic, APIs, or authentication when working on frontend/visual tasks.
-- Keep existing project structure intact.
-- Use `npx nest build` (not `nest build`) since the CLI is local to node_modules.
+_None recorded yet._
