@@ -1,71 +1,119 @@
-# Thanarah Backend
+<div align="center">
+  <img src="public/assets/logo-full.png" alt="Thanarah Logo" width="340" />
 
-ثناره — Enterprise healthcare SaaS platform backend.
+  <br/>
 
-## Stack
+  # ثناره — Thanarah Core Platform
 
-- **Runtime:** Node.js 22+
-- **Framework:** NestJS 11 with Fastify adapter
-- **Database:** MongoDB 7 via Mongoose
-- **Language:** TypeScript 5 (strict mode)
-- **Logging:** Pino via nestjs-pino
-- **Validation:** Zod
-- **Documentation:** Swagger / OpenAPI 3
-- **Testing:** Vitest
+  **منصة SaaS صحية للمؤسسات — Enterprise Healthcare SaaS**
 
-## Requirements
+  [![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&logo=nestjs)](https://nestjs.com)
+  [![Fastify](https://img.shields.io/badge/Fastify-5-000000?style=flat-square&logo=fastify)](https://fastify.dev)
+  [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb)](https://mongoosejs.com)
+  [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
+  [![License](https://img.shields.io/badge/License-Private-lightgrey?style=flat-square)](#)
 
-- Node.js 22 or later
-- npm 10 or later
-- MongoDB 7 (or Docker)
+</div>
 
-## Getting Started
+---
 
-Copy the environment file and fill in the values:
+## 🌿 من نحن — About Us
+
+**ثناره** منصة رقمية متكاملة لإدارة المؤسسات الصحية، تجمع بين كفاءة العمليات وجودة تجربة المستخدم لخدمة مرافق الرعاية الصحية في المملكة العربية السعودية والمنطقة.
+
+**Thanarah** is an enterprise-grade healthcare SaaS platform designed to unify clinical, operational, and administrative workflows for healthcare organizations across Saudi Arabia and the wider region. We combine cutting-edge technology with deep domain expertise to deliver a seamless experience for healthcare providers and patients alike.
+
+---
+
+## 🏗️ المكدس التقني — Tech Stack
+
+| Layer | Technology |
+|-------|-----------|
+| **Runtime** | Node.js 20 LTS |
+| **Framework** | NestJS 11 + Fastify |
+| **Database** | MongoDB via Mongoose |
+| **Language** | TypeScript 5 (strict) |
+| **Validation** | Zod |
+| **API Docs** | Swagger / OpenAPI |
+| **Testing** | Vitest |
+
+---
+
+## 🚀 تشغيل المشروع — Getting Started
+
+### المتطلبات — Prerequisites
+
+- Node.js 20+
+- MongoDB instance (local or Atlas)
+
+### التثبيت — Installation
 
 ```bash
-cp .env.example .env
-```
+# Clone the repository
+git clone https://github.com/thanarh/Thanarah-Core-Platform.git
+cd Thanarah-Core-Platform
 
-Install dependencies:
-
-```bash
+# Install dependencies
 npm install
+
+# Configure environment variables
+cp .env.example .env
+# Edit .env with your MONGO_URI and other secrets
+
+# Build and run
+npx nest build && node dist/main
 ```
 
-Start in development mode:
+### متغيرات البيئة — Environment Variables
 
-```bash
-npm run start:dev
+| Variable | Description | Required |
+|----------|-------------|----------|
+| `MONGO_URI` | MongoDB connection string | ✅ |
+| `SESSION_SECRET` | Session signing secret | ✅ |
+| `JWT_SECRET` | JWT signing secret | ✅ |
+| `PORT` | Server port (default: 5000) | — |
+| `NODE_ENV` | `development` or `production` | — |
+
+---
+
+## 📁 هيكل المشروع — Project Structure
+
+```
+Thanarah-Core-Platform/
+├── src/
+│   ├── main.ts              # Entry point
+│   ├── app.module.ts        # Root module
+│   └── ...                  # Feature modules
+├── public/
+│   ├── index.html           # Coming Soon splash page
+│   └── assets/              # Logo and static assets
+├── test/                    # E2E tests
+└── README.md
 ```
 
-The API will be available at `http://localhost:3000`.  
-Swagger documentation is available at `http://localhost:3000/docs`.
+---
 
-## Running with Docker
+## 🗺️ خارطة الطريق — Roadmap
 
-```bash
-docker-compose up --build
-```
+- [x] Project scaffold — NestJS + Fastify + MongoDB
+- [x] Coming Soon splash page (Arabic typewriter effect)
+- [ ] MongoDB integration — Mongoose schemas & connection
+- [ ] Authentication module — JWT + sessions
+- [ ] Login page — bilingual (AR/EN)
+- [ ] Dashboard — multi-tenant healthcare management
+- [ ] Role-based access control (RBAC)
+- [ ] API documentation — Swagger
 
-## Scripts
+---
 
-| Command | Description |
-|---|---|
-| `npm run build` | Compile TypeScript to `dist/` |
-| `npm run start` | Start the compiled application |
-| `npm run start:dev` | Start with file watching |
-| `npm run lint` | Run ESLint |
-| `npm run lint:fix` | Run ESLint and auto-fix |
-| `npm run format` | Run Prettier |
-| `npm run type-check` | Run TypeScript compiler check |
-| `npm run test` | Run all tests |
-| `npm run test:coverage` | Run tests with coverage report |
+## 🤝 المساهمة — Contributing
 
-## Environment Variables
+هذا مستودع خاص. التطوير مقيّد على الفريق الأساسي.
 
-See `.env.example` for the full list of required variables.
+This is a private repository. Contributions are restricted to the core team.
 
-## License
+---
 
-Copyright © 2026 Thanarah Team. All Rights Reserved.
+<div align="center">
+  <sub>صُنع بعناية في المملكة العربية السعودية 🇸🇦 — Built with care in Saudi Arabia</sub>
+</div>
