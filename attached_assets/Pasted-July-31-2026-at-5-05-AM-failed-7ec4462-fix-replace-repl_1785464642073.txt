@@ -1,0 +1,73 @@
+July 31, 2026 at 5:05 AM
+failed
+7ec4462
+fix: replace replit internal registry urls with public npm registry in lockfile
+
+Rollback
+Exited with status 1 while running your code.
+Read our docs for common ways to troubleshoot your deploy.
+
+All logs
+Search
+Search logs
+
+Jul 31, 5:04 AM - 5:06 AM
+GMT+3
+
+
+
+==> Downloading cache...
+==> Cloning from https://github.com/thanarh/Thanarah-Core-Platform
+==> Checking out commit 7ec44624b26f4609c163e669adcaf24bb751b18e in branch main
+==> Downloaded 99MB in 3s. Extraction took 2s.
+==> Requesting Node.js version >=22.0.0
+==> Using Node.js version 26.5.1 via /opt/render/project/src/package.json
+==> Docs on specifying a Node.js version: https://render.com/docs/node-version
+==> Installing Node.js version 26.5.1...
+==> Running build command 'npm install && npx nest build'...
+> thanarah-backend@0.1.0 prepare
+> husky
+up to date, audited 661 packages in 1s
+191 packages are looking for funding
+  run `npm fund` for details
+18 high severity vulnerabilities
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details.
+==> Uploading build...
+==> Uploaded in 3.0s. Compression took 1.5s
+==> Build successful 🎉
+==> Deploying...
+==> Setting WEB_CONCURRENCY=1 by default, based on available CPUs in the instance
+==> Running 'node dist/main'
+[Nest] 70  - 07/31/2026, 2:05:55 AM     LOG [NestFactory] Starting Nest application...
+[Nest] 70  - 07/31/2026, 2:05:55 AM   ERROR [ExceptionHandler] Error: Environment configuration is invalid:
+  NODE_ENV: Invalid enum value. Expected 'development' | 'staging' | 'production', received 'NODE_ENV'
+    at Object.validateEnv [as validate] (/opt/render/project/src/dist/config/env.schema.js:21:15)
+    at ConfigModule.forRoot (/opt/render/project/src/node_modules/@nestjs/config/dist/config.module.js:88:45)
+    at Object.<anonymous> (/opt/render/project/src/dist/config/config.module.js:20:35)
+    at Module._compile (node:internal/modules/cjs/loader:1934:14)
+    at Object..js (node:internal/modules/cjs/loader:2074:10)
+    at Module.load (node:internal/modules/cjs/loader:1656:32)
+    at Module._load (node:internal/modules/cjs/loader:1448:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.require (node:internal/modules/cjs/loader:1679:12)
+    at require (node:internal/modules/helpers:196:16)
+==> Exited with status 1
+==> Common ways to troubleshoot your deploy: https://render.com/docs/troubleshooting-deploys
+==> Running 'node dist/main'
+[Nest] 52  - 07/31/2026, 2:06:08 AM     LOG [NestFactory] Starting Nest application...
+[Nest] 52  - 07/31/2026, 2:06:08 AM   ERROR [ExceptionHandler] Error: Environment configuration is invalid:
+  NODE_ENV: Invalid enum value. Expected 'development' | 'staging' | 'production', received 'NODE_ENV'
+    at Object.validateEnv [as validate] (/opt/render/project/src/dist/config/env.schema.js:21:15)
+    at ConfigModule.forRoot (/opt/render/project/src/node_modules/@nestjs/config/dist/config.module.js:88:45)
+    at Object.<anonymous> (/opt/render/project/src/dist/config/config.module.js:20:35)
+    at Module._compile (node:internal/modules/cjs/loader:1934:14)
+    at Object..js (node:internal/modules/cjs/loader:2074:10)
+    at Module.load (node:internal/modules/cjs/loader:1656:32)
+    at Module._load (node:internal/modules/cjs/loader:1448:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:261:19)
+    at Module.require (node:internal/modules/cjs/loader:1679:12)
+    at require (node:internal/modules/helpers:196:16)
