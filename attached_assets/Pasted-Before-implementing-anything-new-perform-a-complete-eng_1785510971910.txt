@@ -1,0 +1,203 @@
+Before implementing anything new, perform a complete engineering review of the current THANARAH backend project.
+
+Do NOT modify any files.
+Do NOT install packages.
+Do NOT refactor code.
+Do NOT create commits.
+Do NOT generate new modules.
+
+Your task is ONLY to inspect and analyze the current project.
+
+======================================================
+Generate a complete technical report containing:
+
+1. Project Overview
+- Current architecture.
+- Main technologies.
+- Node version.
+- Framework.
+- Database.
+- Folder organization.
+
+2. Folder Tree
+Print the complete project tree (excluding node_modules, dist and .git).
+
+3. Implemented Modules
+List every module that currently exists.
+
+Example:
+
+- Authentication
+- Platform Users
+- Roles
+- Permissions
+- Sessions
+- Audit Logs
+- Security Events
+- Outbox
+- Health
+- Config
+- Database
+- etc.
+
+For each module explain:
+
+- Purpose
+- Current implementation status
+- Missing parts
+
+4. REST API Inventory
+
+List every endpoint.
+
+For each endpoint include:
+
+- Method
+- URL
+- Description
+- Authentication required
+- Permissions required
+
+5. MongoDB
+
+List:
+
+- Collections
+- Schemas
+- Indexes
+- Relationships
+- Transactions
+- Seed data
+
+6. Authentication
+
+Explain exactly what is implemented:
+
+- JWT
+- Refresh Tokens
+- Rotation
+- Sessions
+- Password Reset
+- Account Setup
+- Login
+- Logout
+- Logout All
+- Password Policy
+- Account Lock
+- Rate Limiting
+- Guards
+
+7. RBAC
+
+List:
+
+Roles
+
+Permissions
+
+Decorators
+
+Guards
+
+Missing security checks
+
+8. Audit & Security
+
+List everything implemented regarding:
+
+Audit Logs
+
+Security Events
+
+Outbox
+
+9. Testing
+
+List:
+
+Unit Tests
+
+Integration Tests
+
+E2E Tests
+
+Coverage if available
+
+10. Configuration
+
+List:
+
+Environment Variables
+
+Validation
+
+Logger
+
+Swagger
+
+Docker
+
+Health Checks
+
+11. Git Status
+
+Print:
+
+Current branch
+
+Git status
+
+Uncommitted changes
+
+Last 10 commits
+
+Configured remotes (without exposing credentials)
+
+12. Quality Assessment
+
+Score each section from 0–100:
+
+Architecture
+
+Security
+
+Maintainability
+
+Scalability
+
+Code Quality
+
+Testing
+
+Production Readiness
+
+13. Missing Features
+
+Create a checklist divided into:
+
+Completed ✅
+
+Partially Completed 🟡
+
+Not Started ❌
+
+14. Recommended Next Phase
+
+Based ONLY on the current project state, recommend the next logical backend phase.
+
+Do not recommend features already implemented.
+
+15. Final Summary
+
+At the end provide a concise executive summary including:
+
+- Overall completion percentage of the backend foundation.
+- Highest risks.
+- Technical debt.
+- Immediate next milestone.
+
+IMPORTANT:
+Do not modify any source code.
+Do not guess.
+If something is not implemented, explicitly say "Not Implemented".
+Base the report only on the actual code in the repository.
