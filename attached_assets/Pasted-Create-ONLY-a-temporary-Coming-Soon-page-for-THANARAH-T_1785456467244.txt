@@ -1,0 +1,174 @@
+Create ONLY a temporary Coming Soon page for THANARAH.
+
+This is NOT the final website.
+
+This is NOT the login page.
+
+This is NOT the dashboard.
+
+This page is only a temporary landing screen while the platform is under development.
+
+Do not create any backend logic.
+
+Do not create authentication.
+
+Do not create APIs.
+
+Do not create routing except making this page the default entry.
+
+====================================================
+
+DESIGN STYLE
+
+Luxury.
+
+Minimal.
+
+Premium.
+
+Elegant.
+
+Medical Technology.
+
+Calm.
+
+Modern.
+
+The page must feel like Apple introducing a new product.
+
+====================================================
+
+BACKGROUND
+
+Use a clean off-white background (#F7F6F2).
+
+No gradients.
+
+No busy graphics.
+
+No stock illustrations.
+
+No AI graphics.
+
+====================================================
+
+CENTER CONTENT
+
+Display the official THANARAH logo in the exact center of the screen.
+
+The logo must be large and clearly visible.
+
+Do not recreate the logo.
+
+Use the uploaded official logo.
+
+====================================================
+
+LOGO ANIMATION
+
+Very elegant.
+
+Fade in.
+
+Scale from 95% to 100%.
+
+Then a slow breathing animation.
+
+No rotation.
+
+No bounce.
+
+No flashy effects.
+
+====================================================
+
+TEXT
+
+Below the logo display:
+
+ثناره
+
+Then:
+
+المستقبل الطبي يبدأ من هنا
+
+Below it display:
+
+منصة رقمية متكاملة لإدارة المنشآت الصحية، يجري العمل عليها بعناية لتقديم تجربة استثنائية.
+
+Below that display a premium badge:
+
+🚀 قريبًا
+
+====================================================
+
+FOOTER
+
+At the bottom center display:
+
+© 2026 Thanarah Team
+All Rights Reserved.
+
+Use a very small elegant font.
+
+====================================================
+
+BACKGROUND MOTION
+
+Only an extremely subtle ambient movement.
+
+Almost invisible.
+
+No particles.
+
+No floating objects.
+
+====================================================
+
+RESPONSIVE
+
+Perfect on:
+
+Desktop
+
+Tablet
+
+Mobile
+
+====================================================
+
+PERFORMANCE
+
+Very lightweight.
+
+Smooth 60 FPS.
+
+No unnecessary libraries.
+
+====================================================
+
+Do not add:
+
+Login
+
+Buttons
+
+Navigation
+
+Forms
+
+Dashboard
+
+Social links
+
+Newsletter
+
+Email subscription
+
+Contact us
+
+Anything else.
+
+This page should feel premium, calm, and intentionally simple.
+
+The logo must be the visual focus.
