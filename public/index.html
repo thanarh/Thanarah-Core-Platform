@@ -11,20 +11,17 @@
   <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@200;300;400;500&family=Inter:wght@200;300&display=swap" rel="stylesheet" />
 
   <style>
-    /* ── Reset ──────────────────────────────────────────────── */
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-    /* ── Tokens ─────────────────────────────────────────────── */
     :root {
       --bg:         #F7F6F2;
       --green-dark: #1C5C3C;
       --green-sage: #87AC96;
       --text:       #1A1A1A;
-      --text-sub:   rgba(26,26,26,0.55);
-      --text-muted: rgba(26,26,26,0.32);
+      --text-sub:   rgba(26,26,26,0.52);
+      --text-muted: rgba(26,26,26,0.30);
     }
 
-    /* ── Base ───────────────────────────────────────────────── */
     html, body {
       width: 100%; height: 100%;
       background: var(--bg);
@@ -34,64 +31,51 @@
       -webkit-font-smoothing: antialiased;
     }
 
-    /* ── Background: ghosted mark ────────────────────────────
-       Very subtle — the cross shape is barely perceptible,
-       anchored to the bottom-right corner so it doesn't compete
-       with the centered logo.
-    ────────────────────────────────────────────────────────── */
+    /* ── Background: ghosted mark, bottom-right ─────────────── */
     .bg-mark {
       position: fixed;
-      bottom: -12%;
-      right: -8%;
-      width: min(55vw, 55vh);
-      height: auto;
+      bottom: -10%; right: -6%;
+      width: min(52vw, 52vh);
       z-index: 0;
       pointer-events: none;
-      opacity: 0.038;
+      opacity: 0.040;
       animation: mark-drift 50s ease-in-out infinite alternate;
       will-change: transform;
     }
     .bg-mark svg { width: 100%; height: auto; display: block; }
-
     @keyframes mark-drift {
-      from { transform: translate(0, 0)    scale(1.00); }
-      to   { transform: translate(-2%, -2%) scale(1.03); }
+      from { transform: translate(0,0)     scale(1.00); }
+      to   { transform: translate(-2%,-2%) scale(1.03); }
     }
 
     /* ── Page ───────────────────────────────────────────────── */
     .page {
       position: relative;
       z-index: 10;
-      width: 100%;
-      height: 100%;
+      width: 100%; height: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
-      /* bottom padding reserves space for the fixed footer */
-      padding: clamp(24px,6vh,80px) clamp(24px,8vw,100px) clamp(72px,12vh,110px);
-      gap: 0;
+      padding: 24px 24px clamp(72px,12vh,110px);
     }
 
-    /* ── Logo lockup ─────────────────────────────────────────
-       Force LTR layout so the cross mark is always on the left
-       and the Arabic wordmark is on the right — matching the
-       official horizontal logo orientation.
-    ────────────────────────────────────────────────────────── */
-    .logo-lockup {
+    /* ── Logo image ──────────────────────────────────────────── */
+    .logo-wrap {
       display: flex;
-      direction: ltr;          /* logo reads L→R regardless of page RTL */
-      flex-direction: row;
       align-items: center;
       justify-content: center;
-      gap: clamp(14px, 2.5vw, 28px);
-
-      animation: logo-in 1.0s cubic-bezier(0.22,1,0.36,1) 0.3s both;
+      animation: logo-in 1.1s cubic-bezier(0.22,1,0.36,1) 0.3s both;
     }
-    .logo-lockup.breathing {
+    .logo-wrap.breathing {
       animation:
-        logo-in     1.0s cubic-bezier(0.22,1,0.36,1) 0.3s both,
-        logo-breath 5.2s ease-in-out 1.5s infinite;
+        logo-in     1.1s cubic-bezier(0.22,1,0.36,1) 0.3s both,
+        logo-breath 5.4s ease-in-out 1.6s infinite;
+    }
+    .logo-img {
+      width: clamp(220px, 40vw, 460px);
+      height: auto;
+      display: block;
     }
     @keyframes logo-in {
       from { opacity: 0; transform: scale(0.95); }
@@ -102,104 +86,83 @@
       50%      { transform: scale(1.007); }
     }
 
-    /* SVG cross mark */
-    .logo-mark-svg {
-      flex-shrink: 0;
-      width: clamp(64px, 11vw, 110px);
-      height: auto;
-    }
-    .logo-mark-svg svg { width: 100%; height: auto; display: block; }
-
-    /* Arabic + Latin wordmark */
-    .logo-text {
-      display: flex;
-      flex-direction: column;
-      align-items: flex-start;
-      gap: 2px;
-    }
-    .logo-arabic {
-      font-family: 'Tajawal', sans-serif;
-      font-weight: 500;
-      font-size: clamp(2.6rem, 7vw, 5.4rem);
-      line-height: 1;
-      letter-spacing: 0.01em;
-      color: var(--green-dark);
-      direction: rtl;
-      white-space: nowrap;
-    }
-    .logo-latin {
-      font-family: 'Inter', sans-serif;
-      font-weight: 300;
-      font-size: clamp(0.52rem, 1.1vw, 0.82rem);
-      letter-spacing: 0.42em;
-      text-transform: uppercase;
-      color: var(--green-dark);
-      opacity: 0.55;
-      direction: ltr;
-      padding-left: 0.42em;  /* compensate trailing letter-spacing */
-      white-space: nowrap;
-    }
-
     /* ── Rule ───────────────────────────────────────────────── */
     .rule {
-      width: clamp(28px, 3.5vw, 42px);
+      width: clamp(28px, 4vw, 44px);
       height: 1px;
       background: var(--green-dark);
       border-radius: 1px;
-      margin: clamp(26px, 4.5vh, 44px) 0 clamp(22px, 4vh, 38px);
       opacity: 0;
-      animation: fade-up 0.6s ease 1.05s forwards;
+      margin: clamp(24px,4vh,42px) 0 clamp(20px,3.6vh,36px);
+      animation: fade-up 0.6s ease 1.1s forwards;
     }
 
-    /* ── Content ────────────────────────────────────────────── */
-    .content {
+    /* ── Typewriter slogan ───────────────────────────────────── */
+    .slogan-wrap {
+      min-height: clamp(36px, 6vh, 52px);
       display: flex;
-      flex-direction: column;
       align-items: center;
-      gap: clamp(8px, 1.6vh, 14px);
-      text-align: center;
-      max-width: min(520px, 90vw);
+      justify-content: center;
+      opacity: 0;
+      animation: fade-up 0.7s ease 1.2s forwards;
     }
-
-    .headline {
+    .slogan-text {
       font-family: 'Tajawal', sans-serif;
       font-weight: 200;
-      font-size: clamp(1.15rem, 3vw, 1.75rem);
+      font-size: clamp(1.1rem, 2.8vw, 1.75rem);
       letter-spacing: 0.04em;
       color: var(--text);
-      opacity: 0;
-      animation: fade-up 0.7s ease 1.15s forwards;
+      text-align: center;
+      direction: rtl;
+    }
+    /* blinking cursor */
+    .cursor {
+      display: inline-block;
+      width: 2px;
+      height: 1.1em;
+      background: var(--green-dark);
+      margin-inline-start: 3px;
+      vertical-align: text-bottom;
+      border-radius: 1px;
+      animation: blink 0.9s ease infinite;
+    }
+    @keyframes blink {
+      0%,100% { opacity: 1; }
+      50%      { opacity: 0; }
     }
 
+    /* ── Description ─────────────────────────────────────────── */
     .description {
       font-family: 'Tajawal', sans-serif;
       font-weight: 300;
       font-size: clamp(0.76rem, 1.5vw, 0.92rem);
-      line-height: 1.95;
+      line-height: 2;
       color: var(--text-sub);
       letter-spacing: 0.02em;
-      max-width: min(420px, 86vw);
+      max-width: min(430px, 88vw);
+      text-align: center;
+      margin-top: clamp(10px, 1.8vh, 16px);
       opacity: 0;
-      animation: fade-up 0.7s ease 1.28s forwards;
+      animation: fade-up 0.7s ease 1.35s forwards;
     }
 
+    /* ── Badge ───────────────────────────────────────────────── */
     .badge {
       display: inline-flex;
       align-items: center;
-      gap: 8px;
-      margin-top: clamp(4px, 0.8vh, 8px);
-      padding: 7px 22px;
-      border: 1px solid rgba(28,92,60,0.16);
+      margin-top: clamp(14px, 2.4vh, 22px);
+      padding: 7px 24px;
+      border: 1px solid rgba(28,92,60,0.15);
       border-radius: 100px;
-      background: rgba(28,92,60,0.038);
+      background: rgba(28,92,60,0.035);
       font-family: 'Tajawal', sans-serif;
       font-weight: 300;
-      font-size: clamp(0.73rem, 1.4vw, 0.84rem);
+      font-size: clamp(0.72rem, 1.4vw, 0.84rem);
       color: var(--green-dark);
-      letter-spacing: 0.07em;
+      letter-spacing: 0.08em;
       user-select: none;
       opacity: 0;
-      animation: fade-up 0.7s ease 1.42s forwards;
+      animation: fade-up 0.7s ease 1.5s forwards;
     }
 
     /* ── Footer ─────────────────────────────────────────────── */
@@ -223,7 +186,7 @@
       direction: ltr;
       text-align: center;
       opacity: 0;
-      animation: fade-up 0.6s ease 1.65s forwards;
+      animation: fade-up 0.6s ease 1.7s forwards;
     }
 
     /* ── Keyframes ──────────────────────────────────────────── */
@@ -235,17 +198,17 @@
     /* ── Reduced motion ─────────────────────────────────────── */
     @media (prefers-reduced-motion: reduce) {
       .bg-mark { animation: none; }
-      .logo-lockup,
-      .logo-lockup.breathing { animation: none; opacity: 1; transform: none; }
-      .rule, .headline, .description, .badge, footer p {
+      .logo-wrap, .logo-wrap.breathing { animation: none; opacity: 1; }
+      .rule, .slogan-wrap, .description, .badge, footer p {
         animation: none; opacity: 1; transform: none;
       }
+      .cursor { animation: none; }
     }
   </style>
 </head>
 <body>
 
-  <!-- Background mark (bottom-right, very faint) -->
+  <!-- Ghosted background mark -->
   <div class="bg-mark" aria-hidden="true">
     <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
       <rect x="37" y="50" width="26" height="38" rx="13" fill="#1C5C3C"/>
@@ -257,41 +220,33 @@
 
   <main class="page">
 
-    <!-- Logo lockup -->
-    <div class="logo-lockup" id="logoLockup" role="img" aria-label="شعار ثناره — Thanarah">
-
-      <!-- Cross mark -->
-      <div class="logo-mark-svg">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-          <!-- Sage arms (behind) -->
-          <rect x="37" y="50" width="26" height="38" rx="13" fill="#87AC96"/>
-          <rect x="50" y="37" width="38" height="26" rx="13" fill="#87AC96"/>
-          <!-- Dark arms (front) -->
-          <rect x="37" y="12" width="26" height="38" rx="13" fill="#1C5C3C"/>
-          <rect x="12" y="37" width="38" height="26" rx="13" fill="#1C5C3C"/>
-        </svg>
-      </div>
-
-      <!-- Wordmark -->
-      <div class="logo-text">
-        <span class="logo-arabic">ثناره</span>
-        <span class="logo-latin">THANARAH</span>
-      </div>
-
+    <!-- Official logo: PNG with JS background removal -->
+    <div class="logo-wrap" id="logoWrap" role="img" aria-label="شعار ثناره — Thanarah logo">
+      <img
+        id="logoImg"
+        class="logo-img"
+        src="/assets/logo-transparent.png"
+        alt="Thanarah — ثناره"
+      />
     </div>
 
-    <!-- Separator rule -->
+    <!-- Rule -->
     <div class="rule" aria-hidden="true"></div>
 
-    <!-- Text content -->
-    <div class="content">
-      <h1 class="headline">المستقبل الطبي يبدأ من هنا</h1>
-      <p class="description">
-        منصة رقمية متكاملة لإدارة المنشآت الصحية،
-        يجري العمل عليها بعناية لتقديم تجربة استثنائية.
-      </p>
-      <div class="badge" role="status" aria-label="قريبًا">🚀&nbsp; قريبًا</div>
+    <!-- Typewriter slogans -->
+    <div class="slogan-wrap" aria-live="polite" aria-atomic="true">
+      <span class="slogan-text" id="sloganText"></span>
+      <span class="cursor" aria-hidden="true"></span>
     </div>
+
+    <!-- Description -->
+    <p class="description">
+      منصة رقمية متكاملة لإدارة المنشآت الصحية،
+      يجري العمل عليها بعناية لتقديم تجربة استثنائية.
+    </p>
+
+    <!-- Badge -->
+    <div class="badge" role="status">قريبًا</div>
 
   </main>
 
@@ -301,11 +256,125 @@
   </footer>
 
   <script>
-    'use strict';
-    setTimeout(function () {
-      var el = document.getElementById('logoLockup');
-      if (el) el.classList.add('breathing');
-    }, 1450);
+  'use strict';
+
+  /* ── 1. Logo: remove gray background via Canvas API ──────── */
+  (function removeLogo() {
+    var img = document.getElementById('logoImg');
+
+    function process() {
+      try {
+        var canvas = document.createElement('canvas');
+        canvas.width  = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, 0, 0);
+
+        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+        var d = imageData.data;
+
+        // Sample corners to detect background color
+        var corners = [
+          [d[0], d[1], d[2]],
+          [d[(canvas.width - 2) * 4], d[(canvas.width - 2) * 4 + 1], d[(canvas.width - 2) * 4 + 2]],
+          [d[(canvas.height - 2) * canvas.width * 4], d[(canvas.height - 2) * canvas.width * 4 + 1], d[(canvas.height - 2) * canvas.width * 4 + 2]]
+        ];
+        var bgR = Math.round(corners.reduce(function(s,c){return s+c[0];},0)/3);
+        var bgG = Math.round(corners.reduce(function(s,c){return s+c[1];},0)/3);
+        var bgB = Math.round(corners.reduce(function(s,c){return s+c[2];},0)/3);
+
+        var hard = 32, soft = 64;
+
+        for (var i = 0; i < d.length; i += 4) {
+          var dist = Math.abs(d[i]-bgR) + Math.abs(d[i+1]-bgG) + Math.abs(d[i+2]-bgB);
+          if (dist < hard) {
+            d[i+3] = 0;
+          } else if (dist < soft) {
+            d[i+3] = Math.round(255 * (dist - hard) / (soft - hard));
+          }
+        }
+
+        ctx.putImageData(imageData, 0, 0);
+        img.src = canvas.toDataURL('image/png');
+        img.classList.add('ready');
+      } catch(e) {
+        // Fallback: show image as-is if canvas fails
+        img.classList.add('ready');
+      }
+    }
+
+    if (img.complete && img.naturalWidth > 0) {
+      process();
+    } else {
+      img.addEventListener('load', process);
+      img.addEventListener('error', function() { img.classList.add('ready'); });
+    }
+  })();
+
+  /* ── 2. Breathing class after entrance ──────────────────── */
+  setTimeout(function () {
+    var el = document.getElementById('logoWrap');
+    if (el) el.classList.add('breathing');
+  }, 1500);
+
+  /* ── 3. Typewriter: cycle through many slogans ──────────── */
+  (function typewriter() {
+    var slogans = [
+      'المستقبل الطبي يبدأ من هنا',
+      'حيث تلتقي التقنية بالرعاية الإنسانية',
+      'منصة واحدة تُدير كل شيء',
+      'نُبسّط الإدارة، لتُركّز على المريض',
+      'الرعاية الصحية بمستوى آخر',
+      'إدارة أذكى، رعاية أفضل',
+      'نظام تشغيل المنشآت الصحية',
+      'التحول الرقمي في قطاع الصحة',
+      'بناء مستقبل الرعاية الصحية اليوم',
+      'ثناره — لأن كل مريض يستحق الأفضل',
+      'كل منشأة تستحق أفضل إدارة ممكنة',
+      'الدقة والرعاية في نظام واحد'
+    ];
+
+    var el = document.getElementById('sloganText');
+    var idx = 0;
+    var charIdx = 0;
+    var deleting = false;
+    var TYPING_SPEED = 55;
+    var DELETE_SPEED = 28;
+    var PAUSE_AFTER   = 2400;
+    var PAUSE_BEFORE  = 400;
+
+    // Start after initial animations settle
+    setTimeout(function tick() {
+      var current = slogans[idx];
+
+      if (!deleting) {
+        // Type one character
+        charIdx++;
+        el.textContent = current.slice(0, charIdx);
+        if (charIdx >= current.length) {
+          // Done typing: pause then delete
+          setTimeout(function() {
+            deleting = true;
+            setTimeout(tick, DELETE_SPEED);
+          }, PAUSE_AFTER);
+          return;
+        }
+        setTimeout(tick, TYPING_SPEED);
+      } else {
+        // Delete one character
+        charIdx--;
+        el.textContent = current.slice(0, charIdx);
+        if (charIdx <= 0) {
+          // Done deleting: move to next slogan
+          deleting = false;
+          idx = (idx + 1) % slogans.length;
+          setTimeout(tick, PAUSE_BEFORE);
+          return;
+        }
+        setTimeout(tick, DELETE_SPEED);
+      }
+    }, 1800);
+  })();
   </script>
 
 </body>
