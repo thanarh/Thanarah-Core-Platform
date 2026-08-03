@@ -1,0 +1,67 @@
+Pause all new backend development.
+
+Do not implement authentication.
+Do not implement users, sessions or account setup.
+Do not run MongoDB integration tests.
+Do not add MONGODB_URI.
+Do not modify source files yet.
+
+We need to correct an architectural database decision before continuing.
+
+The central Thanarah platform will be deployed on cPanel and will use its MySQL or MariaDB database.
+
+MongoDB is NOT the central Thanarah platform database.
+
+MongoDB will be used later only for customer medical environments created by the Thanarah provisioning system.
+
+The current central platform modules were built using Mongoose:
+
+- Platform User
+- Platform Roles
+- Platform Permissions
+- Access Seed
+
+Your task is only to inspect the current repository and produce a migration-impact report for moving central platform persistence from Mongoose/MongoDB to MySQL or MariaDB using Prisma ORM.
+
+Do not change files.
+Do not install Prisma.
+Do not uninstall Mongoose.
+Do not generate Prisma schemas.
+Do not create a commit.
+
+The report must include:
+
+1. Every file currently dependent on Mongoose or MongoDB.
+2. Every schema and repository that must be migrated.
+3. Current indexes and their SQL equivalents.
+4. Current Platform User relationships.
+5. Current Role and Permission relationships.
+6. Recommended normalized SQL tables.
+7. Required foreign keys.
+8. Required unique constraints.
+9. Required indexes.
+10. How protected roles and permissions should be represented.
+11. How the idempotent access seed should work with Prisma.
+12. How existing unit tests can remain unchanged.
+13. Which integration tests must be rewritten.
+14. Whether Prisma supports the cPanel MySQL or MariaDB version.
+15. Required cPanel database information that the owner must provide.
+16. Risks of migrating now.
+17. Risks of continuing with MongoDB incorrectly.
+18. Exact staged migration plan with the smallest safe steps.
+
+The target central database should be named:
+
+thanarah_platform
+
+The future architecture must clearly separate:
+
+A. Thanarah Central Platform:
+MySQL or MariaDB on cPanel.
+
+B. Customer Medical Environments:
+MongoDB databases provisioned later per customer.
+
+Do not mix the two persistence systems.
+
+Stop after producing the report.
