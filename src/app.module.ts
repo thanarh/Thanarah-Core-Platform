@@ -9,13 +9,11 @@ import { LoggerModule } from './common/logger/logger.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 
-const hasMongo = !!process.env['MONGO_URI'];
-
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
-    ...(hasMongo ? [DatabaseModule] : []),
+    DatabaseModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

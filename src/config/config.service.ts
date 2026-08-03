@@ -14,8 +14,8 @@ export class ConfigService {
     return this.config.get('PORT', { infer: true });
   }
 
-  get mongoUri(): string {
-    return this.config.get('MONGO_URI', { infer: true });
+  get databaseUrl(): string {
+    return this.config.get('DATABASE_URL', { infer: true });
   }
 
   get jwtSecret(): string {

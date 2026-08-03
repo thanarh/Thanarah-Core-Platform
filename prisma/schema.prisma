@@ -1,0 +1,19 @@
+// Thanarah Central Platform — Prisma schema
+//
+// Target database : MySQL / MariaDB on cPanel
+// Database name   : thanarah_platform
+//
+// This file currently contains only the datasource and generator blocks.
+// Business models (User, Role, Permission, etc.) will be added in a
+// subsequent task once the cPanel database credentials are confirmed.
+//
+// Do NOT add models here until Stage 2 of the migration plan.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
