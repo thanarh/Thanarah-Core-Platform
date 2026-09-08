@@ -1,0 +1,242 @@
+Continue with Phase 12 — Logout + Logout-All.
+
+The pre-Phase-12 authentication foundation has now been reconstructed, independently reviewed, and validated successfully.
+
+Implement ONLY Phase 12.
+
+Do not redesign or reconstruct the authentication foundation again.
+
+==================================================
+1. POST /api/v1/auth/logout
+==================================================
+
+Create the protected logout endpoint.
+
+Requirements:
+
+- POST /api/v1/auth/logout
+- Must use PlatformAuthGuard.
+- Must NOT be @Public().
+- Read sessionId ONLY from:
+  request.authenticatedPlatformUser.sessionId
+- Never accept sessionId from request body, query, or params.
+
+Behavior:
+
+- Revoke ONLY the current authenticated session.
+- Use the existing PlatformSessionService.revokeOne foundation.
+- revokedBy = authenticated platform user id.
+- revocationReason = USER_LOGOUT.
+- Clear the refresh-token cookie.
+- Operation must be idempotent.
+
+Do NOT:
+- delete the session.
+- delete refresh-token history.
+- blacklist the access token.
+- modify tokenVersion.
+- revoke other sessions.
+- return a refresh token.
+- return an access token.
+
+The existing access token may remain cryptographically valid until its normal expiration.
+
+==================================================
+2. POST /api/v1/auth/logout-all
+==================================================
+
+Create the protected logout-all endpoint.
+
+Requirements:
+
+- POST /api/v1/auth/logout-all
+- Must use PlatformAuthGuard.
+- Must NOT be @Public().
+- Read userId ONLY from:
+  request.authenticatedPlatformUser.userId
+- Never accept userId from request body, query, or params.
+
+Behavior:
+
+- Revoke ALL ACTIVE sessions belonging to the authenticated user.
+- Use the existing PlatformSessionService.revokeAll foundation.
+- revocationReason = USER_LOGOUT_ALL.
+- Clear the refresh-token cookie.
+- Operation must be idempotent.
+
+Do NOT:
+- modify tokenVersion.
+- delete sessions.
+- delete refresh-token history.
+- affect another user's sessions.
+- return access or refresh tokens.
+
+==================================================
+3. COOKIE BEHAVIOR
+==================================================
+
+Use the existing AuthCookieService.
+
+After successful logout:
+- clear the refresh-token cookie.
+
+After successful logout-all:
+- clear the refresh-token cookie.
+
+Use the same configured cookie name/domain/path/security/SameSite behavior required by the existing authentication implementation.
+
+Do not duplicate cookie logic.
+
+==================================================
+4. AUTHORIZATION BOUNDARY
+==================================================
+
+Do not implement permissions or roles in this phase.
+
+PlatformAuthGuard is responsible only for authentication.
+
+Permission/Role Guard remains a later phase.
+
+Do not make the logout endpoints depend on permissions.
+
+==================================================
+5. TESTS
+==================================================
+
+Add comprehensive tests covering:
+
+Logout:
+- unauthenticated request is rejected.
+- authenticated request uses sessionId from authenticated context.
+- request body cannot override the sessionId.
+- only the current session is revoked.
+- another active session remains active.
+- another user's session remains untouched.
+- revokedBy is the authenticated user id.
+- revocationReason is USER_LOGOUT.
+- refresh cookie is cleared.
+- no tokens are returned.
+- repeated logout is idempotent.
+- tokenVersion is unchanged.
+- session/history records are not deleted.
+
+Logout-all:
+- unauthenticated request is rejected.
+- authenticated userId comes only from authenticated context.
+- request body cannot override userId.
+- all ACTIVE sessions belonging to the authenticated user are revoked.
+- another user's sessions remain untouched.
+- already revoked/expired/compromised sessions are handled correctly according to existing service behavior.
+- revocationReason is USER_LOGOUT_ALL.
+- refresh cookie is cleared.
+- no tokens are returned.
+- repeated logout-all is idempotent.
+- tokenVersion is unchanged.
+- sessions/history are not deleted.
+
+Preserve all existing authentication tests.
+
+==================================================
+6. HTTP/API CONTRACT
+==================================================
+
+Use the existing API conventions.
+
+Add Swagger/OpenAPI documentation for:
+
+POST /api/v1/auth/logout
+
+POST /api/v1/auth/logout-all
+
+Document:
+- authentication requirement.
+- successful response.
+- relevant error responses.
+
+Do not introduce a new response architecture if the existing one already provides the correct convention.
+
+==================================================
+7. DATABASE
+==================================================
+
+Do not create unnecessary schema changes.
+
+Do not create a migration unless the existing implementation absolutely requires one.
+
+Do not connect to production cPanel MySQL/MariaDB.
+
+Do not add production credentials.
+
+==================================================
+8. SECURITY
+==================================================
+
+Perform a focused security review after implementation.
+
+Verify:
+
+- session ownership cannot be overridden by client input.
+- user ownership cannot be overridden by client input.
+- logout cannot revoke another user's session.
+- logout-all cannot revoke another user's sessions.
+- no refresh token is exposed.
+- no access token is exposed.
+- cookies are cleared securely.
+- session history remains intact.
+- tokenVersion is not modified.
+- authentication and authorization remain separate.
+
+==================================================
+9. VALIDATION
+==================================================
+
+Run:
+
+- full test suite
+- lint
+- typecheck
+- Prisma generation
+- build
+
+Restart the application once and verify startup/health behavior.
+
+Do not use --no-verify.
+
+==================================================
+10. COMMIT
+==================================================
+
+If all validation passes, create exactly one commit:
+
+feat(auth): add logout and logout-all
+
+Do not create additional unrelated commits.
+
+==================================================
+STOP CONDITION
+==================================================
+
+This phase ends after:
+
+- logout works.
+- logout-all works.
+- tests pass.
+- lint passes.
+- typecheck passes.
+- Prisma generation passes.
+- build passes.
+- runtime startup/health passes.
+- commit is created.
+
+Do NOT start:
+- Permission/Role Guard
+- Global Auth Guard
+- SaaS/Tenant modules
+- subscriptions
+- licensing
+- clinic modules
+- patient modules
+- Voice AI
+- any later phase.
+
+STOP and report the exact implementation and validation results.
