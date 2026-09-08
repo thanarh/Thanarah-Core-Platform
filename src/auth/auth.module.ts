@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule } from '../config/config.module';
 import { DatabaseModule } from '../database/database.module';
+import { AuthController } from './auth.controller';
 import { PlatformAuthGuard } from './guards/platform-auth.guard';
 import { PlatformSessionRepository } from './repositories/platform-session.repository';
 import { PlatformUserRepository } from './repositories/platform-user.repository';
@@ -30,6 +31,7 @@ const providers = [
 
 @Module({
   imports: [ConfigModule, DatabaseModule, JwtModule.register({})],
+  controllers: [AuthController],
   providers,
   exports: providers,
 })

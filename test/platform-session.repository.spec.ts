@@ -145,3 +145,93 @@ describe('PlatformSessionRepository atomic refresh protocol', () => {
     expect(test.prisma.$transaction).toHaveBeenCalledOnce();
   });
 });
+
+describe('PlatformSessionRepository logout revocation', () => {
+  // The inferred mock type is intentionally retained for Vitest method helpers.
+  // eslint-disable-next-line @typescript-eslint/explicit-function-return-type
+  function revocationHarness(updateCount: number) {
+    const platformSession = {
+      updateMany: vi.fn().mockResolvedValue({ count: updateCount }),
+      findUnique: vi.fn().mockResolvedValue(activeSession()),
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
+    };
+    const platformRefreshTokenHistory = {
+      delete: vi.fn(),
+      deleteMany: vi.fn(),
+    };
+    const prisma = { platformSession, platformRefreshTokenHistory };
+    return {
+      repository: new PlatformSessionRepository(prisma as unknown as PrismaService),
+      platformSession,
+      platformRefreshTokenHistory,
+    };
+  }
+
+  it('revokes one only when id, owner and ACTIVE status all match', async () => {
+    const test = revocationHarness(1);
+
+    await test.repository.revokeOne('session-1', 'user-1', 'USER_LOGOUT');
+
+    expect(test.platformSession.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'session-1',
+        userId: 'user-1',
+        status: PlatformSessionStatus.ACTIVE,
+      },
+      data: {
+        status: PlatformSessionStatus.REVOKED,
+        revokedAt: expect.any(Date),
+        revokedBy: 'user-1',
+        revocationReason: 'USER_LOGOUT',
+      },
+    });
+    const data = test.platformSession.updateMany.mock.calls[0]?.[0].data;
+    expect(data).not.toHaveProperty('tokenVersion');
+    expect(test.platformSession.delete).not.toHaveBeenCalled();
+    expect(test.platformSession.deleteMany).not.toHaveBeenCalled();
+    expect(test.platformRefreshTokenHistory.delete).not.toHaveBeenCalled();
+    expect(test.platformRefreshTokenHistory.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent for a non-active or mismatched session without a second write', async () => {
+    const test = revocationHarness(0);
+
+    await expect(test.repository.revokeOne('session-1', 'user-1', 'USER_LOGOUT')).resolves.toEqual(
+      activeSession(),
+    );
+
+    expect(test.platformSession.updateMany).toHaveBeenCalledOnce();
+    expect(test.platformSession.findUnique).toHaveBeenCalledWith({ where: { id: 'session-1' } });
+  });
+
+  it('revokes all and only ACTIVE sessions belonging to the trusted user', async () => {
+    const test = revocationHarness(3);
+
+    await expect(test.repository.revokeAll('user-1', 'user-1', 'USER_LOGOUT_ALL')).resolves.toBe(3);
+
+    expect(test.platformSession.updateMany).toHaveBeenCalledWith({
+      where: { userId: 'user-1', status: PlatformSessionStatus.ACTIVE },
+      data: {
+        status: PlatformSessionStatus.REVOKED,
+        revokedAt: expect.any(Date),
+        revokedBy: 'user-1',
+        revocationReason: 'USER_LOGOUT_ALL',
+      },
+    });
+    const data = test.platformSession.updateMany.mock.calls[0]?.[0].data;
+    expect(data).not.toHaveProperty('tokenVersion');
+    expect(test.platformSession.delete).not.toHaveBeenCalled();
+    expect(test.platformSession.deleteMany).not.toHaveBeenCalled();
+    expect(test.platformRefreshTokenHistory.delete).not.toHaveBeenCalled();
+    expect(test.platformRefreshTokenHistory.deleteMany).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent when no ACTIVE sessions remain and does not touch non-active rows', async () => {
+    const test = revocationHarness(0);
+
+    await expect(test.repository.revokeAll('user-1', 'user-1', 'USER_LOGOUT_ALL')).resolves.toBe(0);
+
+    expect(test.platformSession.updateMany).toHaveBeenCalledOnce();
+  });
+});

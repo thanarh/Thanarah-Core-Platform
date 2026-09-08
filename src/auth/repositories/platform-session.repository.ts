@@ -76,7 +76,7 @@ export class PlatformSessionRepository {
     reason?: string,
   ): Promise<PlatformSession | null> {
     const result = await this.prisma.platformSession.updateMany({
-      where: { id, status: PlatformSessionStatus.ACTIVE },
+      where: { id, userId: revokedBy, status: PlatformSessionStatus.ACTIVE },
       data: {
         status: PlatformSessionStatus.REVOKED,
         revokedAt: new Date(),
