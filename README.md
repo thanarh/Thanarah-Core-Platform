@@ -29,7 +29,7 @@
 
 | Layer | Technology |
 |-------|-----------|
-| **Runtime** | Node.js 20 LTS |
+| **Runtime** | Node.js 22 |
 | **Framework** | NestJS 11 + Fastify |
 | **Database** | MongoDB via Mongoose |
 | **Language** | TypeScript 5 (strict) |
@@ -43,7 +43,7 @@
 
 ### المتطلبات — Prerequisites
 
-- Node.js 20+
+- Node.js 22+
 - MongoDB instance (local or Atlas)
 
 ### التثبيت — Installation
