@@ -1,0 +1,193 @@
+Before continuing Phase 12, add the following requirement to the THANARAH long-term architecture documentation only.
+
+IMPORTANT:
+This is an architectural requirement for future phases.
+Do NOT implement it now.
+Do NOT install voice/telephony/AI packages.
+Do NOT modify the database schema for it yet.
+Do NOT modify the current authentication flow.
+
+==================================================
+FUTURE PRODUCT: THANARAH AI VOICE RECEPTIONIST
+==================================================
+
+Thanarah will eventually provide an optional paid Voice AI service for its healthcare tenants.
+
+Each clinic/hospital tenant may subscribe to and activate an AI-powered voice receptionist connected to the tenant's clinic phone number.
+
+When a patient calls the clinic's number:
+
+1. The call is answered by an AI voice receptionist.
+2. The AI speaks naturally in Saudi Arabic when appropriate.
+3. The AI should sound highly natural and conversational, not robotic.
+4. The AI understands normal conversational Saudi Arabic and common healthcare/appointment terminology.
+5. The AI identifies the caller's intent.
+6. The AI can answer tenant-approved informational questions.
+7. The AI can perform authorized actions through Thanarah APIs.
+
+Future capabilities include:
+
+- clinic information
+- working hours
+- location
+- available services
+- doctor information
+- doctor availability
+- appointment availability
+- appointment booking
+- appointment rescheduling
+- appointment cancellation
+- appointment confirmation
+- basic appointment status inquiries
+- clinic policies
+- tenant-configured FAQs
+- escalation to human staff when necessary
+
+==================================================
+MULTI-TENANT REQUIREMENT
+==================================================
+
+This feature must be designed as a tenant-scoped SaaS capability.
+
+A voice call must ALWAYS have a tenant context.
+
+The AI must never access data belonging to another tenant.
+
+The future architecture must support:
+
+Tenant
+→ Phone Number
+→ Voice Configuration
+→ AI Agent
+→ Knowledge / FAQ Configuration
+→ Allowed Actions
+→ Appointment/Clinic APIs
+→ Call Record / Call Metadata
+
+Do not assume one global AI receptionist for all Thanarah customers.
+
+Each tenant must be independently configurable.
+
+==================================================
+VOICE AI SAFETY
+==================================================
+
+The future voice agent must operate through controlled Thanarah APIs.
+
+It must NOT receive unrestricted database access.
+
+It must NOT directly execute arbitrary database queries.
+
+Actions such as booking, changing, or cancelling appointments must go through authorized application services.
+
+The AI should only perform actions explicitly enabled for that tenant.
+
+==================================================
+SUBSCRIPTION MODEL
+==================================================
+
+Voice AI will eventually be an optional paid feature/add-on.
+
+The future architecture should allow:
+
+- voice enabled/disabled per tenant
+- plan-based limits
+- call-minute limits
+- usage tracking
+- billing integration
+- overage handling
+- call history
+- usage analytics
+- configurable business hours
+- human handoff
+
+Do not implement billing or usage tracking now.
+
+Only preserve the architectural direction.
+
+==================================================
+FUTURE TELEPHONY ARCHITECTURE
+==================================================
+
+The exact telephony provider has NOT been selected yet.
+
+Do not hard-code Thanarah to a specific provider.
+
+The future architecture should use a provider abstraction so Thanarah can integrate with different telephony/voice providers.
+
+Conceptually:
+
+Phone Number
+→ Telephony Provider
+→ Voice Session
+→ Speech Recognition
+→ Thanarah Voice Agent
+→ Tenant Context
+→ Controlled Thanarah Services
+→ Voice Response
+→ Caller
+
+The implementation should eventually allow changing providers without rewriting the healthcare/business domain.
+
+==================================================
+LANGUAGE
+==================================================
+
+Saudi Arabic is a primary target for the voice experience.
+
+The architecture should eventually allow multilingual voice interactions.
+
+At minimum, future design should not prevent:
+
+- Saudi Arabic
+- Modern Standard Arabic
+- English
+
+Do not implement multilingual voice now.
+
+==================================================
+IMPORTANT ARCHITECTURAL RULE
+==================================================
+
+The current authentication, identity, session, role, permission, and tenant architecture must remain clean enough that a future Voice AI service can authenticate and authorize actions through the same application services.
+
+The Voice AI must NOT become a parallel business logic system.
+
+For example:
+
+Voice AI
+→ AppointmentService
+→ AppointmentRepository
+
+NOT:
+
+Voice AI
+→ direct database access
+
+The same business rules must apply whether an appointment is created by:
+
+- web application
+- mobile application
+- staff dashboard
+- API
+- future Voice AI
+
+==================================================
+DOCUMENTATION ONLY
+==================================================
+
+Add this as a clearly marked FUTURE / PLANNED capability in the appropriate architecture/project documentation.
+
+Do not implement any code for this requirement.
+
+Do not create database models.
+
+Do not create migrations.
+
+Do not install dependencies.
+
+Do not change existing APIs.
+
+Do not change current tests.
+
+Then continue Phase 12 exactly as previously instructed.

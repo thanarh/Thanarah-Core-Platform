@@ -21,6 +21,65 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 | **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB — `thanarah_platform` on cPanel | Users, roles, permissions |
 | **Customer Medical Environments** | Mongoose (future) | Per-customer MongoDB (provisioned later) | Clinical / medical data |
 
+## FUTURE / PLANNED — Thanarah AI Voice Receptionist
+
+Thanarah may offer an optional paid AI voice receptionist add-on for healthcare
+tenants. This is a long-term architectural direction only and is **not part of
+the current implementation**.
+
+### Tenant isolation and configuration
+
+- Every call must have an explicit tenant context; no global receptionist may
+  access multiple tenants' data.
+- Each tenant must independently control its phone number, voice configuration,
+  AI agent, approved knowledge and FAQs, allowed actions, business hours, and
+  human-handoff behavior.
+- Future call records, metadata, history, usage, and analytics must remain
+  tenant-scoped.
+
+Conceptually:
+
+`Tenant → Phone Number → Voice Configuration → AI Agent → Knowledge / FAQs → Allowed Actions → Controlled Thanarah APIs → Call Record / Metadata`
+
+### Capabilities and language
+
+The agent should eventually support natural, conversational Saudi Arabic and
+common healthcare and appointment terminology, while leaving room for Modern
+Standard Arabic and English. Tenant-approved capabilities may include clinic
+information, hours, location, services, doctors, availability, policies, FAQs,
+appointment status, booking, rescheduling, cancellation, confirmation, and
+escalation to staff.
+
+### Safety and authorization boundary
+
+- The voice agent must authenticate and authorize through the same application
+  services used by web, mobile, staff dashboards, and APIs.
+- It may call only tenant-enabled, controlled Thanarah APIs and must never
+  receive unrestricted database access or execute arbitrary queries.
+- Existing business rules must remain authoritative:
+  `Voice AI → AppointmentService → AppointmentRepository`, never
+  `Voice AI → database`.
+- Voice AI must not become a parallel business-logic system.
+
+### Provider-neutral telephony
+
+No telephony or voice provider is selected. Future implementation must use
+provider abstractions so providers can change without rewriting healthcare
+domain logic:
+
+`Phone Number → Telephony Provider → Voice Session → Speech Recognition → Thanarah Voice Agent → Tenant Context → Controlled Thanarah Services → Voice Response → Caller`
+
+### Commercial model
+
+The architecture must allow per-tenant enablement, plan and call-minute limits,
+usage tracking, billing integration, overage handling, call history, analytics,
+configurable business hours, and human handoff. Billing and usage tracking are
+not implemented yet.
+
+Do not add voice or telephony dependencies, database models or migrations,
+authentication changes, APIs, or tests until a future implementation phase
+explicitly authorizes that work.
+
 ## How to run on Replit
 
 **Workflow:** `Start application` — runs `npx nest build && node dist/main`
