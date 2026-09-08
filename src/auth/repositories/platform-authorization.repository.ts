@@ -1,0 +1,36 @@
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from '../../database/prisma.service';
+import type { PlatformPermissionCode, PlatformRoleCode } from '../platform-authorization.constants';
+
+@Injectable()
+export class PlatformAuthorizationRepository {
+  constructor(private readonly prisma: PrismaService) {}
+
+  async findRoleCodesByUserId(userId: string): Promise<PlatformRoleCode[]> {
+    const assignments = await this.prisma.userPlatformRole.findMany({
+      where: { userId },
+      select: { role: { select: { code: true } } },
+    });
+    return assignments.map(({ role }) => role.code as PlatformRoleCode);
+  }
+
+  async findPermissionCodesByUserId(userId: string): Promise<PlatformPermissionCode[]> {
+    const assignments = await this.prisma.userPlatformRole.findMany({
+      where: { userId },
+      select: {
+        role: {
+          select: {
+            permissions: { select: { permission: { select: { code: true } } } },
+          },
+        },
+      },
+    });
+    return [
+      ...new Set(
+        assignments.flatMap(({ role }) =>
+          role.permissions.map(({ permission }) => permission.code as PlatformPermissionCode),
+        ),
+      ),
+    ];
+  }
+}

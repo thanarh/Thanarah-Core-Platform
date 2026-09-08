@@ -90,6 +90,7 @@ describe('AccessTokenService', () => {
     expect(decoded).not.toHaveProperty('email');
     const raw = new JwtService().decode(token) as Record<string, unknown>;
     expect(raw).toMatchObject({ iss: 'thanarah', aud: 'thanarah-platform' });
+    expect(raw).not.toHaveProperty('permissions');
   });
 
   it('rejects expired tokens', async () => {

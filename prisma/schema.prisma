@@ -26,40 +26,78 @@ enum PlatformSessionStatus {
 }
 
 model User {
-  id           String            @id @default(uuid()) @db.Char(36)
-  email        String            @unique @db.VarChar(254)
-  passwordHash String            @db.VarChar(255)
-  fullName     String            @db.VarChar(191)
-  status       UserStatus        @default(ACTIVE)
-  tokenVersion Int               @default(0)
-  createdAt    DateTime          @default(now())
-  updatedAt    DateTime          @updatedAt
-  sessions     PlatformSession[]
+  id            String             @id @default(uuid()) @db.Char(36)
+  email         String             @unique @db.VarChar(254)
+  passwordHash  String             @db.VarChar(255)
+  fullName      String             @db.VarChar(191)
+  status        UserStatus         @default(ACTIVE)
+  tokenVersion  Int                @default(0)
+  createdAt     DateTime           @default(now())
+  updatedAt     DateTime           @updatedAt
+  sessions      PlatformSession[]
+  platformRoles UserPlatformRole[]
 
   @@index([status])
 }
 
+model PlatformRole {
+  id          String                   @id @default(uuid()) @db.Char(36)
+  code        String                   @unique @db.VarChar(64)
+  createdAt   DateTime                 @default(now())
+  updatedAt   DateTime                 @updatedAt
+  users       UserPlatformRole[]
+  permissions PlatformRolePermission[]
+}
+
+model PlatformPermission {
+  id        String                   @id @default(uuid()) @db.Char(36)
+  code      String                   @unique @db.VarChar(128)
+  createdAt DateTime                 @default(now())
+  updatedAt DateTime                 @updatedAt
+  roles     PlatformRolePermission[]
+}
+
+model UserPlatformRole {
+  userId String       @db.Char(36)
+  roleId String       @db.Char(36)
+  user   User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role   PlatformRole @relation(fields: [roleId], references: [id], onDelete: Restrict)
+
+  @@id([userId, roleId])
+  @@index([roleId])
+}
+
+model PlatformRolePermission {
+  roleId       String             @db.Char(36)
+  permissionId String             @db.Char(36)
+  role         PlatformRole       @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission   PlatformPermission @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@id([roleId, permissionId])
+  @@index([permissionId])
+}
+
 model PlatformSession {
-  id                String                        @id @default(uuid()) @db.Char(36)
-  userId            String                        @db.Char(36)
-  refreshTokenHash  String                        @unique @db.Char(64)
-  tokenFamilyId     String                        @db.Char(36)
-  status            PlatformSessionStatus         @default(ACTIVE)
-  ipAddress         String?                       @db.VarChar(45)
-  userAgent         String?                       @db.VarChar(512)
-  deviceName        String?                       @db.VarChar(191)
-  deviceType        String?                       @db.VarChar(64)
-  browser           String?                       @db.VarChar(128)
-  operatingSystem   String?                       @db.VarChar(128)
-  countryCode       String?                       @db.Char(2)
-  createdAt         DateTime                      @default(now())
-  lastActivityAt    DateTime                      @default(now())
-  expiresAt         DateTime
-  revokedAt         DateTime?
-  revokedBy         String?                       @db.Char(36)
-  revocationReason  String?                       @db.VarChar(255)
-  user              User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
-  refreshHistory    PlatformRefreshTokenHistory[]
+  id               String                        @id @default(uuid()) @db.Char(36)
+  userId           String                        @db.Char(36)
+  refreshTokenHash String                        @unique @db.Char(64)
+  tokenFamilyId    String                        @db.Char(36)
+  status           PlatformSessionStatus         @default(ACTIVE)
+  ipAddress        String?                       @db.VarChar(45)
+  userAgent        String?                       @db.VarChar(512)
+  deviceName       String?                       @db.VarChar(191)
+  deviceType       String?                       @db.VarChar(64)
+  browser          String?                       @db.VarChar(128)
+  operatingSystem  String?                       @db.VarChar(128)
+  countryCode      String?                       @db.Char(2)
+  createdAt        DateTime                      @default(now())
+  lastActivityAt   DateTime                      @default(now())
+  expiresAt        DateTime
+  revokedAt        DateTime?
+  revokedBy        String?                       @db.Char(36)
+  revocationReason String?                       @db.VarChar(255)
+  user             User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  refreshHistory   PlatformRefreshTokenHistory[]
 
   @@index([userId, status])
   @@index([tokenFamilyId])
