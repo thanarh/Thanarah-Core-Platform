@@ -18,12 +18,40 @@ export class ConfigService {
     return this.config.get('DATABASE_URL', { infer: true });
   }
 
-  get jwtSecret(): string {
-    return this.config.get('JWT_SECRET', { infer: true });
+  get jwtAccessSecret(): string {
+    return this.config.get('JWT_ACCESS_SECRET', { infer: true });
   }
 
-  get jwtExpiresIn(): string {
-    return this.config.get('JWT_EXPIRES_IN', { infer: true });
+  get accessTokenTtlMinutes(): number {
+    return this.config.get('AUTH_ACCESS_TOKEN_TTL_MINUTES', { infer: true });
+  }
+
+  get refreshTokenTtlDays(): number {
+    return this.config.get('AUTH_REFRESH_TOKEN_TTL_DAYS', { infer: true });
+  }
+
+  get maxFailedLoginAttempts(): number {
+    return this.config.get('AUTH_MAX_FAILED_LOGIN_ATTEMPTS', { infer: true });
+  }
+
+  get loginLockMinutes(): number {
+    return this.config.get('AUTH_LOGIN_LOCK_MINUTES', { infer: true });
+  }
+
+  get refreshCookieName(): string {
+    return this.config.get('AUTH_REFRESH_COOKIE_NAME', { infer: true });
+  }
+
+  get refreshCookieDomain(): string | undefined {
+    return this.config.get('AUTH_REFRESH_COOKIE_DOMAIN', { infer: true }) || undefined;
+  }
+
+  get refreshCookieSecure(): boolean {
+    return this.config.get('AUTH_REFRESH_COOKIE_SECURE', { infer: true });
+  }
+
+  get refreshCookieSameSite(): 'strict' | 'lax' | 'none' {
+    return this.config.get('AUTH_REFRESH_COOKIE_SAME_SITE', { infer: true });
   }
 
   get throttleTtl(): number {

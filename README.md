@@ -70,7 +70,9 @@ npx nest build && node dist/main
 |----------|-------------|----------|
 | `MONGO_URI` | MongoDB connection string | ✅ |
 | `SESSION_SECRET` | Session signing secret | ✅ |
-| `JWT_SECRET` | JWT signing secret | ✅ |
+| `JWT_ACCESS_SECRET` | Access-token signing secret (minimum 32 characters in production) | ✅ |
+| `AUTH_ACCESS_TOKEN_TTL_MINUTES` | Access-token lifetime in minutes (default: 15) | — |
+| `AUTH_REFRESH_TOKEN_TTL_DAYS` | Refresh/session lifetime in days (default: 30) | — |
 | `PORT` | Server port (default: 5000) | — |
 | `NODE_ENV` | `development` or `production` | — |
 

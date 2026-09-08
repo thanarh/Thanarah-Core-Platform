@@ -3,12 +3,6 @@
 // Target database : MySQL / MariaDB on cPanel
 // Database name   : thanarah_platform
 //
-// This file currently contains only the datasource and generator blocks.
-// Business models (User, Role, Permission, etc.) will be added in a
-// subsequent task once the cPanel database credentials are confirmed.
-//
-// Do NOT add models here until Stage 2 of the migration plan.
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -16,4 +10,73 @@ generator client {
 datasource db {
   provider = "mysql"
   url      = env("DATABASE_URL")
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+enum PlatformSessionStatus {
+  ACTIVE
+  REVOKED
+  EXPIRED
+  COMPROMISED
+}
+
+model User {
+  id           String            @id @default(uuid()) @db.Char(36)
+  email        String            @unique @db.VarChar(254)
+  passwordHash String            @db.VarChar(255)
+  fullName     String            @db.VarChar(191)
+  status       UserStatus        @default(ACTIVE)
+  tokenVersion Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  sessions     PlatformSession[]
+
+  @@index([status])
+}
+
+model PlatformSession {
+  id                String                        @id @default(uuid()) @db.Char(36)
+  userId            String                        @db.Char(36)
+  refreshTokenHash  String                        @unique @db.Char(64)
+  tokenFamilyId     String                        @db.Char(36)
+  status            PlatformSessionStatus         @default(ACTIVE)
+  ipAddress         String?                       @db.VarChar(45)
+  userAgent         String?                       @db.VarChar(512)
+  deviceName        String?                       @db.VarChar(191)
+  deviceType        String?                       @db.VarChar(64)
+  browser           String?                       @db.VarChar(128)
+  operatingSystem   String?                       @db.VarChar(128)
+  countryCode       String?                       @db.Char(2)
+  createdAt         DateTime                      @default(now())
+  lastActivityAt    DateTime                      @default(now())
+  expiresAt         DateTime
+  revokedAt         DateTime?
+  revokedBy         String?                       @db.Char(36)
+  revocationReason  String?                       @db.VarChar(255)
+  user              User                          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  refreshHistory    PlatformRefreshTokenHistory[]
+
+  @@index([userId, status])
+  @@index([tokenFamilyId])
+  @@index([expiresAt])
+}
+
+model PlatformRefreshTokenHistory {
+  id              String          @id @default(uuid()) @db.Char(36)
+  sessionId       String          @db.Char(36)
+  tokenFamilyId   String          @db.Char(36)
+  tokenHash       String          @unique @db.Char(64)
+  rotatedAt       DateTime        @default(now())
+  expiresAt       DateTime
+  reuseDetectedAt DateTime?
+  session         PlatformSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId])
+  @@index([tokenFamilyId])
+  @@index([expiresAt])
 }

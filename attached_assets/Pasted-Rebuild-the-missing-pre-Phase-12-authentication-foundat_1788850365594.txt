@@ -1,0 +1,275 @@
+Rebuild the missing pre-Phase-12 authentication foundation for Thanarah.
+
+The repository currently contains only the minimal scaffold, and the previous implementation cannot be recovered from Git history. We therefore need to reconstruct the required authentication foundation before implementing Phase 12.
+
+IMPORTANT:
+- Do NOT implement Phase 12 yet.
+- Do NOT implement logout or logout-all.
+- Do NOT invent a new architecture.
+- Follow the existing Thanarah architecture and conventions.
+- Keep this production-grade and multi-tenant ready.
+- Do not add unnecessary dependencies.
+- Do not use MongoDB/Mongoose.
+- Use the existing Prisma + MySQL/MariaDB architecture.
+- Development must remain safe when DATABASE_URL is not configured.
+- Do not put secrets in code.
+- Do not bypass Husky/Commitlint.
+- Do not use fake placeholder implementations for security-critical functionality.
+
+Reconstruct the following foundation:
+
+1. Platform Authentication Context
+- AuthenticatedPlatformUser type.
+- Fastify request augmentation.
+- @CurrentPlatformUser() decorator.
+- @Public() decorator.
+- Authentication metadata/constants.
+
+2. Access Token
+- AccessTokenService using @nestjs/jwt.
+- JWT issuer: thanarah.
+- JWT audience: thanarah-platform.
+- Claims:
+  sub
+  sessionId
+  tokenVersion
+  platformRoleIds
+  iat
+  exp
+- Keep JWT minimal.
+- Do not include email, fullName, permissions, password data, refresh tokens, or session metadata.
+- Use JWT_ACCESS_SECRET.
+- Use AUTH_ACCESS_TOKEN_TTL_MINUTES.
+- Preserve the existing expected validation/error behavior:
+  AccessTokenExpiredError
+  InvalidTokenSignatureError
+  InvalidTokenIssuerError
+  InvalidTokenAudienceError
+  MalformedTokenError
+  InvalidTokenClaimsError
+  MissingTokenSecretError
+
+3. PlatformAuthGuard
+Implement the existing intended pipeline:
+- @Public() routes bypass authentication.
+- Missing Authorization header → AUTH_TOKEN_MISSING.
+- Invalid authorization scheme/empty Bearer → AUTH_TOKEN_MALFORMED.
+- Verify JWT through AccessTokenService.
+- User not found → AUTH_USER_NOT_FOUND.
+- User not ACTIVE → AUTH_ACCOUNT_INACTIVE.
+- tokenVersion mismatch → AUTH_TOKEN_VERSION_MISMATCH.
+- Session not found → AUTH_SESSION_NOT_FOUND.
+- Session user mismatch → AUTH_SESSION_USER_MISMATCH.
+- REVOKED/COMPROMISED/EXPIRED session → corresponding authentication failure.
+- Attach only safe authenticated context to the request.
+- Do NOT evaluate permissions in this guard. Permission/Role Guard is a later phase.
+
+4. Platform Sessions
+Reconstruct PlatformSession persistence using Prisma/MySQL:
+- id
+- userId
+- refreshTokenHash
+- tokenFamilyId
+- status
+- ipAddress
+- userAgent
+- deviceName
+- deviceType
+- browser
+- operatingSystem
+- countryCode
+- createdAt
+- lastActivityAt
+- expiresAt
+- revokedAt
+- revokedBy
+- revocationReason
+
+Statuses:
+ACTIVE
+REVOKED
+EXPIRED
+COMPROMISED
+
+Use the intended indexes and user/session relationship.
+Preserve security history with restrictive deletion behavior where appropriate.
+
+Implement:
+- PlatformSessionRepository
+- PlatformSessionService
+
+Required operations:
+- create
+- findById
+- findByIdForUser
+- listByUserId
+- findActiveByUserId
+- findByRefreshTokenHash
+- updateLastActivity
+- revoke
+- revokeAllForUser
+- markExpired
+- markCompromised
+- findByTokenFamilyId
+- updateRefreshTokenHash
+
+5. Refresh Token Infrastructure
+Implement opaque cryptographically secure refresh tokens.
+- 384-bit random entropy.
+- base64url representation.
+- Never store raw refresh tokens.
+- Store SHA-256 hashes only.
+- Use timing-safe comparison where appropriate.
+
+Implement:
+- TokenGeneratorService
+- TokenHasherService
+- RefreshTokenService
+
+6. Refresh Token History
+Create/reconstruct PlatformRefreshTokenHistory:
+- id
+- sessionId
+- tokenFamilyId
+- tokenHash
+- rotatedAt
+- expiresAt
+- reuseDetectedAt
+
+Never store the raw refresh token.
+
+Implement rotation behavior:
+- Same PlatformSession row remains active.
+- session id does not change.
+- tokenFamilyId does not change.
+- Replace refreshTokenHash.
+- Preserve absolute session expiration.
+- Record the old token hash in refresh-token history.
+- Use an atomic database transaction for history + session update.
+
+Reuse detection:
+- Hash presented refresh token.
+- Compare against current session token hash.
+- If current hash does not match, check refresh-token history.
+- If the token exists in history, mark the session COMPROMISED and set reuseDetectedAt.
+- Throw RefreshTokenReusedError.
+
+Reconstruct these stable errors:
+- RefreshTokenInvalidError
+- RefreshTokenExpiredError
+- RefreshSessionRevokedError
+- RefreshSessionCompromisedError
+- RefreshTokenReusedError
+- RefreshRotationFailedError
+
+7. Authentication Configuration
+Reconstruct environment/config validation for:
+- JWT_ACCESS_SECRET
+- AUTH_ACCESS_TOKEN_TTL_MINUTES
+- AUTH_REFRESH_TOKEN_TTL_DAYS
+- AUTH_MAX_FAILED_LOGIN_ATTEMPTS
+- AUTH_LOGIN_LOCK_MINUTES
+- AUTH_REFRESH_COOKIE_NAME
+- AUTH_REFRESH_COOKIE_DOMAIN
+- AUTH_REFRESH_COOKIE_SECURE
+- AUTH_REFRESH_COOKIE_SAME_SITE
+
+Use safe production validation and sensible development behavior.
+
+8. Password/Security Foundation
+Reconstruct the existing security services if missing:
+- Argon2id password hashing.
+- Centralized Argon2 options.
+- PasswordHasherService.
+- PasswordPolicyService.
+- TokenGeneratorService.
+- TokenHasherService.
+
+Do not weaken security parameters.
+
+9. Auth Cookie Infrastructure
+Reconstruct AuthCookieService for the existing refresh-token cookie design.
+- HttpOnly refresh-token cookie.
+- Secure/SameSite/domain/name configurable through environment.
+- Ability to read refresh token from request.
+- Ability to clear refresh-token cookie from response.
+- Never return refresh tokens from protected logout endpoints later.
+
+10. Existing Authentication Module Wiring
+Restore clean NestJS module wiring so all authentication services can be injected normally.
+
+Do not create duplicate modules/services if equivalent files already exist.
+
+11. Prisma/Migrations
+Use Prisma 6 and the existing MySQL/MariaDB setup.
+Only create the minimum required schema/migration changes for the missing foundation.
+Do NOT connect Replit to production cPanel MySQL.
+Do NOT hardcode DATABASE_URL.
+Development must continue to work without DATABASE_URL.
+
+12. Tests
+Create comprehensive unit tests for the reconstructed foundation, especially:
+- JWT signing/verification.
+- JWT claims.
+- JWT issuer/audience.
+- token expiry.
+- malformed tokens.
+- missing secret.
+- authentication guard behavior.
+- user status.
+- tokenVersion mismatch.
+- session status.
+- session/user mismatch.
+- refresh token generation/hashing.
+- refresh rotation.
+- refresh history.
+- refresh token reuse detection.
+- session revocation.
+- session lookup by refresh-token hash.
+- cookie read/clear behavior.
+
+Use mocked repositories/database where appropriate.
+Do not require production database credentials for tests.
+
+13. Quality
+Run:
+- tests
+- lint
+- typecheck
+- build
+
+Fix all failures caused by this reconstruction.
+
+IMPORTANT:
+Do NOT implement:
+- logout
+- logout-all
+- permissions guard
+- role guard
+- global auth guard
+- SaaS tenant modules
+- Voice AI
+- appointment modules
+- any unrelated feature
+
+The sole objective of this phase is to reconstruct the missing pre-Phase-12 authentication foundation so that Phase 12 can safely be implemented afterward.
+
+Before making changes:
+- inspect the current repository structure.
+- reuse any existing compatible files.
+- avoid duplicate implementations.
+- preserve existing conventions.
+
+At the end, report:
+1. Exact files created/modified.
+2. Prisma schema/migration changes.
+3. Authentication components restored.
+4. Test count and result.
+5. Lint result.
+6. Typecheck result.
+7. Build result.
+8. Any remaining issue.
+
+Do NOT implement Phase 12.
+
+STOP after the authentication foundation is complete and validated.

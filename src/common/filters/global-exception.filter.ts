@@ -48,10 +48,16 @@ export class GlobalExceptionFilter implements ExceptionFilter {
           : typeof (response as Record<string, unknown>).message === 'string'
             ? ((response as Record<string, unknown>).message as string)
             : exception.message;
+      const code =
+        typeof response === 'object' &&
+        response !== null &&
+        typeof (response as Record<string, unknown>).code === 'string'
+          ? ((response as Record<string, unknown>).code as string)
+          : ((HttpStatus as unknown as Record<number, string>)[status] ?? 'HTTP_ERROR');
 
       return {
         status,
-        code: (HttpStatus as unknown as Record<number, string>)[status] ?? 'HTTP_ERROR',
+        code,
         message,
       };
     }

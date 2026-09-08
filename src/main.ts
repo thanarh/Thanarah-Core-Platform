@@ -3,6 +3,7 @@ import type { NestFastifyApplication } from '@nestjs/platform-fastify';
 import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from '@fastify/helmet';
+import cookie from '@fastify/cookie';
 import fastifyStatic from '@fastify/static';
 import { Logger } from 'nestjs-pino';
 import { join } from 'path';
@@ -29,6 +30,8 @@ async function bootstrap(): Promise<void> {
   await app.register(helmet, {
     contentSecurityPolicy: false,
   });
+
+  await app.register(cookie);
 
   await app.register(fastifyStatic, {
     root: join(process.cwd(), 'public'),

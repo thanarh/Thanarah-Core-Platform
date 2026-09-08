@@ -92,7 +92,7 @@ The app serves on **port 5000** in development mode.
 
 | Secret | Description |
 |--------|-------------|
-| `JWT_SECRET` | JWT signing secret — minimum 32 characters (already set as env var) |
+| `JWT_ACCESS_SECRET` | Access-token signing secret — minimum 32 characters in production |
 | `SESSION_SECRET` | Session signing secret — already configured ✅ |
 
 ### Required in production (cPanel Node.js app environment only — never commit)
@@ -107,7 +107,8 @@ The app serves on **port 5000** in development mode.
 |----------|-------|
 | `NODE_ENV` | `development` |
 | `PORT` | `5000` |
-| `JWT_EXPIRES_IN` | `7d` |
+| `AUTH_ACCESS_TOKEN_TTL_MINUTES` | `15` |
+| `AUTH_REFRESH_TOKEN_TTL_DAYS` | `30` |
 | `THROTTLE_TTL` | `60000` |
 | `THROTTLE_LIMIT` | `100` |
 
@@ -146,11 +147,11 @@ Migrations require a live `DATABASE_URL`. On Replit, set it temporarily via Repl
 
 ## cPanel deployment notes
 
-- Set `DATABASE_URL`, `JWT_SECRET`, `SESSION_SECRET`, and `NODE_ENV=production` in the cPanel Node.js application environment.
+- Set `DATABASE_URL`, `JWT_ACCESS_SECRET`, `SESSION_SECRET`, and `NODE_ENV=production` in the cPanel Node.js application environment.
 - Database host is `localhost` on cPanel.
 - Run `npx prisma migrate deploy` and `npx prisma db seed` after each deployment that includes new migrations.
 - The `prepare` script uses `husky || true` to prevent build failures in CI/production.
-- `JWT_SECRET` is required with no default — deployment will exit immediately if missing.
+- `JWT_ACCESS_SECRET` must be at least 32 characters in production — deployment exits immediately if it is missing or too short.
 
 ## User preferences
 
