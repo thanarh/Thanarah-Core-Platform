@@ -1,0 +1,63 @@
+Continue Phase 12 — Logout + Logout-All.
+
+Implement ONLY the following authentication endpoints. Do not start any later phase.
+
+1. POST /api/v1/auth/logout
+- Protected by PlatformAuthGuard.
+- Read sessionId ONLY from request.authenticatedPlatformUser.sessionId.
+- Revoke ONLY the current authenticated session.
+- Use PlatformSessionService.revokeOne.
+- revokedBy = authenticated platform user id.
+- revocationReason = USER_LOGOUT.
+- Clear the refresh-token cookie.
+- Must be idempotent.
+- Do not delete the session or refresh-token history.
+- Do not blacklist the access token. It may remain cryptographically valid until expiry.
+- Do not accept sessionId from the request body.
+
+2. POST /api/v1/auth/logout-all
+- Protected by PlatformAuthGuard.
+- Read userId ONLY from request.authenticatedPlatformUser.userId.
+- Revoke ALL ACTIVE sessions for that user using the existing revokeAll functionality.
+- revocationReason = USER_LOGOUT_ALL.
+- Clear the refresh-token cookie.
+- Do NOT modify tokenVersion.
+- Do not delete sessions or refresh-token history.
+- Do not accept userId from the request body.
+
+Testing:
+- Protected-route behavior.
+- Correct current-session scoping for logout.
+- Correct user scoping for logout-all.
+- Refresh cookie is cleared.
+- Both operations are idempotent.
+- No tokens are returned in the response.
+- logout does not revoke other sessions.
+- logout-all does not affect sessions belonging to another user.
+- tokenVersion remains unchanged.
+- Existing authentication tests must continue passing.
+
+Add appropriate Swagger/OpenAPI documentation.
+
+Do not add new dependencies.
+Do not change the Prisma schema or create migrations unless absolutely required by the existing implementation.
+Do not modify unrelated authentication behavior.
+Do not implement permissions/roles guard yet.
+Do not implement global authentication guard yet.
+Do not implement Voice AI code; that remains future documentation only.
+
+Run:
+- tests
+- lint
+- typecheck
+- build
+
+Commit with:
+feat(auth): add logout and logout-all
+
+STOP after Phase 12 and report:
+- files changed
+- endpoint behavior
+- tests passed
+- lint/typecheck/build status
+- commit hash
