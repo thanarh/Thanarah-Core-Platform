@@ -1,0 +1,365 @@
+Continue Thanarah with Phase 13 — Platform Permission & Role Authorization Guard.
+
+Phase 12 is complete at commit:
+c9b6a0be2bcd7dbbeba57194c06de45282d45d29
+
+The pre-Phase-12 authentication foundation and Phase 12 logout/logout-all implementation are already complete and validated.
+
+Implement ONLY the Platform Permission & Role Authorization Guard.
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Add a separate authorization layer on top of PlatformAuthGuard.
+
+Authentication answers:
+"Who is this user?"
+
+Authorization answers:
+"Is this authenticated platform user allowed to perform this action?"
+
+Do NOT merge authorization into PlatformAuthGuard.
+
+PlatformAuthGuard must remain responsible only for authentication.
+
+==================================================
+2. EXISTING PLATFORM PERMISSIONS
+==================================================
+
+Use the existing platform permission model and permission codes.
+
+Expected permissions:
+
+platform.read
+platform.manage
+platform.settings.read
+platform.settings.manage
+
+platform_users.read
+platform_users.create
+platform_users.update
+platform_users.disable
+platform_users.enable
+platform_users.assign_roles
+
+roles.read
+roles.create
+roles.update
+roles.assign
+
+sessions.read
+sessions.revoke
+
+audit_logs.read
+
+security_events.read
+security_events.update
+security_events.resolve
+
+system_health.read
+
+Do not silently rename existing permission codes.
+
+Do not create duplicate permission systems.
+
+==================================================
+3. EXISTING PLATFORM ROLES
+==================================================
+
+Use the existing platform roles:
+
+OWNER
+SUPER_ADMIN
+PLATFORM_ADMIN
+SECURITY_ADMIN
+SUPPORT_ADMIN
+
+Preserve their existing permission assignments.
+
+Do not redesign the role model.
+
+Do not introduce tenant roles yet.
+
+==================================================
+4. DECORATORS
+==================================================
+
+Create a clean declarative mechanism for route requirements.
+
+Example:
+
+@RequirePermissions('platform_users.read')
+
+and support multiple permissions where appropriate.
+
+The decorator must only declare requirements.
+
+It must not contain authorization logic.
+
+If a role-based requirement is necessary, provide a separate declarator rather than mixing it into permission metadata.
+
+Do not add unnecessary abstractions.
+
+==================================================
+5. AUTHORIZATION GUARD
+==================================================
+
+Create a dedicated PlatformAuthorizationGuard.
+
+Expected pipeline:
+
+1. PlatformAuthGuard establishes authenticatedPlatformUser.
+2. Authorization guard reads the required permission metadata.
+3. If the route has no authorization metadata, preserve the existing behavior according to the project's chosen convention.
+4. Resolve the authenticated user's platform roles.
+5. Resolve the permissions granted by those roles.
+6. Check the required permission(s).
+7. Allow only when authorization requirements are satisfied.
+8. Otherwise return a stable forbidden error.
+
+Do NOT trust permissions supplied by:
+- request body
+- query
+- route parameters
+- headers
+- client-controlled cookies
+- arbitrary JWT fields beyond the trusted role identifiers already defined by the authentication architecture.
+
+The authorization decision must be server-side.
+
+==================================================
+6. ROLE/PERMISSION RESOLUTION
+==================================================
+
+Do not place the full permission list into the JWT.
+
+The existing JWT must remain minimal.
+
+The guard must resolve authorization using trusted server-side role/permission data.
+
+Do not duplicate role definitions inside the guard.
+
+Use the existing repository/service layer where possible.
+
+Do not access Prisma directly from the guard if an appropriate service/repository abstraction already exists.
+
+==================================================
+7. PROTECTED ROLE RULES
+==================================================
+
+Preserve the existing protected-role semantics.
+
+OWNER and SUPER_ADMIN have the broad platform permissions already defined.
+
+PLATFORM_ADMIN:
+- platform.read
+- platform_users.*
+- roles.read
+- roles.assign
+
+SECURITY_ADMIN:
+- sessions.*
+- audit_logs.read
+- security_events.*
+- system_health.read
+
+SUPPORT_ADMIN:
+- platform.read
+- platform_users.read
+- system_health.read
+
+Do not silently grant additional permissions.
+
+Important:
+
+SUPER_ADMIN/PLATFORM_ADMIN must not automatically gain the ability to assign the OWNER role merely because they have roles.assign.
+
+OWNER assignment must remain restricted according to the existing protected-role security rules.
+
+If the existing architecture does not yet expose this behavior through an authorization service, create only the minimal policy abstraction needed for this rule.
+
+==================================================
+8. FORBIDDEN ERRORS
+==================================================
+
+Introduce a stable authorization error for authenticated users who lack permission.
+
+Example contract:
+
+AUTH_FORBIDDEN
+
+HTTP status:
+
+403
+
+Do not expose unnecessary internal role/permission details in the external error response.
+
+Do not confuse:
+401 authentication failures
+with
+403 authorization failures.
+
+==================================================
+9. GUARD COMPOSITION
+==================================================
+
+Do not make PlatformAuthorizationGuard replace PlatformAuthGuard.
+
+The intended architecture is:
+
+PlatformAuthGuard
+        ↓
+PlatformAuthorizationGuard
+        ↓
+Controller
+
+Do not globally apply either guard yet.
+
+Do not change public routes.
+
+Do not break:
+
+/health
+/docs
+/api/v1/auth/login
+/api/v1/auth/refresh
+
+==================================================
+10. TESTS
+==================================================
+
+Add comprehensive tests covering:
+
+- authenticated user with required permission → allowed.
+- authenticated user without permission → 403.
+- unauthenticated request → 401 through authentication layer.
+- multiple required permissions.
+- permission metadata.
+- no authorization metadata.
+- server-side permission resolution.
+- client cannot inject permissions.
+- client cannot inject roles.
+- JWT does not become a permission container.
+- protected role behavior.
+- OWNER protection.
+- SUPER_ADMIN restrictions around OWNER assignment.
+- existing roles retain their intended permissions.
+- existing authentication tests remain passing.
+- existing logout/logout-all tests remain passing.
+
+Add at least controller/guard-level tests where appropriate.
+
+==================================================
+11. SWAGGER
+==================================================
+
+Do not change endpoint behavior unnecessarily.
+
+Ensure authorization requirements are represented appropriately in Swagger where the project already documents protected routes.
+
+Do not add fake authorization endpoints.
+
+==================================================
+12. DATABASE
+==================================================
+
+Do not redesign the Prisma schema.
+
+Do not add tenant tables.
+
+Do not add subscription tables.
+
+Do not add clinic/patient tables.
+
+Do not add Voice AI tables.
+
+Only make a migration if the existing permission/role foundation genuinely requires one.
+
+Do not connect to production cPanel MySQL.
+
+==================================================
+13. SECURITY REVIEW
+==================================================
+
+After implementation, perform a focused security review for:
+
+- authentication vs authorization separation.
+- server-side permission resolution.
+- client-controlled role/permission injection.
+- protected role handling.
+- OWNER assignment restrictions.
+- 401 vs 403 behavior.
+- no permission data added to JWT.
+- no direct Prisma access from controllers/guards when an abstraction exists.
+- no cross-user authorization leakage.
+
+If a blocker or high-severity issue is found, fix it before completion.
+
+==================================================
+14. VALIDATION
+==================================================
+
+Run:
+
+- full tests
+- lint
+- typecheck
+- Prisma generation
+- build
+- application startup
+- health check
+
+Do not use --no-verify.
+
+==================================================
+15. COMMIT
+==================================================
+
+If everything passes, create exactly one commit:
+
+feat(auth): add platform authorization guard
+
+Do not create unrelated commits.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Do NOT implement:
+
+- global authentication guard
+- global authorization guard
+- tenant authorization
+- tenant roles
+- tenant permissions
+- SaaS modules
+- subscriptions
+- licensing
+- clinics
+- patients
+- appointments
+- CRM
+- ERP
+- Voice AI
+- AI services
+- new authentication endpoints
+
+Only implement Platform Permission & Role Authorization Guard.
+
+STOP after Phase 13 and report:
+
+1. Files created/modified.
+2. Authorization architecture.
+3. Permission resolution behavior.
+4. Protected-role behavior.
+5. Error behavior.
+6. Tests passed.
+7. Lint result.
+8. Typecheck result.
+9. Build result.
+10. Runtime/health result.
+11. Security review result.
+12. Commit hash.
+
+STOP.
