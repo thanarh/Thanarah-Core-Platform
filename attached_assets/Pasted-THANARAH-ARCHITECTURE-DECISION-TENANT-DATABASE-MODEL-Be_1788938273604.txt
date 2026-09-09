@@ -1,0 +1,121 @@
+THANARAH — ARCHITECTURE DECISION: TENANT DATABASE MODEL
+
+Before starting Phase 14 or implementing any tenant/healthcare models, update your understanding of Thanarah's permanent database architecture based on the following decision.
+
+This is a real commercial multi-tenant healthcare SaaS. Do not treat it as a prototype.
+
+PERMANENT DATABASE ARCHITECTURE:
+
+1. Thanarah Platform itself runs on cPanel in production.
+
+2. The central Thanarah platform database is responsible only for platform-level data and metadata, such as:
+   - Tenants / customers
+   - Global platform identities
+   - Platform memberships and platform authorization
+   - Plans
+   - Subscriptions
+   - Entitlements
+   - Tenant database registry / connection metadata
+   - Backup metadata
+   - Platform configuration
+   - Other central SaaS management data
+
+3. Each customer/tenant must have its own isolated MongoDB database.
+
+   Example:
+
+   Thanarah Platform
+       ├── Tenant A → MongoDB A
+       ├── Tenant B → MongoDB B
+       ├── Tenant C → MongoDB C
+       └── Tenant D → MongoDB D
+
+4. When a new tenant/customer creates their Thanarah system, the platform must eventually provision a dedicated MongoDB database for that tenant automatically.
+
+5. Tenant healthcare and operational data must live in that tenant's MongoDB database, including future domains such as:
+   - Patients
+   - Doctors
+   - Staff
+   - Departments
+   - Appointments
+   - Visits / encounters
+   - Medical records
+   - Clinical notes
+   - Prescriptions
+   - Documents
+   - Billing
+   - Insurance
+   - Other tenant-owned healthcare/business data
+
+6. The central platform database must NOT become a shared operational healthcare database containing all customers' medical data.
+
+7. The architecture must support more than one MongoDB database for the same tenant in the future.
+
+   Example:
+
+   Tenant A
+       ├── MongoDB A-01
+       ├── MongoDB A-02
+       └── MongoDB A-03
+
+   This may be required when a tenant's database reaches a defined capacity/operational limit.
+
+8. The application must abstract this from the tenant.
+
+   Thanarah services should see the tenant's data through a tenant data access/storage layer and must not assume that every tenant always has exactly one physical MongoDB database.
+
+9. The central platform must maintain a Tenant Database Registry describing which database(s) belong to each tenant and their state/capacity/role.
+
+10. Tenant database selection must NEVER rely only on hostname, subdomain, or a client-provided database identifier.
+
+    Tenant resolution must first establish the authenticated/authorized tenant context and then resolve the permitted database/storage location server-side.
+
+11. Tenant-owned repositories/data-access components must require tenant context by construction and must prevent cross-tenant access.
+
+12. Weekly backups are part of the permanent architecture.
+
+    Each tenant MongoDB database must eventually have an automated weekly backup.
+
+    The backup must be stored separately from the live tenant database so that tenant data can be restored after a failure.
+
+13. The central Thanarah platform should retain backup metadata/status/history, but the live tenant healthcare data remains in the tenant database.
+
+14. If a tenant is split across multiple MongoDB databases, the system must retain the mapping/history necessary to know which physical database contains which tenant data.
+
+15. The application must not implement a simplistic "merge databases" operation later without an explicit migration strategy.
+
+    If a tenant has multiple MongoDB databases, Thanarah must be able to present the tenant's data as one logical tenant data space while the physical storage may span multiple databases.
+
+IMPORTANT:
+
+- Do NOT implement this architecture now.
+- Do NOT start Phase 14.
+- Do NOT create Tenant, Facility, Branch, Patient, Doctor, Staff, Subscription, or Voice AI models yet.
+- Do NOT redesign the existing authentication, authorization, logout, refresh-token, or platform foundation.
+- Do NOT remove Prisma yet.
+- Do NOT introduce MongoDB implementation code yet.
+
+For this task, perform an ARCHITECTURE-ONLY reconciliation.
+
+Review the current repository, README, replit.md, migration documentation, Prisma setup, and the previous Master Architecture Audit.
+
+Identify every document/configuration/reference that currently contradicts this MongoDB-per-tenant architecture, especially:
+- statements claiming MySQL/Prisma is the permanent healthcare persistence layer
+- statements claiming each customer will use MongoDB as merely a future option
+- stale Mongoose/MongoDB documentation
+- stale Render configuration
+- migration documentation that incorrectly describes MongoDB as being replaced permanently
+- any documentation that conflicts with cPanel as the production deployment target
+
+Then report:
+
+A. What currently conflicts with this architecture.
+B. What must be changed later.
+C. What must NOT be changed now.
+D. Any architectural decisions that still require explicit approval before implementation.
+
+Do not modify source code, schemas, migrations, infrastructure, or application behavior in this task.
+
+Do not create a new phase.
+
+STOP after producing the architecture reconciliation report.
