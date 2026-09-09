@@ -1,0 +1,851 @@
+THANARAH — MASTER ARCHITECTURE AUDIT
+PRE-PHASE 14 — DO NOT MODIFY THE PROJECT
+
+We are about to begin the SaaS/Core architecture of Thanarah.
+
+Before implementing Phase 14, perform a complete architectural audit of the entire current repository against the long-term Thanarah product architecture.
+
+THIS IS AN AUDIT ONLY.
+
+DO NOT:
+- modify source code
+- create files
+- delete files
+- rename files
+- modify Prisma schema
+- create migrations
+- install dependencies
+- change environment configuration
+- change APIs
+- refactor existing code
+- create new modules
+- create database tables
+- commit anything
+
+The purpose is to determine whether the current foundation can safely grow into the complete Thanarah platform without requiring major architectural rewrites later.
+
+Use the existing repository as the source of truth for what currently exists.
+
+Use the following product architecture as the target direction.
+
+==================================================
+A. THANARAH PRODUCT IDENTITY
+==================================================
+
+Thanarah (ثناره) is intended to become a production-grade, multi-tenant Healthcare SaaS platform.
+
+It is NOT:
+- a prototype
+- a demo
+- a single-clinic application
+- a collection of unrelated CRUD modules
+- an AI-first product
+- a frontend-only system
+
+The architecture must support long-term commercial operation.
+
+Code, naming, structure, APIs, comments, metadata, and project organization must remain professional and human-engineered.
+
+Do not introduce AI-generated-looking architecture, unnecessary abstractions, fake placeholder systems, or temporary shortcuts.
+
+==================================================
+B. CORE ARCHITECTURAL PRINCIPLE
+==================================================
+
+The system must separate:
+
+Platform
+Tenant / Organization
+Clinic / Facility
+Branch
+Staff
+Doctor
+Patient
+Authentication
+Authorization
+Subscriptions
+Licensing
+Healthcare data
+
+Do not collapse these concepts into one User model or one global role system.
+
+Platform identity and tenant identity must remain conceptually separate.
+
+==================================================
+C. PLATFORM LAYER
+==================================================
+
+The current platform layer should support:
+
+- Platform users
+- Platform roles
+- Platform permissions
+- Platform authentication
+- Platform sessions
+- Refresh-token rotation
+- Security events
+- Audit logging
+- Platform administration
+- Platform configuration
+- System health
+
+The completed authentication/authorization architecture must remain intact.
+
+Verify that:
+
+PlatformAuthGuard
+and
+PlatformAuthorizationGuard
+
+remain separate responsibilities.
+
+Authentication:
+"Who are you?"
+
+Authorization:
+"What are you allowed to do?"
+
+Do not merge them.
+
+==================================================
+D. AUTHENTICATION FOUNDATION
+==================================================
+
+Verify the completed authentication architecture:
+
+- PlatformUser
+- PlatformAuthGuard
+- AuthenticatedPlatformUser
+- @CurrentPlatformUser()
+- @Public()
+- AccessTokenService
+- JWT validation
+- PlatformSession
+- RefreshTokenService
+- RefreshTokenHistory
+- AuthCookieService
+- session revocation
+- logout
+- logout-all
+
+Verify:
+
+- JWT remains minimal.
+- Refresh tokens are opaque.
+- Raw refresh tokens are never persisted.
+- Refresh token hashes are persisted.
+- Token rotation is atomic.
+- Token reuse detection exists.
+- Session ownership is validated.
+- tokenVersion behavior is preserved.
+- session history is preserved.
+
+Do not redesign this architecture.
+
+==================================================
+E. AUTHORIZATION FOUNDATION
+==================================================
+
+Verify the completed platform authorization architecture:
+
+PlatformAuthGuard
+        ↓
+PlatformAuthorizationGuard
+        ↓
+Controller
+
+Verify:
+
+- permissions are resolved server-side.
+- permissions are not trusted from clients.
+- permissions are not stored as a full list inside JWT.
+- platform roles and tenant roles are conceptually separate.
+- protected platform roles remain protected.
+- OWNER assignment restrictions remain enforced.
+- 401 and 403 remain distinct.
+
+Do not introduce tenant authorization into the platform authorization guard.
+
+Tenant authorization must eventually be a separate layer.
+
+==================================================
+F. MULTI-TENANCY
+==================================================
+
+This is the most important upcoming architectural boundary.
+
+Determine whether the current architecture can safely support:
+
+Tenant / Organization
+    ↓
+Clinics / Facilities
+    ↓
+Branches
+    ↓
+Staff
+    ↓
+Doctors
+    ↓
+Patients
+    ↓
+Healthcare records
+
+Every tenant-owned resource must eventually have an unambiguous tenant boundary.
+
+Audit for:
+
+- missing tenant identifiers
+- unsafe global queries
+- repositories that cannot become tenant-scoped
+- services that assume one organization
+- controllers that assume one organization
+- global IDs that could cause cross-tenant access
+- future authorization problems
+
+Do NOT add tenant fields yet.
+
+Only identify what must be designed correctly before implementation.
+
+==================================================
+G. TENANT / ORGANIZATION MODEL
+==================================================
+
+The future SaaS layer should support organizations/tenants as first-class entities.
+
+A tenant should be able to represent a healthcare business such as:
+
+- clinic
+- medical center
+- hospital
+- healthcare organization
+- multi-branch healthcare business
+
+The architecture should support:
+
+Tenant
+    ↓
+multiple facilities/clinics
+    ↓
+multiple branches
+    ↓
+multiple staff members
+    ↓
+multiple doctors
+    ↓
+patients and healthcare operations
+
+Do not hard-code Thanarah around "one clinic per tenant".
+
+==================================================
+H. TENANT MEMBERSHIP
+==================================================
+
+Platform User must not automatically equal Tenant Staff.
+
+Future architecture must allow:
+
+Platform identity
+    ↓
+Tenant membership
+    ↓
+Tenant role
+    ↓
+Tenant permissions
+    ↓
+Facility/branch scope
+
+Audit whether current identity architecture can support a user belonging to one or more tenants without redesigning PlatformUser.
+
+Do not implement membership yet.
+
+==================================================
+I. ROLE ARCHITECTURE
+==================================================
+
+There must eventually be separate concepts for:
+
+Platform Roles
+
+and
+
+Tenant Roles.
+
+Platform roles:
+OWNER
+SUPER_ADMIN
+PLATFORM_ADMIN
+SECURITY_ADMIN
+SUPPORT_ADMIN
+
+These belong to Thanarah platform administration.
+
+Tenant roles will belong to the customer organization.
+
+Do not mix them.
+
+Tenant roles may eventually include concepts such as:
+- organization owner
+- administrator
+- manager
+- doctor
+- nurse
+- receptionist
+- accountant
+- staff
+
+But DO NOT implement tenant roles during this audit.
+
+Determine whether the architecture can support them cleanly.
+
+==================================================
+J. FACILITY / BRANCH ARCHITECTURE
+==================================================
+
+Thanarah must support customers with:
+
+one clinic
+or
+multiple clinics
+or
+multiple branches
+or
+larger healthcare organizations.
+
+Do not assume:
+
+Tenant = Clinic
+
+The architecture must eventually support:
+
+Tenant
+├── Facility
+│   ├── Branch
+│   ├── Departments
+│   ├── Staff
+│   └── Doctors
+└── Other facilities
+
+Audit current code for assumptions that would prevent this.
+
+==================================================
+K. HEALTHCARE DOMAIN
+==================================================
+
+The future healthcare architecture should be able to support:
+
+- Patients
+- Doctors
+- Staff
+- Departments
+- Specialties
+- Appointments
+- Schedules
+- Availability
+- Medical records
+- Visits
+- Clinical notes
+- Prescriptions
+- Documents
+- Attachments
+- Billing
+- Invoices
+- Payments
+- Insurance-related concepts
+- Notifications
+- Communication
+- Patient history
+
+Do NOT implement these now.
+
+Audit whether the current architecture provides clean boundaries for them.
+
+==================================================
+L. BUSINESS SERVICES
+==================================================
+
+Future clients/channels should NOT implement business rules independently.
+
+The intended architecture is:
+
+Web
+Mobile
+API
+Voice AI
+Future integrations
+        ↓
+Application Services
+        ↓
+Domain/business rules
+        ↓
+Repositories
+        ↓
+Database
+
+Controllers should not become the business layer.
+
+AI channels must not bypass application services.
+
+==================================================
+M. VOICE AI ARCHITECTURE
+==================================================
+
+Thanarah will eventually offer an optional paid:
+
+Thanarah AI Voice Receptionist
+
+This is a future tenant add-on.
+
+It must eventually support:
+
+- Saudi Arabic natural conversational voice.
+- Future multilingual support.
+- tenant-specific configuration.
+- clinic/facility information.
+- working hours.
+- locations.
+- services.
+- doctors.
+- FAQs.
+- appointment availability.
+- booking.
+- rescheduling.
+- cancellation.
+- confirmation.
+- appointment status.
+- human handoff.
+- call history.
+- call metadata.
+- usage tracking.
+- analytics.
+- plan limits.
+- call-minute limits.
+- billing.
+- overage handling.
+- enable/disable per tenant.
+
+Architecture:
+
+Phone Number
+→ Voice Configuration
+→ AI Agent
+→ Tenant Knowledge/FAQ
+→ Allowed Actions
+→ Thanarah Application Services
+→ Healthcare Services
+→ Call Metadata
+
+NEVER:
+
+Voice AI
+→ Database
+
+Voice AI must use the same business services used by web/mobile/API clients.
+
+Example:
+
+Voice AI
+→ AppointmentService
+→ AppointmentRepository
+
+The telephony provider must eventually be abstracted so the provider can change without rewriting healthcare/domain logic.
+
+Verify that the current architecture does not prevent this.
+
+Do not implement Voice AI.
+
+==================================================
+N. SUBSCRIPTIONS
+==================================================
+
+Thanarah is intended to be a commercial SaaS.
+
+Future architecture must support:
+
+- plans
+- subscriptions
+- tenant subscription status
+- plan entitlements
+- feature limits
+- usage limits
+- billing
+- upgrades
+- downgrades
+- renewals
+- cancellation
+- expiration
+- optional add-ons
+
+The architecture must allow features such as Voice AI to be paid tenant add-ons.
+
+Do not implement billing/subscriptions during this audit.
+
+Identify architectural requirements.
+
+==================================================
+O. LICENSING / ENTITLEMENTS
+==================================================
+
+Separate:
+
+Authentication
+Authorization
+Subscription
+Entitlement
+
+A user may be authorized to perform an action but the tenant may not have the required subscribed feature.
+
+Future conceptual flow:
+
+Authenticated User
+        ↓
+Tenant Membership
+        ↓
+Tenant Authorization
+        ↓
+Subscription / Entitlement
+        ↓
+Business Operation
+
+Do not implement this now.
+
+Verify that the architecture can accommodate it.
+
+==================================================
+P. DOMAINS / SUBDOMAINS
+==================================================
+
+Thanarah should eventually support tenant-aware domains/subdomains.
+
+Potential architecture:
+
+tenant.thanarah.com
+
+or custom domains.
+
+Do not hard-code the tenant based solely on a hostname.
+
+Tenant resolution must eventually be explicit, validated, and secure.
+
+Audit whether current APIs/services can support future tenant resolution without coupling business logic to HTTP hostnames.
+
+==================================================
+Q. DATA ACCESS
+==================================================
+
+Repositories should eventually make tenant scoping difficult to forget.
+
+Audit current repository patterns for:
+
+- direct Prisma access
+- global queries
+- missing ownership constraints
+- services bypassing repositories
+- controllers directly querying databases
+- future cross-tenant access risks
+
+Do not refactor yet.
+
+Identify exact risks.
+
+==================================================
+R. AUDIT / SECURITY
+==================================================
+
+Thanarah is expected to be security-sensitive.
+
+Future architecture should support:
+
+- platform audit logs
+- tenant audit logs
+- security events
+- session history
+- authentication events
+- authorization events where appropriate
+- administrative actions
+- sensitive data access tracking
+
+Security history should not be casually deleted.
+
+Audit whether current foundations can support this.
+
+==================================================
+S. API ARCHITECTURE
+==================================================
+
+Verify that API versioning is consistent.
+
+Current authentication routes:
+
+/api/v1/auth/login
+/api/v1/auth/refresh
+/api/v1/auth/logout
+/api/v1/auth/logout-all
+
+Future APIs should follow a consistent versioning strategy.
+
+Avoid scattering version prefixes through individual controllers without a clear architectural reason.
+
+Audit the current routing approach.
+
+==================================================
+T. WEB / MOBILE / API / AI CHANNELS
+==================================================
+
+Future Thanarah clients may include:
+
+- Web application
+- Staff dashboard
+- Mobile application
+- Public patient-facing interfaces
+- API integrations
+- Voice AI
+- WhatsApp/communication channels
+- Future automation channels
+
+All must ultimately consume the same application/business services.
+
+No client should own duplicate healthcare business logic.
+
+Audit whether the current backend architecture supports this.
+
+==================================================
+U. DATABASE STRATEGY
+==================================================
+
+Current production direction:
+
+- MySQL/MariaDB
+- Prisma 6
+- cPanel production deployment
+- Replit development environment
+- production database credentials only in cPanel environment configuration
+
+Replit must NOT connect directly to production cPanel MySQL.
+
+Development should remain safe without production credentials.
+
+Audit:
+
+- schema organization
+- migration strategy
+- foreign keys
+- indexes
+- unique constraints
+- deletion behavior
+- audit/security history preservation
+- future tenant isolation
+- future healthcare data growth
+
+Do not apply migrations to production.
+
+==================================================
+V. DEPLOYMENT
+==================================================
+
+Production target:
+
+cPanel / Namecheap
+
+The application must remain compatible with:
+
+- Node.js application deployment
+- environment variables
+- MySQL/MariaDB
+- production startup
+- health checks
+- secure secrets
+
+Do not change deployment configuration during this audit.
+
+==================================================
+W. ARCHITECTURAL ANTI-PATTERNS
+==================================================
+
+Search explicitly for:
+
+- MongoDB/Mongoose remnants
+- duplicate authentication implementations
+- duplicate authorization implementations
+- direct database access from controllers
+- business logic inside controllers
+- tenant-unaware repositories
+- global mutable tenant state
+- client-controlled authorization
+- permissions in JWT
+- platform roles used as tenant roles
+- tenant roles used as platform roles
+- secrets in source code
+- raw tokens stored
+- raw tokens logged
+- hard-coded production database credentials
+- fake placeholder implementations
+- TODO architecture that would become permanent
+- unnecessary abstraction layers
+- circular dependencies
+- modules coupled to HTTP transport
+- future Voice AI direct database access
+- future subscription logic embedded inside healthcare modules
+
+==================================================
+X. DOCUMENTATION
+==================================================
+
+Review:
+
+- README.md
+- replit.md
+- architecture documentation
+- environment documentation
+- migration documentation
+
+Verify that documentation does not contradict the current architecture.
+
+The future Voice AI requirement must remain documented as FUTURE/PLANNED only.
+
+==================================================
+Y. MASTER ARCHITECTURE MAP
+==================================================
+
+Based on the repository and requirements, produce a proposed long-term architecture map WITHOUT implementing it.
+
+Use something similar to:
+
+Platform
+├── Identity
+├── Authentication
+├── Authorization
+├── Security
+├── Audit
+└── Administration
+
+SaaS
+├── Tenants
+├── Memberships
+├── Tenant Roles
+├── Tenant Permissions
+├── Facilities
+├── Branches
+├── Plans
+├── Subscriptions
+├── Entitlements
+└── Domains
+
+Healthcare
+├── Patients
+├── Staff
+├── Doctors
+├── Departments
+├── Scheduling
+├── Appointments
+├── Visits
+├── Medical Records
+├── Prescriptions
+├── Documents
+├── Billing
+└── Notifications
+
+Channels
+├── Web
+├── Mobile
+├── API
+├── Voice AI
+└── Integrations
+
+Infrastructure
+├── Database
+├── Cache
+├── Queue
+├── Storage
+├── Observability
+└── Security
+
+This is a conceptual map only.
+Do not create these modules.
+
+==================================================
+Z. PHASE ROADMAP CHECK
+==================================================
+
+Review the current phase history:
+
+- Authentication foundation
+- Login
+- Refresh token rotation
+- Refresh endpoint
+- Logout
+- Logout-all
+- Platform Permission/Role Authorization
+
+Determine whether the logical next step should be the SaaS/Tenant foundation.
+
+If not, explain exactly what must be completed first.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Produce a detailed audit with these sections:
+
+1. Executive Summary
+2. Current Architecture
+3. Target Thanarah Architecture
+4. Authentication Assessment
+5. Authorization Assessment
+6. Database Assessment
+7. Multi-Tenant Readiness
+8. Tenant Isolation Risks
+9. Healthcare Domain Readiness
+10. Subscription/Licensing Readiness
+11. Voice AI Readiness
+12. API Architecture Assessment
+13. Security Assessment
+14. Deployment Assessment
+15. Documentation Assessment
+16. Architectural Anti-Patterns Found
+17. Required Corrections Before SaaS
+18. Recommended Phase Order
+19. Architecture Decisions That Must Become Permanent
+20. Risks of Proceeding Without Changes
+
+For every finding use:
+
+GREEN
+YELLOW
+RED
+
+And:
+
+BLOCKER
+HIGH
+MEDIUM
+LOW
+
+For every RED/HIGH finding provide:
+
+- exact file
+- exact architectural problem
+- why it matters
+- recommended solution
+- whether it must be fixed before Phase 14
+
+IMPORTANT:
+
+Do not fix anything.
+
+Do not create anything.
+
+Do not commit.
+
+Do not implement Phase 14.
+
+Do not implement SaaS.
+
+Do not implement tenants.
+
+Do not implement healthcare modules.
+
+Do not implement Voice AI.
+
+Do not implement subscriptions.
+
+STOP after the audit report.
