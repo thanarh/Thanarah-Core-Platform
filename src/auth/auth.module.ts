@@ -18,6 +18,7 @@ import { PlatformSessionService } from './services/platform-session.service';
 import { PlatformAuthorizationService } from './services/platform-authorization.service';
 import { PlatformRolePolicyService } from './services/platform-role-policy.service';
 import { RefreshTokenService } from './services/refresh-token.service';
+import { AuthenticationService } from './services/authentication.service';
 
 const providers = [
   AccessTokenService,
@@ -33,6 +34,7 @@ const providers = [
   PlatformSessionService,
   PlatformUserRepository,
   RefreshTokenService,
+  AuthenticationService,
   TokenGeneratorService,
   TokenHasherService,
 ];

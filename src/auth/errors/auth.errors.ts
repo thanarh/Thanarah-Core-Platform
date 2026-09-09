@@ -75,3 +75,21 @@ export class RefreshRotationFailedError extends AuthenticationError {
     super('AUTH_REFRESH_ROTATION_FAILED', 'Refresh token rotation failed');
   }
 }
+
+export class InvalidCredentialsError extends AuthenticationError {
+  constructor() {
+    super('AUTH_INVALID_CREDENTIALS', 'Invalid email or password');
+  }
+}
+
+export class AccountLockedError extends AuthenticationError {
+  constructor() {
+    super('AUTH_ACCOUNT_LOCKED', 'Account is temporarily locked');
+  }
+}
+
+export class AccountInactiveError extends AuthenticationError {
+  constructor() {
+    super('AUTH_ACCOUNT_INACTIVE', 'Account is inactive');
+  }
+}

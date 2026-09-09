@@ -14,6 +14,14 @@ export class PlatformAuthorizationRepository {
     return assignments.map(({ role }) => role.code as PlatformRoleCode);
   }
 
+  async findRoleIdsByUserId(userId: string): Promise<string[]> {
+    const assignments = await this.prisma.userPlatformRole.findMany({
+      where: { userId },
+      select: { roleId: true },
+    });
+    return assignments.map(({ roleId }) => roleId);
+  }
+
   async findPermissionCodesByUserId(userId: string): Promise<PlatformPermissionCode[]> {
     const assignments = await this.prisma.userPlatformRole.findMany({
       where: { userId },

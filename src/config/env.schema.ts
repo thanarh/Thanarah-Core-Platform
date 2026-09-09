@@ -1,4 +1,31 @@
 import { z } from 'zod';
+import { isIP } from 'node:net';
+
+const trustedProxySchema = z
+  .string()
+  .default('127.0.0.1,::1')
+  .transform((value, context) => {
+    const entries = value
+      .split(',')
+      .map((entry) => entry.trim())
+      .filter(Boolean);
+    for (const entry of entries) {
+      const [address, prefix] = entry.split('/');
+      const bits = isIP(address) === 4 ? 32 : isIP(address) === 6 ? 128 : 0;
+      if (
+        !bits ||
+        (prefix !== undefined &&
+          (!/^\d+$/.test(prefix) || Number(prefix) === 0 || Number(prefix) > bits))
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: `Invalid trusted proxy address: ${entry}`,
+        });
+        return z.NEVER;
+      }
+    }
+    return entries;
+  });
 
 export const envSchema = z
   .object({
@@ -24,6 +51,7 @@ export const envSchema = z
       .default('false')
       .transform((value) => value === 'true'),
     AUTH_REFRESH_COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).default('strict'),
+    AUTH_TRUSTED_PROXIES: trustedProxySchema,
     THROTTLE_TTL: z.coerce.number().int().positive().default(60000),
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
   })

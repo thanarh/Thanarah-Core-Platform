@@ -12,7 +12,11 @@ import { ConfigService } from './config/config.service';
 import { APP_CONSTANTS } from './common/constants/app.constants';
 
 async function bootstrap(): Promise<void> {
-  const adapter = new FastifyAdapter({ logger: false });
+  const trustedProxies = (process.env.AUTH_TRUSTED_PROXIES ?? '127.0.0.1,::1')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean);
+  const adapter = new FastifyAdapter({ logger: false, trustProxy: trustedProxies });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bufferLogs: true,

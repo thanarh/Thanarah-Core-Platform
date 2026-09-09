@@ -69,4 +69,8 @@ export class ConfigService {
   get isDevelopment(): boolean {
     return this.nodeEnv === 'development';
   }
+
+  get trustedProxies(): string[] {
+    return this.config.get('AUTH_TRUSTED_PROXIES', { infer: true });
+  }
 }

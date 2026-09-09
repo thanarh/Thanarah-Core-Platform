@@ -8,6 +8,7 @@ import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { AuthCookieService } from '../src/auth/services/auth-cookie.service';
 import { PlatformSessionService } from '../src/auth/services/platform-session.service';
+import { AuthenticationService } from '../src/auth/services/authentication.service';
 import type { ConfigService } from '../src/config/config.service';
 
 const authenticatedUser: AuthenticatedPlatformUser = {
@@ -52,6 +53,7 @@ describe('Phase 12 auth HTTP contract', () => {
       providers: [
         { provide: PlatformSessionService, useValue: sessions },
         { provide: AuthCookieService, useValue: new AuthCookieService(config) },
+        { provide: AuthenticationService, useValue: { login: vi.fn(), refresh: vi.fn() } },
         PlatformAuthGuard,
       ],
     })
