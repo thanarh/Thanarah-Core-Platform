@@ -1,0 +1,372 @@
+THANARAH — PRE-PHASE 14 CORRECTION 2
+DOCUMENTATION AND DEPLOYMENT TRUTH RECONCILIATION
+
+We have completed Correction 1:
+feat(auth): restore login and refresh foundation
+
+Now execute ONLY Correction 2 from the Master Architecture Audit.
+
+OBJECTIVE
+
+Reconcile the project's documentation and deployment configuration with the now-approved permanent Thanarah architecture.
+
+This is a documentation/configuration truth correction.
+
+Do NOT start Phase 14.
+Do NOT implement MongoDB.
+Do NOT create tenant models.
+Do NOT modify the authentication foundation.
+
+==================================================
+1. PERMANENT ARCHITECTURE — SOURCE OF TRUTH
+==================================================
+
+Thanarah is a real commercial multi-tenant healthcare SaaS.
+
+Production application host:
+- cPanel
+
+Central platform persistence:
+- Prisma 6
+- MySQL/MariaDB
+
+Central platform data includes:
+- Global identities
+- Platform authentication
+- Platform sessions
+- Platform roles
+- Platform permissions
+- Tenants/customers
+- Membership metadata
+- Plans
+- Subscriptions
+- Entitlements
+- Tenant database registry
+- Database lifecycle metadata
+- Backup metadata
+- Central SaaS configuration
+- Other platform-level metadata
+
+Tenant persistence:
+- Isolated MongoDB database(s) per tenant
+- Tenant healthcare and operational data lives in tenant MongoDB storage
+
+Tenant MongoDB must eventually support:
+- One or more physical MongoDB databases per tenant
+- Server-side database resolution
+- Central tenant database registry
+- Logical tenant data space independent of physical database placement
+- Weekly automated backups
+- Separate backup storage
+- Restore capability
+- Multiple-database awareness
+
+Future tenant data includes:
+- Patients
+- Doctors
+- Staff
+- Departments
+- Specialties
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Clinical notes
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Notifications
+- Other tenant-owned operational data
+
+IMPORTANT:
+
+MongoDB is PERMANENTLY part of Thanarah's tenant-data architecture.
+
+Prisma/MySQL is PERMANENTLY part of Thanarah's central platform architecture.
+
+Neither replaces the other.
+
+==================================================
+2. README.md
+==================================================
+
+Review and update README.md so it accurately represents the current repository and approved architecture.
+
+Correct stale claims such as:
+
+- MongoDB/Mongoose being the application's only database
+- MONGO_URI being the primary application database connection
+- MongoDB being the unfinished project-wide database migration
+- Authentication/RBAC being entirely incomplete
+- Any architecture statement that contradicts Prisma/MySQL for central platform data
+
+The README must clearly distinguish:
+
+Central Platform:
+Prisma + MySQL/MariaDB
+
+Tenant Data:
+Isolated MongoDB database(s) per tenant
+
+It must also clearly state:
+
+- Tenant MongoDB implementation is planned/future at this stage.
+- MongoDB must NOT be introduced into the current platform foundation yet.
+- The current repository's implemented authentication/session/authorization foundation is already present.
+- Production target is cPanel.
+- Replit development must never use the production cPanel database.
+- Production database configuration belongs to the production environment.
+
+Do not claim that tenant MongoDB has already been implemented.
+
+==================================================
+3. replit.md
+==================================================
+
+Reconcile replit.md with the approved architecture.
+
+Remove or correct inaccurate statements including:
+
+- Prisma has no models
+- SESSION_SECRET is the active authentication secret
+- nonexistent Prisma seed workflow
+- ambiguous MongoDB architecture
+- MongoDB being merely an optional future alternative
+- instructions that could encourage connecting Replit to production
+- any statement that contradicts the current authentication foundation
+
+The document must explicitly state:
+
+Central platform:
+Prisma 6 + MySQL/MariaDB
+
+Tenant healthcare/operational storage:
+isolated MongoDB database(s) per tenant
+
+Tenant MongoDB is permanent architecture but NOT YET IMPLEMENTED.
+
+The documentation must explain that a tenant may eventually have multiple physical MongoDB databases.
+
+The documentation must NOT invent implementation details that have not yet been approved.
+
+==================================================
+4. MIGRATION_IMPACT_REPORT.md
+==================================================
+
+Review MIGRATION_IMPACT_REPORT.md.
+
+Do not pretend it is a current implementation status document if it is historical.
+
+Either:
+
+A. Clearly mark it as a historical migration report and clarify that the Prisma/MySQL migration applies to central platform persistence only,
+
+OR
+
+B. Update it carefully so it no longer incorrectly implies that MongoDB has been permanently eliminated from Thanarah.
+
+The document must make this distinction explicit:
+
+Prisma/MySQL replaced the former MongoDB direction for CENTRAL PLATFORM persistence.
+
+It did NOT eliminate MongoDB from the future TENANT healthcare/operational architecture.
+
+Also remove stale statements claiming that current platform authentication, roles, permissions, sessions, etc. do not exist if those statements are no longer accurate.
+
+Do not rewrite the historical intent unnecessarily.
+
+==================================================
+5. render.yaml
+==================================================
+
+Review render.yaml.
+
+The approved production target is cPanel.
+
+Do NOT introduce Render as a supported production target.
+
+If render.yaml is obsolete and unsupported, remove it.
+
+If there is a strong repository reason to retain it, clearly mark/document it as non-primary and ensure it does not describe the old single-MongoDB architecture.
+
+It must NOT configure:
+
+- MONGO_URI as the application's primary database
+- SESSION_SECRET as the application's current authentication secret
+
+It must not misrepresent the production architecture.
+
+Prefer removal if there is no legitimate reason to retain Render deployment configuration.
+
+==================================================
+6. ENVIRONMENT DOCUMENTATION
+==================================================
+
+Review:
+
+- .env.example
+- src/config/env.schema.ts
+- src/config/config.service.ts
+- any environment documentation
+
+Do not add MongoDB implementation now.
+
+Do not add a global MONGO_URI merely because MongoDB is part of the future tenant architecture.
+
+The current platform foundation should continue using the existing central DATABASE_URL configuration.
+
+Future tenant MongoDB credentials must eventually be handled by a secure server-side infrastructure/storage layer.
+
+Do not invent future secret names unless they are genuinely required by current code.
+
+==================================================
+7. PRISMA DOCUMENTATION
+==================================================
+
+Ensure documentation accurately reflects:
+
+- Prisma 6
+- MySQL/MariaDB
+- current schema
+- current migrations
+- current platform persistence
+
+Do not instruct operators to run a nonexistent seed command.
+
+If authorization seed data is embedded in migrations, document the actual migration strategy.
+
+Do not apply migrations during this task.
+
+==================================================
+8. CPANEL PRODUCTION MODEL
+==================================================
+
+Documentation must clearly describe the production model conceptually:
+
+cPanel
+  ↓
+Thanarah Node.js application
+  ↓
+Central Prisma/MySQL/MariaDB database
+
+Future tenant storage:
+
+Thanarah application
+  ↓
+Trusted Tenant Context
+  ↓
+Tenant Database Registry
+  ↓
+Tenant Storage Resolver
+  ↓
+Tenant MongoDB database(s)
+
+The application must never rely on a client-provided database name or connection string.
+
+Do not implement the resolver now.
+
+==================================================
+9. WHAT MUST NOT CHANGE
+==================================================
+
+Do NOT modify:
+
+- PlatformUser authentication behavior
+- Password hashing
+- Login logic
+- Refresh-token rotation
+- JWT behavior
+- Sessions
+- Logout
+- Logout-all
+- PlatformAuthGuard
+- PlatformAuthorizationGuard
+- Platform roles
+- Platform permissions
+- Owner protection
+- Prisma schema
+- Prisma migrations
+- MongoDB runtime dependencies
+- Tenant models
+- Healthcare models
+- Subscription models
+- Entitlement models
+- Backup implementation
+- Voice AI
+- Phase 14
+
+Do not connect Replit to cPanel production.
+
+Do not add production secrets.
+
+Do not apply production migrations.
+
+==================================================
+10. VALIDATION
+==================================================
+
+After the documentation/configuration reconciliation:
+
+Run:
+
+- existing test suite
+- lint
+- typecheck
+- build
+
+Confirm that application behavior has not changed.
+
+If render.yaml is removed, verify no current source code or workflow depends on it.
+
+Verify there are no remaining documentation references that incorrectly describe:
+
+- MongoDB as the central application database
+- MONGO_URI as the current primary database
+- SESSION_SECRET as the current authentication secret
+- MySQL/Prisma as the permanent tenant healthcare database
+- tenant MongoDB as already implemented
+
+Search the repository for stale architecture references before finishing.
+
+==================================================
+11. GIT
+==================================================
+
+Create ONE conventional commit only if changes are required and validation passes:
+
+docs(architecture): reconcile platform and tenant persistence
+
+Do not use --no-verify.
+
+==================================================
+STOP CONDITION
+==================================================
+
+This task ends after documentation and deployment configuration truth has been reconciled.
+
+Do NOT continue into:
+
+- production readiness
+- audit/security events
+- API versioning redesign
+- tenant implementation
+- MongoDB implementation
+- database provisioning
+- backup implementation
+- Phase 14
+
+Report:
+
+1. Files changed
+2. Files removed, if any
+3. Contradictions found
+4. Corrections made
+5. Search results for stale architecture references
+6. Tests
+7. Lint
+8. Typecheck
+9. Build
+10. Commit hash
+
+Then STOP.
