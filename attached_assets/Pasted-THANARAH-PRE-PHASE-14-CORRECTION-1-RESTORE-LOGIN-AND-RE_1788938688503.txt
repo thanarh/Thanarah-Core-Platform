@@ -1,0 +1,304 @@
+THANARAH — PRE-PHASE 14 CORRECTION 1
+RESTORE LOGIN AND REFRESH HTTP ENDPOINTS
+
+We are now executing ONLY Correction 1 from the Master Architecture Audit.
+
+The audit confirmed that the existing authentication services/foundation are present, but the HTTP controller currently exposes only logout and logout-all. The missing endpoints are:
+
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+
+Do NOT redesign the authentication foundation.
+
+OBJECTIVE
+
+Restore the missing Login and Refresh HTTP endpoints by wiring the existing authentication services into the existing auth controller.
+
+Use the current repository as the source of truth.
+
+--------------------------------------------------
+1. LOGIN
+--------------------------------------------------
+
+Implement:
+
+POST /api/v1/auth/login
+
+Requirements:
+
+- This endpoint is PUBLIC.
+- Do not require PlatformAuthGuard.
+- Use the existing login/authentication service already implemented in the repository.
+- Do not create a second login implementation.
+- Do not duplicate password verification.
+- Do not duplicate session creation.
+- Do not duplicate token generation.
+- Do not duplicate lockout/security logic.
+
+The controller should only validate/receive the request and delegate to the existing application service.
+
+The login flow must preserve the existing behavior:
+
+- Normalize the email.
+- Verify credentials through the existing authentication service.
+- Preserve dummy password verification for unknown users.
+- Preserve account status checks.
+- Preserve failed-login tracking and temporary lockout.
+- Create the platform session through the existing service.
+- Issue the existing access token.
+- Issue the existing opaque refresh token.
+- Never expose password hashes or internal persistence objects.
+- Never log passwords or raw refresh tokens.
+
+Rate limiting:
+
+- Preserve the intended login throttle: 10 requests per minute.
+
+Request context:
+
+- Pass the real client IP address to the existing login/session logic.
+- Pass the real User-Agent.
+- Do not trust arbitrary client-provided IP/User-Agent headers beyond the existing application/proxy configuration.
+
+Response:
+
+- Return the existing safe authentication response shape already used by the application/services.
+- Access token may be returned in JSON according to the existing contract.
+- Refresh token must NOT be returned in JSON.
+- Store the refresh token in the existing HttpOnly refresh-token cookie mechanism.
+- Preserve the existing cookie configuration/service.
+- Do not invent a new cookie implementation.
+
+Swagger/OpenAPI:
+
+- Document the endpoint consistently with the existing API documentation.
+- Document request/response DTOs without exposing secrets.
+
+--------------------------------------------------
+2. REFRESH
+--------------------------------------------------
+
+Implement:
+
+POST /api/v1/auth/refresh
+
+Requirements:
+
+- The route itself is PUBLIC because it is authenticated through the refresh-token cookie, not the access-token PlatformAuthGuard.
+- Do not apply PlatformAuthGuard to this endpoint.
+- Use the existing refresh-token/session rotation services.
+- Do not implement a second refresh-token algorithm.
+- Do not duplicate token hashing or rotation logic.
+
+The endpoint must:
+
+1. Read the refresh token from the existing HttpOnly cookie.
+2. Reject a missing cookie using the existing stable authentication error contract.
+3. Hash the presented refresh token using the existing hashing service.
+4. Resolve the corresponding session using the existing repository/service.
+5. Preserve:
+   - token-family handling
+   - rotation
+   - previous-token history
+   - reuse detection
+   - compromised-session handling
+   - session ownership/status checks
+   - expiration checks
+   - transaction/locking/retry behavior
+6. Rotate the refresh token through the existing service.
+7. Issue a new access token through the existing access-token service.
+8. Set the newly rotated refresh token using the existing HttpOnly cookie service.
+9. Return the access token using the same safe authentication response contract as login.
+10. Never return the refresh token in JSON.
+11. Never log the raw refresh token.
+
+Rate limiting:
+
+- Preserve the intended refresh throttle: 30 requests per minute.
+
+Cookie clearing:
+
+Clear the refresh-token cookie for credential/session failures such as:
+
+- missing/invalid refresh credentials
+- expired refresh token
+- revoked session
+- compromised session
+- detected refresh-token reuse
+
+Do NOT clear the cookie for transient internal/transaction failures where the client credential itself has not been established as invalid.
+
+--------------------------------------------------
+3. EXISTING AUTH FOUNDATION MUST REMAIN UNCHANGED
+--------------------------------------------------
+
+Do NOT redesign or modify:
+
+- PlatformAuthGuard
+- PlatformAuthorizationGuard
+- PasswordHasherService
+- PasswordPolicyService
+- AccessTokenService
+- TokenGeneratorService
+- Refresh-token rotation algorithm
+- Session ownership model
+- Refresh-token history
+- Logout
+- Logout-all
+- Platform roles
+- Platform permissions
+- OWNER protection
+- Prisma schema
+- MongoDB architecture
+- Tenant architecture
+
+Do NOT introduce:
+
+- Tenant models
+- Tenant memberships
+- Tenant roles
+- Facilities
+- Branches
+- Healthcare models
+- Subscription models
+- Entitlement models
+- MongoDB connections
+- Mongoose
+- Backup infrastructure
+- Voice AI
+
+This is NOT Phase 14.
+
+--------------------------------------------------
+4. API ROUTES
+--------------------------------------------------
+
+The final auth routes must be:
+
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+POST /api/v1/auth/logout-all
+
+Do not change the existing logout/logout-all behavior.
+
+Do not redesign API versioning in this correction. Keep the existing /api/v1/auth convention exactly as currently established.
+
+--------------------------------------------------
+5. SECURITY REQUIREMENTS
+--------------------------------------------------
+
+Before considering the correction complete, verify:
+
+- No raw password logging.
+- No raw refresh-token logging.
+- No refresh token in JSON response.
+- No passwordHash in HTTP response.
+- No Prisma model objects leaked to the client.
+- No client-supplied roles/permissions accepted.
+- No client-supplied sessionId accepted for login/refresh ownership.
+- No ability to override user/session ownership through body/query/path parameters.
+- No bypass of the existing refresh-token reuse detection.
+- No bypass of account/session status checks.
+- PUBLIC endpoints must remain intentionally public.
+- Protected endpoints must continue using the existing guards.
+
+--------------------------------------------------
+6. TESTS
+--------------------------------------------------
+
+Add or restore focused tests for the HTTP endpoints.
+
+At minimum verify:
+
+LOGIN:
+- successful login
+- invalid credentials
+- unknown email
+- locked account
+- inactive account
+- rate limiting
+- refresh cookie is HttpOnly
+- refresh token is not present in JSON
+- access token is returned correctly
+- hostile/malformed input
+- no sensitive values are leaked
+
+REFRESH:
+- successful refresh
+- missing refresh cookie
+- invalid refresh token
+- expired refresh token
+- revoked session
+- compromised session
+- refresh-token reuse detection
+- cookie rotation
+- access-token issuance
+- rate limiting
+- transient rotation failure does not incorrectly clear a valid credential cookie
+- hostile/malformed input
+- no raw token leakage
+
+Also verify that the existing logout and logout-all tests remain passing.
+
+--------------------------------------------------
+7. VALIDATION
+--------------------------------------------------
+
+After implementation run:
+
+- focused auth tests
+- full test suite
+- lint
+- typecheck
+- production build
+- local runtime verification
+- verify:
+  GET /health
+  POST /api/v1/auth/login
+  POST /api/v1/auth/refresh
+  POST /api/v1/auth/logout
+  POST /api/v1/auth/logout-all
+  GET /docs
+
+Development must remain safe without a production database connection.
+
+Do NOT connect Replit to the cPanel production database.
+
+Do NOT apply production migrations.
+
+--------------------------------------------------
+8. GIT
+--------------------------------------------------
+
+If all validation passes, create ONE conventional commit:
+
+feat(auth): restore login and refresh endpoints
+
+Do not use --no-verify.
+
+--------------------------------------------------
+STOP CONDITION
+--------------------------------------------------
+
+This task ends after Login and Refresh HTTP endpoints are restored, tested, validated, and committed.
+
+Do NOT continue to:
+
+- production readiness
+- audit/security events
+- API versioning redesign
+- tenant architecture
+- MongoDB implementation
+- Phase 14
+
+Report:
+
+1. Files changed
+2. What was implemented
+3. Tests/results
+4. Build/lint/typecheck results
+5. Runtime verification
+6. Commit hash
+
+Then STOP.
