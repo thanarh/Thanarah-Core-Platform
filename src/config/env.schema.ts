@@ -56,6 +56,13 @@ export const envSchema = z
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
   })
   .superRefine((config, context) => {
+    if (config.NODE_ENV === 'production' && !config.DATABASE_URL) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['DATABASE_URL'],
+        message: 'DATABASE_URL is required in production',
+      });
+    }
     if (config.NODE_ENV === 'production' && config.JWT_ACCESS_SECRET.length < 32) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

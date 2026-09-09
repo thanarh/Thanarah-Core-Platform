@@ -304,6 +304,7 @@ describe('authentication configuration', () => {
     expect(
       validateEnv({
         NODE_ENV: 'production',
+        DATABASE_URL: 'mysql://user:password@127.0.0.1:3306/thanarah',
         JWT_ACCESS_SECRET: 'a'.repeat(48),
         AUTH_REFRESH_COOKIE_SECURE: 'true',
       }),

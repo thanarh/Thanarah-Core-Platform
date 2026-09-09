@@ -97,7 +97,11 @@ explicitly authorizes that work.
 
 The app serves on **port 5000** in development mode.
 
-`DATABASE_URL` is intentionally absent on Replit. The app starts cleanly without a live DB connection — `PrismaService.isConnected()` returns `false` and a warning is logged. This is expected development behaviour.
+`DATABASE_URL` is intentionally absent on Replit. The app starts cleanly
+without a live DB connection; `/health` remains successful while `/ready`
+returns 503 until an approved non-production database is available. This is
+expected development behavior. In production, `DATABASE_URL` is required and
+startup fails if the central database connection cannot be established.
 
 ### Authentication configuration
 
@@ -128,7 +132,7 @@ authentication foundation does not use `SESSION_SECRET`.
 src/
 ├── main.ts              # Entry point — Fastify adapter, Swagger, static files
 ├── app.module.ts        # Root module
-├── app.controller.ts    # Health check route (/health)
+├── app.controller.ts    # Liveness (/health) and database readiness (/ready)
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
 └── common/              # Shared constants, filters, interceptors, pipes
@@ -141,7 +145,8 @@ public/                  # Static files — Coming Soon splash page + assets
 ## Key URLs (development)
 
 - `/` — Coming Soon splash page (static)
-- `/health` — Health check endpoint
+- `/health` — process liveness; does not claim database availability
+- `/ready` — central database readiness; returns 503 when unavailable
 - `/docs` — Swagger UI
 
 ## Prisma workflow

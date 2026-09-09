@@ -28,7 +28,7 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
 
   app.setGlobalPrefix(APP_CONSTANTS.apiPrefix, {
-    exclude: ['health'],
+    exclude: ['health', 'ready'],
   });
 
   await app.register(helmet, {
