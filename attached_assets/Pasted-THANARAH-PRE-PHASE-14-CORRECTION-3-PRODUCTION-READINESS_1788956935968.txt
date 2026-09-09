@@ -1,0 +1,278 @@
+THANARAH — PRE-PHASE 14 CORRECTION 3
+PRODUCTION READINESS AND DATABASE HEALTH
+
+Execute ONLY Correction 3 from the Master Architecture Audit.
+
+OBJECTIVE
+
+Make Thanarah production readiness truthful regarding the central Prisma/MySQL/MariaDB database.
+
+Current approved architecture:
+
+- Production application: cPanel
+- Central platform database: Prisma 6 + MySQL/MariaDB
+- Tenant healthcare/operational databases: future isolated MongoDB
+- MongoDB is NOT part of this correction.
+
+The problem to fix is:
+
+PrismaService currently allows startup to continue when the central database is unavailable, and the current health endpoint can report OK while the database is disconnected.
+
+Fix this without redesigning the application.
+
+==================================================
+1. DEVELOPMENT BEHAVIOR
+==================================================
+
+Development must remain able to start without DATABASE_URL.
+
+This is intentional.
+
+Do NOT make Replit require access to the production cPanel database.
+
+Do NOT add production credentials.
+
+If DATABASE_URL is absent in development:
+
+- Application may start.
+- Authentication services may initialize as currently designed.
+- Database-dependent operations may report appropriate unavailable errors.
+- Development workflow must remain usable.
+
+==================================================
+2. PRODUCTION BEHAVIOR
+==================================================
+
+In production:
+
+- DATABASE_URL must be required.
+- Application readiness must depend on central database availability.
+- A missing DATABASE_URL must be treated as a production configuration failure.
+- A failed database connection must not produce a false healthy/readiness state.
+
+Do not silently downgrade production database failures into a healthy state.
+
+Use the existing configuration validation architecture where possible.
+
+Do not duplicate environment validation.
+
+==================================================
+3. HEALTH / READINESS
+==================================================
+
+Review the current:
+
+- src/app.controller.ts
+- src/database/prisma.service.ts
+- src/config/env.schema.ts
+- health-related modules/services
+
+Implement the minimum safe change required so that production health/readiness reflects the central database dependency.
+
+Prefer a clear distinction between:
+
+Liveness:
+- process/application is running
+
+Readiness:
+- application can serve database-dependent requests
+
+If introducing a separate readiness endpoint is the cleanest minimal solution, use:
+
+GET /health
+GET /ready
+
+However, do NOT unnecessarily change the existing /health contract if compatibility would be affected.
+
+If the existing architecture can safely make /health represent readiness, explain the decision and preserve compatibility.
+
+The final behavior must make it impossible for production to claim database readiness when Prisma/MySQL/MariaDB is unavailable.
+
+==================================================
+4. PRISMA SERVICE
+==================================================
+
+Review PrismaService behavior.
+
+Do NOT redesign Prisma.
+
+Do NOT change:
+
+- Prisma 6
+- MySQL/MariaDB datasource
+- existing models
+- existing migrations
+- authentication persistence
+- session persistence
+- authorization persistence
+
+The goal is only to make production readiness truthful.
+
+Development's intentional no-DATABASE_URL behavior must remain supported.
+
+==================================================
+5. DATABASE CHECK
+==================================================
+
+Use the existing Prisma client/service.
+
+Do not create a second database client.
+
+Use an appropriate lightweight database connectivity check.
+
+Do not run expensive queries.
+
+Do not expose database credentials or connection details in health responses.
+
+Health/readiness responses must contain only safe operational information.
+
+Never return:
+
+- DATABASE_URL
+- username
+- password
+- connection string
+- internal credentials
+- SQL errors containing secrets
+
+==================================================
+6. ERROR HANDLING
+==================================================
+
+Production configuration failure:
+
+- Must be clearly distinguishable internally.
+- Must not expose secrets externally.
+
+Database unavailable:
+
+- Readiness must fail.
+- Response must use an appropriate non-success HTTP status for readiness failure.
+- Do not leak raw Prisma/database exceptions.
+
+Unexpected internal errors:
+
+- Follow the existing global exception/logging architecture.
+
+Preserve existing redaction behavior.
+
+==================================================
+7. TESTS
+==================================================
+
+Add focused tests covering at minimum:
+
+Development:
+- missing DATABASE_URL does not prevent intended development startup.
+
+Production:
+- missing DATABASE_URL fails production configuration validation/readiness.
+- unavailable database produces failed readiness.
+- available database produces successful readiness.
+
+Health:
+- liveness/readiness behavior is deterministic.
+- no secrets appear in responses.
+- no DATABASE_URL appears in responses.
+- no database credentials appear in responses.
+- no raw database exception is exposed.
+
+Regression:
+- existing authentication tests remain passing.
+- existing authorization tests remain passing.
+- existing logout/logout-all behavior remains unchanged.
+
+==================================================
+8. RUNTIME VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- build
+
+Perform local runtime verification.
+
+Do NOT connect to the production cPanel database.
+
+If a local/staging database is unavailable, test the failure behavior using the project's existing safe test/mocking strategy rather than using production credentials.
+
+==================================================
+9. WHAT MUST NOT CHANGE
+==================================================
+
+Do NOT modify:
+
+- Login
+- Refresh
+- Logout
+- Logout-all
+- Password hashing
+- JWT contracts
+- Refresh-token rotation
+- PlatformAuthGuard
+- PlatformAuthorizationGuard
+- Platform roles
+- Platform permissions
+- Prisma schema
+- Prisma migrations
+- Tenant models
+- MongoDB
+- Tenant database registry
+- Healthcare models
+- Subscriptions
+- Entitlements
+- Audit/security-event implementation
+- Voice AI
+- Phase 14
+
+Do NOT add MongoDB.
+
+Do NOT provision databases.
+
+Do NOT apply migrations.
+
+Do NOT change cPanel configuration.
+
+==================================================
+10. GIT
+==================================================
+
+If implementation and validation pass, create exactly ONE conventional commit:
+
+fix(health): make production database readiness truthful
+
+Do not use --no-verify.
+
+==================================================
+STOP CONDITION
+==================================================
+
+Stop immediately after this correction.
+
+Do not continue to:
+
+- Audit/security events
+- API versioning
+- Tenant implementation
+- MongoDB implementation
+- Phase 14
+
+Report:
+
+1. Files changed
+2. Health/readiness behavior before and after
+3. Development behavior
+4. Production behavior
+5. Tests
+6. Lint
+7. Typecheck
+8. Build
+9. Runtime verification
+10. Security review
+11. Commit hash
+
+Then STOP.
