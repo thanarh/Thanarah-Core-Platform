@@ -8,7 +8,8 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 |-------|-----------|
 | Runtime | Node.js 22+ |
 | Framework | NestJS 11 + Fastify 5 |
-| Database | MySQL / MariaDB on cPanel — via Prisma 6 |
+| Central persistence | MySQL / MariaDB on cPanel — via Prisma 6 |
+| Tenant persistence | Isolated MongoDB database(s) per tenant — permanent future architecture, not implemented |
 | Language | TypeScript 5 (strict) |
 | Validation | Zod |
 | API Docs | Swagger / OpenAPI at `/docs` |
@@ -18,8 +19,18 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
-| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB — `thanarah_platform` on cPanel | Users, roles, permissions |
-| **Customer Medical Environments** | Mongoose (future) | Per-customer MongoDB (provisioned later) | Clinical / medical data |
+| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, and other platform metadata |
+| **Tenant Healthcare and Operations** | Not selected yet | Isolated MongoDB database(s) per tenant (future) | Tenant-owned healthcare and operational data |
+
+Tenant MongoDB is permanent architecture but **not yet implemented**. A tenant
+may eventually use multiple physical MongoDB databases while presenting one
+logical tenant data space. Future resolution must be server-side:
+
+`Trusted Tenant Context → Tenant Database Registry → Tenant Storage Resolver → Tenant MongoDB database(s)`
+
+Clients must never provide a database name or connection string. Do not invent
+MongoDB connection modules, secret names, models, or resolver behavior until a
+future implementation phase approves them.
 
 ## FUTURE / PLANNED — Thanarah AI Voice Receptionist
 
@@ -88,12 +99,11 @@ The app serves on **port 5000** in development mode.
 
 `DATABASE_URL` is intentionally absent on Replit. The app starts cleanly without a live DB connection — `PrismaService.isConnected()` returns `false` and a warning is logged. This is expected development behaviour.
 
-### Required secrets (set via Replit Secrets)
+### Authentication configuration
 
-| Secret | Description |
-|--------|-------------|
-| `JWT_ACCESS_SECRET` | Access-token signing secret — minimum 32 characters in production |
-| `SESSION_SECRET` | Session signing secret — already configured ✅ |
+`JWT_ACCESS_SECRET` signs access tokens and must contain at least 32 characters
+in production. Set development-only values through Replit Secrets. The current
+authentication foundation does not use `SESSION_SECRET`.
 
 ### Required in production (cPanel Node.js app environment only — never commit)
 
@@ -123,7 +133,8 @@ src/
 ├── database/            # PrismaService (mock-safe), DatabaseModule
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
-├── schema.prisma        # Prisma 6 schema — datasource + generator only (no models yet)
+├── schema.prisma        # Current central platform models: users, sessions, roles, permissions
+├── migrations/          # Versioned schema changes; authorization baseline data is migration-owned
 public/                  # Static files — Coming Soon splash page + assets
 ```
 
@@ -136,20 +147,22 @@ public/                  # Static files — Coming Soon splash page + assets
 ## Prisma workflow
 
 ```bash
-# After adding models to prisma/schema.prisma:
-npx prisma generate                        # regenerate client
-npx prisma migrate dev --name <name>       # create + apply migration (needs DATABASE_URL)
-npx prisma db seed                         # run seed (needs DATABASE_URL)
-npx prisma migrate deploy                  # apply migrations in production (cPanel)
+npx prisma format                         # format the schema
+npx prisma generate                       # regenerate the Prisma client
+npx prisma migrate dev --name <name>      # approved non-production database only
+npx prisma migrate deploy                 # production execution from the cPanel environment
 ```
 
-Migrations require a live `DATABASE_URL`. On Replit, set it temporarily via Replit Secrets when running migration commands, then remove it. Never commit credentials.
+The repository has no Prisma seed workflow. Required authorization baseline
+data is embedded in versioned migrations. Never point Replit at the production
+cPanel database; production migration execution and `DATABASE_URL`
+configuration belong to the cPanel environment.
 
 ## cPanel deployment notes
 
-- Set `DATABASE_URL`, `JWT_ACCESS_SECRET`, `SESSION_SECRET`, and `NODE_ENV=production` in the cPanel Node.js application environment.
+- Set `DATABASE_URL`, `JWT_ACCESS_SECRET`, `AUTH_TRUSTED_PROXIES`, and `NODE_ENV=production` in the cPanel Node.js application environment.
 - Database host is `localhost` on cPanel.
-- Run `npx prisma migrate deploy` and `npx prisma db seed` after each deployment that includes new migrations.
+- Run `npx prisma migrate deploy` from the approved cPanel production environment for deployments that include new migrations.
 - The `prepare` script uses `husky || true` to prevent build failures in CI/production.
 - `JWT_ACCESS_SECRET` must be at least 32 characters in production — deployment exits immediately if it is missing or too short.
 

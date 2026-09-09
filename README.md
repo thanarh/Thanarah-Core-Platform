@@ -9,7 +9,7 @@
 
   [![NestJS](https://img.shields.io/badge/NestJS-11-E0234E?style=flat-square&logo=nestjs)](https://nestjs.com)
   [![Fastify](https://img.shields.io/badge/Fastify-5-000000?style=flat-square&logo=fastify)](https://fastify.dev)
-  [![MongoDB](https://img.shields.io/badge/MongoDB-Mongoose-47A248?style=flat-square&logo=mongodb)](https://mongoosejs.com)
+  [![Prisma](https://img.shields.io/badge/Prisma-6-2D3748?style=flat-square&logo=prisma)](https://www.prisma.io)
   [![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?style=flat-square&logo=typescript)](https://www.typescriptlang.org)
   [![License](https://img.shields.io/badge/License-Private-lightgrey?style=flat-square)](#)
 
@@ -31,7 +31,8 @@
 |-------|-----------|
 | **Runtime** | Node.js 22 |
 | **Framework** | NestJS 11 + Fastify |
-| **Database** | MongoDB via Mongoose |
+| **Central persistence** | Prisma 6 + MySQL/MariaDB |
+| **Tenant persistence** | Isolated MongoDB database(s) per tenant — planned, not implemented |
 | **Language** | TypeScript 5 (strict) |
 | **Validation** | Zod |
 | **API Docs** | Swagger / OpenAPI |
@@ -41,10 +42,31 @@
 
 ## 🚀 تشغيل المشروع — Getting Started
 
+## Persistence Architecture
+
+Thanarah uses two permanent, distinct persistence systems:
+
+- **Central platform:** Prisma 6 with MySQL/MariaDB stores global identities,
+  authentication, sessions, platform roles and permissions, and other
+  platform-level metadata.
+- **Tenant data:** isolated MongoDB database(s) will store each tenant's
+  healthcare and operational data. This layer is planned and **not yet
+  implemented**. A tenant may eventually span multiple physical MongoDB
+  databases while remaining one logical tenant data space.
+
+Future tenant storage will be resolved only on the server through trusted
+tenant context and a central tenant database registry. Clients must never
+select a database name or provide a connection string. MongoDB must not be
+introduced into the current platform foundation before that design is
+explicitly implemented.
+
+Production runs on **cPanel**:
+
+`cPanel → Thanarah Node.js application → central Prisma/MySQL/MariaDB database`
+
 ### المتطلبات — Prerequisites
 
 - Node.js 22+
-- MongoDB instance (local or Atlas)
 
 ### التثبيت — Installation
 
@@ -58,7 +80,8 @@ npm install
 
 # Configure environment variables
 cp .env.example .env
-# Edit .env with your MONGO_URI and other secrets
+# For local/Replit development, leave DATABASE_URL empty unless using an
+# approved non-production MySQL/MariaDB database.
 
 # Build and run
 npx nest build && node dist/main
@@ -68,13 +91,16 @@ npx nest build && node dist/main
 
 | Variable | Description | Required |
 |----------|-------------|----------|
-| `MONGO_URI` | MongoDB connection string | ✅ |
-| `SESSION_SECRET` | Session signing secret | ✅ |
+| `DATABASE_URL` | Central MySQL/MariaDB connection; production value belongs only in cPanel | Production |
 | `JWT_ACCESS_SECRET` | Access-token signing secret (minimum 32 characters in production) | ✅ |
 | `AUTH_ACCESS_TOKEN_TTL_MINUTES` | Access-token lifetime in minutes (default: 15) | — |
 | `AUTH_REFRESH_TOKEN_TTL_DAYS` | Refresh/session lifetime in days (default: 30) | — |
 | `PORT` | Server port (default: 5000) | — |
 | `NODE_ENV` | `development` or `production` | — |
+
+Replit development must never connect to the production cPanel database.
+Production database configuration belongs exclusively to the cPanel
+environment.
 
 ---
 
@@ -97,14 +123,16 @@ Thanarah-Core-Platform/
 
 ## 🗺️ خارطة الطريق — Roadmap
 
-- [x] Project scaffold — NestJS + Fastify + MongoDB
+- [x] Project scaffold — NestJS + Fastify
+- [x] Central Prisma 6 + MySQL/MariaDB persistence foundation
+- [x] Platform authentication, sessions, login, refresh, and logout foundation
+- [x] Platform role and permission authorization foundation
 - [x] Coming Soon splash page (Arabic typewriter effect)
-- [ ] MongoDB integration — Mongoose schemas & connection
-- [ ] Authentication module — JWT + sessions
+- [ ] Tenant database registry and trusted server-side storage resolution
+- [ ] Isolated tenant MongoDB database(s) — planned, not implemented
 - [ ] Login page — bilingual (AR/EN)
 - [ ] Dashboard — multi-tenant healthcare management
-- [ ] Role-based access control (RBAC)
-- [ ] API documentation — Swagger
+- [x] API documentation — Swagger
 
 ---
 

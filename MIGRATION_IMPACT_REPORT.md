@@ -1,14 +1,28 @@
-# Thanarah — Mongoose → MySQL/MariaDB (Prisma) Migration Impact Report
+# Thanarah — Historical Central Platform Mongoose → Prisma Migration Impact Report
 
 **Prepared:** August 2026  
 **Scope:** Central Platform persistence layer only (`thanarah_platform` database)  
-**Target ORM:** Prisma  
+**Document status:** Historical planning report; not a current implementation-status document
+**Target ORM:** Prisma 6
 **Target DB:** MySQL 8 / MariaDB 10.6+ on cPanel  
-**Status of domain modules at time of report:** Scaffold only — no domain schemas have been committed to the repository yet. The Platform User, Platform Roles, Platform Permissions, and Access Seed modules are listed in the README roadmap as **not yet implemented**. The impact analysis below covers (a) what exists now and (b) the intended design described in the README so the migration can be done before any Mongoose schema is written.
+**Status at time of report:** The repository was still a Mongoose-oriented scaffold. Historical statements below describe that snapshot, not the current repository.
+
+> **Current architecture:** The central platform migration described here has
+> been completed. Prisma 6 with MySQL/MariaDB now owns central platform
+> persistence, including the implemented user authentication, sessions, roles,
+> permissions, and authorization foundation. Versioned migrations contain the
+> schema and required authorization baseline data; there is no Prisma seed
+> command.
+>
+> This migration did **not** eliminate MongoDB from Thanarah. Isolated MongoDB
+> database(s) per tenant remain the permanent future architecture for tenant
+> healthcare and operational data, potentially with multiple physical
+> databases for one tenant. That tenant layer is not yet implemented and must
+> be resolved server-side from trusted tenant context, never client input.
 
 ---
 
-## 1. Every File Currently Dependent on Mongoose or MongoDB
+## 1. Files That Depended on Mongoose or MongoDB at the Time
 
 | File | Dependency | Nature of dependency |
 |------|-----------|----------------------|
@@ -20,25 +34,28 @@
 | `src/config/config.service.ts` | `mongoUri` getter reads `MONGO_URI` | Typed accessor used by `DatabaseModule` |
 | `README.md` | Mentions MongoDB + Mongoose in tech stack and roadmap | Documentation only — no runtime impact |
 
-**Total source files with runtime Mongoose dependency: 5**  
+**Historical total source files with runtime Mongoose dependency: 5**
 (database.module.ts, database.service.ts, app.module.ts, env.schema.ts, config.service.ts)
+
+Current source has no Mongoose runtime dependency and uses `DATABASE_URL` for
+central Prisma/MySQL/MariaDB persistence.
 
 ---
 
-## 2. Every Schema and Repository That Must Be Migrated
+## 2. Schemas and Repositories Identified for Migration
 
-### Currently committed
+### Committed at the time
 
 No Mongoose `@Schema()` decorated classes or `Model<T>` repositories exist in the repository at this time. The database layer is connection management only.
 
-### Planned (per README roadmap — must be designed for MySQL/MariaDB + Prisma from the start)
+### Planned at the time
 
 | Planned module | Mongoose artefacts that would have been created | Migration requirement |
 |---|---|---|
 | Platform User | `User` schema, `UserRepository` | Design as Prisma model `User` in `schema.prisma` instead |
 | Platform Roles | `Role` schema, `RoleRepository` | Design as Prisma model `Role` |
 | Platform Permissions | `Permission` schema, `PermissionRepository` | Design as Prisma model `Permission` |
-| Access Seed | Seeder service reading `Role`/`Permission` models | Implement as Prisma seed script (`prisma/seed.ts`) |
+| Access baseline | Seeder service reading `Role`/`Permission` models | Ultimately implemented through versioned migrations, not a seed script |
 
 **Because no Mongoose schemas have been written yet, there is no data-at-rest to migrate and no schema transformation cost. This is the ideal moment to switch.**
 
@@ -209,7 +226,9 @@ async deleteRole(id: number): Promise<void> {
 }
 ```
 
-Built-in protected roles (`super-admin`, `admin`, `guest`, etc.) are created by the seed and have `isProtected: true`. They are skipped on delete attempts.
+Protected platform roles are created by versioned authorization migrations and
+enforced through the current owner/role policy. The historical names and model
+below are illustrative and are not current operator instructions.
 
 ### Protected permissions
 
@@ -217,114 +236,40 @@ Permissions do not need an `isProtected` flag individually — they are atomic c
 
 ---
 
-## 11. How the Idempotent Access Seed Should Work with Prisma
+## 11. Current Authorization Baseline Strategy
 
-Replace any future Mongoose seed approach with a Prisma seed script at `prisma/seed.ts`, run via `prisma db seed`.
-
-**Pattern:** use `upsert` with the natural unique key as the lookup selector. This makes the seed safe to re-run at any time without creating duplicates.
-
-```typescript
-// prisma/seed.ts
-import { PrismaClient } from '@prisma/client';
-
-const prisma = new PrismaClient();
-
-const PERMISSIONS = [
-  { action: 'create', resource: 'users' },
-  { action: 'read',   resource: 'users' },
-  { action: 'update', resource: 'users' },
-  { action: 'delete', resource: 'users' },
-  // ... extend as needed
-];
-
-const ROLES: Array<{
-  name: string;
-  isProtected: boolean;
-  permissions: Array<{ action: string; resource: string }>;
-}> = [
-  {
-    name: 'super-admin',
-    isProtected: true,
-    permissions: PERMISSIONS,
-  },
-  {
-    name: 'admin',
-    isProtected: true,
-    permissions: PERMISSIONS.filter((p) => p.resource !== 'users' || p.action !== 'delete'),
-  },
-  {
-    name: 'guest',
-    isProtected: true,
-    permissions: [{ action: 'read', resource: 'users' }],
-  },
-];
-
-async function main(): Promise<void> {
-  // 1. Upsert all permissions
-  for (const perm of PERMISSIONS) {
-    await prisma.permission.upsert({
-      where: { action_resource: { action: perm.action, resource: perm.resource } },
-      update: {},
-      create: perm,
-    });
-  }
-
-  // 2. Upsert all roles and their permission grants
-  for (const roleDef of ROLES) {
-    const role = await prisma.role.upsert({
-      where: { name: roleDef.name },
-      update: { isProtected: roleDef.isProtected },
-      create: { name: roleDef.name, isProtected: roleDef.isProtected },
-    });
-
-    for (const perm of roleDef.permissions) {
-      const permission = await prisma.permission.findUniqueOrThrow({
-        where: { action_resource: { action: perm.action, resource: perm.resource } },
-      });
-
-      await prisma.rolePermission.upsert({
-        where: { roleId_permissionId: { roleId: role.id, permissionId: permission.id } },
-        update: {},
-        create: { roleId: role.id, permissionId: permission.id },
-      });
-    }
-  }
-}
-
-main()
-  .catch((e) => { console.error(e); process.exit(1); })
-  .finally(() => prisma.$disconnect());
-```
-
-Register in `package.json`:
-
-```json
-"prisma": {
-  "seed": "ts-node prisma/seed.ts"
-}
-```
-
-Run: `npx prisma db seed` — idempotent, safe to re-run in CI or on each deploy.
+The seed-script proposal in the original report was not adopted. The current
+repository has no Prisma seed command or `prisma/seed.ts`. Platform role,
+permission, role-permission, and owner-policy baseline data is embedded in
+versioned migrations so schema and required authorization data advance
+together. Operators should use the approved migration workflow rather than
+attempting to run a seed command.
 
 ---
 
-## 12. How Existing Unit Tests Can Remain Unchanged
+## 12. Historical Test Impact
 
-The one existing test file is `test/health.spec.ts`. It tests `AppController.health()` in isolation — it does not import, mock, or depend on anything related to the database layer (Mongoose or Prisma). **It requires no changes.**
+At the time, the only test was `test/health.spec.ts`, which was unaffected by
+the central persistence migration. The current repository has authentication,
+session, authorization, repository, throttling, and HTTP contract tests in
+addition to health coverage.
 
-All future unit tests for service/repository classes should use Prisma's official mock library (`@prisma/client/testing` or `jest-mock-extended`) or a simple manual mock of `PrismaService`. The pattern is identical whether the underlying ORM is Mongoose or Prisma — the service receives a mock and tests are ORM-agnostic. Since no unit tests with database mocks exist yet, there is nothing to rewrite.
+Current service and repository tests use focused manual mocks of
+`PrismaService` and its transaction clients. Those tests are the source of
+truth for the implemented foundation.
 
 ---
 
-## 13. Which Integration Tests Must Be Rewritten
+## 13. Historical Integration-Test Guidance
 
-No integration tests exist in the repository at this time. When they are written:
+No integration tests existed when this report was prepared. Current tests
+should be treated as the source of truth.
 
 | Test type | Guidance |
 |---|---|
 | Database integration tests | Use Prisma's `PrismaClient` pointed at a test database (`DATABASE_URL=mysql://...thanarah_test`). Do NOT use `mongodb-memory-server` or any in-memory MongoDB utility. |
 | NestJS e2e tests | Bootstrap the app with a real `PrismaService` backed by a test MySQL database, not a Mongoose connection. |
-| Future seed tests | Run `prisma db seed` in `beforeAll`, assert rows exist, `prisma.$executeRaw('TRUNCATE ...')` in `afterAll`. |
+| Migration baseline tests | Validate versioned migrations and their embedded authorization data against an approved non-production database. |
 
 The `vitest.config.ts` setup is ORM-agnostic and needs no changes.
 
@@ -409,7 +354,7 @@ Each step is independently deployable and reversible. No step breaks the running
 
 ---
 
-### Stage 1 — Remove MongoDB wiring, add Prisma infrastructure (no domain models yet)
+### Stage 1 — Remove MongoDB wiring, add Prisma infrastructure (historical; completed)
 
 **Files to change:**
 1. `package.json` — remove `mongoose`, `@nestjs/mongoose`; add `@prisma/client`, `prisma` (devDep)
@@ -419,7 +364,7 @@ Each step is independently deployable and reversible. No step breaks the running
 5. `src/database/database.service.ts` — replace `InjectConnection` with Prisma `PrismaClient` health check
 6. `src/app.module.ts` — remove conditional MongoDB import; always import `DatabaseModule`
 7. Add `prisma/schema.prisma` with datasource + generator blocks only (no models yet)
-8. Add `prisma/seed.ts` stub
+8. Historical proposal: add `prisma/seed.ts` stub (not adopted; baseline data is migration-owned)
 9. Run `npx prisma generate` to emit the client
 10. Update `.env.example` — replace `MONGO_URI` with `DATABASE_URL`
 
@@ -427,19 +372,18 @@ Each step is independently deployable and reversible. No step breaks the running
 
 ---
 
-### Stage 2 — Define Prisma schema for permissions and roles
+### Stage 2 — Define Prisma schema for permissions and roles (historical; completed)
 
 **Files to change/add:**
 1. `prisma/schema.prisma` — add `Permission`, `Role`, `RolePermission` models
 2. Run `npx prisma migrate dev --name init-roles-permissions` against `thanarah_platform_dev`
-3. `prisma/seed.ts` — implement idempotent seed (Section 11)
-4. Run `npx prisma db seed` — verify seed data in dev database
+3. Historical seed proposal (superseded by migration-owned baseline data)
 
 **Verification:** Prisma Studio (`npx prisma studio`) shows correct rows. No application code changed yet.
 
 ---
 
-### Stage 3 — Implement the Role and Permission NestJS modules
+### Stage 3 — Implement the Role and Permission NestJS modules (historical; completed)
 
 **Files to add:**
 - `src/roles/` — `role.module.ts`, `role.service.ts`, `role.repository.ts`
@@ -450,24 +394,23 @@ Each step is independently deployable and reversible. No step breaks the running
 
 ---
 
-### Stage 4 — Define Prisma schema for users, implement Platform User module
+### Stage 4 — Define Prisma schema for users, implement Platform User module (historical; completed)
 
 **Files to change/add:**
 1. `prisma/schema.prisma` — add `User` model
 2. Run `npx prisma migrate dev --name add-users`
 3. `src/users/` — `user.module.ts`, `user.service.ts`, `user.repository.ts`
-4. Update seed to create an initial super-admin user (password hashed with argon2)
+4. Historical initial-user proposal; not a current seed workflow
 5. Unit tests
 
-**Verification:** All unit tests pass. Seed runs without error. `user` table exists with correct schema.
+**Historical verification target:** unit tests pass and the user table exists with the required schema.
 
 ---
 
 ### Stage 5 — Apply migrations to production database
 
 1. Run `npx prisma migrate deploy` against `thanarah_platform` (production) — applies all pending migration files from `prisma/migrations/`
-2. Run `npx prisma db seed` against production
-3. Verify with a read-only `SELECT` query that roles, permissions, and the initial user exist
+2. Verify migration-owned authorization baseline data through an approved production process
 
 **Verification:** Production database matches dev schema. Application starts against production `DATABASE_URL`.
 
@@ -475,12 +418,17 @@ Each step is independently deployable and reversible. No step breaks the running
 
 ### Future — Customer MongoDB environments (separate concern)
 
-When the Thanarah provisioning system is built, it will create per-customer MongoDB databases. This code will live in a separate module (e.g. `src/provisioning/`) and will use its own MongoDB/Mongoose connection — scoped to that module only, never touching `thanarah_platform`. The central NestJS app will hold two distinct connection modules:
+When tenant persistence is implemented, each tenant will use isolated MongoDB
+database(s), potentially multiple physical databases per tenant. A trusted
+tenant context, central database registry, and server-side storage resolver
+will map the logical tenant data space to physical storage. Clients must never
+choose a database or submit a connection string. Concrete module names,
+drivers, and providers have not yet been approved.
 
 | Module | ORM | Database | Scope |
 |---|---|---|---|
 | `PrismaModule` | Prisma | `thanarah_platform` (MySQL/MariaDB on cPanel) | Central platform |
-| `ProvisioningMongoModule` | Mongoose | Per-customer MongoDB Atlas | Customer medical environments |
+| Future tenant storage layer | Not selected yet | Isolated tenant MongoDB database(s) | Tenant healthcare and operational data |
 
 They must never share a connection or cross-import each other's models.
 
@@ -490,11 +438,8 @@ They must never share a connection or cross-import each other's models.
 
 | Point | Finding |
 |---|---|
-| Mongoose files today | 5 source files (no domain schemas yet) |
-| Domain schemas committed | None — ideal migration window |
-| Data to migrate | None |
+| Historical Mongoose files | 5 source files at the time of the report |
+| Current central platform | Prisma 6 schema and migrations with authentication, sessions, roles, and permissions |
+| Future tenant persistence | Isolated MongoDB database(s) per tenant; not yet implemented |
 | Prisma cPanel compatibility | Confirmed for MySQL 8 / MariaDB 10.6+; version must be verified |
-| Blocking items | cPanel DB credentials + version (Section 15) |
-| Recommended next step | Stage 0 — gather cPanel DB info, then Stage 1 |
-| Risk of proceeding with MongoDB | Critical — cPanel has no MongoDB support |
-| Risk of migrating now | Low — no domain code has been written yet |
+| Production target | cPanel; production database configuration remains in that environment |
