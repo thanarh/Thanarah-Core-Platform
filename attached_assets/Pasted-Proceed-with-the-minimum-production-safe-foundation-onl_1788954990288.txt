@@ -1,0 +1,66 @@
+Proceed with the minimum production-safe foundation only.
+
+Restore the missing login foundation required by the existing authentication services.
+
+Scope is strictly limited to:
+
+- The missing login application/service foundation required by the existing auth flow.
+- Persistent failed-login tracking and temporary lockout persistence required by that existing flow.
+- The minimum Prisma schema/migration changes required for that persistence.
+- Preserve the existing PlatformUser authentication model and semantics.
+- Preserve Argon2id password verification and the existing password policy.
+- Preserve dummy password verification for unknown users.
+- Preserve generic invalid-credentials behavior.
+- Preserve the existing failed-attempt threshold and lockout duration configuration.
+- Preserve existing session creation and token issuance services.
+- Do not create a second authentication system.
+- Do not redesign JWTs.
+- Do not redesign refresh-token rotation.
+- Do not modify logout/logout-all behavior.
+- Do not add tenant functionality.
+- Do not add MongoDB.
+- Do not start Phase 14.
+- Do not connect to the cPanel production database.
+- Do not apply production migrations.
+
+After the minimum foundation is complete, wire the existing HTTP endpoints:
+
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+
+using the existing authentication services.
+
+Do not duplicate authentication logic inside the controller.
+
+Add focused tests for:
+- failed login persistence
+- temporary lockout
+- lockout expiry
+- successful login resetting the appropriate failure state according to the existing service contract
+- unknown-user dummy verification
+- invalid credentials
+- inactive account
+- login success
+- refresh success
+- refresh credential failures
+- no sensitive data leakage
+
+Run:
+- focused tests
+- full test suite
+- lint
+- typecheck
+- build
+- runtime verification
+
+Do not make unrelated architectural changes.
+
+If any requirement cannot be implemented without changing an existing security contract, STOP and report the exact conflict instead of redesigning it.
+
+If everything passes, create one conventional commit:
+
+feat(auth): restore login and refresh foundation
+
+Do not use --no-verify.
+
+STOP after this correction.
