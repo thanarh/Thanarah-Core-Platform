@@ -19,6 +19,7 @@ import { PlatformAuthorizationService } from './services/platform-authorization.
 import { PlatformRolePolicyService } from './services/platform-role-policy.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { AuthenticationService } from './services/authentication.service';
+import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 
 const providers = [
   AccessTokenService,
@@ -40,7 +41,7 @@ const providers = [
 ];
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, JwtModule.register({})],
+  imports: [ConfigModule, DatabaseModule, PlatformSecurityModule, JwtModule.register({})],
   controllers: [AuthController],
   providers,
   exports: providers,

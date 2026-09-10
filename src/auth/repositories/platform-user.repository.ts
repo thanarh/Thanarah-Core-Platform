@@ -40,9 +40,13 @@ export class PlatformUserRepository {
     });
   }
 
-  async recordFailedLogin(id: string, threshold: number, lockMinutes: number): Promise<void> {
-    await this.prisma.$transaction(async (transaction) => {
-      await transaction.user.updateMany({
+  async recordFailedLogin(
+    id: string,
+    threshold: number,
+    lockMinutes: number,
+  ): Promise<{ lockApplied: boolean }> {
+    return this.prisma.$transaction(async (transaction) => {
+      const lockResult = await transaction.user.updateMany({
         where: { id },
         data: { failedLoginAttempts: { increment: 1 } },
       });
@@ -54,6 +58,7 @@ export class PlatformUserRepository {
         },
         data: { lockedUntil: new Date(Date.now() + lockMinutes * 60000) },
       });
+      return { lockApplied: lockResult.count === 1 };
     });
   }
 

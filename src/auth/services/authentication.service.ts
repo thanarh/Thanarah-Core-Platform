@@ -1,5 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '../../config/config.service';
+import { Optional } from '@nestjs/common';
+import {
+  PlatformAuditEventType,
+  PlatformSecurityEventType,
+  PlatformAuditService,
+} from '../../platform-security/platform-audit.service';
+import type { TrustedSecurityContext } from '../../platform-security/platform-security.types';
 import {
   AccountInactiveError,
   AccountLockedError,
@@ -26,6 +33,7 @@ import {
 export interface AuthenticationRequestContext {
   ipAddress: string;
   userAgent: string | null;
+  requestId?: string | null;
 }
 
 const DUMMY_HASH =
@@ -42,6 +50,7 @@ export class AuthenticationService {
     private readonly access: AccessTokenService,
     private readonly generator: TokenGeneratorService,
     private readonly authorization: PlatformAuthorizationRepository,
+    @Optional() private readonly audit?: PlatformAuditService,
   ) {}
 
   async login(
@@ -61,11 +70,41 @@ export class AuthenticationService {
       verified = false;
     }
     if (!record || !verified) {
-      if (record) await this.recordFailure(record);
+      const failure = record ? await this.recordFailure(record) : undefined;
+      await this.audit?.recordSecurityEvent({
+        eventType: PlatformSecurityEventType.AUTH_LOGIN_FAILED,
+        subjectUserId: record?.id,
+        ...context,
+        metadata: { reason: 'INVALID_CREDENTIALS' },
+      });
+      if (failure?.lockApplied) {
+        await this.audit?.recordSecurityEvent({
+          eventType: PlatformSecurityEventType.AUTH_ACCOUNT_LOCKED,
+          subjectUserId: record?.id,
+          ...context,
+          metadata: { reason: 'FAILED_LOGIN_THRESHOLD' },
+        });
+      }
       throw new InvalidCredentialsError();
     }
-    if (record.lockedUntil && record.lockedUntil > new Date()) throw new AccountLockedError();
-    if (record.status !== 'ACTIVE') throw new AccountInactiveError();
+    if (record.lockedUntil && record.lockedUntil > new Date()) {
+      await this.audit?.recordSecurityEvent({
+        eventType: PlatformSecurityEventType.AUTH_LOGIN_FAILED,
+        subjectUserId: record.id,
+        ...context,
+        metadata: { reason: 'ACCOUNT_LOCKED' },
+      });
+      throw new AccountLockedError();
+    }
+    if (record.status !== 'ACTIVE') {
+      await this.audit?.recordSecurityEvent({
+        eventType: PlatformSecurityEventType.AUTH_LOGIN_FAILED,
+        subjectUserId: record.id,
+        ...context,
+        metadata: { reason: 'ACCOUNT_INACTIVE' },
+      });
+      throw new AccountInactiveError();
+    }
     await this.users.resetFailedLogins(record.id);
     const issued = this.refreshTokens.issue();
     const session = await this.sessions.create({
@@ -77,6 +116,13 @@ export class AuthenticationService {
       userAgent: context.userAgent,
     });
     const roleIds = await this.authorization.findRoleIdsByUserId(record.id);
+    await this.audit?.recordAudit({
+      eventType: PlatformAuditEventType.AUTH_LOGIN_SUCCEEDED,
+      actorUserId: record.id,
+      sessionId: session.id,
+      ...context,
+      metadata: { method: 'PASSWORD' },
+    });
     return {
       refreshToken: issued.token,
       accessToken: await this.access.sign({
@@ -88,8 +134,11 @@ export class AuthenticationService {
     };
   }
 
-  async refresh(presentedToken: string): Promise<{ accessToken: string; refreshToken: string }> {
-    const rotated = await this.refreshTokens.rotate(presentedToken);
+  async refresh(
+    presentedToken: string,
+    context?: TrustedSecurityContext,
+  ): Promise<{ accessToken: string; refreshToken: string }> {
+    const rotated = await this.refreshTokens.rotate(presentedToken, context);
     const user = await this.users.findAuthRecordById(rotated.session.userId);
     if (!user || user.status !== 'ACTIVE') throw new AccountInactiveError();
     const roles = await this.authorization.findRoleIdsByUserId(user.id);
@@ -115,8 +164,10 @@ export class AuthenticationService {
     );
   }
 
-  private async recordFailure(record: LoginUserRecord): Promise<void> {
-    await this.users.recordFailedLogin(
+  private async recordFailure(
+    record: LoginUserRecord,
+  ): Promise<{ lockApplied: boolean } | undefined> {
+    return this.users.recordFailedLogin(
       record.id,
       this.config.maxFailedLoginAttempts,
       this.config.loginLockMinutes,

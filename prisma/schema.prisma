@@ -25,19 +25,43 @@ enum PlatformSessionStatus {
   COMPROMISED
 }
 
+enum PlatformAuditEventType {
+  AUTH_LOGIN_SUCCEEDED
+  AUTH_LOGOUT
+  AUTH_LOGOUT_ALL
+}
+
+enum PlatformSecurityEventType {
+  AUTH_LOGIN_FAILED
+  AUTH_ACCOUNT_LOCKED
+  AUTH_REFRESH_TOKEN_REUSE
+  AUTH_REFRESH_SESSION_COMPROMISED
+  AUTHORIZATION_DENIED
+}
+
+enum PlatformSecurityEventStatus {
+  OPEN
+  RESOLVED
+}
+
 model User {
-  id                  String             @id @default(uuid()) @db.Char(36)
-  email               String             @unique @db.VarChar(254)
-  passwordHash        String             @db.VarChar(255)
-  fullName            String             @db.VarChar(191)
-  status              UserStatus         @default(ACTIVE)
-  tokenVersion        Int                @default(0)
-  failedLoginAttempts Int                @default(0)
-  lockedUntil         DateTime?
-  createdAt           DateTime           @default(now())
-  updatedAt           DateTime           @updatedAt
-  sessions            PlatformSession[]
-  platformRoles       UserPlatformRole[]
+  id                    String                  @id @default(uuid()) @db.Char(36)
+  email                 String                  @unique @db.VarChar(254)
+  passwordHash          String                  @db.VarChar(255)
+  fullName              String                  @db.VarChar(191)
+  status                UserStatus              @default(ACTIVE)
+  tokenVersion          Int                     @default(0)
+  failedLoginAttempts   Int                     @default(0)
+  lockedUntil           DateTime?
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+  sessions              PlatformSession[]
+  platformRoles         UserPlatformRole[]
+  auditActorRecords     PlatformAuditLog[]      @relation("PlatformAuditActor")
+  auditSubjectRecords   PlatformAuditLog[]      @relation("PlatformAuditSubject")
+  securityActorEvents   PlatformSecurityEvent[] @relation("PlatformSecurityActor")
+  securitySubjectEvents PlatformSecurityEvent[] @relation("PlatformSecuritySubject")
+  securityResolutions   PlatformSecurityEvent[] @relation("PlatformSecurityResolver")
 
   @@index([status])
 }
@@ -119,4 +143,50 @@ model PlatformRefreshTokenHistory {
   @@index([sessionId])
   @@index([tokenFamilyId])
   @@index([expiresAt])
+}
+
+model PlatformAuditLog {
+  id            String                 @id @default(uuid()) @db.Char(36)
+  eventType     PlatformAuditEventType
+  actorUserId   String?                @db.Char(36)
+  subjectUserId String?                @db.Char(36)
+  sessionId     String?                @db.Char(36)
+  requestId     String?                @db.VarChar(128)
+  ipAddress     String?                @db.VarChar(45)
+  userAgent     String?                @db.VarChar(512)
+  metadata      Json?
+  occurredAt    DateTime               @default(now())
+  actor         User?                  @relation("PlatformAuditActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  subject       User?                  @relation("PlatformAuditSubject", fields: [subjectUserId], references: [id], onDelete: SetNull)
+
+  @@index([eventType, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([subjectUserId, occurredAt])
+  @@index([sessionId, occurredAt])
+}
+
+model PlatformSecurityEvent {
+  id             String                      @id @default(uuid()) @db.Char(36)
+  eventType      PlatformSecurityEventType
+  status         PlatformSecurityEventStatus @default(OPEN)
+  actorUserId    String?                     @db.Char(36)
+  subjectUserId  String?                     @db.Char(36)
+  sessionId      String?                     @db.Char(36)
+  requestId      String?                     @db.VarChar(128)
+  ipAddress      String?                     @db.VarChar(45)
+  userAgent      String?                     @db.VarChar(512)
+  metadata       Json?
+  occurredAt     DateTime                    @default(now())
+  resolvedAt     DateTime?
+  resolvedBy     String?                     @db.Char(36)
+  resolutionNote String?                     @db.VarChar(1000)
+  updatedAt      DateTime                    @updatedAt
+  actor          User?                       @relation("PlatformSecurityActor", fields: [actorUserId], references: [id], onDelete: SetNull)
+  subject        User?                       @relation("PlatformSecuritySubject", fields: [subjectUserId], references: [id], onDelete: SetNull)
+  resolver       User?                       @relation("PlatformSecurityResolver", fields: [resolvedBy], references: [id], onDelete: SetNull)
+
+  @@index([eventType, status, occurredAt])
+  @@index([actorUserId, occurredAt])
+  @@index([subjectUserId, occurredAt])
+  @@index([sessionId, occurredAt])
 }

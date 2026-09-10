@@ -32,6 +32,12 @@ Clients must never provide a database name or connection string. Do not invent
 MongoDB connection modules, secret names, models, or resolver behavior until a
 future implementation phase approves them.
 
+Platform audit logs and security events are central-platform records stored in
+the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep
+security-event resolution separate from the original event evidence. Their
+metadata is constrained to safe scalar values; authentication credentials and
+raw internal errors are never persisted.
+
 ## FUTURE / PLANNED — Thanarah AI Voice Receptionist
 
 Thanarah may offer an optional paid AI voice receptionist add-on for healthcare
@@ -135,9 +141,10 @@ src/
 ├── app.controller.ts    # Liveness (/health) and database readiness (/ready)
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
+├── platform-security/   # Central audit-log and security-event repository/service
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
-├── schema.prisma        # Current central platform models: users, sessions, roles, permissions
+├── schema.prisma        # Current central platform models and audit/security records
 ├── migrations/          # Versioned schema changes; authorization baseline data is migration-owned
 public/                  # Static files — Coming Soon splash page + assets
 ```

@@ -9,12 +9,14 @@ import { LoggerModule } from './common/logger/logger.module';
 import { GlobalExceptionFilter } from './common/filters/global-exception.filter';
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { AuthModule } from './auth/auth.module';
+import { PlatformSecurityModule } from './platform-security/platform-security.module';
 
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
     DatabaseModule,
+    PlatformSecurityModule,
     AuthModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],

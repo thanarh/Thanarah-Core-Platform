@@ -5,6 +5,7 @@ import {
   HttpCode,
   HttpStatus,
   Inject,
+  Optional,
   Post,
   Req,
   Res,
@@ -30,6 +31,11 @@ import { PlatformSessionService } from './services/platform-session.service';
 import { AuthenticationService } from './services/authentication.service';
 import { Public } from './decorators/public.decorator';
 import { AuthResponseDto, LoginDto } from './dto/auth.dto';
+import {
+  PlatformAuditEventType,
+  PlatformAuditService,
+} from '../platform-security/platform-audit.service';
+import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
 
 @Controller('v1/auth')
 export class AuthController {
@@ -40,6 +46,7 @@ export class AuthController {
     private readonly cookies: AuthCookieService,
     @Inject(AuthenticationService)
     private readonly authentication: AuthenticationService,
+    @Optional() private readonly audit?: PlatformAuditService,
   ) {}
 
   @Post('login')
@@ -82,7 +89,10 @@ export class AuthController {
   ): Promise<{ accessToken: string }> {
     const presented = this.cookies.readRefreshToken(request);
     try {
-      const result = await this.authentication.refresh(presented ?? '');
+      const result = await this.authentication.refresh(
+        presented ?? '',
+        this.requestContext(request),
+      );
       this.cookies.setRefreshToken(reply, result.refreshToken);
       return { accessToken: result.accessToken };
     } catch (error) {
@@ -103,8 +113,15 @@ export class AuthController {
   async logout(
     @CurrentPlatformUser() user: AuthenticatedPlatformUser,
     @Res({ passthrough: true }) reply: FastifyReply,
+    @Req() request?: FastifyRequest,
   ): Promise<void> {
     await this.sessions.revokeOne(user.sessionId, user.userId, AUTH_REVOCATION_REASONS.USER_LOGOUT);
+    await this.audit?.recordAudit({
+      eventType: PlatformAuditEventType.AUTH_LOGOUT,
+      actorUserId: user.userId,
+      sessionId: user.sessionId,
+      ...this.requestContext(request),
+    });
     this.cookies.clearRefreshToken(reply);
   }
 
@@ -118,12 +135,30 @@ export class AuthController {
   async logoutAll(
     @CurrentPlatformUser() user: AuthenticatedPlatformUser,
     @Res({ passthrough: true }) reply: FastifyReply,
+    @Req() request?: FastifyRequest,
   ): Promise<void> {
     await this.sessions.revokeAll(
       user.userId,
       user.userId,
       AUTH_REVOCATION_REASONS.USER_LOGOUT_ALL,
     );
+    await this.audit?.recordAudit({
+      eventType: PlatformAuditEventType.AUTH_LOGOUT_ALL,
+      actorUserId: user.userId,
+      ...this.requestContext(request),
+    });
     this.cookies.clearRefreshToken(reply);
+  }
+
+  private requestContext(request?: FastifyRequest): TrustedSecurityContext {
+    if (!request) return {};
+    const headers = request.headers ?? {};
+    const requestId = headers['x-request-id'];
+    const userAgent = headers['user-agent'];
+    return {
+      requestId: typeof requestId === 'string' ? requestId : undefined,
+      ipAddress: request.ip,
+      userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+    };
   }
 }
