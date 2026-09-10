@@ -1,0 +1,216 @@
+Implement Correction 4 only: Platform Audit Logs & Security Events Foundation.
+
+Before making changes, inspect the current repository and existing authentication, authorization, session, Prisma, error, and security-event related code. Preserve the existing architecture and conventions. Do not redesign unrelated code.
+
+OBJECTIVE
+
+Add a production-safe, central-platform foundation for durable Audit Logs and Security Events using the existing Prisma 6 + MySQL/MariaDB platform database.
+
+This is NOT Phase 14.
+
+STRICT SCOPE
+
+Implement only the platform-level Audit Logs and Security Events foundation.
+
+Do NOT implement or introduce:
+
+- Tenant
+- Organization
+- Tenant membership
+- Tenant roles
+- Tenant permissions
+- Facility
+- Branch
+- MongoDB
+- Healthcare models
+- Patients
+- Doctors
+- Appointments
+- Clinical records
+- Subscriptions
+- Plans
+- Billing
+- Usage limits
+- Voice AI
+- Any Phase 14 functionality
+
+ARCHITECTURE
+
+Follow the existing layering:
+
+Controller → Service/Policy → Repository → Prisma
+
+Controllers must not access Prisma directly.
+
+Keep authentication and authorization responsibilities separate.
+
+Audit/Security functionality must remain platform-scoped for this correction.
+
+DATA MODEL
+
+Design the minimum production-safe Prisma models required for:
+
+1. PlatformAuditLog
+2. PlatformSecurityEvent
+
+Inspect the existing schema and naming conventions before deciding exact fields.
+
+Audit records must be durable and append-oriented.
+
+Security events must support lifecycle/state where appropriate, including resolution/update without allowing historical evidence to be silently destroyed.
+
+Capture only safe metadata.
+
+NEVER persist:
+
+- passwords
+- password hashes
+- access tokens
+- refresh tokens
+- refresh token hashes
+- JWT secrets
+- DATABASE_URL
+- cookies containing credentials
+- API keys
+- session secrets
+- other authentication credentials
+
+Use safe identifiers and metadata only.
+
+EVENT TAXONOMY
+
+Define a small, explicit, maintainable event taxonomy based on the existing authentication/security flows.
+
+At minimum consider existing flows such as:
+
+- successful login
+- failed login
+- account lockout
+- refresh-token reuse detection
+- refresh/session compromise
+- logout
+- logout-all
+- authorization/security-sensitive actions
+- protected platform role/permission changes where those flows already exist
+
+Do not invent large future taxonomies.
+
+Only integrate events where the existing code already has the appropriate lifecycle/action.
+
+INTEGRATION
+
+Integrate the new audit/security foundation into existing security-sensitive flows only where it can be done cleanly without changing their existing authentication semantics.
+
+Do not:
+
+- change login behavior
+- change refresh rotation behavior
+- change logout semantics
+- change authorization semantics
+- introduce new authentication mechanisms
+- weaken existing security checks
+
+Audit failures must not accidentally expose credentials or raw internal errors.
+
+For security-critical operations, decide carefully whether audit persistence should fail the business operation or be handled separately. Follow the existing architecture and document the decision.
+
+SECURITY
+
+Audit/security records must be safe against accidental credential leakage.
+
+Normalize and constrain event types.
+
+Do not trust client-supplied event identity, actor identity, tenant identity, roles, permissions, or security metadata.
+
+Actor information must come from trusted server-side context.
+
+Do not accept an arbitrary user ID from request body/query/header as the audit actor.
+
+Keep platform audit/security records independent from future tenant healthcare data.
+
+REPOSITORY/SERVICE
+
+Create clean repository/service boundaries.
+
+The repository owns persistence.
+
+The service owns event construction/business rules.
+
+No Prisma access from controllers.
+
+Avoid generic "god services".
+
+Keep the implementation small and extensible for future SaaS work.
+
+MODULE
+
+Create the appropriate NestJS module and wire it into the application according to the existing module conventions.
+
+Do not introduce unnecessary global state.
+
+TESTS
+
+Add focused tests covering:
+
+- successful audit creation
+- security event creation
+- safe metadata handling
+- forbidden sensitive-field persistence
+- actor attribution from trusted server context
+- security event state/update behavior if implemented
+- relevant authentication/security integrations
+- failure/error behavior
+- authorization boundaries where applicable
+
+Do not rewrite unrelated tests.
+
+VALIDATION
+
+Run:
+
+- full test suite
+- lint
+- typecheck
+- production build
+- relevant runtime checks
+
+Review the final diff for:
+
+- accidental tenant/Mongo implementation
+- credential leakage
+- direct Prisma access from controllers
+- architecture violations
+- unnecessary dependencies
+- unrelated changes
+
+Also perform an independent security review of the implementation.
+
+DOCUMENTATION
+
+Update documentation only where necessary to describe the newly implemented platform audit/security foundation.
+
+Do not rewrite the architecture documentation unnecessarily.
+
+COMMIT
+
+If all validation passes, create one Conventional Commit:
+
+feat(security): add platform audit and security events
+
+STOP CONDITION
+
+After Correction 4 is complete and validated, STOP.
+
+Do not continue to Correction 5 or Phase 14.
+
+At the end report:
+
+1. Files changed
+2. Database/schema changes
+3. Audit event types implemented
+4. Security event types implemented
+5. Existing flows integrated
+6. Tests and validation results
+7. Security review findings
+8. Commit hash
+9. Confirmation that Tenant/MongoDB/Phase 14 were NOT implemented
