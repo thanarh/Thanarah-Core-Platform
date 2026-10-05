@@ -1,0 +1,445 @@
+PHASE 14A — TENANT / ORGANIZATION FOUNDATION
+
+We are now officially starting Phase 14 of Thanarah.
+
+This is a production SaaS healthcare platform, not a prototype.
+
+The previous architecture corrections are complete:
+
+- Authentication foundation
+- Login / refresh / logout
+- Persistent session and refresh rotation
+- Platform authorization
+- Platform roles and permissions
+- Platform audit/security events
+- Security hardening
+- API versioning
+- Guard conventions
+- Tenant isolation contract
+
+Do NOT repeat or redesign those systems.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Implement ONLY Phase 14A:
+
+Tenant / Organization Foundation.
+
+This phase creates the actual central-platform Tenant/Organization persistence foundation required for Thanarah's multi-tenant SaaS architecture.
+
+The central platform database remains Prisma 6 + MySQL/MariaDB.
+
+Tenant healthcare/operational data will eventually live in isolated MongoDB storage.
+
+MongoDB is NOT implemented in this phase.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement:
+
+- Tenant / Organization identity
+- Tenant lifecycle/status
+- Tenant-safe identifiers
+- Central platform persistence
+- Tenant metadata required for SaaS identity
+- Repository
+- Service
+- Module
+- DTO/input validation where needed
+- Tests
+- Audit/security integration where appropriate
+- Documentation
+
+Do NOT implement yet:
+
+- Tenant membership
+- Tenant roles
+- Tenant permissions
+- Tenant authorization
+- Facilities
+- Branches
+- Staff
+- Doctors
+- Patients
+- Appointments
+- Scheduling
+- Healthcare data
+- Subscriptions
+- Plans
+- Entitlements
+- Usage limits
+- Billing
+- Insurance
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry persistence
+- Tenant admin UI
+- Healthcare UI
+- Voice AI
+
+Those belong to later phases.
+
+==================================================
+ARCHITECTURAL MODEL
+==================================================
+
+Maintain the distinction:
+
+Platform
+    ↓
+Tenant / Organization
+    ↓
+Future Membership
+    ↓
+Future Facility / Branch
+    ↓
+Future Tenant Operations
+
+Do NOT treat Tenant as a Clinic.
+
+Do NOT create Facility or Branch in this phase.
+
+Tenant is the SaaS organization boundary.
+
+==================================================
+TENANT MODEL
+==================================================
+
+Design the Tenant model after inspecting the existing Prisma schema and conventions.
+
+The model must support a production SaaS lifecycle.
+
+At minimum consider:
+
+- id
+- stable public identifier where appropriate
+- legal/display name
+- normalized identity fields where required
+- status/lifecycle state
+- createdAt
+- updatedAt
+- timestamps required for lifecycle transitions
+
+Use explicit enums for lifecycle state rather than arbitrary strings.
+
+Design statuses deliberately.
+
+At minimum consider states such as:
+
+- ACTIVE
+- SUSPENDED
+- DEACTIVATED
+
+Only include states that are actually justified by the current SaaS architecture.
+
+Do not create unnecessary future states.
+
+==================================================
+IDENTIFIERS
+==================================================
+
+Tenant identifiers must not be treated as authorization.
+
+Do not rely on obscurity of UUIDs.
+
+Use the existing platform identifier conventions.
+
+If a public slug/code/domain identifier is needed, ensure:
+
+- normalization
+- uniqueness
+- validation
+- no accidental authorization semantics
+
+Do not allow clients to select arbitrary physical database identifiers.
+
+==================================================
+REPOSITORY
+==================================================
+
+Create a TenantRepository following the existing architecture:
+
+Controller
+→ Service/Policy
+→ Repository
+→ Prisma
+
+Controllers must never access Prisma directly.
+
+Repository methods must be explicit and safe.
+
+Avoid generic unrestricted database access.
+
+Support only the operations actually required by this phase.
+
+Do not build a huge CRUD abstraction.
+
+==================================================
+SERVICE
+==================================================
+
+Create a TenantService responsible for tenant business rules.
+
+At minimum support the lifecycle operations required by this phase.
+
+Validate:
+
+- required fields
+- normalization
+- uniqueness
+- valid lifecycle transitions
+
+Do not place business rules in controllers.
+
+Do not allow a tenant to be created in an invalid state.
+
+==================================================
+MODULE
+==================================================
+
+Create the appropriate NestJS Tenant module according to existing project conventions.
+
+Keep module boundaries clean.
+
+Do not make the Tenant module responsible for:
+
+- membership
+- authorization
+- subscription
+- MongoDB
+- healthcare
+
+Those will be separate future modules.
+
+==================================================
+AUTHORIZATION BOUNDARY
+==================================================
+
+Do NOT implement tenant authorization yet.
+
+However:
+
+- Tenant existence is not authorization.
+- A platform user does not automatically have access to every tenant.
+- Tenant ID does not grant membership.
+- Do not expose tenant management operations as publicly accessible routes.
+
+If a route is created for platform administration, protect it using the existing PlatformAuthGuard and appropriate existing platform permissions.
+
+Do not create new tenant permissions in this phase unless absolutely necessary.
+
+Inspect existing platform permission conventions first.
+
+==================================================
+API
+==================================================
+
+If this phase requires HTTP endpoints, use the established convention:
+
+/api/v1/...
+
+Use:
+
+@Public()
+only when genuinely public.
+
+Tenant management endpoints must not be public.
+
+Use PlatformAuthGuard.
+
+Use PlatformAuthorizationGuard where an existing platform permission appropriately governs the operation.
+
+Do not create tenant-facing application APIs yet.
+
+Only create the minimum platform administration endpoints required to manage Tenant foundation.
+
+==================================================
+AUDIT / SECURITY
+==================================================
+
+Integrate tenant lifecycle changes with the existing Platform Audit/Security foundation.
+
+At minimum consider audit events for:
+
+- tenant creation
+- tenant status change
+- tenant deactivation
+
+Do not store sensitive credentials or healthcare information in audit metadata.
+
+Use trusted authenticated actor context.
+
+Do not allow the request body to define the audit actor.
+
+==================================================
+DATABASE MIGRATION
+==================================================
+
+Create the Prisma migration for the Tenant model.
+
+Do NOT apply production migrations.
+
+Follow the existing migration conventions.
+
+Validate:
+
+- foreign keys
+- unique constraints
+- indexes
+- enum definitions
+- timestamp behavior
+
+Do not introduce MongoDB schema or MongoDB migration files.
+
+==================================================
+TESTING
+==================================================
+
+Create comprehensive focused tests.
+
+Test at minimum:
+
+1. tenant creation
+2. required validation
+3. normalization
+4. uniqueness
+5. valid lifecycle transition
+6. invalid lifecycle transition
+7. deactivated/suspended tenant behavior
+8. repository behavior
+9. authorization boundary
+10. unauthenticated access
+11. unauthorized platform user access
+12. audit event creation
+13. actor attribution
+14. sensitive metadata protection
+15. tenant identifier cannot be treated as authorization
+
+Add integration tests where appropriate.
+
+Do not weaken existing tests.
+
+==================================================
+SECURITY
+==================================================
+
+Review specifically for:
+
+- IDOR
+- privilege escalation
+- client-controlled actor IDs
+- client-controlled tenant authorization
+- mass assignment
+- unsafe status transitions
+- duplicate tenant identities
+- leaked internal database information
+- sensitive audit metadata
+- direct Prisma access from controllers
+
+Fail closed.
+
+Never create a default tenant.
+
+Never silently choose a tenant.
+
+Never infer authorization from tenant ID.
+
+==================================================
+DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation to state:
+
+Tenant/Organization now exists as a central platform SaaS entity.
+
+But these are still NOT implemented:
+
+- membership
+- tenant authorization
+- facilities
+- branches
+- subscriptions
+- tenant MongoDB
+- healthcare operations
+
+Clearly distinguish implemented functionality from future architecture.
+
+==================================================
+VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting
+- production build
+- Prisma validation
+- migration validation
+- git diff --check
+
+Restart the application.
+
+Verify:
+
+GET /health
+GET /ready
+GET /docs
+
+Verify representative authenticated API behavior.
+
+Perform a final security review.
+
+Inspect the complete diff for accidental Phase 14 scope expansion.
+
+==================================================
+STRICT STOP CONDITION
+==================================================
+
+STOP after Phase 14A.
+
+Do NOT continue automatically to:
+
+- membership
+- tenant roles
+- tenant permissions
+- facilities
+- branches
+- subscriptions
+- MongoDB
+- healthcare
+- patients
+- doctors
+- scheduling
+
+Wait for explicit approval for the next phase.
+
+==================================================
+COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): add tenant organization foundation
+
+Final report must contain:
+
+1. Files changed
+2. Tenant schema
+3. Lifecycle states
+4. API endpoints
+5. Authorization rules
+6. Repository/service/module structure
+7. Audit events
+8. Migration status
+9. Tests
+10. Security review
+11. Build/lint/typecheck results
+12. Commit hash
+13. Explicit confirmation that membership, MongoDB, healthcare, subscriptions, and later Phase 14 work were NOT implemented
