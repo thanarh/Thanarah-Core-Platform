@@ -1,0 +1,1042 @@
+PHASE 14F — BRANCH FOUNDATION
+
+We are continuing Thanarah Phase 14.
+
+Completed:
+
+Phase 14A:
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B:
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C:
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D:
+a80d97733fbb10e44ccf68c92578476775be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Phase 14E:
+68cf8cc
+feat(tenant): add facility foundation
+
+Previous corrections are also complete:
+
+- Authentication
+- Login / refresh / logout
+- Platform authorization
+- Platform roles/permissions
+- Platform audit/security events
+- API versioning/guard conventions
+- Tenant isolation contract
+- Tenant organization
+- Tenant membership
+- Tenant roles/permissions
+- Tenant authorization runtime
+- Facility foundation
+
+Now implement ONLY:
+
+PHASE 14F — BRANCH FOUNDATION
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Introduce the Branch layer beneath Facility.
+
+The architectural hierarchy is now:
+
+Platform
+  ↓
+Tenant / Organization
+  ↓
+Facility
+  ↓
+Branch
+  ↓
+Future Staff / Doctors / Healthcare Operations
+
+Important:
+
+Tenant ≠ Facility ≠ Branch.
+
+A Tenant may have multiple Facilities.
+
+A Facility may have multiple Branches.
+
+A Branch belongs to exactly one Facility.
+
+Because Facility already belongs to exactly one Tenant, Branch therefore belongs indirectly to exactly one Tenant.
+
+Do NOT flatten these relationships.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- Branch domain model
+- Branch repository
+- Branch service
+- Branch lifecycle/status
+- Tenant-scoped Branch authorization
+- Facility-scoped Branch authorization
+- Branch CRUD foundation
+- Branch audit integration
+- Branch tests
+- Documentation
+- Prisma migration if required
+
+Do NOT implement:
+
+- Staff
+- Doctors
+- Nurses
+- Patients
+- Departments
+- Specialties
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Clinical notes
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database registry
+- Tenant database provisioning
+- Backup system
+- Voice AI
+- Mobile application
+- Patient portal
+- Ownership handoff
+
+STOP after Phase 14F.
+
+==================================================
+1. DOMAIN MODEL
+==================================================
+
+Create a Branch model in the CENTRAL PLATFORM DATABASE.
+
+Branch is SaaS/platform metadata.
+
+Do NOT put Branch into MongoDB.
+
+Relationship:
+
+Tenant
+  1
+  |
+  | has many
+  ↓
+Facility
+  1
+  |
+  | has many
+  ↓
+Branch
+
+Every Branch must belong to exactly one Facility.
+
+Do not store a redundant tenant relationship unless there is a demonstrated architectural requirement.
+
+Prefer deriving the tenant through:
+
+Branch → Facility → Tenant
+
+This avoids contradictory ownership data such as:
+
+Branch.facilityId = Facility A
+Branch.tenantId = Tenant B
+
+If the existing architecture has a strong reason for storing tenantId directly, stop and explain the tradeoff before implementing it.
+
+Do not silently introduce duplicated ownership fields.
+
+==================================================
+2. BRANCH FIELDS
+==================================================
+
+Use only fields required for a clean commercial foundation.
+
+At minimum evaluate:
+
+- id
+- facilityId
+- name
+- code or slug if appropriate
+- status
+- createdAt
+- updatedAt
+
+Do not over-model the Branch.
+
+Do NOT add:
+
+- staff
+- doctors
+- departments
+- specialties
+- schedules
+- appointment configuration
+- billing configuration
+- insurance configuration
+- clinical configuration
+
+Those belong to later phases.
+
+If code/slug is implemented, uniqueness should be scoped appropriately.
+
+Do not make Branch code globally unique without a clear architectural reason.
+
+==================================================
+3. BRANCH STATUS
+==================================================
+
+Introduce an explicit Branch lifecycle.
+
+Recommended states:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+If the existing Facility lifecycle naming and semantics already establish the canonical convention, reuse it.
+
+Do not create a second lifecycle philosophy.
+
+Recommended transitions:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED should be terminal if that is the established Facility convention.
+
+Same-state transitions must behave consistently with Facility.
+
+Do not physically delete Branch records.
+
+==================================================
+4. FACILITY RELATIONSHIP
+==================================================
+
+Branch must always belong to one Facility.
+
+The Facility must exist before Branch creation.
+
+Do not allow a Branch to reference:
+
+- a nonexistent Facility
+- a Facility belonging to another Tenant
+
+This must be enforced at the service/repository authorization level and by database referential integrity where appropriate.
+
+==================================================
+5. TRUSTED TENANT CONTEXT
+==================================================
+
+Reuse the Phase 14D TrustedTenantContext.
+
+Do not create another tenant context abstraction.
+
+Branch authorization begins with:
+
+Authenticated Platform User
++
+Trusted Tenant Context
++
+Tenant Authorization
++
+Facility ownership/scope
++
+Branch operation
+
+The tenant context establishes the authenticated user's tenant boundary.
+
+The Branch's Facility must resolve inside that tenant boundary.
+
+==================================================
+6. FACILITY-SCOPED SECURITY
+==================================================
+
+This is the most important addition compared with Facility.
+
+A Branch request must verify:
+
+Trusted Tenant
+  ↓
+Facility belongs to Trusted Tenant
+  ↓
+Branch belongs to that Facility
+  ↓
+Required tenant permission
+  ↓
+Operation allowed
+
+Never perform:
+
+find Branch by branchId
+then trust the result.
+
+Never perform:
+
+find Facility by facilityId
+without tenant scope.
+
+Never trust a client-provided combination of:
+
+tenantId
+facilityId
+branchId
+
+as proof of authorization.
+
+All identifiers supplied by the client are untrusted inputs until server-side relationships are verified.
+
+==================================================
+7. CROSS-TENANT AND CROSS-FACILITY ISOLATION
+==================================================
+
+Mandatory scenarios:
+
+Tenant A
+  Facility A1
+    Branch A1-B1
+
+Tenant A
+  Facility A2
+    Branch A2-B1
+
+Tenant B
+  Facility B1
+    Branch B1-B1
+
+A user authorized inside Tenant A must never access Tenant B.
+
+A Branch under Facility A1 must never be accessible through Facility A2.
+
+A Branch under Tenant B must never be accessible through Tenant A.
+
+Even if the attacker knows valid:
+
+facilityId
+branchId
+tenantId
+
+the server must still verify the complete relationship.
+
+==================================================
+8. FACILITY STATUS EFFECT
+==================================================
+
+A Branch cannot operate normally under an unavailable Facility.
+
+Determine and document the correct behavior based on the existing Facility lifecycle.
+
+At minimum:
+
+If Facility is DEACTIVATED:
+→ Branch normal operations must be blocked.
+
+If Facility is SUSPENDED:
+→ Branch normal operations should be blocked unless the existing architecture explicitly defines otherwise.
+
+Do not invent a new subscription/entitlement rule.
+
+This is purely lifecycle/structural enforcement.
+
+A Branch must not bypass its parent's Facility status.
+
+==================================================
+9. TENANT STATUS EFFECT
+==================================================
+
+Existing Tenant lifecycle rules continue to apply.
+
+If the Tenant is not in an operational state:
+
+Branch operations must not proceed.
+
+Do not duplicate tenant status fields on Branch.
+
+Resolve Tenant through the trusted tenant context / Facility relationship.
+
+==================================================
+10. AUTHORIZATION
+==================================================
+
+Reuse the existing TenantAuthorizationGuard.
+
+Do not create a separate authorization architecture.
+
+Define Branch permissions only if required by the existing permission model.
+
+Inspect Phase 14E's Facility permission naming and follow the established convention.
+
+Recommended conceptual permissions:
+
+branches.read
+branches.create
+branches.update
+branches.suspend
+branches.activate
+branches.deactivate
+
+Do not blindly duplicate these if equivalent permissions already exist.
+
+Do not create platform permissions for Branch operations.
+
+Branch authorization is tenant authorization.
+
+==================================================
+11. FACILITY MANAGERS / FUTURE SCOPE
+==================================================
+
+Do NOT implement facility-specific RBAC yet.
+
+Do not create:
+
+FacilityRole
+FacilityPermission
+BranchRole
+BranchPermission
+
+Tenant roles/permissions remain the current authorization model.
+
+Future facility/branch scope restrictions may be added later as part of a dedicated authorization scope phase.
+
+For now, tenant authorization plus structural Facility/Branch ownership is the required boundary.
+
+Do not prematurely implement fine-grained staff scope.
+
+==================================================
+12. CREATE BRANCH
+==================================================
+
+Creation must:
+
+1. Authenticate the user.
+2. Resolve TrustedTenantContext.
+3. Verify required tenant permission.
+4. Resolve the Facility within the trusted tenant.
+5. Confirm Facility status permits creation.
+6. Validate input.
+7. Create Branch under that Facility.
+
+The client must not control ownership by arbitrary IDs.
+
+A request such as:
+
+{
+  tenantId: "tenant-b",
+  facilityId: "facility-b",
+  name: "Branch"
+}
+
+must not allow a Tenant A user to create a Branch in Tenant B.
+
+Use trusted server-side relationships.
+
+==================================================
+13. READ BRANCHES
+==================================================
+
+List branches under a Facility.
+
+Conceptually:
+
+GET /api/v1/tenants/:tenantId/facilities/:facilityId/branches
+
+The tenantId is only an input to trusted tenant resolution.
+
+The repository query must verify:
+
+facilityId belongs to trusted tenant.
+
+Then list Branch records belonging to that Facility.
+
+Never list branches using facilityId alone.
+
+For a single branch:
+
+GET /api/v1/tenants/:tenantId/facilities/:facilityId/branches/:branchId
+
+The query must verify the entire relationship:
+
+Tenant
+→ Facility
+→ Branch
+
+in the server-side database query.
+
+==================================================
+14. UPDATE BRANCH
+==================================================
+
+Allowed fields should be limited to Branch-owned mutable fields.
+
+Do not allow:
+
+facilityId changes.
+
+A Branch must not be moved between Facilities through a generic PATCH.
+
+Do not allow tenant changes.
+
+If a future business requirement needs branch relocation, that should be a separate explicit operation with dedicated audit and authorization.
+
+Do not implement relocation now.
+
+==================================================
+15. STATUS TRANSITIONS
+==================================================
+
+Use explicit lifecycle service methods.
+
+For example:
+
+suspendBranch()
+activateBranch()
+deactivateBranch()
+
+Follow existing project naming conventions.
+
+Validate:
+
+- current status
+- parent Facility status
+- tenant status
+- authorization
+
+Do not accept arbitrary status values from clients and persist them directly.
+
+==================================================
+16. DELETE POLICY
+==================================================
+
+Do not implement DELETE.
+
+Use DEACTIVATED.
+
+Do not physically delete operational location metadata.
+
+Document this decision consistently with Facility.
+
+==================================================
+17. REPOSITORY LAYER
+==================================================
+
+Follow:
+
+Controller
+→ Tenant Authorization
+→ Service
+→ Branch Repository
+→ Prisma
+→ MySQL/MariaDB
+
+Controllers must not access Prisma directly.
+
+Repository methods must be scoped correctly.
+
+Avoid unsafe methods such as:
+
+findBranchById(id)
+
+if they allow unscoped lookup.
+
+Prefer methods that require trusted tenant/facility scope.
+
+For example conceptually:
+
+findByFacility(facilityContext)
+findByIdWithinFacility(facilityContext, branchId)
+
+Use the project's actual types and naming conventions.
+
+Fail closed if required trusted context is missing.
+
+==================================================
+18. DATABASE CONSTRAINTS
+==================================================
+
+The database must enforce important structural invariants.
+
+At minimum:
+
+- Branch.facilityId required.
+- Facility foreign key required.
+- Appropriate index on facilityId.
+- Appropriate tenant-scoped uniqueness if code/slug exists.
+- No orphan Branch records.
+
+Do not create a redundant tenantId unless architecture review proves it necessary.
+
+Inspect existing Tenant → Facility deletion/lifecycle behavior.
+
+Do not add automatic cascade deletion that could unexpectedly remove operational records.
+
+Prefer restrictive relational behavior unless existing architecture requires otherwise.
+
+==================================================
+19. AUDIT
+==================================================
+
+Reuse existing PlatformAuditLog.
+
+At minimum consider:
+
+BRANCH_CREATED
+BRANCH_UPDATED
+BRANCH_SUSPENDED
+BRANCH_ACTIVATED
+BRANCH_DEACTIVATED
+
+Follow existing audit type conventions.
+
+Audit:
+
+- authenticated actor
+- trusted tenant
+- facility
+- branch
+- operation
+
+Do not record:
+
+- passwords
+- tokens
+- cookies
+- Authorization headers
+- secrets
+- DATABASE_URL
+- raw request bodies
+
+Avoid excessive sensitive metadata.
+
+==================================================
+20. ERROR HANDLING
+==================================================
+
+Use existing application error conventions.
+
+Do not expose raw Prisma errors.
+
+Do not expose SQL/database details.
+
+For cross-tenant or cross-facility access:
+
+return the established safe authorization/not-found behavior.
+
+Do not reveal:
+
+"This Branch exists but belongs to another tenant."
+
+Avoid information-disclosure oracles.
+
+==================================================
+21. API DESIGN
+==================================================
+
+Use versioned APIs:
+
+/api/v1/...
+
+Keep Branch endpoints nested under Tenant + Facility where appropriate.
+
+Conceptually:
+
+POST
+/api/v1/tenants/:tenantId/facilities/:facilityId/branches
+
+GET
+/api/v1/tenants/:tenantId/facilities/:facilityId/branches
+
+GET
+/api/v1/tenants/:tenantId/facilities/:facilityId/branches/:branchId
+
+PATCH
+/api/v1/tenants/:tenantId/facilities/:facilityId/branches/:branchId
+
+Lifecycle:
+
+POST
+/.../:branchId/suspend
+
+POST
+/.../:branchId/activate
+
+POST
+/.../:branchId/deactivate
+
+Use existing project conventions if they provide a better equivalent.
+
+Do not create duplicate route families.
+
+==================================================
+22. PLATFORM VS TENANT
+==================================================
+
+Keep platform authorization separate.
+
+Platform OWNER/SUPER_ADMIN/etc. must not silently bypass tenant authorization.
+
+Tenant operations remain tenant-scoped.
+
+If platform-level management of Branches is needed later, design it separately.
+
+Do not add it now.
+
+==================================================
+23. MONGODB
+==================================================
+
+Do NOT implement MongoDB.
+
+Branch metadata remains in the central Prisma/MySQL/MariaDB database.
+
+Do not create:
+
+- Mongo connection
+- Mongo models
+- tenant databases
+- database registry
+- provisioning
+- routing
+- multi-database logic
+- backups
+
+==================================================
+24. HEALTHCARE
+==================================================
+
+Do NOT implement healthcare entities.
+
+No:
+
+- doctors
+- staff
+- patients
+- departments
+- specialties
+- appointments
+- schedules
+- visits
+- records
+- prescriptions
+- documents
+
+Branch is still only SaaS/platform location metadata.
+
+==================================================
+25. SUBSCRIPTIONS
+==================================================
+
+Do NOT implement:
+
+- plans
+- subscriptions
+- entitlements
+- usage limits
+- billing
+
+Do not block Branch creation based on a subscription.
+
+Subscription entitlement is a later layer.
+
+==================================================
+26. TESTING
+==================================================
+
+Create comprehensive Branch tests.
+
+At minimum:
+
+MODEL / PERSISTENCE:
+
+1. Branch requires Facility.
+2. Branch cannot exist without valid Facility.
+3. Facility relationship is enforced.
+4. appropriate indexes exist.
+5. uniqueness works correctly if code/slug exists.
+
+CREATE:
+
+6. authorized active tenant member can create Branch.
+7. missing tenant permission → 403.
+8. unauthenticated → 401.
+9. client tenantId cannot override trusted tenant.
+10. client facilityId cannot reference another tenant's Facility.
+11. Branch is created under the correct Facility.
+
+READ:
+
+12. authorized user can list Branches.
+13. list is restricted to requested Facility.
+14. cross-tenant Facility cannot be accessed.
+15. cross-facility Branch cannot be accessed.
+16. branch lookup validates Tenant → Facility → Branch relationship.
+17. nonexistent Branch handled safely.
+
+UPDATE:
+
+18. authorized update works.
+19. tenant cannot be changed.
+20. facility cannot be changed.
+21. cross-tenant update fails.
+22. cross-facility update fails.
+23. unauthorized update → 403.
+
+STATUS:
+
+24. ACTIVE → SUSPENDED works.
+25. SUSPENDED → ACTIVE works.
+26. ACTIVE → DEACTIVATED works.
+27. SUSPENDED → DEACTIVATED works.
+28. invalid transitions fail.
+29. deactivated lifecycle behaves consistently with Facility.
+30. inactive parent Facility prevents prohibited Branch operations.
+
+AUTHORIZATION:
+
+31. Tenant A user cannot access Tenant B Branch.
+32. Facility A1 user context cannot access Branch under Facility A2 when the request relationship is invalid.
+33. Tenant A permission cannot authorize Tenant B.
+34. client-provided role cannot escalate.
+35. client-provided permission cannot escalate.
+36. platform permission cannot substitute tenant Branch permission.
+
+STRUCTURAL ISOLATION:
+
+37. Branch under Facility A cannot be accessed through Facility B.
+38. Branch under Tenant A cannot be accessed through Tenant B.
+39. arbitrary combination of tenantId/facilityId/branchId cannot bypass relationship checks.
+40. missing trusted context fails closed.
+
+AUDIT:
+
+41. creation audited.
+42. update audited.
+43. suspend audited.
+44. activate audited.
+45. deactivate audited.
+46. trusted actor attribution.
+47. no sensitive credentials in audit metadata.
+
+REGRESSION:
+
+48. all authentication tests pass.
+49. all platform authorization tests pass.
+50. all tenant membership tests pass.
+51. all tenant role tests pass.
+52. all tenant authorization tests pass.
+53. all Facility tests pass.
+
+Add additional tests wherever implementation details require them.
+
+==================================================
+27. MIGRATION
+==================================================
+
+If Prisma schema changes are required:
+
+- create one proper migration
+- inspect generated SQL
+- validate schema
+- validate migration diff
+- do not manually rewrite migration history
+- do not apply production migrations from this environment
+
+Do not modify unrelated migrations.
+
+==================================================
+28. DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation.
+
+Document the hierarchy:
+
+Tenant / Organization
+  ↓
+Facility
+  ↓
+Branch
+
+Document:
+
+- Branch belongs to exactly one Facility.
+- Facility belongs to exactly one Tenant.
+- Tenant context is established first.
+- Facility relationship is validated inside tenant scope.
+- Branch relationship is validated inside facility scope.
+- Branch cannot move between Facilities through normal update.
+- Branch does not create MongoDB databases.
+- Branch is not a healthcare record.
+- Branch does not introduce subscriptions.
+- Branch does not introduce facility-level RBAC.
+
+Clearly identify future work:
+
+Staff
+Doctors
+Healthcare
+Subscriptions
+MongoDB
+
+==================================================
+29. VALIDATION
+==================================================
+
+Run:
+
+- focused Branch tests
+- full test suite
+- lint
+- formatting
+- both TypeScript checks
+- production build
+- Prisma schema validation
+- migration validation if applicable
+- git diff --check
+
+Restart the application.
+
+Runtime checks:
+
+GET /health → 200
+
+GET /docs → 200
+
+Unauthenticated Branch request → 401
+
+GET /ready should reflect the actual database state.
+
+Do not fake database availability.
+
+If development has no database connection, report:
+
+/ready = 503
+
+and clearly distinguish this from application health.
+
+==================================================
+30. SECURITY REVIEW
+==================================================
+
+Perform a focused security review for:
+
+- IDOR
+- cross-tenant access
+- cross-facility access
+- tenantId manipulation
+- facilityId manipulation
+- branchId manipulation
+- privilege escalation
+- missing TrustedTenantContext
+- platform/tenant permission confusion
+- parent Facility status bypass
+- tenant status bypass
+- unsafe relocation
+- unscoped repository access
+- information disclosure
+- direct Prisma access from controllers
+- accidental MongoDB coupling
+
+Fix any critical/high-severity issue before committing.
+
+==================================================
+31. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff and explicitly confirm that it does NOT implement:
+
+- Staff
+- Doctors
+- Nurses
+- Patients
+- Departments
+- Specialties
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Clinical notes
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database registry
+- Tenant DB provisioning
+- Backups
+- Voice AI
+- Ownership handoff
+- Facility-level RBAC
+- Branch-level RBAC
+- Branch relocation
+
+Do not start another phase automatically.
+
+STOP after Phase 14F.
+
+==================================================
+32. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): add branch foundation
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+The attached specification or unrelated untracked files must remain untouched.
+
+==================================================
+33. FINAL REPORT
+==================================================
+
+After completion, report:
+
+1. Files changed
+2. Branch schema/model
+3. Tenant → Facility → Branch relationship
+4. Branch lifecycle
+5. Facility parent-status behavior
+6. Repository scoping
+7. Authorization behavior
+8. API endpoints
+9. Audit behavior
+10. Database/migration changes
+11. Test count and results
+12. Lint/typecheck/build/Prisma results
+13. Runtime verification
+14. Security review findings
+15. Commit hash
+16. Explicit confirmation that Staff, Doctors, Healthcare, Subscriptions, MongoDB, Facility-level RBAC, Branch-level RBAC, and later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 15 or any later phase.
