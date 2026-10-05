@@ -1,0 +1,1168 @@
+PHASE 15 — SAAS PLANS FOUNDATION
+
+We are continuing Thanarah after successful completion of Phase 14F.
+
+Completed:
+
+Phase 14A
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D
+a80d97733fbb10e44ccf68c92578476775be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Phase 14E
+68cf8cc
+feat(tenant): add facility foundation
+
+Phase 14F
+2af2224
+feat(tenant): add branch foundation
+
+The current hierarchy is:
+
+Platform
+  ↓
+Tenant / Organization
+  ↓
+Facility
+  ↓
+Branch
+
+Now implement ONLY:
+
+PHASE 15 — SaaS PLANS FOUNDATION
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Introduce the central SaaS Plan foundation.
+
+This phase establishes the architecture required to distinguish:
+
+1. Authentication
+2. Authorization
+3. Subscription
+4. Entitlement
+5. Usage limits
+
+These concepts MUST remain separate.
+
+The target conceptual flow is:
+
+Authentication
+    ↓
+Tenant Membership
+    ↓
+Tenant Authorization
+    ↓
+Subscription Status
+    ↓
+Plan
+    ↓
+Entitlement
+    ↓
+Usage Limit
+    ↓
+Business Operation
+
+IMPORTANT:
+
+Phase 15 implements ONLY the Plan and Feature/Entitlement foundation.
+
+Do NOT implement active subscriptions yet.
+
+Do NOT implement billing yet.
+
+Do NOT implement payments yet.
+
+Do NOT implement usage metering yet.
+
+Do NOT implement healthcare features.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- SaaS Plan model
+- SaaS Feature/Entitlement definition model
+- Plan-to-feature relationship
+- Feature key/value or configuration structure where justified
+- Plan lifecycle/status
+- Plan repository
+- Plan service
+- Plan administration API
+- Plan authorization for platform administrators
+- Plan audit events
+- Plan tests
+- Documentation
+- Prisma migration if required
+
+Do NOT implement:
+
+- Tenant subscriptions
+- Subscription lifecycle
+- Billing
+- Invoices
+- Payments
+- Payment gateways
+- Trials
+- Renewals
+- Upgrades
+- Downgrades
+- Cancellation
+- Expiration
+- Usage metering
+- Usage counters
+- Quotas enforcement
+- Healthcare
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- MongoDB
+- Tenant database registry
+- Tenant provisioning
+- Voice AI
+- Ownership handoff
+- Facility-level RBAC
+- Branch-level RBAC
+
+STOP after Phase 15.
+
+==================================================
+1. ARCHITECTURAL BOUNDARY
+==================================================
+
+Plans are PLATFORM/SaaS metadata.
+
+Plans belong in the CENTRAL PLATFORM DATABASE.
+
+Use Prisma + MySQL/MariaDB.
+
+Do NOT put Plan data into tenant MongoDB.
+
+Conceptually:
+
+Platform
+ ├── Users
+ ├── Roles
+ ├── Permissions
+ ├── Tenants
+ ├── Plans
+ ├── Features
+ └── future Subscriptions
+        ↓
+Tenant operational data remains separate.
+
+==================================================
+2. PLAN VS SUBSCRIPTION
+==================================================
+
+This distinction is mandatory.
+
+A Plan is a reusable definition.
+
+A Subscription is a tenant-specific commercial assignment to a Plan.
+
+Examples:
+
+Plan:
+PRO
+
+Subscription:
+Tenant A subscribed to PRO from date X to date Y.
+
+DO NOT create Subscription in Phase 15.
+
+Do not put:
+
+tenantId
+
+inside Plan.
+
+A Plan is not owned by a Tenant.
+
+Multiple Tenants will eventually reference the same Plan through Subscriptions.
+
+==================================================
+3. PLAN MODEL
+==================================================
+
+Create a SaaS Plan model using the existing Prisma naming conventions.
+
+At minimum evaluate:
+
+- id
+- key/code
+- name
+- description
+- status
+- createdAt
+- updatedAt
+
+Keep it intentionally small.
+
+Do NOT add billing fields yet.
+
+Do NOT add:
+
+- price
+- currency
+- billingInterval
+- trialDays
+- paymentProviderId
+- Stripe IDs
+- PayPal IDs
+- invoice settings
+- tax settings
+
+Those belong to later commercial/billing phases.
+
+If a future billing layer needs them, it can be introduced without corrupting this foundation.
+
+==================================================
+4. PLAN KEY
+==================================================
+
+Plans need a stable machine-readable identifier.
+
+Example:
+
+FREE
+STARTER
+PRO
+ENTERPRISE
+
+Use the project's established naming convention.
+
+The key/code must be:
+
+- unique
+- stable
+- server-controlled
+- safe for internal references
+
+Do not use display name as the primary machine identifier.
+
+Do not allow arbitrary tenant users to change the key.
+
+==================================================
+5. PLAN NAME
+==================================================
+
+Plan name is presentation/business metadata.
+
+It may be changed according to platform administration rules.
+
+Do not use name as a foreign key.
+
+Do not make authorization decisions based on display name.
+
+==================================================
+6. PLAN STATUS
+==================================================
+
+Introduce a clear Plan lifecycle.
+
+Recommended:
+
+ACTIVE
+INACTIVE
+ARCHIVED
+
+Inspect existing project lifecycle conventions and use consistent naming if an equivalent already exists.
+
+Important:
+
+An inactive/archived Plan must not be treated as an available plan for future subscriptions.
+
+However:
+
+Do NOT implement subscription behavior yet because subscriptions are out of scope.
+
+Do not physically delete plans.
+
+Use lifecycle/status instead.
+
+Define valid transitions.
+
+Do not invent unnecessary lifecycle complexity.
+
+==================================================
+7. FEATURE / ENTITLEMENT DEFINITION
+==================================================
+
+Introduce a reusable SaaS Feature definition.
+
+A Feature represents a capability that can eventually be granted by a Plan.
+
+Examples:
+
+PATIENTS
+APPOINTMENTS
+DOCTORS
+REPORTS
+WHATSAPP
+VOICE_AI
+ADVANCED_ANALYTICS
+
+These are examples only.
+
+Do not automatically add every future feature to the database.
+
+Keep the initial feature catalog minimal.
+
+The feature definition must be separate from:
+
+Tenant permissions.
+
+This is critical.
+
+Tenant Permission answers:
+
+"Can this authenticated tenant member perform this operation?"
+
+Entitlement answers:
+
+"Does this tenant's commercial plan allow this capability?"
+
+They must never be merged.
+
+==================================================
+8. PERMISSION VS ENTITLEMENT
+==================================================
+
+Document this exact distinction.
+
+Example:
+
+A tenant may have:
+
+Tenant Permission:
+appointments.create
+
+but if the tenant's commercial entitlement does not include appointments:
+
+the business operation should eventually be blocked by entitlement.
+
+Conversely:
+
+A plan may include appointments,
+
+but a receptionist without:
+
+appointments.create
+
+must still be denied by authorization.
+
+Therefore:
+
+Authorization AND Entitlement
+
+are both required before a future business operation proceeds.
+
+Do NOT implement this combined runtime gate in Phase 15.
+
+Only establish the foundation.
+
+==================================================
+9. FEATURE MODEL
+==================================================
+
+Create a feature definition model.
+
+At minimum evaluate:
+
+- id
+- key/code
+- name
+- description
+- status
+- createdAt
+- updatedAt
+
+Feature key must be unique.
+
+Feature must not belong to a Tenant.
+
+Feature is platform-level metadata.
+
+Do not put tenantId on Feature.
+
+==================================================
+10. PLAN → FEATURE RELATIONSHIP
+==================================================
+
+Create a normalized relationship between Plan and Feature.
+
+Conceptually:
+
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+Avoid storing a JSON array of feature IDs inside Plan unless the existing architecture has a compelling reason.
+
+Prefer relational integrity.
+
+The relationship should support future configuration such as:
+
+Feature enabled
+or
+Feature enabled with a limit/configuration
+
+But do not implement a complex entitlement engine now.
+
+==================================================
+11. FEATURE CONFIGURATION
+==================================================
+
+If the architecture needs a value/configuration field on PlanFeature, keep it generic and controlled.
+
+Examples of future concepts:
+
+appointments.max
+patients.max
+storage.max
+locations.max
+
+However:
+
+DO NOT implement usage enforcement now.
+
+DO NOT implement counters now.
+
+DO NOT implement metering now.
+
+The current phase should only establish a safe representation for future entitlement configuration.
+
+If a JSON configuration field is used:
+
+- validate its shape
+- keep it platform-controlled
+- do not accept arbitrary unvalidated objects from clients
+- document its intended future use
+
+Do not create a dynamic scripting/policy engine.
+
+==================================================
+12. DEFAULT PLAN / SEEDING
+==================================================
+
+Determine whether the existing project has a safe seed mechanism.
+
+If a seed is appropriate, create only minimal canonical plans/features required to validate the architecture.
+
+Do NOT create a huge commercial catalog.
+
+Do NOT invent final pricing.
+
+Do NOT claim pricing decisions have been finalized.
+
+If seed data is added, make it deterministic and idempotent.
+
+Do not require the development environment to have a live database merely to run static validation.
+
+==================================================
+13. PLATFORM AUTHORIZATION
+==================================================
+
+Plan and Feature management is a PLATFORM administration operation.
+
+Use:
+
+PlatformAuthGuard
++
+PlatformAuthorizationGuard
+
+Do NOT use TenantAuthorizationGuard for platform Plan administration.
+
+Do not allow ordinary tenant members to manage Plans.
+
+Do not allow tenant permissions to substitute for platform permissions.
+
+Use the existing platform permission architecture.
+
+If new platform permissions are required, inspect existing conventions first.
+
+Possible conceptual permissions:
+
+plans.read
+plans.create
+plans.update
+plans.activate
+plans.deactivate
+features.read
+features.create
+features.update
+features.activate
+features.deactivate
+plan_features.manage
+
+Do not blindly create all of these.
+
+Use the minimum permission set required by the implementation and established naming conventions.
+
+==================================================
+14. PLATFORM OWNER PROTECTION
+==================================================
+
+Preserve existing platform authorization protections.
+
+Do not weaken:
+
+- OWNER
+- SUPER_ADMIN
+- PLATFORM_ADMIN
+- SECURITY_ADMIN
+- SUPPORT_ADMIN
+
+Do not modify existing role semantics unnecessarily.
+
+Plan administration must respect the existing platform authorization system.
+
+==================================================
+15. PLAN CRUD
+==================================================
+
+Implement minimum platform administration operations.
+
+Required:
+
+CREATE PLAN
+READ/LIST PLANS
+READ PLAN
+UPDATE PLAN
+ACTIVATE/DEACTIVATE/ARCHIVE PLAN as appropriate to lifecycle
+
+Do not implement DELETE.
+
+Plans are platform commercial definitions and should not be casually deleted.
+
+==================================================
+16. FEATURE CRUD
+==================================================
+
+Implement minimum platform administration operations for Features.
+
+Required:
+
+CREATE FEATURE
+READ/LIST FEATURES
+READ FEATURE
+UPDATE FEATURE
+ACTIVATE/DEACTIVATE FEATURE as appropriate
+
+Do not implement DELETE.
+
+Do not allow tenant users to manage Features.
+
+==================================================
+17. PLAN FEATURE MANAGEMENT
+==================================================
+
+Implement a controlled way for authorized platform administrators to associate Features with Plans.
+
+Required conceptual operations:
+
+Add Feature to Plan
+Remove Feature from Plan
+Update Feature configuration if configuration exists
+
+All operations must verify:
+
+- Plan exists
+- Feature exists
+- Plan status permits modification
+- Feature status permits association
+- relationship uniqueness
+- authorization
+
+Do not allow duplicate PlanFeature relationships.
+
+Do not create arbitrary client-defined feature keys.
+
+==================================================
+18. PLAN STATUS EFFECT
+==================================================
+
+An inactive/archived Plan should not be treated as available for future assignment.
+
+Do not implement subscription assignment yet.
+
+Do not build a fake subscription system to demonstrate this.
+
+Only enforce Plan lifecycle consistency.
+
+==================================================
+19. FEATURE STATUS EFFECT
+==================================================
+
+Inactive Features should not be newly attached to Plans unless the platform policy explicitly permits it.
+
+Prefer safe behavior:
+
+Inactive Feature
+→ cannot be newly assigned to a Plan.
+
+Existing historical relationships should not be silently deleted.
+
+Do not implement tenant subscription migration.
+
+==================================================
+20. TENANT ISOLATION
+==================================================
+
+Plans and Features are platform-level.
+
+They are NOT tenant-scoped.
+
+Therefore:
+
+Tenant A must not own a Plan.
+
+Tenant B must not modify a Plan.
+
+Tenant roles must not grant Plan management.
+
+This is a deliberate architecture decision.
+
+Do not add tenantId to Plan or Feature.
+
+==================================================
+21. FUTURE SUBSCRIPTION BOUNDARY
+==================================================
+
+Document the future model:
+
+Plan
+  ↓
+Subscription
+  ↓
+Tenant
+
+A future Subscription will belong to a Tenant and reference a Plan.
+
+Do NOT create Subscription now.
+
+Future Subscription will eventually handle:
+
+- current plan
+- lifecycle
+- start/end
+- renewal
+- cancellation
+- trial
+- billing state
+
+Those are later phases.
+
+==================================================
+22. FUTURE ENTITLEMENT BOUNDARY
+==================================================
+
+Document:
+
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+Later:
+
+Tenant
+  ↓
+Subscription
+  ↓
+Plan
+  ↓
+Feature Entitlement
+
+Do not implement tenant entitlement resolution yet.
+
+Do not create:
+
+TenantEntitlement
+
+in this phase unless an existing architecture requirement makes it unavoidable.
+
+The plan-level definition is sufficient.
+
+==================================================
+23. HEALTHCARE FEATURES
+==================================================
+
+Do not create actual healthcare Feature records unless they are strictly necessary for testing.
+
+If sample feature keys are required, keep them minimal and clearly documented as catalog definitions, not implemented healthcare functionality.
+
+Do not implement the actual healthcare modules.
+
+==================================================
+24. BILLING
+==================================================
+
+Absolutely no billing implementation.
+
+Do not add:
+
+- prices
+- invoices
+- payments
+- payment gateways
+- tax calculations
+- refunds
+- receipts
+- subscriptions
+- renewals
+
+This phase is Plan/Feature architecture only.
+
+==================================================
+25. API DESIGN
+==================================================
+
+These are platform administration APIs.
+
+Use:
+
+/api/v1/platform/plans
+/api/v1/platform/features
+
+Follow existing API conventions.
+
+Conceptually:
+
+POST   /api/v1/platform/plans
+GET    /api/v1/platform/plans
+GET    /api/v1/platform/plans/:planId
+PATCH  /api/v1/platform/plans/:planId
+
+Lifecycle endpoints as appropriate.
+
+Features:
+
+POST   /api/v1/platform/features
+GET    /api/v1/platform/features
+GET    /api/v1/platform/features/:featureId
+PATCH  /api/v1/platform/features/:featureId
+
+Plan features:
+
+POST   /api/v1/platform/plans/:planId/features
+GET    /api/v1/platform/plans/:planId/features
+PATCH  /api/v1/platform/plans/:planId/features/:featureId
+DELETE/REMOVE relationship only if this matches existing API conventions
+
+Do not physically delete Plan or Feature records.
+
+Use the project's established route conventions if they differ.
+
+Do not create duplicate endpoints.
+
+==================================================
+26. VALIDATION
+==================================================
+
+Validate:
+
+Plan key/code:
+- required
+- normalized
+- bounded
+- unique
+
+Plan name:
+- required
+- trimmed
+- bounded
+
+Feature key/code:
+- required
+- normalized
+- bounded
+- unique
+
+Feature name:
+- required
+- trimmed
+- bounded
+
+Configuration:
+- validated
+- bounded
+- platform-controlled
+
+Do not accept arbitrary unsafe payloads.
+
+==================================================
+27. AUDIT
+==================================================
+
+Reuse PlatformAuditLog.
+
+Add appropriate audit event types for:
+
+- PLAN_CREATED
+- PLAN_UPDATED
+- PLAN_ACTIVATED
+- PLAN_DEACTIVATED
+- PLAN_ARCHIVED
+- FEATURE_CREATED
+- FEATURE_UPDATED
+- FEATURE_ACTIVATED
+- FEATURE_DEACTIVATED
+- PLAN_FEATURE_ATTACHED
+- PLAN_FEATURE_UPDATED
+- PLAN_FEATURE_DETACHED
+
+Only add the events actually required by the implementation.
+
+Do not create another audit system.
+
+Audit actor comes from trusted platform authentication context.
+
+Do not store:
+
+- passwords
+- access tokens
+- refresh tokens
+- cookies
+- Authorization headers
+- secrets
+- DATABASE_URL
+
+==================================================
+28. REPOSITORY ARCHITECTURE
+==================================================
+
+Follow:
+
+Controller
+→ Platform Authorization
+→ Service
+→ Repository
+→ Prisma
+→ MySQL/MariaDB
+
+Controllers must not access Prisma directly.
+
+Do not mix Plan repositories with Tenant repositories.
+
+Do not introduce generic "SaaS repository" abstractions unless truly necessary.
+
+Keep boundaries clear.
+
+==================================================
+29. DATABASE CONSTRAINTS
+==================================================
+
+Database must enforce:
+
+- Plan key uniqueness
+- Feature key uniqueness
+- PlanFeature uniqueness
+- required foreign keys
+- appropriate indexes
+
+PlanFeature must reference valid Plan and Feature.
+
+Do not allow orphan relationships.
+
+Do not cascade in a way that silently destroys commercial configuration.
+
+Prefer explicit lifecycle over destructive deletion.
+
+==================================================
+30. MIGRATION
+==================================================
+
+If schema changes are required:
+
+- create one proper Prisma migration
+- inspect generated SQL
+- validate schema
+- validate migration diff
+- do not rewrite migration history
+- do not modify unrelated migrations
+- do not apply production migration from Replit
+
+If seed data is introduced, keep it separate and idempotent.
+
+==================================================
+31. TESTING
+==================================================
+
+Create focused comprehensive tests.
+
+PLAN:
+
+1. create Plan with valid data
+2. duplicate Plan key rejected
+3. invalid Plan key rejected
+4. list Plans
+5. read Plan
+6. update Plan
+7. lifecycle transition works
+8. invalid lifecycle transition rejected
+9. Plan cannot be physically deleted
+10. inactive Plan behavior is correct
+
+FEATURE:
+
+11. create Feature
+12. duplicate Feature key rejected
+13. invalid Feature key rejected
+14. list Features
+15. read Feature
+16. update Feature
+17. lifecycle transition works
+18. invalid lifecycle transition rejected
+19. Feature cannot be physically deleted
+
+PLAN → FEATURE:
+
+20. attach Feature to Plan
+21. duplicate relationship rejected/idempotent according to convention
+22. list Plan Features
+23. update PlanFeature configuration if implemented
+24. remove relationship
+25. nonexistent Plan rejected
+26. nonexistent Feature rejected
+27. inactive Feature cannot be newly attached
+28. inactive/archived Plan cannot be modified in prohibited ways
+
+AUTHORIZATION:
+
+29. unauthenticated Plan request → 401
+30. authenticated tenant member cannot manage Plans
+31. tenant permission cannot substitute platform permission
+32. insufficient platform permission → 403
+33. authorized platform administrator succeeds
+34. client-provided role cannot escalate
+35. client-provided permission cannot escalate
+
+SEPARATION:
+
+36. Plan has no tenant ownership
+37. Feature has no tenant ownership
+38. tenantId cannot be injected into Plan ownership
+39. Tenant A cannot modify Plan because it is a tenant operation
+40. Platform authorization remains separate from Tenant authorization
+
+AUDIT:
+
+41. Plan creation audited
+42. Plan update audited
+43. lifecycle events audited
+44. Feature creation audited
+45. PlanFeature changes audited
+46. trusted actor attribution
+47. no sensitive credentials in metadata
+
+REGRESSION:
+
+48. all authentication tests pass
+49. all platform authorization tests pass
+50. all tenant membership tests pass
+51. all tenant role tests pass
+52. all tenant authorization tests pass
+53. all Facility tests pass
+54. all Branch tests pass
+
+Add additional tests required by implementation.
+
+==================================================
+32. SECURITY REVIEW
+==================================================
+
+Review for:
+
+- privilege escalation
+- tenant users managing platform Plans
+- tenantId injection
+- client-controlled feature keys
+- client-controlled permissions
+- IDOR
+- unsafe PlanFeature relationships
+- inactive Plan bypass
+- inactive Feature bypass
+- direct Prisma access from controllers
+- audit leakage
+- destructive deletion
+- platform/tenant authorization confusion
+
+Fix critical/high-severity issues before committing.
+
+==================================================
+33. DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation.
+
+Document:
+
+Authorization:
+
+User
+→ Tenant Membership
+→ Tenant Permission
+
+Commercial entitlement:
+
+Tenant
+→ future Subscription
+→ Plan
+→ PlanFeature
+→ Feature
+
+Explicitly document:
+
+Authorization ≠ Entitlement
+
+Plan ≠ Subscription
+
+Feature ≠ Permission
+
+Plan/Feature are platform-level metadata.
+
+Plans are reusable.
+
+Tenants will eventually subscribe to Plans.
+
+Do not document pricing as finalized.
+
+==================================================
+34. RUNTIME VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- formatting
+- both TypeScript checks
+- production build
+- Prisma validation
+- migration/schema diff validation
+- git diff --check
+
+Restart application.
+
+Verify:
+
+GET /health → 200
+
+GET /docs → 200
+
+Unauthenticated Plan request → 401
+
+Unauthenticated Feature request → 401
+
+/ready must reflect actual DB availability.
+
+If development has no DB:
+
+/ready → 503
+
+Do not fake database availability.
+
+Do not apply migration to production.
+
+==================================================
+35. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff.
+
+Explicitly confirm the following were NOT implemented:
+
+- Subscription
+- Subscription lifecycle
+- Billing
+- Payments
+- Invoices
+- Pricing
+- Trials
+- Renewals
+- Upgrades
+- Downgrades
+- Cancellation
+- Usage metering
+- Usage counters
+- Quota enforcement
+- Tenant entitlement runtime
+- Healthcare
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- MongoDB
+- Tenant database registry
+- Tenant database provisioning
+- Voice AI
+- Facility-level RBAC
+- Branch-level RBAC
+- Ownership handoff
+
+STOP after Phase 15.
+
+==================================================
+36. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(saas): add plan and feature foundation
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+Leave the attached specification untouched and uncommitted.
+
+==================================================
+37. FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Plan model
+3. Feature model
+4. PlanFeature relationship
+5. Lifecycle behavior
+6. Platform authorization behavior
+7. API endpoints
+8. Audit behavior
+9. Database/migration changes
+10. Seed data, if any
+11. Test count and results
+12. Lint/typecheck/build/Prisma results
+13. Runtime verification
+14. Security review findings
+15. Commit hash
+16. Explicit confirmation that Subscription, Billing, Entitlements runtime, Healthcare, MongoDB, and all later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 16 automatically.
