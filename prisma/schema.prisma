@@ -37,6 +37,12 @@ enum FacilityStatus {
   DEACTIVATED
 }
 
+enum BranchStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
 enum TenantMembershipStatus {
   INVITED
   ACTIVE
@@ -67,6 +73,11 @@ enum PlatformAuditEventType {
   FACILITY_SUSPENDED
   FACILITY_ACTIVATED
   FACILITY_DEACTIVATED
+  BRANCH_CREATED
+  BRANCH_UPDATED
+  BRANCH_SUSPENDED
+  BRANCH_ACTIVATED
+  BRANCH_DEACTIVATED
 }
 
 enum PlatformSecurityEventType {
@@ -215,8 +226,24 @@ model Facility {
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
   tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branches        Branch[]
 
   @@index([tenantId, status, createdAt])
+}
+
+model Branch {
+  id              String       @id @default(uuid()) @db.Char(36)
+  facilityId      String       @db.Char(36)
+  name            String       @db.VarChar(191)
+  status          BranchStatus @default(ACTIVE)
+  statusChangedAt DateTime     @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+  facility        Facility     @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+
+  @@index([facilityId, status, createdAt])
 }
 
 model TenantMembership {

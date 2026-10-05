@@ -1,6 +1,13 @@
 import { HttpStatus } from '@nestjs/common';
+import { BranchStatus } from '@prisma/client';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
+import type { BranchRecord, BranchRepository } from '../src/tenant/branch.repository';
+import {
+  BranchFacilityNotFoundError,
+  BranchNotFoundError,
+  BranchParentUnavailableError,
+} from '../src/tenant/branch.errors';
 import {
   TenantContextInvalidError,
   TenantContextRequiredError,
@@ -39,13 +46,17 @@ type _StorageRouteSupportsMultiplePlacements = AssertTrue<
     ? true
     : false
 >;
+type _BranchRecordHasNoDuplicatedTenantId = AssertFalse<
+  'tenantId' extends keyof BranchRecord ? true : false
+>;
 const tenantContractTypeAssertions: [
   _TenantStorageHasNoPhysicalDatabaseName,
   _TenantStorageHasNoConnectionString,
   _TenantStorageHasNoDefaultTenantFallback,
   _TenantStorageHasNoGlobalDatabaseFallback,
   _StorageRouteSupportsMultiplePlacements,
-] = [false, false, false, false, true];
+  _BranchRecordHasNoDuplicatedTenantId,
+] = [false, false, false, false, true, false];
 void tenantContractTypeAssertions;
 
 /**
@@ -127,7 +138,30 @@ export function verifyTenantIsolationTypes(
   void emptyStorageRoute;
 }
 
+/** Compile-time assertions for the nested Branch → Facility → Tenant scope. */
+export function verifyBranchIsolationTypes(
+  repository: BranchRepository,
+  trustedTenantId: string,
+  facilityId: string,
+  branchId: string,
+): void {
+  void repository.findByIdWithinFacility(trustedTenantId, facilityId, branchId);
+  void repository.listForFacility(trustedTenantId, facilityId, { limit: 50, offset: 0 });
+  void repository.listForFacility(trustedTenantId, facilityId, {
+    status: BranchStatus.ACTIVE,
+    limit: 50,
+    offset: 0,
+  });
+
+  // @ts-expect-error A Branch identifier cannot replace trusted Tenant and Facility scope.
+  void repository.findByIdWithinFacility(branchId);
+
+  // @ts-expect-error A Branch lookup cannot omit either parent scope identifier.
+  void repository.findByIdWithinFacility(trustedTenantId, branchId);
+}
+
 void verifyTenantIsolationTypes;
+void verifyBranchIsolationTypes;
 
 describe('tenant isolation contract', () => {
   it('keeps client-shaped data and platform identity distinct from trusted context', () => {
@@ -154,5 +188,32 @@ describe('tenant isolation contract', () => {
     expect(error.getStatus()).toBe(HttpStatus.FORBIDDEN);
     expect(error.getResponse()).toEqual({ code, message });
     expect(JSON.stringify(error.getResponse())).not.toMatch(/database|connection|mongodb/i);
+  });
+
+  it.each([
+    [
+      new BranchFacilityNotFoundError(),
+      HttpStatus.NOT_FOUND,
+      'BRANCH_FACILITY_NOT_FOUND',
+      'Facility was not found in the trusted tenant',
+    ],
+    [
+      new BranchNotFoundError(),
+      HttpStatus.NOT_FOUND,
+      'BRANCH_NOT_FOUND',
+      'Branch was not found under the requested Facility',
+    ],
+    [
+      new BranchParentUnavailableError(),
+      HttpStatus.CONFLICT,
+      'BRANCH_PARENT_UNAVAILABLE',
+      'Branch operations require an active tenant and active Facility',
+    ],
+  ])('returns a safe scoped Branch error', (error, status, code, message) => {
+    expect(error.getStatus()).toBe(status);
+    expect(error.getResponse()).toEqual({ code, message });
+    expect(JSON.stringify(error.getResponse())).not.toMatch(
+      /tenantId|facilityId|branchId|database|connection|mongodb/i,
+    );
   });
 });

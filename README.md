@@ -122,10 +122,10 @@ authorization only.
 
 ## Facility Foundation
 
-The hierarchy is `Tenant / Organization → Facility → Future Branch`. A tenant
-can have multiple Facilities, and every Facility belongs to exactly one tenant.
-Facilities are central-platform metadata stored in MySQL/MariaDB; they are not
-Branches or healthcare records and do not create tenant databases.
+The hierarchy is `Tenant / Organization → Facility → Branch`. A tenant can
+have multiple Facilities, and every Facility belongs to exactly one tenant.
+Facilities and Branches are central-platform metadata stored in MySQL/MariaDB;
+they are not healthcare records and do not create tenant databases.
 
 Tenant Facility routes use
 `/api/v1/tenants/:tenantId/facilities[/.../:facilityId]`. They reuse platform
@@ -138,9 +138,30 @@ and activate Facilities; MEMBER has read access. Deactivation is OWNER-only.
 
 Facilities support create, list, read, name update, and explicit suspend,
 activate, and deactivate operations. Deactivation is terminal; Facilities are
-not physically deleted. Branch, staff, healthcare operations, subscriptions
-and entitlements, and MongoDB/tenant-database provisioning remain future
-phases.
+not physically deleted.
+
+## Branch Foundation
+
+A Facility can have multiple Branches; each Branch belongs to exactly one
+Facility and derives its tenant through `Branch → Facility → Tenant`. Branch
+routes are nested under both the tenant and facility:
+`/api/v1/tenants/:tenantId/facilities/:facilityId/branches[/.../:branchId]`.
+Tenant context is established first, the Facility is looked up within that
+trusted tenant, and every Branch query verifies the Facility → Branch
+relationship. Branches cannot be moved between Facilities through normal
+updates.
+
+Branch operations require an active Tenant and active parent Facility. A
+suspended or deactivated Facility blocks normal Branch operations; an
+unavailable Tenant is rejected by tenant-context validation. Branch lifecycle
+uses `ACTIVE`, `SUSPENDED`, and terminal `DEACTIVATED` states, with no physical
+delete route. Tenant permissions use `tenant.branches.*`; there is no
+facility-level or branch-level RBAC.
+
+Branches remain central platform metadata. They do not create MongoDB
+databases, represent healthcare records, or introduce subscriptions. Staff,
+Doctors, healthcare operations, subscriptions and entitlements, and
+MongoDB/tenant-database provisioning remain future phases.
 
 Production runs on **cPanel**:
 

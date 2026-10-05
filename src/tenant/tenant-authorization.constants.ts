@@ -10,6 +10,12 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.facilities.suspend',
   'tenant.facilities.activate',
   'tenant.facilities.deactivate',
+  'tenant.branches.read',
+  'tenant.branches.create',
+  'tenant.branches.update',
+  'tenant.branches.suspend',
+  'tenant.branches.activate',
+  'tenant.branches.deactivate',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -35,6 +41,12 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   { code: 'tenant.facilities.suspend', description: 'Suspend an active tenant facility' },
   { code: 'tenant.facilities.activate', description: 'Activate a suspended tenant facility' },
   { code: 'tenant.facilities.deactivate', description: 'Permanently deactivate a tenant facility' },
+  { code: 'tenant.branches.read', description: 'View branches belonging to tenant facilities' },
+  { code: 'tenant.branches.create', description: 'Create branches within tenant facilities' },
+  { code: 'tenant.branches.update', description: 'Update branch details' },
+  { code: 'tenant.branches.suspend', description: 'Suspend an active branch' },
+  { code: 'tenant.branches.activate', description: 'Activate a suspended branch' },
+  { code: 'tenant.branches.deactivate', description: 'Permanently deactivate a branch' },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -60,13 +72,23 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.facilities.update',
       'tenant.facilities.suspend',
       'tenant.facilities.activate',
+      'tenant.branches.read',
+      'tenant.branches.create',
+      'tenant.branches.update',
+      'tenant.branches.suspend',
+      'tenant.branches.activate',
     ],
   },
   {
     code: 'MEMBER',
     name: 'Member',
     description: 'Read-only tenant member role',
-    permissionCodes: ['tenant.members.read', 'tenant.roles.read', 'tenant.facilities.read'],
+    permissionCodes: [
+      'tenant.members.read',
+      'tenant.roles.read',
+      'tenant.facilities.read',
+      'tenant.branches.read',
+    ],
   },
 ] as const satisfies ReadonlyArray<{
   code: string;

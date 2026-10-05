@@ -17,6 +17,9 @@ import {
 import { FacilityController } from './facility.controller';
 import { FacilityRepository } from './facility.repository';
 import { FacilityService } from './facility.service';
+import { BranchController } from './branch.controller';
+import { BranchRepository } from './branch.repository';
+import { BranchService } from './branch.service';
 import { TenantRoleBootstrapController } from './tenant-role-bootstrap.controller';
 import { TenantRoleController } from './tenant-role.controller';
 import { TenantRoleRepository } from './tenant-role.repository';
@@ -32,6 +35,7 @@ import { TenantService } from './tenant.service';
     TenantRoleController,
     TenantRoleBootstrapController,
     FacilityController,
+    BranchController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -43,6 +47,8 @@ import { TenantService } from './tenant.service';
     TenantMembershipValidatorService,
     FacilityRepository,
     FacilityService,
+    BranchRepository,
+    BranchService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,
