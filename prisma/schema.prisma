@@ -31,6 +31,12 @@ enum TenantStatus {
   DEACTIVATED
 }
 
+enum FacilityStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
 enum TenantMembershipStatus {
   INVITED
   ACTIVE
@@ -56,6 +62,11 @@ enum PlatformAuditEventType {
   TENANT_MEMBERSHIP_ROLE_REMOVED
   TENANT_OWNER_ASSIGNED
   TENANT_AUTHORIZATION_DENIED
+  FACILITY_CREATED
+  FACILITY_UPDATED
+  FACILITY_SUSPENDED
+  FACILITY_ACTIVATED
+  FACILITY_DEACTIVATED
 }
 
 enum PlatformSecurityEventType {
@@ -185,11 +196,27 @@ model Tenant {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
+  facilities      Facility[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
 
   @@index([status])
   @@index([status, createdAt])
+}
+
+model Facility {
+  id              String         @id @default(uuid()) @db.Char(36)
+  tenantId        String         @db.Char(36)
+  name            String         @db.VarChar(191)
+  status          FacilityStatus @default(ACTIVE)
+  statusChangedAt DateTime       @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, createdAt])
 }
 
 model TenantMembership {

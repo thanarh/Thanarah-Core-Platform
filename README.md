@@ -118,9 +118,29 @@ Tenant role routes use `/api/v1/tenants/:tenantId/...` and require platform
 authentication, active membership validation, trusted tenant context, and an
 explicit tenant permission. The initial-owner bootstrap route is
 `/api/v1/platform/tenants/:tenantId/roles/bootstrap` and uses platform
-authorization only. Facility, Branch, staff, healthcare, subscription and
-entitlement functionality, and MongoDB/tenant-database provisioning remain
-future phases.
+authorization only.
+
+## Facility Foundation
+
+The hierarchy is `Tenant / Organization → Facility → Future Branch`. A tenant
+can have multiple Facilities, and every Facility belongs to exactly one tenant.
+Facilities are central-platform metadata stored in MySQL/MariaDB; they are not
+Branches or healthcare records and do not create tenant databases.
+
+Tenant Facility routes use
+`/api/v1/tenants/:tenantId/facilities[/.../:facilityId]`. They reuse platform
+authentication, trusted tenant context, and tenant permission checks. The route
+tenant ID only selects the context; repository operations use the tenant ID
+from that trusted context. Facility permissions use the `tenant.facilities.*`
+namespace and are resolved from central tenant role assignments. The default
+OWNER can perform all Facility operations; ADMIN can create, update, suspend,
+and activate Facilities; MEMBER has read access. Deactivation is OWNER-only.
+
+Facilities support create, list, read, name update, and explicit suspend,
+activate, and deactivate operations. Deactivation is terminal; Facilities are
+not physically deleted. Branch, staff, healthcare operations, subscriptions
+and entitlements, and MongoDB/tenant-database provisioning remain future
+phases.
 
 Production runs on **cPanel**:
 

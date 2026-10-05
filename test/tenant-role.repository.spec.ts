@@ -224,10 +224,12 @@ describe('TenantRoleRepository', () => {
   });
 
   it('seeds the central tenant permission catalog and constrains assignments to one tenant', () => {
-    const migration = readFileSync(
+    const migration = [
       'prisma/migrations/20261005153000_tenant_roles_permissions_foundation/migration.sql',
-      'utf8',
-    );
+      'prisma/migrations/20261006100000_facility_foundation/migration.sql',
+    ]
+      .map((path) => readFileSync(path, 'utf8'))
+      .join('\n');
 
     for (const { code } of TENANT_PERMISSION_DEFINITIONS) {
       expect(migration).toContain(`'${code}'`);

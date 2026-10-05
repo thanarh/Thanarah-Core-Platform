@@ -14,6 +14,9 @@ import {
   TenantMembershipValidatorService,
   TrustedTenantContextFactoryService,
 } from './tenant-context.service';
+import { FacilityController } from './facility.controller';
+import { FacilityRepository } from './facility.repository';
+import { FacilityService } from './facility.service';
 import { TenantRoleBootstrapController } from './tenant-role-bootstrap.controller';
 import { TenantRoleController } from './tenant-role.controller';
 import { TenantRoleRepository } from './tenant-role.repository';
@@ -28,6 +31,7 @@ import { TenantService } from './tenant.service';
     TenantMembershipController,
     TenantRoleController,
     TenantRoleBootstrapController,
+    FacilityController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -37,6 +41,8 @@ import { TenantService } from './tenant.service';
     TenantMembershipRoleRepository,
     TenantMembershipService,
     TenantMembershipValidatorService,
+    FacilityRepository,
+    FacilityService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,
