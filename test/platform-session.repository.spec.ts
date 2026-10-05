@@ -100,6 +100,8 @@ describe('PlatformSessionRepository atomic refresh protocol', () => {
     const test = harness(locked, { id: 'session-1' }, history);
     await expect(test.repository.rotateByRefreshTokenHash('old-hash', 'next')).resolves.toEqual({
       kind: 'reused',
+      sessionId: 'session-1',
+      subjectUserId: 'user-1',
     });
     expect(test.events).toEqual([
       'discover-current',
@@ -115,10 +117,23 @@ describe('PlatformSessionRepository atomic refresh protocol', () => {
     const test = harness({ ...activeSession(), refreshTokenHash: 'new-hash' }, null, history);
     await expect(test.repository.rotateByRefreshTokenHash('old-hash', 'next')).resolves.toEqual({
       kind: 'reused',
+      sessionId: 'session-1',
+      subjectUserId: 'user-1',
     });
     expect(test.events.indexOf('lock-session:session-1')).toBeLessThan(
       test.events.indexOf('mark-reuse'),
     );
+  });
+
+  it('returns the affected user and session for an already compromised token session', async () => {
+    const locked = { ...activeSession(), status: PlatformSessionStatus.COMPROMISED };
+    const test = harness(locked, { id: 'session-1' });
+
+    await expect(test.repository.rotateByRefreshTokenHash('old-hash', 'next')).resolves.toEqual({
+      kind: 'compromised',
+      sessionId: 'session-1',
+      subjectUserId: 'user-1',
+    });
   });
 
   it('retries a retryable transaction conflict with fresh discovery', async () => {

@@ -1,4 +1,5 @@
 import type { FastifyReply, FastifyRequest } from 'fastify';
+import { MODULE_METADATA } from '@nestjs/common/constants';
 import { describe, expect, it, vi } from 'vitest';
 import {
   PlatformAuditEventType,
@@ -6,12 +7,22 @@ import {
   PlatformSecurityEventType,
 } from '../src/platform-security/platform-audit.service';
 import type { PlatformAuditRepository } from '../src/platform-security/platform-audit.repository';
+import { PlatformSecurityModule } from '../src/platform-security/platform-security.module';
+import { PlatformAuditRepository as PrismaPlatformAuditRepository } from '../src/platform-security/platform-audit.repository';
 import { AuthenticationService } from '../src/auth/services/authentication.service';
 import { AuthController } from '../src/auth/auth.controller';
 import type { PlatformSessionService } from '../src/auth/services/platform-session.service';
 import type { AuthCookieService } from '../src/auth/services/auth-cookie.service';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import { AUTH_REVOCATION_REASONS } from '../src/auth/auth.constants';
+import { AuthorizationForbiddenError } from '../src/auth/errors/authorization.errors';
+import {
+  RefreshSessionCompromisedError,
+  RefreshTokenReusedError,
+} from '../src/auth/errors/auth.errors';
+import { RefreshTokenService } from '../src/auth/services/refresh-token.service';
+import { TokenGeneratorService } from '../src/auth/security/token-generator.service';
+import { TokenHasherService } from '../src/auth/security/token-hasher.service';
 
 function repository(): {
   repository: PlatformAuditRepository;
@@ -21,7 +32,7 @@ function repository(): {
 } {
   const createAuditLog = vi.fn().mockResolvedValue({});
   const createSecurityEvent = vi.fn().mockResolvedValue({});
-  const resolveSecurityEvent = vi.fn().mockResolvedValue({});
+  const resolveSecurityEvent = vi.fn().mockResolvedValue(true);
   return {
     repository: {
       createAuditLog,
@@ -37,7 +48,9 @@ function repository(): {
 describe('PlatformAuditService', () => {
   it('creates an audit record from trusted context and only safe metadata', async () => {
     const test = repository();
-    const service = new PlatformAuditService(test.repository);
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
 
     await service.recordAudit({
       eventType: PlatformAuditEventType.AUTH_LOGOUT,
@@ -47,7 +60,12 @@ describe('PlatformAuditService', () => {
         reason: 'USER_LOGOUT',
         password: 'never-persist',
         refreshToken: 'never-persist',
+        authorization: 'Bearer should-not-persist',
         nested: { secret: 'never-persist' },
+        details: 'password=should-not-persist',
+        narrative: 'The password is also-not-for-logs',
+        databaseInfo: 'mysql://user:password@host/database',
+        opaque: 'a'.repeat(64),
         longValue: 'x'.repeat(600),
       },
     });
@@ -68,7 +86,9 @@ describe('PlatformAuditService', () => {
 
   it('uses the actor from trusted server context rather than metadata', async () => {
     const test = repository();
-    const service = new PlatformAuditService(test.repository);
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
 
     await service.recordSecurityEvent({
       eventType: PlatformSecurityEventType.AUTHORIZATION_DENIED,
@@ -87,7 +107,9 @@ describe('PlatformAuditService', () => {
   it('does not throw when audit persistence fails', async () => {
     const test = repository();
     test.createSecurityEvent.mockRejectedValue(new Error('database details must stay internal'));
-    const service = new PlatformAuditService(test.repository);
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
 
     await expect(
       service.recordSecurityEvent({
@@ -97,22 +119,165 @@ describe('PlatformAuditService', () => {
     ).resolves.toBeUndefined();
   });
 
-  it('resolves a security event through the repository without deleting its history', async () => {
+  it('resolves using the authenticated actor and both existing update permissions', async () => {
     const test = repository();
-    const service = new PlatformAuditService(test.repository);
+    const authorization = { hasPermissions: vi.fn().mockResolvedValue(true) };
+    const service = new PlatformAuditService(test.repository, authorization as never);
+    const actor: AuthenticatedPlatformUser = {
+      userId: 'authenticated-security-admin',
+      sessionId: 'trusted-session',
+      tokenVersion: 1,
+      platformRoleIds: [],
+    };
 
-    await service.resolveSecurityEvent(
-      'event-id',
-      { actorUserId: 'security-admin' },
-      'Reviewed and contained',
-    );
+    await expect(
+      service.resolveSecurityEvent('event-id', actor, 'Reviewed and contained'),
+    ).resolves.toBe(true);
 
+    expect(authorization.hasPermissions).toHaveBeenCalledWith('authenticated-security-admin', [
+      'security_events.update',
+      'security_events.resolve',
+    ]);
     expect(test.resolveSecurityEvent).toHaveBeenCalledWith(
       'event-id',
-      'security-admin',
+      'authenticated-security-admin',
       'Reviewed and contained',
     );
   });
+
+  it('rejects unauthorized resolution before repository access', async () => {
+    const test = repository();
+    const authorization = { hasPermissions: vi.fn().mockResolvedValue(false) };
+    const service = new PlatformAuditService(test.repository, authorization as never);
+
+    await expect(
+      service.resolveSecurityEvent('event-id', {
+        userId: 'user-without-resolution-permission',
+        sessionId: 'session',
+        tokenVersion: 1,
+        platformRoleIds: [],
+      }),
+    ).rejects.toBeInstanceOf(AuthorizationForbiddenError);
+    expect(test.resolveSecurityEvent).not.toHaveBeenCalled();
+  });
+
+  it('rejects actor context without an authenticated user ID', async () => {
+    const test = repository();
+    const authorization = { hasPermissions: vi.fn().mockResolvedValue(true) };
+    const service = new PlatformAuditService(test.repository, authorization as never);
+
+    await expect(
+      service.resolveSecurityEvent('event-id', {
+        userId: '',
+        sessionId: 'session',
+        tokenVersion: 1,
+        platformRoleIds: [],
+      }),
+    ).rejects.toBeInstanceOf(AuthorizationForbiddenError);
+    expect(authorization.hasPermissions).not.toHaveBeenCalled();
+    expect(test.resolveSecurityEvent).not.toHaveBeenCalled();
+  });
+
+  it('reports a failed resolution persistence operation instead of swallowing it', async () => {
+    const test = repository();
+    const persistenceError = new Error('database detail');
+    test.resolveSecurityEvent.mockRejectedValue(persistenceError);
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
+
+    await expect(
+      service.resolveSecurityEvent('event-id', {
+        userId: 'security-admin',
+        sessionId: 'session',
+        tokenVersion: 1,
+        platformRoleIds: [],
+      }),
+    ).rejects.toBe(persistenceError);
+  });
+
+  it('sanitizes resolution notes using the same sensitive-content rules', async () => {
+    const test = repository();
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
+
+    await service.resolveSecurityEvent(
+      'event-id',
+      {
+        userId: 'security-admin',
+        sessionId: 'session',
+        tokenVersion: 1,
+        platformRoleIds: [],
+      },
+      'Investigated; Authorization: Bearer very-secret-value',
+    );
+
+    expect(test.resolveSecurityEvent).toHaveBeenCalledWith('event-id', 'security-admin', undefined);
+  });
+
+  it('does not expose the raw repository from PlatformSecurityModule', () => {
+    const exports = Reflect.getMetadata(MODULE_METADATA.EXPORTS, PlatformSecurityModule);
+    expect(exports).toEqual([PlatformAuditService]);
+    expect(exports).not.toContain(PrismaPlatformAuditRepository);
+  });
+});
+
+describe('refresh security-event context', () => {
+  it.each([
+    {
+      kind: 'reused' as const,
+      eventType: PlatformSecurityEventType.AUTH_REFRESH_TOKEN_REUSE,
+      detection: 'ROTATED_TOKEN_REUSE',
+      error: RefreshTokenReusedError,
+    },
+    {
+      kind: 'compromised' as const,
+      eventType: PlatformSecurityEventType.AUTH_REFRESH_SESSION_COMPROMISED,
+      detection: 'COMPROMISED_SESSION',
+      error: RefreshSessionCompromisedError,
+    },
+  ])(
+    'records the affected session and user for $kind without trusting a presenter actor',
+    async ({ kind, eventType, detection, error }) => {
+      const audit = { recordSecurityEvent: vi.fn().mockResolvedValue(undefined) };
+      const sessions = {
+        rotateByRefreshTokenHash: vi.fn().mockResolvedValue({
+          kind,
+          sessionId: 'affected-session',
+          subjectUserId: 'affected-user',
+        }),
+      };
+      const service = new RefreshTokenService(
+        sessions as never,
+        new TokenGeneratorService(),
+        new TokenHasherService(),
+        audit as never,
+      );
+
+      await expect(
+        service.rotate('presented-refresh-token', {
+          actorUserId: 'client-chosen-actor',
+          sessionId: 'client-chosen-session',
+          subjectUserId: 'client-chosen-subject',
+          requestId: 'request-id',
+          ipAddress: '192.0.2.8',
+          userAgent: 'test-agent',
+        }),
+      ).rejects.toBeInstanceOf(error);
+
+      expect(audit.recordSecurityEvent).toHaveBeenCalledWith({
+        eventType,
+        requestId: 'request-id',
+        ipAddress: '192.0.2.8',
+        userAgent: 'test-agent',
+        sessionId: 'affected-session',
+        subjectUserId: 'affected-user',
+        metadata: { detection },
+      });
+      expect(audit.recordSecurityEvent.mock.calls[0][0]).not.toHaveProperty('actorUserId');
+    },
+  );
 });
 
 describe('authentication security-event integration', () => {
@@ -141,7 +306,7 @@ describe('authentication security-event integration', () => {
       } as never,
       { sign: vi.fn().mockResolvedValue('access') } as never,
       { generateTokenFamilyId: vi.fn().mockReturnValue('family-id') } as never,
-      { findRoleIdsByUserId: vi.fn().mockResolvedValue([]) } as never,
+      { getRoleIdsByUserId: vi.fn().mockResolvedValue([]) } as never,
       audit as never,
     );
 

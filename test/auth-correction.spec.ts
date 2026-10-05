@@ -50,7 +50,7 @@ function auth(overrides: any = {}) {
   };
   const access = { sign: vi.fn().mockResolvedValue('access'), ...overrides.access };
   const authorization = {
-    findRoleIdsByUserId: vi.fn().mockResolvedValue(['role-id']),
+    getRoleIdsByUserId: vi.fn().mockResolvedValue(['role-id']),
     ...overrides.authorization,
   };
   return {

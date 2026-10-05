@@ -19,4 +19,8 @@ export class PlatformAuthorizationService {
   getRoleCodes(userId: string): Promise<PlatformRoleCode[]> {
     return this.authorization.findRoleCodesByUserId(userId);
   }
+
+  getRoleIdsByUserId(userId: string): Promise<string[]> {
+    return this.authorization.findRoleIdsByUserId(userId);
+  }
 }

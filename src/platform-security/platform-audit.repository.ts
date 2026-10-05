@@ -16,13 +16,13 @@ export class PlatformAuditRepository {
     return this.prisma.platformSecurityEvent.create({ data });
   }
 
-  resolveSecurityEvent(
+  async resolveSecurityEvent(
     id: string,
     resolvedBy: string,
     resolutionNote?: string,
-  ): Promise<PlatformSecurityEvent> {
-    return this.prisma.platformSecurityEvent.update({
-      where: { id },
+  ): Promise<boolean> {
+    const result = await this.prisma.platformSecurityEvent.updateMany({
+      where: { id, status: 'OPEN' },
       data: {
         status: 'RESOLVED',
         resolvedAt: new Date(),
@@ -30,5 +30,6 @@ export class PlatformAuditRepository {
         resolutionNote,
       },
     });
+    return result.count === 1;
   }
 }

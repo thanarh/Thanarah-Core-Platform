@@ -5,6 +5,10 @@ import {
   PlatformSecurityEventType,
   Prisma,
 } from '@prisma/client';
+import { AuthorizationForbiddenError } from '../auth/errors/authorization.errors';
+import type { AuthenticatedPlatformUser } from '../auth/auth.types';
+import type { PlatformPermissionCode } from '../auth/platform-authorization.constants';
+import { PlatformAuthorizationService } from '../auth/services/platform-authorization.service';
 import { PlatformAuditRepository } from './platform-audit.repository';
 import type {
   CreatePlatformAuditInput,
@@ -15,14 +19,31 @@ import type {
 
 const MAX_METADATA_FIELDS = 32;
 const MAX_METADATA_STRING_LENGTH = 512;
+const MAX_RESOLUTION_NOTE_LENGTH = 1000;
 const SENSITIVE_KEY =
-  /(password|token|secret|cookie|credential|api[_-]?key|database[_-]?url|hash)/i;
+  /(password|passphrase|passwd|pwd|token|secret|cookie|credential|api[_-]?key|database[_-]?url|connection[_-]?string|authorization|hash)/i;
+const SENSITIVE_CONTENT_PATTERNS = [
+  /\b(?:bearer|basic)\s+[A-Za-z0-9._~+/-]+=*/i,
+  /\b(?:password|passphrase|passwd|pwd|access[_\s-]?token|refresh[_\s-]?token|token[_\s-]?hash|secret|api[_\s-]?key|credential|authorization(?:\s+header)?|cookie|database[_\s-]?url|connection[_\s-]?string)\b(?:\s*[:=]|\s+is\b)\s*(?:"[^"]*"|'[^']*'|[^\s,;]+)/i,
+  /\b(?:mysql|mariadb|postgres(?:ql)?|mongodb(?:\+srv)?|redis):\/\/[^\s"'<>]+/i,
+  /\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/,
+  /\b[A-Za-z0-9_-]{64}\b/,
+  /\b[a-f\d]{64}\b/i,
+  /\$(?:argon2(?:id|i|d)|2[aby])\$/i,
+] as const;
+const SECURITY_EVENT_RESOLUTION_PERMISSIONS: readonly PlatformPermissionCode[] = [
+  'security_events.update',
+  'security_events.resolve',
+];
 
 @Injectable()
 export class PlatformAuditService {
   private readonly logger = new Logger(PlatformAuditService.name);
 
-  constructor(private readonly repository: PlatformAuditRepository) {}
+  constructor(
+    private readonly repository: PlatformAuditRepository,
+    private readonly authorization: PlatformAuthorizationService,
+  ) {}
 
   async recordAudit(input: CreatePlatformAuditInput): Promise<void> {
     if (!Object.values(PlatformAuditEventType).includes(input.eventType)) return;
@@ -50,14 +71,25 @@ export class PlatformAuditService {
 
   async resolveSecurityEvent(
     eventId: string,
-    resolvedBy: TrustedSecurityContext,
+    actor: AuthenticatedPlatformUser,
     resolutionNote?: string,
-  ): Promise<void> {
-    const actorUserId = this.safeIdentifier(resolvedBy.actorUserId);
-    if (!actorUserId || !eventId) return;
+  ): Promise<boolean> {
+    const actorUserId = this.safeIdentifier(actor?.userId);
+    if (!actorUserId) throw new AuthorizationForbiddenError();
 
-    await this.tryPersist(() =>
-      this.repository.resolveSecurityEvent(eventId, actorUserId, this.safeNote(resolutionNote)),
+    const authorized = await this.authorization.hasPermissions(
+      actorUserId,
+      SECURITY_EVENT_RESOLUTION_PERMISSIONS,
+    );
+    if (!authorized) throw new AuthorizationForbiddenError();
+
+    const safeEventId = this.safeValue(eventId, 64);
+    if (!safeEventId) return false;
+
+    return this.repository.resolveSecurityEvent(
+      safeEventId,
+      actorUserId,
+      this.safeNote(resolutionNote),
     );
   }
 
@@ -88,7 +120,8 @@ export class PlatformAuditService {
       if (value === null || typeof value === 'boolean' || typeof value === 'number') {
         output[key] = value;
       } else if (typeof value === 'string') {
-        output[key] = value.slice(0, MAX_METADATA_STRING_LENGTH);
+        const safeValue = value.slice(0, MAX_METADATA_STRING_LENGTH);
+        if (!this.containsSensitiveContent(safeValue)) output[key] = safeValue;
       }
     }
     return output;
@@ -105,7 +138,12 @@ export class PlatformAuditService {
   }
 
   private safeNote(value: string | undefined): string | undefined {
-    return this.safeValue(value, 1000);
+    const note = this.safeValue(value, MAX_RESOLUTION_NOTE_LENGTH);
+    return note && !this.containsSensitiveContent(note) ? note : undefined;
+  }
+
+  private containsSensitiveContent(value: string): boolean {
+    return SENSITIVE_CONTENT_PATTERNS.some((pattern) => pattern.test(value));
   }
 
   private async tryPersist(operation: () => Promise<unknown>): Promise<void> {

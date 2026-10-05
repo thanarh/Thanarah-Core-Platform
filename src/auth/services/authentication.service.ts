@@ -12,7 +12,7 @@ import {
   AccountLockedError,
   InvalidCredentialsError,
 } from '../errors/auth.errors';
-import { PlatformAuthorizationRepository } from '../repositories/platform-authorization.repository';
+import { PlatformAuthorizationService } from './platform-authorization.service';
 import { PlatformSessionService } from './platform-session.service';
 import {
   PlatformUserRepository,
@@ -49,7 +49,7 @@ export class AuthenticationService {
     private readonly refreshTokens: RefreshTokenService,
     private readonly access: AccessTokenService,
     private readonly generator: TokenGeneratorService,
-    private readonly authorization: PlatformAuthorizationRepository,
+    private readonly authorization: PlatformAuthorizationService,
     @Optional() private readonly audit?: PlatformAuditService,
   ) {}
 
@@ -115,7 +115,7 @@ export class AuthenticationService {
       ipAddress: context.ipAddress,
       userAgent: context.userAgent,
     });
-    const roleIds = await this.authorization.findRoleIdsByUserId(record.id);
+    const roleIds = await this.authorization.getRoleIdsByUserId(record.id);
     await this.audit?.recordAudit({
       eventType: PlatformAuditEventType.AUTH_LOGIN_SUCCEEDED,
       actorUserId: record.id,
@@ -141,7 +141,7 @@ export class AuthenticationService {
     const rotated = await this.refreshTokens.rotate(presentedToken, context);
     const user = await this.users.findAuthRecordById(rotated.session.userId);
     if (!user || user.status !== 'ACTIVE') throw new AccountInactiveError();
-    const roles = await this.authorization.findRoleIdsByUserId(user.id);
+    const roles = await this.authorization.getRoleIdsByUserId(user.id);
     return {
       refreshToken: rotated.refreshToken,
       accessToken: await this.access.sign({

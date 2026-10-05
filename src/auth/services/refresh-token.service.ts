@@ -53,7 +53,9 @@ export class RefreshTokenService {
     if (result.kind === 'reused') {
       await this.audit?.recordSecurityEvent({
         eventType: PlatformSecurityEventType.AUTH_REFRESH_TOKEN_REUSE,
-        ...context,
+        ...this.requestContext(context),
+        sessionId: result.sessionId,
+        subjectUserId: result.subjectUserId,
         metadata: { detection: 'ROTATED_TOKEN_REUSE' },
       });
       throw new RefreshTokenReusedError();
@@ -62,12 +64,24 @@ export class RefreshTokenService {
     if (result.kind === 'compromised') {
       await this.audit?.recordSecurityEvent({
         eventType: PlatformSecurityEventType.AUTH_REFRESH_SESSION_COMPROMISED,
-        ...context,
+        ...this.requestContext(context),
+        sessionId: result.sessionId,
+        subjectUserId: result.subjectUserId,
         metadata: { detection: 'COMPROMISED_SESSION' },
       });
       throw new RefreshSessionCompromisedError();
     }
     if (result.kind === 'expired') throw new RefreshTokenExpiredError();
     throw new RefreshTokenInvalidError();
+  }
+
+  private requestContext(
+    context?: TrustedSecurityContext,
+  ): Pick<TrustedSecurityContext, 'requestId' | 'ipAddress' | 'userAgent'> {
+    return {
+      requestId: context?.requestId,
+      ipAddress: context?.ipAddress,
+      userAgent: context?.userAgent,
+    };
   }
 }

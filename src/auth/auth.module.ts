@@ -5,7 +5,6 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthController } from './auth.controller';
 import { PlatformAuthGuard } from './guards/platform-auth.guard';
 import { PlatformAuthorizationGuard } from './guards/platform-authorization.guard';
-import { PlatformAuthorizationRepository } from './repositories/platform-authorization.repository';
 import { PlatformSessionRepository } from './repositories/platform-session.repository';
 import { PlatformUserRepository } from './repositories/platform-user.repository';
 import { PasswordHasherService } from './security/password-hasher.service';
@@ -15,11 +14,11 @@ import { TokenHasherService } from './security/token-hasher.service';
 import { AccessTokenService } from './services/access-token.service';
 import { AuthCookieService } from './services/auth-cookie.service';
 import { PlatformSessionService } from './services/platform-session.service';
-import { PlatformAuthorizationService } from './services/platform-authorization.service';
 import { PlatformRolePolicyService } from './services/platform-role-policy.service';
 import { RefreshTokenService } from './services/refresh-token.service';
 import { AuthenticationService } from './services/authentication.service';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
+import { PlatformAuthorizationModule } from './platform-authorization.module';
 
 const providers = [
   AccessTokenService,
@@ -28,8 +27,6 @@ const providers = [
   PasswordPolicyService,
   PlatformAuthGuard,
   PlatformAuthorizationGuard,
-  PlatformAuthorizationRepository,
-  PlatformAuthorizationService,
   PlatformRolePolicyService,
   PlatformSessionRepository,
   PlatformSessionService,
@@ -41,9 +38,15 @@ const providers = [
 ];
 
 @Module({
-  imports: [ConfigModule, DatabaseModule, PlatformSecurityModule, JwtModule.register({})],
+  imports: [
+    ConfigModule,
+    DatabaseModule,
+    PlatformAuthorizationModule,
+    PlatformSecurityModule,
+    JwtModule.register({}),
+  ],
   controllers: [AuthController],
   providers,
-  exports: providers,
+  exports: [...providers, PlatformAuthorizationModule],
 })
 export class AuthModule {}

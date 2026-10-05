@@ -14,10 +14,10 @@ export type CreatePlatformSessionInput = Omit<
 
 export type RefreshRotationResult =
   | { kind: 'rotated'; session: PlatformSession }
-  | { kind: 'reused' }
+  | { kind: 'reused'; sessionId: string; subjectUserId: string }
   | { kind: 'not-found' }
   | { kind: 'revoked' }
-  | { kind: 'compromised' }
+  | { kind: 'compromised'; sessionId: string; subjectUserId: string }
   | { kind: 'expired' };
 
 @Injectable()
@@ -199,12 +199,20 @@ export class PlatformSessionRepository {
                   revocationReason: 'Refresh token reuse detected',
                 },
               });
-              return { kind: 'reused' };
+              return {
+                kind: 'reused',
+                sessionId: locked.id,
+                subjectUserId: locked.userId,
+              };
             }
 
             if (locked.status === PlatformSessionStatus.REVOKED) return { kind: 'revoked' };
             if (locked.status === PlatformSessionStatus.COMPROMISED) {
-              return { kind: 'compromised' };
+              return {
+                kind: 'compromised',
+                sessionId: locked.id,
+                subjectUserId: locked.userId,
+              };
             }
             if (locked.status === PlatformSessionStatus.EXPIRED || locked.expiresAt <= now) {
               if (locked.status !== PlatformSessionStatus.EXPIRED) {
