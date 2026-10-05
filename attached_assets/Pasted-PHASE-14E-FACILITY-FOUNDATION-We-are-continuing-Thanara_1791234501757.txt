@@ -1,0 +1,922 @@
+PHASE 14E — FACILITY FOUNDATION
+
+We are continuing Thanarah Phase 14.
+
+Completed:
+
+Phase 14A:
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B:
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C:
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D:
+a80d97733fbb10e44ccf68c92578476775be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Previous corrections are also complete:
+
+- Authentication foundation
+- Login / refresh / logout
+- Platform authorization
+- Platform roles/permissions
+- Platform audit/security events
+- API versioning/guard conventions
+- Tenant isolation contract
+- Tenant organization
+- Tenant membership
+- Tenant roles/permissions
+- Tenant authorization runtime
+
+Now implement ONLY:
+
+PHASE 14E — FACILITY FOUNDATION
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Introduce the Facility layer beneath Tenant/Organization.
+
+The architectural hierarchy must now be:
+
+Platform
+  ↓
+Tenant / Organization
+  ↓
+Facility
+  ↓
+Future Branch
+  ↓
+Future Staff / Doctors / Healthcare Operations
+
+Important:
+
+Tenant/Organization is NOT a Facility.
+
+A Tenant may operate one or more Facilities.
+
+A Facility belongs to exactly one Tenant.
+
+Do not collapse Tenant and Facility into one entity.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only the Facility foundation:
+
+- Facility domain model
+- Facility repository
+- Facility service
+- Facility lifecycle/status
+- Tenant-scoped Facility authorization
+- Facility CRUD foundation
+- Facility audit integration
+- Facility tests
+- Documentation
+- Prisma migration if required
+
+Do NOT implement:
+
+- Branch
+- Staff
+- Doctors
+- Patients
+- Departments
+- Specialties
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Clinical notes
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Subscriptions
+- Plans
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database registry
+- Tenant database provisioning
+- Backup system
+- Voice AI
+- Mobile application
+- Patient portal
+- Ownership handoff
+
+STOP after Phase 14E.
+
+==================================================
+1. DOMAIN MODEL
+==================================================
+
+Create a Facility model in the CENTRAL PLATFORM DATABASE.
+
+Facility is SaaS/platform metadata.
+
+Do NOT put Facility into MongoDB.
+
+Relationship:
+
+Tenant
+  1
+  |
+  | has many
+  ↓
+Facility
+
+Every Facility must have exactly one tenantId.
+
+A Facility must never exist without a Tenant.
+
+Use the project's existing Prisma naming and ID conventions.
+
+Do not introduce a second tenant identifier system.
+
+==================================================
+2. FACILITY FIELDS
+==================================================
+
+Use only fields required for a clean commercial foundation.
+
+At minimum evaluate:
+
+- id
+- tenantId
+- name
+- code or slug if appropriate
+- status
+- createdAt
+- updatedAt
+
+Do not over-model the Facility yet.
+
+Do NOT add:
+
+- doctors
+- staff
+- departments
+- medical configuration
+- appointment settings
+- billing settings
+- insurance settings
+- clinical settings
+
+Those belong to later phases.
+
+If using a unique facility code/slug, define its uniqueness correctly within the tenant.
+
+A Facility identifier must not be globally unique unless there is a clear architectural reason.
+
+Prefer tenant-scoped uniqueness.
+
+==================================================
+3. FACILITY STATUS
+==================================================
+
+Introduce an explicit Facility lifecycle.
+
+Use a small, clear state machine.
+
+Recommended states:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+If the existing architecture has a consistent lifecycle naming convention, follow it.
+
+Do not invent unnecessary states.
+
+Define allowed transitions explicitly.
+
+At minimum:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED should be terminal unless the existing architecture has a justified reactivation concept.
+
+Do not physically delete a Facility as part of lifecycle management.
+
+Status changes must be explicit.
+
+Same-state updates should be handled consistently with existing Tenant/Membership lifecycle behavior.
+
+==================================================
+4. TENANT RELATIONSHIP
+==================================================
+
+Facility must always be tenant-scoped.
+
+Never allow:
+
+Facility A from Tenant A
+to be accessed through
+Tenant B context.
+
+Every repository operation must carry trusted tenant scope.
+
+Do not create repository methods such as:
+
+findFacilityById(id)
+
+if they allow an unscoped tenant lookup.
+
+Prefer:
+
+findById(tenantContext, facilityId)
+
+or an equivalent tenant-scoped repository contract.
+
+The exact implementation may follow existing project conventions.
+
+==================================================
+5. TRUSTED TENANT CONTEXT
+==================================================
+
+Reuse the Phase 14D TrustedTenantContext.
+
+Do not create another context abstraction.
+
+Facility operations must require:
+
+Authenticated User
++
+Trusted Tenant Context
++
+Tenant Authorization
+
+The request's tenantId is never sufficient by itself.
+
+The tenant context must already have been validated.
+
+Do not trust:
+
+- request body tenantId
+- query tenantId
+- arbitrary headers
+- client-provided tenant role
+- client-provided permissions
+
+==================================================
+6. FACILITY AUTHORIZATION
+==================================================
+
+Do not create a completely new authorization architecture.
+
+Reuse TenantAuthorizationGuard and the Phase 14D tenant permission system.
+
+Define facility permissions only if the current permission architecture requires them.
+
+If new permissions are needed, keep them clearly within the tenant permission namespace.
+
+Recommended conceptual permissions:
+
+facilities.read
+facilities.create
+facilities.update
+facilities.suspend
+facilities.activate
+facilities.deactivate
+
+However:
+
+Before adding these exact permissions, inspect the existing Phase 14C permission model and naming conventions.
+
+Follow the established conventions instead of blindly duplicating names.
+
+Do not add platform permissions for facility operations.
+
+Facility authorization is tenant authorization.
+
+==================================================
+7. FACILITY CRUD
+==================================================
+
+Implement the minimum professional CRUD foundation.
+
+Required operations:
+
+CREATE
+READ LIST
+READ BY ID
+UPDATE
+STATUS TRANSITION
+
+Do not implement physical DELETE.
+
+The API should remain under:
+
+/api/v1/...
+
+Use the existing API conventions.
+
+Use the existing PlatformAuthGuard + TenantAuthorizationGuard architecture.
+
+Do not create a global facility guard.
+
+==================================================
+8. CREATE FACILITY
+==================================================
+
+Creation must:
+
+1. Authenticate the user.
+2. Resolve TrustedTenantContext.
+3. Verify required tenant permission.
+4. Validate input.
+5. Create the Facility using the tenant from trusted context.
+6. Ignore any client-supplied tenantId for ownership.
+
+The client must NOT be able to create:
+
+{
+  tenantId: "another-tenant"
+}
+
+and change ownership.
+
+The service must always derive tenantId from TrustedTenantContext.
+
+==================================================
+9. READ FACILITIES
+==================================================
+
+List operations must be tenant-scoped.
+
+Example conceptual request:
+
+GET /api/v1/tenants/:tenantId/facilities
+
+The route tenantId is only an input to trusted tenant resolution.
+
+The repository query must still scope by the resolved tenant context.
+
+Never return facilities belonging to another tenant.
+
+For:
+
+GET /api/v1/tenants/:tenantId/facilities/:facilityId
+
+the lookup must include tenant scope.
+
+Do not:
+
+find Facility by ID globally
+then check tenant later.
+
+Prefer a tenant-scoped database query from the beginning.
+
+==================================================
+10. UPDATE FACILITY
+==================================================
+
+Updates must not allow changing ownership.
+
+Do not allow:
+
+tenantId modification.
+
+If the client sends tenantId, ignore it or reject it according to established input validation conventions.
+
+Do not allow status changes through a generic update endpoint if the project lifecycle convention separates status transitions.
+
+Prefer explicit lifecycle operations.
+
+==================================================
+11. STATUS TRANSITIONS
+==================================================
+
+Implement explicit service methods for lifecycle changes.
+
+For example:
+
+suspendFacility()
+activateFacility()
+deactivateFacility()
+
+Use the actual naming convention of the project.
+
+Validate transitions server-side.
+
+Do not accept:
+
+{
+  status: "ACTIVE"
+}
+
+from an untrusted client and blindly persist it.
+
+Authorization must be checked before transition.
+
+==================================================
+12. DELETE POLICY
+==================================================
+
+Do not implement DELETE.
+
+Healthcare SaaS data must not rely on destructive deletion as the normal Facility lifecycle.
+
+If a Facility needs to stop operating:
+
+use DEACTIVATED.
+
+Do not add a DELETE endpoint merely because CRUD normally includes DELETE.
+
+Document this decision.
+
+==================================================
+13. REPOSITORY LAYER
+==================================================
+
+Follow:
+
+Controller
+→ Tenant Authorization
+→ Service
+→ Facility Repository
+→ Prisma
+→ MySQL/MariaDB
+
+Controllers must not access Prisma directly.
+
+Services must not perform raw Prisma access if the existing architecture requires repositories.
+
+Repository methods must be tenant-scoped.
+
+No unscoped Facility repository methods.
+
+Fail closed if TrustedTenantContext is missing.
+
+==================================================
+14. DATABASE CONSTRAINTS
+==================================================
+
+The database must enforce important invariants where practical.
+
+At minimum:
+
+- Facility.tenantId required.
+- Tenant foreign key required.
+- Appropriate index on tenantId.
+- Appropriate tenant-scoped uniqueness for code/slug if introduced.
+- Foreign key behavior must not allow orphaned Facilities.
+
+Inspect existing Tenant deletion/lifecycle semantics before choosing cascade/restrict behavior.
+
+Do NOT automatically cascade-delete Facility records from Tenant deletion.
+
+Prefer restrictive behavior unless the existing architecture has an explicit lifecycle strategy.
+
+==================================================
+15. AUDIT
+==================================================
+
+Reuse the existing PlatformAuditLog system.
+
+Audit security-sensitive and administrative Facility operations.
+
+At minimum consider:
+
+- FACILITY_CREATED
+- FACILITY_UPDATED
+- FACILITY_SUSPENDED
+- FACILITY_ACTIVATED
+- FACILITY_DEACTIVATED
+
+Follow the existing audit event naming/type conventions.
+
+Do not create a second audit system.
+
+Audit actor must come from authenticated server context.
+
+Tenant must come from TrustedTenantContext.
+
+Do not record:
+
+- passwords
+- tokens
+- cookies
+- authorization headers
+- secrets
+- DATABASE_URL
+- sensitive request dumps
+
+==================================================
+16. ERROR HANDLING
+==================================================
+
+Use stable application-level errors.
+
+Do not expose raw Prisma errors.
+
+Do not expose SQL/database details.
+
+For cross-tenant access:
+
+return the project's appropriate safe authorization/not-found behavior.
+
+Do not leak whether a Facility exists in another tenant.
+
+Do not create an information-disclosure oracle.
+
+Follow existing error conventions from Phase 14D.
+
+==================================================
+17. FACILITY NAME / CODE VALIDATION
+==================================================
+
+Use strong input validation.
+
+At minimum:
+
+name:
+- required
+- trimmed
+- bounded length
+- meaningful validation
+
+If code/slug is implemented:
+
+- normalized consistently
+- bounded
+- tenant-scoped uniqueness
+- safe characters according to project conventions
+
+Do not over-engineer localization yet.
+
+Do not implement translations.
+
+==================================================
+18. API DESIGN
+==================================================
+
+Use versioned APIs:
+
+/api/v1/...
+
+Keep the routes tenant-scoped.
+
+Use the project's existing controller conventions.
+
+Conceptually:
+
+POST   /api/v1/tenants/:tenantId/facilities
+GET    /api/v1/tenants/:tenantId/facilities
+GET    /api/v1/tenants/:tenantId/facilities/:facilityId
+PATCH  /api/v1/tenants/:tenantId/facilities/:facilityId
+
+Lifecycle routes may be:
+
+POST /.../:facilityId/suspend
+POST /.../:facilityId/activate
+POST /.../:facilityId/deactivate
+
+Use the existing project route conventions if a better established pattern exists.
+
+Do not create duplicate endpoints.
+
+==================================================
+19. PLATFORM ADMIN VS TENANT MEMBER
+==================================================
+
+Keep platform and tenant authorization separate.
+
+A Platform Administrator does not automatically become a Tenant Facility operator.
+
+Do not silently bypass tenant membership authorization because a user has a powerful platform role.
+
+If platform-level facility management is needed later, it should be explicitly designed as a platform operation.
+
+This phase should implement tenant-scoped Facility management.
+
+==================================================
+20. FACILITY VS BRANCH
+==================================================
+
+This distinction is mandatory.
+
+Facility is a higher-level operational location/entity under a Tenant.
+
+Branch will be introduced later.
+
+Do NOT create Branch now.
+
+Do not add:
+
+branchId
+
+to Facility.
+
+Do not model Facility as a Branch.
+
+Do not assume:
+
+Tenant = Facility = Branch.
+
+The future hierarchy is:
+
+Tenant
+  ↓
+Facility
+  ↓
+Branch
+
+==================================================
+21. FUTURE HEALTHCARE DATA
+==================================================
+
+Do not add healthcare collections/tables now.
+
+Future data such as:
+
+Doctors
+Staff
+Departments
+Specialties
+Patients
+Appointments
+Visits
+Medical Records
+
+will eventually belong to tenant operational data and ultimately tenant MongoDB.
+
+Facility foundation must remain independent from healthcare persistence.
+
+==================================================
+22. MONGODB
+==================================================
+
+Do NOT implement MongoDB in this phase.
+
+Do not create:
+
+- Mongo connections
+- tenant Mongo databases
+- Mongo models
+- Mongoose models
+- database provisioning
+- database registry
+- routing
+- multi-database partitioning
+
+Facility metadata belongs to the central Prisma/MySQL/MariaDB platform database.
+
+==================================================
+23. TESTING
+==================================================
+
+Create comprehensive Facility tests.
+
+At minimum:
+
+MODEL / PERSISTENCE:
+
+1. Facility requires tenant.
+2. Facility cannot exist without valid tenant.
+3. tenantId is required.
+4. tenant-scoped uniqueness works if code/slug exists.
+5. correct indexes/constraints exist.
+
+CREATE:
+
+6. authorized active tenant member can create.
+7. missing tenant permission → 403.
+8. unauthenticated → 401.
+9. client tenantId cannot override trusted tenant.
+10. facility is created under TrustedTenantContext tenant.
+
+READ:
+
+11. authorized member can list facilities.
+12. list returns only current tenant facilities.
+13. facility lookup is tenant-scoped.
+14. Facility from another tenant cannot be accessed.
+15. nonexistent facility handled safely.
+
+UPDATE:
+
+16. authorized member can update allowed fields.
+17. tenantId cannot be changed.
+18. cross-tenant update fails.
+19. unauthorized update → 403.
+
+STATUS:
+
+20. ACTIVE → SUSPENDED works.
+21. SUSPENDED → ACTIVE works.
+22. ACTIVE → DEACTIVATED works.
+23. SUSPENDED → DEACTIVATED works.
+24. invalid transitions fail.
+25. DEACTIVATED cannot be casually reactivated if lifecycle defines it as terminal.
+26. unauthorized lifecycle change → 403.
+
+AUTHORIZATION:
+
+27. Tenant A user cannot access Tenant B facilities.
+28. Tenant A permission cannot authorize Tenant B.
+29. platform permission cannot substitute tenant facility permission.
+30. client-provided role/permission cannot escalate privileges.
+
+AUDIT:
+
+31. creation audited.
+32. update audited.
+33. lifecycle transition audited.
+34. actor comes from trusted context.
+35. no credentials/tokens/secrets in audit metadata.
+
+REGRESSION:
+
+36. all existing authentication tests pass.
+37. all platform authorization tests pass.
+38. all tenant membership tests pass.
+39. all tenant role tests pass.
+40. all tenant authorization tests pass.
+
+Add more tests wherever implementation details require them.
+
+==================================================
+24. MIGRATION
+==================================================
+
+If Prisma schema changes are required:
+
+- create a proper migration
+- do not manually edit generated migration history
+- validate migration
+- inspect SQL
+- ensure foreign keys and indexes are correct
+
+Do not apply a production migration from this development environment unless explicitly instructed.
+
+Do not modify unrelated migrations.
+
+==================================================
+25. DOCUMENTATION
+==================================================
+
+Update the authoritative architecture documentation.
+
+Document:
+
+Tenant / Organization
+  ↓
+Facility
+  ↓
+Future Branch
+
+Explain:
+
+- Facility belongs to exactly one Tenant.
+- Facility operations are tenant-authorized.
+- Facility metadata lives in central platform DB.
+- Facility is not Branch.
+- Facility is not a healthcare record.
+- Facility does not create MongoDB databases.
+- Facility does not introduce subscriptions/entitlements.
+- Facility does not bypass tenant membership.
+
+==================================================
+26. VALIDATION
+==================================================
+
+Run:
+
+- focused Facility tests
+- all existing tests
+- lint
+- formatting
+- TypeScript type checks
+- production build
+- Prisma validation
+- migration validation if applicable
+- git diff --check
+
+Runtime verification:
+
+GET /health → 200
+
+GET /docs → 200
+
+GET /ready → expected environment-specific readiness
+
+Verify representative authorization behavior.
+
+Because the development environment may not have a live MySQL connection, do not fake successful live database verification.
+
+Clearly distinguish:
+
+- automated tests
+- static validation
+- live runtime checks
+
+==================================================
+27. SECURITY REVIEW
+==================================================
+
+Perform a focused review for:
+
+- IDOR
+- cross-tenant access
+- tenantId manipulation
+- facilityId manipulation
+- privilege escalation
+- missing TrustedTenantContext
+- platform/tenant permission confusion
+- unsafe status transitions
+- orphan Facilities
+- information disclosure
+- unscoped repository access
+- direct Prisma access from controllers
+- accidental MongoDB coupling
+
+Fix any critical/high severity issue found before committing.
+
+==================================================
+28. SCOPE CONTROL
+==================================================
+
+Before committing, explicitly verify that the diff does NOT contain:
+
+- Branch
+- Staff
+- Doctors
+- Patients
+- Departments
+- Specialties
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database registry
+- Tenant DB provisioning
+- Backups
+- Voice AI
+- Ownership handoff
+
+Do not implement Phase 14F automatically.
+
+STOP after Phase 14E.
+
+==================================================
+29. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): add facility foundation
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+The attached specification or unrelated untracked files must remain untouched.
+
+==================================================
+30. FINAL REPORT
+==================================================
+
+After completion, report:
+
+1. Files changed
+2. Facility schema/model
+3. Facility lifecycle
+4. Tenant relationship
+5. Repository scoping
+6. Authorization behavior
+7. API endpoints
+8. Audit behavior
+9. Database/migration changes
+10. Test count/results
+11. Lint/typecheck/build/Prisma results
+12. Runtime verification
+13. Security review
+14. Commit hash
+15. Explicit confirmation that Branch, Healthcare, Subscriptions, MongoDB, and all later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 14F.
