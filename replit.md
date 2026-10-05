@@ -19,14 +19,15 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
-| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, tenant identity, and other platform metadata |
+| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, tenant identity and memberships, and other platform metadata |
 | **Tenant Healthcare and Operations** | Not selected yet | Isolated MongoDB database(s) per tenant (future) | Tenant-owned healthcare and operational data |
 
 Tenant healthcare and operational data will use isolated MongoDB database(s)
 per tenant in a future phase; MongoDB is **not implemented**. Phase 14A adds a
-central-platform Tenant/Organization identity only. A tenant may eventually use
-multiple physical MongoDB databases while presenting one logical tenant data
-space. Future resolution must be server-side:
+central-platform Tenant/Organization identity; Phase 14B adds its central
+platform-user membership relationship. A tenant may eventually use multiple
+physical MongoDB databases while presenting one logical tenant data space.
+Future resolution must be server-side:
 
 `Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → Subscription Entitlement → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
 
@@ -143,7 +144,7 @@ src/
 ├── app.controller.ts    # Liveness (/health) and database readiness (/ready)
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
-├── tenant/              # Tenant organization foundation and future isolation contracts
+├── tenant/              # Tenant, central membership, and future isolation contracts
 ├── platform-security/   # Central audit-log and security-event repository/service
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
@@ -182,12 +183,13 @@ public/                  # Static files — Coming Soon splash page + assets
 
 ## Tenant foundation and isolation boundary
 
-**The central Tenant/Organization identity is implemented; tenant isolation is
-not operational yet.** Phase 14A adds the platform Tenant record, repository,
-service, module, protected platform-administration endpoints, lifecycle audit
-events, and migration. There is no membership persistence, tenant-owned
-repository implementation, database-registry record, tenant storage
-connection, or tenant-facing business API.
+**Tenant and membership identity are implemented; tenant authorization and
+isolation are not operational yet.** Phase 14A adds the platform Tenant record
+and administration endpoints. Phase 14B adds central TenantMembership
+persistence, lifecycle operations, audit events, and membership administration
+endpoints. There is no tenant-owned repository implementation,
+database-registry record, tenant storage connection, or tenant-facing business
+API.
 
 - Platform administrators use `/api/v1/platform/tenants` to create, list, and
   inspect tenants, and `/api/v1/platform/tenants/:id/status` to change status.
@@ -202,8 +204,35 @@ connection, or tenant-facing business API.
 - Tenant creation and lifecycle changes record the trusted authenticated actor
   and tenant subject in central platform audit records. Request bodies cannot
   supply the actor or initial lifecycle state.
+- Membership is the explicit central-platform relationship
+  `Platform User (User) → TenantMembership → Tenant`. A user has no tenant
+  access merely because they are authenticated or know a tenant ID. Membership
+  belongs in the central Prisma database, not tenant MongoDB.
+- Membership creation is an administrative invitation and always starts in
+  `INVITED`; delivery by email, SMS, or WhatsApp is not implemented. One
+  membership row is allowed per tenant/platform-user pair, including after
+  removal. `REMOVED` is terminal and cannot be reactivated or recreated in
+  Phase 14B.
+- Membership lifecycle transitions are explicit: `INVITED → ACTIVE` or
+  `REMOVED`; `ACTIVE → SUSPENDED` or `REMOVED`; `SUSPENDED → ACTIVE` or
+  `REMOVED`. Repeating the current transition is an idempotent no-op.
+  Platform administrators cannot create or manage their own membership.
+- Membership management routes are nested under
+  `/api/v1/platform/tenants/:tenantId/memberships`. Reads require existing
+  `platform.read`; invitations and lifecycle mutations require existing
+  `platform.manage`. The tenant and membership IDs are always checked together
+  for membership operations.
+- The active-membership lookup requires both tenant ID and platform-user ID and
+  returns true only for an `ACTIVE` row for that exact pair. It is a relationship
+  check only: it does not authenticate users, create `TrustedTenantContext`, or
+  authorize tenant operations. Tenant roles/permissions and the
+  `TenantAuthorizationGuard` remain future Phase 14C work.
+- Invitation, activation, suspension, and removal write central audit events
+  with actor, platform-user subject, and tenant subject. Actor identity comes
+  only from authenticated server context; request bodies cannot choose actors,
+  statuses, tenant roles, or permissions.
 - The versioned Prisma migration is present but has not been applied to
-  production. No production database was used for this phase.
+  production. No production database was used for Phase 14A or 14B.
 
 - A tenant ID supplied by a caller is only a selection candidate. A future
   server-side membership validator must verify that the authenticated platform
@@ -231,14 +260,14 @@ connection, or tenant-facing business API.
   Tenant is not a facility; a facility or branch ID cannot replace tenant
   authorization or widen tenant scope.
 - Platform storage is reserved for platform identities, authentication,
-  sessions, roles/permissions, current tenant identity/lifecycle metadata,
+  sessions, roles/permissions, current tenant identity/lifecycle and membership metadata,
   future subscription and database-registry metadata, and platform
   audit/security records. Future
   tenant MongoDB storage is for tenant operational/healthcare data such as
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/
   insurance, and notifications. These persistence boundaries are architectural
-  only; no tenant data models are added here.
+  only; no tenant-owned operational or healthcare data models are added here.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

@@ -128,6 +128,31 @@ describe('PlatformAuditService', () => {
     );
   });
 
+  it('records membership audit events with both platform-user and tenant subjects', async () => {
+    const test = repository();
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
+
+    await service.recordAudit({
+      eventType: PlatformAuditEventType.TENANT_MEMBERSHIP_INVITED,
+      actorUserId: 'trusted-platform-user',
+      subjectUserId: 'tenant-member-user',
+      subjectTenantId: 'tenant-record-id',
+      metadata: { membershipId: 'membership-record-id', status: 'INVITED' },
+    });
+
+    expect(test.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.TENANT_MEMBERSHIP_INVITED,
+        actorUserId: 'trusted-platform-user',
+        subjectUserId: 'tenant-member-user',
+        subjectTenantId: 'tenant-record-id',
+        metadata: { membershipId: 'membership-record-id', status: 'INVITED' },
+      }),
+    );
+  });
+
   it('does not throw when audit persistence fails', async () => {
     const test = repository();
     test.createSecurityEvent.mockRejectedValue(new Error('database details must stay internal'));

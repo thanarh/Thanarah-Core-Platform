@@ -31,6 +31,13 @@ enum TenantStatus {
   DEACTIVATED
 }
 
+enum TenantMembershipStatus {
+  INVITED
+  ACTIVE
+  SUSPENDED
+  REMOVED
+}
+
 enum PlatformAuditEventType {
   AUTH_LOGIN_SUCCEEDED
   AUTH_LOGOUT
@@ -38,6 +45,10 @@ enum PlatformAuditEventType {
   TENANT_CREATED
   TENANT_STATUS_CHANGED
   TENANT_DEACTIVATED
+  TENANT_MEMBERSHIP_INVITED
+  TENANT_MEMBERSHIP_ACTIVATED
+  TENANT_MEMBERSHIP_SUSPENDED
+  TENANT_MEMBERSHIP_REMOVED
 }
 
 enum PlatformSecurityEventType {
@@ -71,6 +82,7 @@ model User {
   securityActorEvents   PlatformSecurityEvent[] @relation("PlatformSecurityActor")
   securitySubjectEvents PlatformSecurityEvent[] @relation("PlatformSecuritySubject")
   securityResolutions   PlatformSecurityEvent[] @relation("PlatformSecurityResolver")
+  tenantMemberships     TenantMembership[]      @relation("TenantMembershipPlatformUser")
 
   @@index([status])
 }
@@ -166,9 +178,29 @@ model Tenant {
   createdAt       DateTime           @default(now())
   updatedAt       DateTime           @updatedAt
   auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
+  memberships     TenantMembership[] @relation("TenantMembershipTenant")
 
   @@index([status])
   @@index([status, createdAt])
+}
+
+model TenantMembership {
+  id              String                 @id @default(uuid()) @db.Char(36)
+  tenantId        String                 @db.Char(36)
+  platformUserId  String                 @db.Char(36)
+  status          TenantMembershipStatus @default(INVITED)
+  statusChangedAt DateTime               @default(now())
+  activatedAt     DateTime?
+  suspendedAt     DateTime?
+  removedAt       DateTime?
+  createdAt       DateTime               @default(now())
+  updatedAt       DateTime               @updatedAt
+  tenant          Tenant                 @relation("TenantMembershipTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  platformUser    User                   @relation("TenantMembershipPlatformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
+
+  @@unique([tenantId, platformUserId])
+  @@index([tenantId, status, createdAt])
+  @@index([platformUserId, status])
 }
 
 model PlatformAuditLog {
