@@ -1,0 +1,729 @@
+PHASE 14D — TENANT AUTHORIZATION RUNTIME
+
+We are continuing Thanarah Phase 14.
+
+Completed:
+
+Phase 14A:
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B:
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C:
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Previous corrections are also complete:
+
+- Authentication
+- Login / refresh / logout
+- Platform authorization
+- Platform roles/permissions
+- Platform audit/security
+- API/versioning/guard conventions
+- Tenant isolation contract
+
+Now implement ONLY Phase 14D:
+Tenant Authorization Runtime.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Make tenant authorization work at runtime using the existing foundations.
+
+The intended authorization chain is:
+
+Request
+  ↓
+Platform Authentication
+  ↓
+Trusted Tenant Context
+  ↓
+Active Tenant Membership
+  ↓
+Tenant Role(s)
+  ↓
+Tenant Permission(s)
+  ↓
+Tenant Authorization Decision
+  ↓
+Business Operation
+
+This phase is about runtime authorization.
+
+Do NOT implement Facility, Branch, Healthcare, Subscriptions, MongoDB, or later phases.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- Trusted tenant context resolution/runtime integration
+- Tenant membership validation at runtime
+- Tenant role/permission resolution
+- Tenant authorization service/policy
+- Tenant authorization guard
+- Tenant permission requirement decorator/metadata if needed
+- Runtime cross-tenant isolation enforcement
+- Minimal protected test/demo route only if required for testing
+- Authorization tests
+- Security tests
+- Audit/security integration where appropriate
+- Documentation
+
+Do NOT implement:
+
+- Facility
+- Branch
+- Staff
+- Doctors
+- Patients
+- Appointments
+- Scheduling
+- Visits
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry
+- Healthcare UI
+- Voice AI
+- Phase 14E+
+ 
+==================================================
+1. PLATFORM AUTHENTICATION REMAINS SEPARATE
+==================================================
+
+Do not modify PlatformAuthGuard semantics.
+
+PlatformAuthGuard answers:
+
+"Is this a valid authenticated platform user?"
+
+Tenant authorization answers:
+
+"Does this authenticated user have permission to perform this operation inside this tenant?"
+
+Keep these separate.
+
+Required conceptual order:
+
+PlatformAuthGuard
+→ TrustedTenantContext
+→ TenantAuthorization
+
+Do not merge tenant authorization into PlatformAuthGuard.
+
+Do not make TenantAuthorizationGuard global.
+
+Do not affect:
+
+/health
+/ready
+/docs
+
+or public login/refresh routes.
+
+==================================================
+2. TRUSTED TENANT CONTEXT
+==================================================
+
+Use the TrustedTenantContext contract created in Correction 6.
+
+Do NOT create a second competing tenant-context abstraction.
+
+Tenant context must come from trusted server-side resolution.
+
+Never trust a client-provided tenant ID as authorization.
+
+A route may contain a tenant identifier such as:
+
+/api/v1/platform/tenants/:tenantId/...
+
+but the parameter is only an input to resolution.
+
+It is NOT automatically a trusted TenantContext.
+
+The server must resolve and validate it.
+
+==================================================
+3. TENANT CONTEXT RESOLUTION
+==================================================
+
+Create or complete the runtime tenant-context resolver.
+
+Given an authenticated platform user and a requested tenant identity:
+
+1. Resolve the Tenant.
+2. Confirm the Tenant exists.
+3. Confirm the Tenant is in a state that permits the requested operation.
+4. Confirm the authenticated user has an appropriate active membership.
+5. Construct TrustedTenantContext only after those checks succeed.
+
+Do not construct TrustedTenantContext before membership validation.
+
+Do not use tenant ID alone.
+
+Do not use hostname alone.
+
+Do not use UUID secrecy.
+
+Do not use a client-supplied role or permission.
+
+Fail closed.
+
+==================================================
+4. MEMBERSHIP VALIDATION
+==================================================
+
+Only an appropriate active membership may satisfy tenant access.
+
+At minimum:
+
+- INVITED must not authorize normal tenant operations.
+- SUSPENDED must not authorize normal tenant operations.
+- REMOVED must not authorize normal tenant operations.
+- ACTIVE may continue to tenant authorization.
+
+Use the existing TenantMembership lifecycle.
+
+Do not modify membership lifecycle semantics unless required to fix a demonstrated authorization bug.
+
+The authenticated user must be the member being evaluated.
+
+Never accept a client-provided user ID as the membership subject.
+
+==================================================
+5. TENANT ROLE/PERMISSION RESOLUTION
+==================================================
+
+Resolve effective tenant permissions from:
+
+Authenticated Platform User
++
+Trusted Tenant Context
++
+Active Tenant Membership
++
+Assigned Tenant Role(s)
++
+Tenant Role Permissions
+
+Do not trust:
+
+- request body roles
+- query permissions
+- arbitrary headers
+- cookies
+- client-provided role IDs
+- client-provided permission IDs
+- JWT tenant permission claims
+- tenant ID alone
+
+All effective permissions must come from the central database/server-side state.
+
+==================================================
+6. TENANT AUTHORIZATION SERVICE
+==================================================
+
+Create a dedicated TenantAuthorizationService or equivalent policy service.
+
+It should support the minimum operations required by runtime authorization.
+
+For example:
+
+- authorize tenant permission
+- resolve effective tenant permissions
+- verify membership
+- verify tenant role assignment
+
+Use explicit methods.
+
+Do not create a generic authorization engine that mixes platform and tenant authorization.
+
+Do not access Prisma from controllers.
+
+Follow:
+
+Controller
+→ Guard/Policy
+→ Service
+→ Repository
+→ Prisma
+
+==================================================
+7. TENANT AUTHORIZATION GUARD
+==================================================
+
+Create a dedicated TenantAuthorizationGuard.
+
+It must:
+
+1. Ensure the request is authenticated.
+2. Resolve trusted tenant context.
+3. Validate active membership.
+4. Resolve tenant roles/permissions.
+5. Read server-defined required tenant permissions.
+6. Enforce authorization.
+7. Fail closed.
+
+Do not allow required permissions to come from request input.
+
+Do not use PlatformAuthorizationGuard to evaluate tenant permissions.
+
+Do not silently fall back to platform permissions.
+
+==================================================
+8. PERMISSION DECORATOR
+==================================================
+
+Create or complete a clear tenant-specific permission metadata mechanism.
+
+If platform authorization uses:
+
+@RequirePermissions(...)
+
+do not create ambiguity between platform and tenant permissions.
+
+Use an explicit tenant-specific decorator/metadata mechanism if needed.
+
+Conceptually:
+
+@RequireTenantPermissions(...)
+
+and:
+
+@RequirePlatformPermissions(...)
+
+must remain distinguishable.
+
+Use the project's existing naming conventions if they provide a better equivalent.
+
+==================================================
+9. 401 VS 403
+==================================================
+
+Preserve correct HTTP semantics.
+
+Unauthenticated:
+→ 401
+
+Authenticated but:
+
+- no tenant membership
+- inactive membership
+- missing tenant permission
+- tenant role insufficient
+
+→ 403
+
+Do not expose sensitive information about whether another tenant exists.
+
+Avoid turning tenant lookup into an information-disclosure oracle.
+
+Use stable safe application errors.
+
+==================================================
+10. CROSS-TENANT ISOLATION
+==================================================
+
+This is a mandatory security requirement.
+
+Test scenarios such as:
+
+User A:
+Tenant A membership
+Tenant A role
+
+Request:
+Tenant B
+
+must fail.
+
+A role belonging to Tenant A must never authorize operations in Tenant B.
+
+A membership belonging to Tenant A must never satisfy membership checks for Tenant B.
+
+A tenant permission from Tenant A must never authorize Tenant B.
+
+A valid authenticated platform user must not automatically gain access to every tenant.
+
+Tenant A context must never be interchangeable with Tenant B context.
+
+Use explicit tenant ownership checks throughout the resolution path.
+
+==================================================
+11. TENANT STATUS
+==================================================
+
+Tenant lifecycle status must participate in runtime authorization appropriately.
+
+At minimum determine safe behavior for:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Do not allow normal tenant operations against a tenant state that should block access.
+
+Use the actual Phase 14A status model rather than inventing a second status system.
+
+Do not implement subscription entitlement yet.
+
+Tenant status and subscription status are separate concepts.
+
+==================================================
+12. OWNER / ADMIN BEHAVIOR
+==================================================
+
+Use the Tenant OWNER/ADMIN roles implemented in Phase 14C.
+
+Do not introduce new ownership semantics.
+
+Ensure:
+
+- OWNER permissions are tenant-scoped.
+- ADMIN permissions are tenant-scoped.
+- Platform OWNER is unrelated to Tenant OWNER.
+- Tenant OWNER cannot grant platform permissions.
+- Tenant ADMIN cannot grant platform permissions.
+
+Do not implement ownership transfer in this phase.
+
+The previously proposed ownership-handoff follow-up is explicitly out of scope.
+
+==================================================
+13. API INTEGRATION
+==================================================
+
+Do not convert the whole application to tenant authorization yet.
+
+Use the existing tenant role/permission management endpoints as the first real runtime integration if appropriate.
+
+Ensure the following conceptual protection exists:
+
+PlatformAuthGuard
+→ Tenant Context
+→ Tenant Authorization
+
+Do not make all future routes tenant-protected globally.
+
+Do not create healthcare routes.
+
+If a dedicated internal/test route is required to prove runtime authorization, keep it minimal and clearly documented as a test/contract route.
+
+Do not expose a fake business API.
+
+==================================================
+14. PLATFORM VS TENANT AUTHORIZATION
+==================================================
+
+This distinction must remain absolute.
+
+Platform:
+
+PlatformUser
+→ PlatformRole
+→ PlatformPermission
+
+Tenant:
+
+PlatformUser
+→ TenantMembership
+→ TenantRole
+→ TenantPermission
+
+A platform permission must not automatically satisfy a tenant permission.
+
+A tenant permission must never satisfy a platform permission.
+
+A platform administrator managing SaaS metadata uses platform authorization.
+
+A tenant member operating tenant business functionality uses tenant authorization.
+
+==================================================
+15. AUDIT / SECURITY
+==================================================
+
+Use the existing Platform Audit/Security foundation.
+
+Where appropriate, audit security-sensitive tenant authorization events, especially denied access attempts.
+
+Do not create a second audit system.
+
+Audit actor must come from authenticated server context.
+
+Do not persist:
+
+- passwords
+- tokens
+- cookies
+- secrets
+- credentials
+- DATABASE_URL
+- raw authentication headers
+
+Do not expose raw authorization internals in HTTP errors.
+
+Avoid logging excessive tenant-sensitive information.
+
+==================================================
+16. REPOSITORY ISOLATION
+==================================================
+
+Use the Tenant Isolation Contract from Correction 6.
+
+Tenant authorization must not create a bypass around the tenant-scoped repository contract.
+
+Do not add unscoped tenant repository methods.
+
+Do not create a global/default tenant fallback.
+
+Do not allow a service to silently continue without TrustedTenantContext.
+
+==================================================
+17. PERFORMANCE
+==================================================
+
+Avoid unnecessary repeated database queries during authorization.
+
+Inspect existing repository patterns.
+
+Use appropriate indexed lookups.
+
+Do not introduce caching yet unless the existing architecture already provides a safe mechanism.
+
+Correctness and isolation are more important than premature optimization.
+
+Do not create a complex policy engine.
+
+==================================================
+18. TESTING
+==================================================
+
+Add comprehensive focused tests.
+
+At minimum:
+
+AUTHENTICATION:
+
+1. unauthenticated tenant request → 401
+2. malformed/invalid authentication remains 401
+
+MEMBERSHIP:
+
+3. no membership → 403
+4. INVITED membership → 403
+5. SUSPENDED membership → 403
+6. REMOVED membership → 403
+7. ACTIVE membership can proceed to authorization
+
+TENANT CONTEXT:
+
+8. valid tenant context
+9. nonexistent tenant handled safely
+10. suspended tenant handled safely
+11. deactivated tenant handled safely
+12. client tenant ID cannot bypass membership
+
+ROLES/PERMISSIONS:
+
+13. required tenant permission → success
+14. missing tenant permission → 403
+15. multiple roles resolve correctly
+16. role from another tenant is ignored/rejected
+17. permission from another tenant cannot authorize
+18. client-provided role cannot escalate
+19. client-provided permission cannot escalate
+
+CROSS-TENANT:
+
+20. Tenant A member → Tenant B request fails
+21. Tenant A role → Tenant B operation fails
+22. Tenant A permission → Tenant B operation fails
+23. same user with memberships in A and B resolves correct tenant context independently
+
+PLATFORM SEPARATION:
+
+24. platform permission cannot satisfy tenant permission
+25. tenant permission cannot satisfy platform permission
+26. Platform OWNER != Tenant OWNER
+
+GUARDS:
+
+27. TenantAuthorizationGuard requires authentication
+28. required permission metadata is server-defined
+29. guard ordering is correct
+30. no global tenant guard affects public/infrastructure routes
+
+AUDIT:
+
+31. relevant denied authorization event recorded where designed
+32. trusted actor attribution
+33. no sensitive credentials in metadata
+
+REGRESSION:
+
+34. existing authentication tests pass
+35. existing platform authorization tests pass
+36. existing tenant membership tests pass
+37. existing tenant role/permission tests pass
+
+Add additional tests where the implementation requires them.
+
+==================================================
+19. DATABASE
+==================================================
+
+Do not introduce unnecessary schema changes.
+
+Only create migrations if the runtime implementation genuinely requires a missing persistence structure.
+
+Do not create MongoDB schema.
+
+Do not create tenant database registry tables.
+
+Do not create subscription tables.
+
+==================================================
+20. DOCUMENTATION
+==================================================
+
+Update authoritative documentation to explain the now-runtime authorization chain:
+
+Platform Authentication
+→ Trusted Tenant Context
+→ Active Tenant Membership
+→ Tenant Role
+→ Tenant Permission
+→ Tenant Authorization
+
+Clearly document:
+
+- tenant ID is not authorization
+- membership is required
+- role/permission resolution is server-side
+- platform and tenant permissions are separate
+- tenant authorization is not subscription entitlement
+- tenant status can block access
+- cross-tenant access must fail closed
+
+Clearly mark Facility, Branch, Subscriptions, Healthcare, and MongoDB as future phases.
+
+==================================================
+21. VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting
+- production build
+- Prisma validation
+- migration validation if applicable
+- git diff --check
+
+Restart the application.
+
+Verify:
+
+GET /health → 200
+
+GET /ready → expected environment-specific readiness
+
+GET /docs → 200
+
+Verify representative tenant authorization behavior:
+
+- no auth → 401
+- authenticated without membership → 403
+- inactive membership → 403
+- active member without permission → 403
+- active member with permission → success
+- cross-tenant request → 403
+
+Perform a final security review specifically for:
+
+- IDOR
+- privilege escalation
+- cross-tenant access
+- client-controlled permissions
+- missing tenant context
+- platform/tenant permission confusion
+- information disclosure
+- unscoped repository access
+
+==================================================
+22. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff and explicitly confirm:
+
+NOT IMPLEMENTED:
+
+- Facility
+- Branch
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry
+- Ownership handoff
+- Voice AI
+- Phase 14E+
+
+Do not automatically continue to Phase 14E.
+
+==================================================
+23. COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): enforce tenant authorization runtime
+
+STOP after Phase 14D.
+
+Final report must contain:
+
+1. Files changed
+2. TrustedTenantContext runtime behavior
+3. Membership validation behavior
+4. Tenant permission resolution
+5. TenantAuthorizationGuard behavior
+6. 401/403 semantics
+7. Cross-tenant isolation results
+8. Platform vs tenant authorization separation
+9. Audit/security behavior
+10. Database/migration changes, if any
+11. Test count and results
+12. Lint/typecheck/build/Prisma results
+13. Runtime verification
+14. Security review findings
+15. Commit hash
+16. Explicit confirmation that Phase 14E+ and all healthcare/MongoDB/subscription functionality were NOT implemented
