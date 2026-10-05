@@ -36,8 +36,9 @@ import {
   PlatformAuditService,
 } from '../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
+import { APP_CONSTANTS } from '../common/constants/app.constants';
 
-@Controller('v1/auth')
+@Controller(`${APP_CONSTANTS.apiVersion}/auth`)
 export class AuthController {
   constructor(
     @Inject(PlatformSessionService)

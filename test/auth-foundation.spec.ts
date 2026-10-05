@@ -1,5 +1,5 @@
 import type { ExecutionContext } from '@nestjs/common';
-import type { Reflector } from '@nestjs/core';
+import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { PlatformSessionStatus, UserStatus, type PlatformSession } from '@prisma/client';
 import type { FastifyReply, FastifyRequest } from 'fastify';
@@ -10,6 +10,7 @@ import { AuthCookieService } from '../src/auth/services/auth-cookie.service';
 import { RefreshTokenService } from '../src/auth/services/refresh-token.service';
 import { PlatformSessionService } from '../src/auth/services/platform-session.service';
 import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
+import { Public } from '../src/auth/decorators/public.decorator';
 import { PasswordHasherService } from '../src/auth/security/password-hasher.service';
 import { PasswordPolicyService } from '../src/auth/security/password-policy.service';
 import { TokenGeneratorService } from '../src/auth/security/token-generator.service';
@@ -376,6 +377,31 @@ describe('PlatformAuthGuard', () => {
     await expect(guard(false).canActivate(context({ headers: {} }))).rejects.toMatchObject({
       response: { code: 'AUTH_TOKEN_MISSING' },
     });
+  });
+
+  it('bypasses a route carrying the actual @Public decorator', async () => {
+    class PublicController {
+      @Public()
+      route(): void {}
+    }
+
+    const request = { headers: {} };
+    const executionContext = {
+      getHandler: () => PublicController.prototype.route,
+      getClass: () => PublicController,
+      switchToHttp: (): { getRequest: () => typeof request } => ({
+        getRequest: () => request,
+      }),
+    } as unknown as ExecutionContext;
+    const access = { verify: vi.fn() } as unknown as AccessTokenService;
+    const users = { findAuthRecordById: vi.fn() } as unknown as PlatformUserRepository;
+    const sessions = { findById: vi.fn() } as unknown as PlatformSessionRepository;
+    const publicGuard = new PlatformAuthGuard(new Reflector(), access, users, sessions);
+
+    await expect(publicGuard.canActivate(executionContext)).resolves.toBe(true);
+    expect(access.verify).not.toHaveBeenCalled();
+    expect(users.findAuthRecordById).not.toHaveBeenCalled();
+    expect(sessions.findById).not.toHaveBeenCalled();
   });
 
   it.each(['Basic token', 'Bearer', 'Bearer   ', 'bearer token'])(

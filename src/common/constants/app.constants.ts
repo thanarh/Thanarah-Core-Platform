@@ -2,6 +2,8 @@ export const APP_CONSTANTS = {
   name: 'Thanarah',
   version: '0.1.0',
   apiPrefix: 'api',
+  apiVersion: 'v1',
+  apiPrefixExclusions: ['health', 'ready'] as const,
   swagger: {
     title: 'Thanarah API',
     description: 'Thanarah backend platform — API reference',

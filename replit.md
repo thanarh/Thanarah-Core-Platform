@@ -156,6 +156,27 @@ public/                  # Static files — Coming Soon splash page + assets
 - `/ready` — central database readiness; returns 503 when unavailable
 - `/docs` — Swagger UI
 
+## Platform API and guard conventions
+
+- Application APIs use `/api/v1/...`: `api` is the global prefix and controllers
+  use the `v1` path segment. Do not add a competing versioning mechanism or
+  `/api/v2` without an approved architecture change.
+- Infrastructure routes remain unversioned and outside platform authentication:
+  `/health`, `/ready`, and `/docs`. Health is liveness; readiness reports central
+  database availability without exposing credentials or raw database errors.
+- Public application routes are deliberately marked with `@Public()`.
+  Protected application routes explicitly use `PlatformAuthGuard`; it is not a
+  global authentication guard.
+- Permission-protected routes use
+  `@UseGuards(PlatformAuthGuard, PlatformAuthorizationGuard)` in that order and
+  declare server-owned requirements with `@RequirePermissions(...)`.
+- `PlatformAuthGuard` establishes the trusted user/session context.
+  `PlatformAuthorizationGuard` separately resolves permissions server-side from
+  that authenticated user. Authentication is not authorization.
+- Never derive authentication or permissions from tenant hostnames, request
+  bodies, query parameters, headers, cookies, or client-supplied role/permission
+  IDs. Clients cannot choose `@RequirePermissions` values.
+
 ## Prisma workflow
 
 ```bash
