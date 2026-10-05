@@ -1,0 +1,352 @@
+Implement Correction 5 only: API Versioning and Guard Conventions.
+
+This is an architecture-hardening phase before Phase 14.
+
+Do NOT implement Phase 14.
+Do NOT implement Tenant/Organization.
+Do NOT implement MongoDB.
+Do NOT implement healthcare modules.
+Do NOT implement subscriptions, plans, billing, facilities, branches, or tenant roles.
+
+Do not redesign authentication or authorization behavior that is already working.
+
+OBJECTIVE
+
+Establish one clear, documented, tested convention for:
+
+1. API versioning
+2. Authentication guard usage
+3. Platform authorization guard usage
+4. Public routes
+5. Protected routes
+6. Permission-protected routes
+7. Guard ordering/composition
+8. Health/readiness/docs exceptions
+
+Inspect the existing repository first and preserve existing working behavior wherever possible.
+
+==================================================
+1. API VERSIONING
+==================================================
+
+Inspect the current API structure.
+
+The current convention is:
+
+- /health
+- /ready
+- /docs
+- /api/v1/...
+
+Formalize this as the platform API convention.
+
+Business/application API endpoints must use:
+
+/api/v1/...
+
+Infrastructure endpoints remain unversioned:
+
+/health
+/ready
+/docs
+
+Do not create /api/v2.
+Do not introduce multiple competing versioning mechanisms.
+
+Use the simplest architecture that matches the existing NestJS application.
+
+Do not unnecessarily rewrite existing controllers.
+
+Document the convention clearly.
+
+==================================================
+2. AUTHENTICATION GUARD CONVENTION
+==================================================
+
+Inspect the existing PlatformAuthGuard and @Public behavior.
+
+Establish and document one explicit convention.
+
+The preferred convention is:
+
+- Protected application routes explicitly use PlatformAuthGuard.
+- Public routes explicitly use @Public().
+- Infrastructure routes such as health/readiness/docs remain outside normal authentication.
+- Authentication must never be inferred from tenant hostname, request body, query parameters, or arbitrary headers.
+
+Do not silently make PlatformAuthGuard global unless the existing architecture clearly requires it.
+
+If the existing code already has an explicit guard convention, preserve it and formalize it rather than redesigning it.
+
+Ensure @Public remains a deliberate route-level exception.
+
+==================================================
+3. PLATFORM AUTHORIZATION GUARD
+==================================================
+
+Keep PlatformAuthorizationGuard separate from PlatformAuthGuard.
+
+Authentication answers:
+
+"Who is the authenticated platform user?"
+
+Authorization answers:
+
+"Is this authenticated platform user allowed to perform this action?"
+
+Do not combine them into one guard.
+
+Authorization must continue to resolve permissions server-side.
+
+Never trust:
+
+- request body roles
+- query permissions
+- headers
+- cookies
+- client-provided role IDs
+- client-provided permission IDs
+- JWT permissions supplied by the client
+
+Preserve the existing server-side permission resolution.
+
+==================================================
+4. GUARD ORDER / COMPOSITION
+==================================================
+
+Define and document the required ordering:
+
+Authentication must happen before platform authorization.
+
+A permission-protected route must not be able to execute authorization against an unauthenticated request.
+
+Do not create a second authorization mechanism.
+
+Do not duplicate permission checks inside controllers unless an existing business rule genuinely requires it.
+
+Keep guards focused:
+
+PlatformAuthGuard:
+- token
+- user
+- tokenVersion
+- session
+- account status
+- authentication context
+
+PlatformAuthorizationGuard:
+- required platform permissions
+- platform role/permission resolution
+- authorization decision
+
+==================================================
+5. ROUTE DECORATORS
+==================================================
+
+Inspect existing decorators such as:
+
+- @Public
+- @RequirePermissions
+
+Formalize their purpose and expected usage.
+
+If a decorator already exists, reuse it.
+
+Do not create duplicate decorators with similar semantics.
+
+Ensure permission requirements are explicit and readable at the controller/route level.
+
+Do not allow clients to specify required permissions dynamically.
+
+==================================================
+6. INFRASTRUCTURE ROUTES
+==================================================
+
+Keep these unversioned and outside normal platform authentication:
+
+GET /health
+GET /ready
+GET /docs
+
+Preserve their existing semantics.
+
+Specifically:
+
+/health = process liveness
+
+/ready = central database readiness
+
+/ready must remain truthful and must not expose database credentials or raw database errors.
+
+Do not add authentication to these endpoints unless there is a documented existing requirement.
+
+==================================================
+7. EXISTING ROUTES
+==================================================
+
+Audit all existing controllers and routes.
+
+For every route determine:
+
+- public
+- authenticated
+- authenticated + platform permission
+
+Correct only inconsistencies found during this audit.
+
+Do not add authentication or authorization to endpoints that are intentionally public.
+
+Do not remove existing security controls.
+
+Do not modify business behavior.
+
+==================================================
+8. TENANT FUTURE-PROOFING
+==================================================
+
+Do NOT implement tenant context yet.
+
+However, make sure the conventions do not prevent the future architecture:
+
+Trusted Authentication Context
+→ Tenant Context
+→ Tenant Authorization
+→ Subscription Entitlement
+→ Business Operation
+
+Do not add TenantContextService now.
+
+Do not add tenant middleware now.
+
+Do not add tenant database resolution now.
+
+This correction only establishes platform API/auth guard conventions.
+
+==================================================
+9. TESTS
+==================================================
+
+Add or update focused tests covering:
+
+- /api/v1 convention
+- health remains unversioned
+- ready remains unversioned
+- docs remains unversioned
+- public route bypasses PlatformAuthGuard
+- protected route requires authentication
+- permission-protected route requires authentication first
+- unauthorized authenticated user receives 403
+- unauthenticated protected request remains 401
+- PlatformAuthGuard and PlatformAuthorizationGuard remain separate
+- @RequirePermissions remains server-defined
+- client-controlled roles/permissions cannot influence authorization
+- existing login/refresh/logout behavior remains unchanged
+
+Do not weaken existing tests.
+
+==================================================
+10. DOCUMENTATION
+==================================================
+
+Update the appropriate architecture/development documentation with a concise, authoritative section covering:
+
+API conventions:
+- /api/v1/... for application APIs
+- /health
+- /ready
+- /docs
+
+Guard conventions:
+- PlatformAuthGuard
+- PlatformAuthorizationGuard
+- @Public
+- @RequirePermissions
+- authentication before authorization
+
+Clearly state that:
+
+Authentication != Authorization.
+
+Do not create duplicate or conflicting documentation.
+
+==================================================
+11. VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting check
+- production build
+- Prisma validation if applicable
+- git diff --check
+
+Verify runtime routes after restart.
+
+At minimum verify:
+
+GET /health
+GET /ready
+GET /docs
+
+and representative /api/v1 routes.
+
+Perform a final architecture/security review.
+
+Check specifically for:
+
+- accidental global auth guard
+- accidentally public protected routes
+- duplicate authorization logic
+- client-controlled permission paths
+- inconsistent API versioning
+- changed authentication semantics
+- tenant/MongoDB code accidentally introduced
+
+==================================================
+12. SCOPE CONTROL
+==================================================
+
+This correction must remain small.
+
+Do NOT:
+
+- add Tenant models
+- add MongoDB
+- add TenantContext
+- add memberships
+- add tenant roles
+- add facilities
+- add branches
+- add subscriptions
+- add healthcare models
+- add public security-event APIs
+- modify Platform Audit/Security design unless required to preserve compatibility
+
+==================================================
+13. COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+refactor(api): formalize versioning and guard conventions
+
+STOP after this correction.
+
+Do not start Correction 6.
+Do not start Phase 14.
+
+Final report must include:
+
+1. Files changed
+2. API convention established
+3. Guard convention established
+4. Routes audited
+5. Tests/results
+6. Runtime verification
+7. Security/architecture review findings
+8. Commit hash
+9. Confirmation that Tenant/MongoDB/Phase 14 were NOT implemented
