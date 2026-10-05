@@ -1,0 +1,164 @@
+Implement Correction 4.1 only: harden the existing Platform Audit Logs and Security Events foundation based on the completed read-only security review.
+
+Do NOT start Correction 5.
+Do NOT implement Phase 14.
+Do NOT implement Tenant, MongoDB, Healthcare, subscriptions, billing, or any unrelated feature.
+
+Do not redesign the existing audit/security architecture.
+
+Fix only the following findings from the security review:
+
+1. SECURITY EVENT RESOLUTION AUTHORIZATION
+
+The existing resolveSecurityEvent operation must not accept an arbitrary resolver identity as a trusted actor.
+
+Change the design so the resolver identity is derived from trusted authenticated server context.
+
+Ensure resolution is protected by the existing platform authorization model.
+
+Use the existing permission model appropriately:
+- security_events.resolve
+- security_events.update
+
+Do not invent a second authorization system.
+
+If the current architecture does not expose a public resolution controller yet, keep the service/policy boundary ready for one, but do not create an unnecessary public endpoint just for this correction.
+
+A caller must not be able to choose an arbitrary resolvedBy user ID.
+
+2. REFRESH SECURITY EVENT CONTEXT
+
+For AUTH_REFRESH_TOKEN_REUSE and AUTH_REFRESH_SESSION_COMPROMISED:
+
+Preserve the distinction between:
+- the presenting/acting party
+- the affected session
+- the affected user/subject
+
+Where the existing refresh repository has already identified the affected session/user, preserve that trusted context in the security event.
+
+Do not incorrectly claim that the presenting party is the trusted actor.
+
+Do not change refresh-token security semantics.
+
+3. METADATA SAFETY
+
+Strengthen the existing metadata sanitization only.
+
+Keep it small and deterministic.
+
+Continue rejecting:
+- passwords
+- password hashes
+- access tokens
+- refresh tokens
+- token hashes
+- cookies
+- secrets
+- API keys
+- credentials
+- database URLs
+- authorization credentials
+
+Also ensure suspicious sensitive content cannot simply bypass the filter by being placed under a generic key such as "details".
+
+Do not create a complicated DLP system.
+
+Resolution notes must receive the same appropriate safety treatment.
+
+4. SECURITY EVENT RESOLUTION INTEGRITY
+
+Do not silently report successful resolution when persistence failed.
+
+Preserve the existing best-effort behavior for authentication/authorization event recording where appropriate, but resolution itself must have truthful result semantics.
+
+A failed resolution persistence operation must be distinguishable from a successful resolution.
+
+Do not change authentication or authorization outcomes.
+
+Also prevent an already RESOLVED event from being silently overwritten by another resolution.
+
+Preserve historical evidence.
+
+Do not introduce a full event-history system unless the existing architecture requires it.
+
+5. REPOSITORY BOUNDARY
+
+Review the current PlatformSecurityModule exports.
+
+Prevent future consumers from bypassing the PlatformAuditService and directly using the raw repository unless there is a concrete architectural reason to expose it.
+
+Prefer exposing the service rather than the raw repository.
+
+Do not break current legitimate internal dependencies.
+
+GENERAL RULES
+
+- Preserve Controller → Service/Policy → Repository → Prisma.
+- Do not access Prisma from controllers.
+- Do not trust client-provided actor IDs.
+- Do not introduce tenant context.
+- Do not introduce MongoDB.
+- Do not modify existing authentication semantics.
+- Do not modify refresh-token rotation semantics.
+- Do not modify existing platform permission definitions unless absolutely required.
+- Do not create new permissions if existing permissions are sufficient.
+- Do not expose new public security-event APIs unless already required by the existing architecture.
+
+TESTS
+
+Add/update focused tests for:
+
+- resolver identity comes from trusted context
+- unauthorized resolution is rejected
+- correct platform permission is required
+- refresh reuse event contains affected session/user context
+- metadata/content sanitization
+- resolution persistence failure is observable
+- already-resolved events cannot be silently overwritten
+- repository boundary remains protected
+- existing authentication/security tests remain valid
+
+VALIDATION
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- production build
+- Prisma validation
+- git diff --check
+
+Then inspect the final diff for:
+- credential leakage
+- unauthorized resolution
+- client-controlled actor attribution
+- tenant/healthcare scope leakage
+- unrelated changes
+
+Perform a final security review.
+
+COMMIT
+
+If everything passes, create exactly one Conventional Commit:
+
+fix(security): harden platform security event resolution
+
+STOP after Correction 4.1.
+
+Do not start Correction 5.
+
+Report:
+1. Files changed
+2. Exact findings fixed
+3. Authorization behavior
+4. Resolver identity behavior
+5. Refresh event context behavior
+6. Metadata sanitization behavior
+7. Resolution failure behavior
+8. Test/validation results
+9. Security review findings
+10. Commit hash
+11. Confirmation that Tenant/MongoDB/Phase 14 were not implemented
