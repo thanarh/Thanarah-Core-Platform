@@ -19,6 +19,7 @@
     "format": "prettier --write \"{src,test}/**/*.ts\"",
     "format:check": "prettier --check \"{src,test}/**/*.ts\"",
     "type-check": "tsc --noEmit",
+    "type-check:tenant-contracts": "tsc --noEmit -p tsconfig.tenant-contracts.json",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",

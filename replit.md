@@ -26,11 +26,11 @@ Tenant MongoDB is permanent architecture but **not yet implemented**. A tenant
 may eventually use multiple physical MongoDB databases while presenting one
 logical tenant data space. Future resolution must be server-side:
 
-`Trusted Tenant Context → Tenant Database Registry → Tenant Storage Resolver → Tenant MongoDB database(s)`
+`Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → Subscription Entitlement → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
 
-Clients must never provide a database name or connection string. Do not invent
-MongoDB connection modules, secret names, models, or resolver behavior until a
-future implementation phase approves them.
+Clients must never provide a database name or connection string. Correction 6
+adds type contracts only; it does not add a tenant resolver implementation,
+MongoDB connection modules, models, or provisioning.
 
 Platform audit logs and security events are central-platform records stored in
 the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep
@@ -141,6 +141,7 @@ src/
 ├── app.controller.ts    # Liveness (/health) and database readiness (/ready)
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
+├── tenant/              # Future tenant isolation contracts only
 ├── platform-security/   # Central audit-log and security-event repository/service
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
@@ -176,6 +177,47 @@ public/                  # Static files — Coming Soon splash page + assets
 - Never derive authentication or permissions from tenant hostnames, request
   bodies, query parameters, headers, cookies, or client-supplied role/permission
   IDs. Clients cannot choose `@RequirePermissions` values.
+
+## Tenant isolation contract — future architecture only
+
+**Tenant isolation is not operational yet.** There are no tenant endpoints,
+membership persistence, tenant-owned repository implementations,
+database-registry records, or tenant storage connections in this correction.
+
+- A tenant ID supplied by a caller is only a selection candidate. A future
+  server-side membership validator must verify that the authenticated platform
+  user belongs to that tenant against trusted platform data before a
+  `TrustedTenantContext` can be created. An opaque ID or hostname alone grants no
+  access; platform role IDs or token claims are not tenant membership.
+- The context keeps platform user, tenant, and membership identities distinct.
+  Tenant authorization remains separate from platform authentication and from
+  subscription/feature entitlement. A valid tenant member is not automatically
+  entitled to every feature.
+- Tenant-owned repository methods require `TrustedTenantContext`; there is no
+  unscoped lookup, default tenant, or global-database fallback in the contract.
+  Implementations must scope every query with that context so one tenant's
+  context cannot access another tenant's records.
+- `TenantStorageResolver` and `TenantDatabaseRegistry` both require trusted
+  context. Storage routes contain one or more opaque registry-owned placements
+  to allow future multi-database tenants; clients never supply physical
+  database identifiers or connection strings.
+- Missing or invalid context fails closed with stable
+  `TENANT_CONTEXT_REQUIRED` or `TENANT_CONTEXT_INVALID` errors. An empty storage
+  route is invalid; it must not fall back to platform/global data.
+- Facility and branch scope is subordinate:
+  `Platform → Tenant/Organization → Facility → Branch → Business resources`.
+  Tenant is not a facility; a facility or branch ID cannot replace tenant
+  authorization or widen tenant scope.
+- Platform storage is reserved for platform identities, authentication,
+  sessions, roles/permissions, future tenant and subscription metadata,
+  database-registry metadata, and platform audit/security records. Future
+  tenant MongoDB storage is for tenant operational/healthcare data such as
+  patients, doctors, staff, departments/specialties, scheduling/appointments/
+  visits, medical records/clinical notes/prescriptions, documents, billing/
+  insurance, and notifications. These persistence boundaries are architectural
+  only; no tenant data models are added here.
+- Preserve `Controller → Service/Policy → Repository → Infrastructure`.
+  Controllers and request channels must never select physical tenant storage.
 
 ## Prisma workflow
 
