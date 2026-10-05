@@ -1,0 +1,509 @@
+Implement Correction 6 only: Tenant Isolation Contract.
+
+This is the final architecture-hardening correction before Phase 14.
+
+IMPORTANT:
+
+Do NOT start Phase 14.
+
+Do NOT implement the actual Tenant/Organization persistence model yet.
+
+Do NOT implement MongoDB connections.
+
+Do NOT create tenant databases.
+
+Do NOT implement healthcare models.
+
+Do NOT implement subscriptions, plans, billing, facilities, branches, tenant roles, tenant memberships, patients, doctors, appointments, or any other SaaS/healthcare business functionality.
+
+This correction establishes the architectural contract and enforcement primitives required before tenant-owned data can safely exist.
+
+==================================================
+1. OBJECTIVE
+==================================================
+
+Establish a production-safe tenant isolation contract for the future architecture:
+
+Authenticated Platform Identity
+        ↓
+Tenant Membership
+        ↓
+Trusted Tenant Context
+        ↓
+Tenant Authorization
+        ↓
+Subscription Entitlement
+        ↓
+Tenant Storage Resolver
+        ↓
+Tenant Repository
+        ↓
+Tenant Data
+
+The current correction must establish the boundaries and invariants without implementing the actual tenant business domain.
+
+The implementation must make it difficult for future developers to accidentally access tenant-owned data without an explicit trusted tenant scope.
+
+==================================================
+2. TENANT CONTEXT CONTRACT
+==================================================
+
+Create a small, strongly typed TrustedTenantContext contract.
+
+It should represent the minimum trusted server-side information required to perform a tenant-scoped operation.
+
+Do NOT derive tenant identity from:
+
+- arbitrary request body fields
+- query parameters
+- arbitrary headers
+- client-controlled cookies
+- database names supplied by clients
+- MongoDB connection strings supplied by clients
+- URL values alone
+
+A hostname/subdomain may eventually participate in tenant resolution, but hostname alone is NOT authorization.
+
+The future architecture must distinguish:
+
+- authenticated platform user
+- tenant identity
+- tenant membership
+- tenant authorization
+- facility/branch scope
+- subscription entitlement
+
+Do not collapse these concepts into one ID.
+
+==================================================
+3. CONTEXT CREATION
+==================================================
+
+Define how a trusted Tenant Context is created.
+
+The context must be created only by trusted server-side application code.
+
+Do not create a public endpoint for tenant context.
+
+Do not allow controllers to construct an arbitrary TrustedTenantContext directly from request input.
+
+If a runtime resolver is needed, create only the minimal abstraction required for future implementation.
+
+The current correction must NOT resolve real tenants from the database because the Tenant model does not exist yet.
+
+==================================================
+4. TENANT IDENTITY VS AUTHORIZATION
+==================================================
+
+Document and enforce the architectural rule:
+
+Knowing a tenant ID does not grant access to that tenant.
+
+The future sequence must be:
+
+Authentication
+→ Tenant membership validation
+→ Tenant authorization
+→ Subscription entitlement where applicable
+→ Tenant business operation
+
+A UUID or other opaque identifier must never be treated as authorization.
+
+==================================================
+5. TENANT-SCOPED REPOSITORY CONTRACT
+==================================================
+
+Create the abstraction/contract for future tenant-owned repositories.
+
+A tenant repository operation must require a TrustedTenantContext or equivalent trusted tenant scope.
+
+The repository contract must make tenant scope explicit.
+
+Avoid APIs such as:
+
+findById(id)
+
+when future tenant-owned data would require:
+
+findById(context, id)
+
+or an equivalent design where tenant scope cannot accidentally be omitted.
+
+Do NOT create actual tenant repositories for patients, doctors, appointments, etc.
+
+Only create the generic contract/primitives necessary to enforce this architectural rule.
+
+==================================================
+6. STORAGE ABSTRACTION
+==================================================
+
+Define the future storage boundary:
+
+Trusted Tenant Context
+→ Tenant Storage Resolver
+→ Tenant Database Registry
+→ Storage Placement/Routing Policy
+→ MongoDB Connection Manager
+→ Tenant Repository
+
+Do NOT implement MongoDB.
+
+Do NOT implement connection strings.
+
+Do NOT implement database provisioning.
+
+Do NOT create a tenant database.
+
+Do NOT add Mongoose.
+
+Do NOT add Prisma models for tenant healthcare data.
+
+The objective is only to prevent future application services from coupling directly to a physical tenant database.
+
+The future physical database name or connection information must never come from the client.
+
+==================================================
+7. TENANT DATABASE REGISTRY CONTRACT
+==================================================
+
+Define a small interface/contract for the future Tenant Database Registry.
+
+It should conceptually answer:
+
+Given a trusted tenant context, where is this tenant's data physically stored?
+
+The contract must support the future architecture where:
+
+One logical tenant
+may eventually use
+one or multiple physical MongoDB databases.
+
+Do NOT create the actual registry database table yet.
+
+Do NOT create MongoDB provisioning.
+
+Do NOT implement capacity management.
+
+Do NOT implement routing algorithms.
+
+Only define the architectural boundary/interface required by future phases.
+
+==================================================
+8. MULTI-DATABASE PER TENANT
+==================================================
+
+The contract must NOT assume:
+
+Tenant = exactly one MongoDB database.
+
+Future architecture must support:
+
+Tenant
+→ Storage Placement(s)
+→ Physical Database(s)
+
+This is important because a tenant may eventually need multiple physical databases because of capacity, partitioning, regional placement, migration, or operational requirements.
+
+Do not implement those mechanisms now.
+
+Only make sure the abstractions do not prevent them.
+
+==================================================
+9. FACILITY / BRANCH BOUNDARY
+==================================================
+
+Do NOT implement Facility or Branch models.
+
+However, document the hierarchy:
+
+Platform
+→ Tenant/Organization
+→ Facility
+→ Branch
+→ Business resources
+
+Tenant != Facility.
+
+Facility/branch scope is subordinate to tenant scope.
+
+A future facility/branch identifier must never replace tenant authorization.
+
+==================================================
+10. SUBSCRIPTION BOUNDARY
+==================================================
+
+Do NOT implement subscriptions.
+
+Document that authorization and entitlement are separate:
+
+Authentication
+→ Tenant membership
+→ Tenant authorization
+→ Subscription status
+→ Feature entitlement
+→ Usage/plan limit
+→ Business operation
+
+A valid tenant member is not automatically entitled to every feature.
+
+Do not add subscription logic now.
+
+==================================================
+11. CROSS-TENANT ACCESS INVARIANTS
+==================================================
+
+Define explicit invariants that future tenant-owned code must obey.
+
+At minimum:
+
+1. No tenant-owned repository operation without trusted tenant scope.
+
+2. Tenant scope must come from server-side trusted context.
+
+3. Client-provided tenant IDs are never trusted.
+
+4. Physical database identifiers are never client-controlled.
+
+5. Tenant A context must never be usable to read Tenant B data.
+
+6. Tenant ID must not be inferred solely from authentication identity.
+
+7. Platform authorization and tenant authorization remain separate concerns.
+
+8. Facility/branch scope cannot widen tenant scope.
+
+9. Subscription entitlement cannot grant access to a different tenant.
+
+10. Internal services must not silently fall back to an unscoped repository.
+
+==================================================
+12. FAIL-CLOSED BEHAVIOR
+==================================================
+
+Future tenant-scoped operations must fail closed when trusted tenant scope is missing or invalid.
+
+Do not silently:
+
+- use a default tenant
+- use a global database
+- use an arbitrary tenant
+- use a client-provided database name
+- skip tenant filtering
+- fall back to platform/global data
+
+Define stable application-level errors for missing/invalid tenant context if this fits the existing error architecture.
+
+Do not expose internal database details.
+
+==================================================
+13. PLATFORM VS TENANT DATA
+==================================================
+
+Document the permanent boundary:
+
+Central Platform database:
+
+- platform identities
+- authentication/session data
+- platform roles/permissions
+- tenants/SaaS metadata in future
+- plans/subscriptions/entitlements in future
+- tenant database registry metadata
+- backup metadata
+- platform configuration
+- platform audit/security metadata
+
+Tenant MongoDB:
+
+- patients
+- doctors
+- staff
+- departments
+- specialties
+- scheduling
+- appointments
+- visits
+- medical records
+- clinical notes
+- prescriptions
+- documents
+- billing
+- insurance
+- notifications
+- other tenant operational/healthcare data
+
+Do not implement these models now.
+
+==================================================
+14. ARCHITECTURAL LAYERING
+==================================================
+
+Preserve:
+
+Controller
+→ Service/Policy
+→ Repository
+→ Infrastructure
+
+Future tenant repositories must not be allowed to directly discover storage using request data.
+
+Tenant storage resolution belongs to infrastructure/application boundary.
+
+Controllers and channels must not contain tenant database selection logic.
+
+==================================================
+15. TESTS
+==================================================
+
+Create focused contract tests for:
+
+- TrustedTenantContext cannot be created from arbitrary client-style input
+- missing tenant context fails closed
+- invalid tenant context fails closed
+- tenant repository contract requires tenant scope
+- client tenant ID cannot become trusted context
+- physical database identifier cannot come from request input
+- tenant A context cannot be substituted with tenant B context
+- facility/branch scope cannot bypass tenant scope
+- no default/global tenant fallback exists
+- storage resolver requires trusted tenant context
+- database registry contract requires trusted tenant context
+- multi-database-per-tenant architecture remains representable
+- platform identity is not treated as tenant authorization
+
+Do not create fake production tenant data just to satisfy tests.
+
+Tests should validate contracts/invariants, not implement Phase 14 indirectly.
+
+==================================================
+16. DOCUMENTATION
+==================================================
+
+Update the authoritative architecture documentation with a concise section covering:
+
+Tenant isolation contract
+TrustedTenantContext
+Tenant membership
+Tenant authorization
+Tenant-scoped repositories
+Tenant Storage Resolver
+Tenant Database Registry
+multi-database-per-tenant capability
+Platform vs tenant persistence
+Facility/branch hierarchy
+Authorization vs subscription entitlement
+fail-closed tenant behavior
+
+Clearly mark anything that is future architecture rather than currently implemented runtime functionality.
+
+Do not claim that tenant isolation is fully operational yet.
+
+==================================================
+17. DEPENDENCY CONTROL
+==================================================
+
+Do not add new database/ODM dependencies.
+
+Do not add MongoDB packages.
+
+Do not add Mongoose.
+
+Do not add tenant-specific infrastructure packages.
+
+Use TypeScript interfaces/types and existing application patterns where possible.
+
+==================================================
+18. VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting
+- production build
+- Prisma validation
+- git diff --check
+
+Restart the application and verify existing behavior remains unchanged:
+
+GET /health
+GET /ready
+GET /docs
+
+Also verify representative authentication routes remain unchanged.
+
+Perform a final architecture and security review.
+
+Specifically inspect for:
+
+- accidental Tenant model creation
+- accidental MongoDB implementation
+- unscoped repository escape hatch
+- client-controlled tenant selection
+- default tenant fallback
+- global database fallback
+- mixing platform identity with tenant authorization
+- tenant scope being inferred from UUID alone
+- facility/branch scope widening access
+- subscription entitlement being confused with authorization
+- unrelated Phase 14 work
+
+==================================================
+19. SCOPE CONTROL
+==================================================
+
+This is a CONTRACT correction, not Phase 14.
+
+Do NOT implement:
+
+- Tenant database tables
+- Tenant membership tables
+- Tenant roles
+- Tenant permissions
+- Facilities
+- Branches
+- MongoDB connections
+- MongoDB databases
+- Database provisioning
+- Database registry persistence
+- Patients
+- Doctors
+- Healthcare resources
+- Subscriptions
+- Plans
+- Billing
+- Usage metering
+- Tenant admin UI
+- Tenant API endpoints
+
+Only implement the minimum reusable contracts/primitives and tests required to make future tenant isolation explicit and difficult to violate.
+
+==================================================
+20. COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): establish tenant isolation contract
+
+STOP after Correction 6.
+
+Do not start Phase 14.
+
+Final report must include:
+
+1. Files changed
+2. Tenant context contract
+3. Repository contract
+4. Storage resolver contract
+5. Database registry contract
+6. Isolation invariants
+7. Fail-closed behavior
+8. Documentation changes
+9. Tests and validation results
+10. Security/architecture review findings
+11. Commit hash
+12. Explicit confirmation that actual Tenant/MongoDB/Healthcare/Phase 14 functionality was NOT implemented
