@@ -1,0 +1,550 @@
+PHASE 14B — TENANT MEMBERSHIP FOUNDATION
+
+We are continuing Thanarah Phase 14.
+
+Phase 14A — Tenant / Organization Foundation is complete and committed:
+
+73140a8 — feat(tenant): add tenant organization foundation
+
+Previous foundation corrections are also complete:
+
+- Authentication
+- Login / refresh / logout
+- Platform authorization
+- Platform roles/permissions
+- Platform audit/security
+- API/guard conventions
+- Tenant isolation contract
+- Tenant/Organization foundation
+
+Now implement ONLY Phase 14B: Tenant Membership Foundation.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement the central-platform foundation for the relationship:
+
+Platform User
+      ↓
+Tenant Membership
+      ↓
+Tenant
+
+This phase establishes membership identity and lifecycle.
+
+DO NOT implement:
+
+- Tenant roles
+- Tenant permissions
+- Tenant authorization
+- Facility
+- Branch
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- Healthcare records
+- Subscriptions
+- Plans
+- Entitlements
+- Usage limits
+- Billing
+- Insurance
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry
+- Healthcare UI
+- Voice AI
+
+Do not begin Phase 14C automatically.
+
+==================================================
+1. ARCHITECTURAL PRINCIPLE
+==================================================
+
+A PlatformUser does NOT automatically have access to every Tenant.
+
+A Tenant ID does NOT grant access.
+
+Membership is the explicit relationship between:
+
+Platform Identity
+and
+Tenant.
+
+The future authorization chain is:
+
+Platform Authentication
+→ Tenant Membership
+→ Tenant Role
+→ Tenant Permission
+→ Subscription Entitlement
+→ Business Operation
+
+Only implement the Membership layer in this phase.
+
+==================================================
+2. MEMBERSHIP MODEL
+==================================================
+
+Inspect the existing Prisma schema and Phase 14A Tenant model.
+
+Create a central Prisma model for TenantMembership.
+
+Use the existing project naming and identifier conventions.
+
+At minimum the model should support:
+
+- id
+- tenantId
+- platformUserId
+- membership status
+- createdAt
+- updatedAt
+- lifecycle timestamps where justified
+
+Use explicit enums rather than arbitrary strings.
+
+Design lifecycle states carefully.
+
+At minimum evaluate states such as:
+
+- INVITED
+- ACTIVE
+- SUSPENDED
+- REMOVED
+
+Only include states that are actually justified.
+
+Do not create unnecessary future states.
+
+==================================================
+3. RELATIONSHIPS
+==================================================
+
+TenantMembership must have proper relations to:
+
+- PlatformUser
+- Tenant
+
+Inspect existing Prisma relation conventions before implementing.
+
+Define appropriate:
+
+- foreign keys
+- indexes
+- uniqueness constraints
+
+A user should not accidentally have multiple active memberships representing the same logical membership.
+
+Design uniqueness carefully.
+
+Do not assume membership role belongs here yet.
+
+Roles will be implemented separately in Phase 14C.
+
+==================================================
+4. MEMBERSHIP LIFECYCLE
+==================================================
+
+Implement explicit lifecycle rules.
+
+Examples:
+
+INVITED
+→ ACTIVE
+
+ACTIVE
+→ SUSPENDED
+
+ACTIVE
+→ REMOVED
+
+SUSPENDED
+→ ACTIVE
+
+Define only transitions that make business sense.
+
+Invalid transitions must fail closed.
+
+Do not allow:
+
+REMOVED
+→ ACTIVE
+
+unless there is a deliberate reactivation model already justified by the architecture.
+
+If reactivation is required, define it explicitly rather than accidentally allowing arbitrary status mutation.
+
+Do not allow clients to directly set arbitrary membership status.
+
+==================================================
+5. MEMBERSHIP SERVICE
+==================================================
+
+Create a TenantMembershipService.
+
+Business rules belong here.
+
+The service should support the minimum operations required for this phase.
+
+At minimum consider:
+
+- create/invite membership
+- activate membership
+- suspend membership
+- remove membership
+
+Do not build a large generic CRUD service.
+
+Validate:
+
+- tenant exists
+- platform user exists
+- membership uniqueness
+- valid lifecycle transition
+- required inputs
+
+Do not create a membership for a nonexistent tenant/user.
+
+==================================================
+6. REPOSITORY
+==================================================
+
+Create a TenantMembershipRepository.
+
+Follow:
+
+Controller
+→ Service/Policy
+→ Repository
+→ Prisma
+
+Controllers must not access Prisma.
+
+Repository operations should be explicit.
+
+Avoid exposing unrestricted Prisma access.
+
+Future tenant-owned repositories will use TrustedTenantContext.
+
+Membership itself is central platform/SaaS metadata, so do not put it into MongoDB.
+
+==================================================
+7. AUTHORIZATION BOUNDARY
+==================================================
+
+DO NOT implement Tenant Authorization yet.
+
+However, membership management itself is a privileged platform operation.
+
+Inspect the existing platform permission model.
+
+Use existing appropriate platform authorization where possible.
+
+Do NOT invent a large new permission taxonomy.
+
+If new platform permissions are genuinely required, explain why before adding them and keep them narrowly scoped.
+
+Never allow:
+
+- request body to choose the acting user
+- request body to grant itself membership
+- client-provided role IDs
+- client-provided permission IDs
+- tenant ID alone to authorize the operation
+
+Actor identity must come from trusted authenticated server context.
+
+==================================================
+8. INVITATION DESIGN
+==================================================
+
+This phase may create the membership foundation for invitations, but do NOT implement email/SMS/WhatsApp invitation delivery.
+
+Do not build an invitation-token system unless the existing architecture already requires it.
+
+If membership creation represents an administrative invitation, model the membership state accordingly.
+
+Communication channels belong to a later phase.
+
+==================================================
+9. MEMBERSHIP ACCESS RULE
+==================================================
+
+Establish the invariant:
+
+A PlatformUser can access tenant-scoped functionality only if an appropriate active membership exists.
+
+Do NOT implement the full TenantAuthorizationGuard yet.
+
+However, create tests and contracts that establish this invariant.
+
+Do not treat:
+
+- tenant ID
+- platform user ID
+- UUID
+- hostname
+- slug
+
+as sufficient authorization.
+
+==================================================
+10. API
+==================================================
+
+If HTTP endpoints are needed, follow the existing API convention:
+
+/api/v1/...
+
+Membership administration endpoints must NOT be public.
+
+Use the existing:
+
+PlatformAuthGuard
++
+PlatformAuthorizationGuard
+
+where applicable.
+
+Do not expose tenant membership management to arbitrary authenticated users.
+
+Do not create public tenant APIs.
+
+Keep the endpoints minimal.
+
+==================================================
+11. AUDIT / SECURITY
+==================================================
+
+Integrate membership lifecycle changes with the existing Platform Audit/Security foundation.
+
+At minimum consider audit events for:
+
+- membership created/invited
+- membership activated
+- membership suspended
+- membership removed
+
+Use trusted authenticated actor context.
+
+Do not store:
+
+- passwords
+- tokens
+- cookies
+- secrets
+- credentials
+- database URLs
+
+in audit metadata.
+
+Do not allow the request body to define audit actor identity.
+
+Do not create a new audit system.
+
+Use the existing PlatformSecurity/Audit infrastructure.
+
+==================================================
+12. SECURITY REQUIREMENTS
+==================================================
+
+Review specifically for:
+
+- IDOR
+- privilege escalation
+- self-membership escalation
+- unauthorized membership creation
+- unauthorized membership status changes
+- client-controlled actor IDs
+- client-controlled role IDs
+- duplicate membership creation
+- cross-tenant membership confusion
+- mass assignment
+- arbitrary status mutation
+
+Important:
+
+Membership establishes relationship.
+
+Membership does NOT establish permissions.
+
+Do not add role authorization into this phase.
+
+==================================================
+13. TENANT ISOLATION
+==================================================
+
+Membership records are central SaaS metadata.
+
+Do not store them in tenant MongoDB.
+
+The membership must always explicitly reference the Tenant.
+
+Do not create any mechanism where:
+
+Tenant A membership
+can accidentally be interpreted as
+Tenant B membership.
+
+Use composite uniqueness/indexing where appropriate.
+
+==================================================
+14. TESTS
+==================================================
+
+Add comprehensive focused tests covering:
+
+1. membership creation
+2. duplicate membership prevention
+3. nonexistent tenant rejection
+4. nonexistent platform user rejection
+5. invitation/initial membership state
+6. activation
+7. suspension
+8. removal
+9. invalid lifecycle transitions
+10. unauthorized membership management
+11. unauthenticated membership management
+12. actor attribution
+13. audit event creation
+14. client cannot choose actor
+15. client cannot assign tenant role
+16. tenant ID alone cannot authorize access
+17. cross-tenant membership isolation
+18. removed/suspended membership cannot satisfy future active-membership checks
+19. repository/service boundaries
+20. existing authentication and platform authorization tests remain intact
+
+Do not weaken existing tests.
+
+==================================================
+15. DATABASE MIGRATION
+==================================================
+
+Create the Prisma migration for TenantMembership.
+
+Do not apply it to production.
+
+Validate:
+
+- foreign keys
+- unique constraints
+- indexes
+- enum values
+- relation behavior
+
+Do not create MongoDB schema.
+
+==================================================
+16. DOCUMENTATION
+==================================================
+
+Update the authoritative architecture documentation.
+
+Document:
+
+PlatformUser
+→ TenantMembership
+→ Tenant
+
+Clearly explain:
+
+- membership is the relationship boundary
+- membership is not tenant authorization
+- membership is not a tenant role
+- membership is not subscription entitlement
+- membership belongs in the central platform database
+- future tenant authorization will build on active membership
+
+Clearly mark Tenant Roles/Permissions as future Phase 14C functionality.
+
+==================================================
+17. VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting
+- production build
+- Prisma validation
+- migration validation
+- git diff --check
+
+Restart the application.
+
+Verify:
+
+GET /health
+GET /ready
+GET /docs
+
+Verify representative membership routes:
+
+- unauthenticated → 401
+- authenticated but unauthorized → 403
+- authorized platform administrator → expected behavior
+
+Do not require a development database if the current environment intentionally runs without one.
+
+Perform a final security review.
+
+==================================================
+18. SCOPE REVIEW
+==================================================
+
+Before committing, inspect the final diff and explicitly verify:
+
+NO:
+
+- Tenant roles
+- Tenant permissions
+- Tenant authorization guard
+- Facility
+- Branch
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Subscriptions
+- MongoDB
+- Healthcare
+- Billing
+- Phase 14C+
+
+have been implemented.
+
+==================================================
+19. COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): add tenant membership foundation
+
+STOP after Phase 14B.
+
+Do not automatically continue to Phase 14C.
+
+Final report must contain:
+
+1. Files changed
+2. TenantMembership schema
+3. Lifecycle states
+4. Lifecycle transition rules
+5. API endpoints
+6. Authorization rules
+7. Audit events
+8. Migration status
+9. Tests
+10. Security review
+11. Build/lint/typecheck results
+12. Commit hash
+13. Explicit confirmation that Tenant Roles/Permissions, Tenant Authorization, MongoDB, Healthcare, Subscriptions, and Phase 14C+ were NOT implemented
