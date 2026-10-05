@@ -52,6 +52,7 @@ export class PlatformAuditService {
       this.repository.createAuditLog({
         eventType: input.eventType,
         ...this.context(input),
+        subjectTenantId: this.safeIdentifier(input.subjectTenantId),
         metadata: this.metadata(input.metadata),
       }),
     );

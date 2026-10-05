@@ -19,18 +19,20 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
-| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, and other platform metadata |
+| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, tenant identity, and other platform metadata |
 | **Tenant Healthcare and Operations** | Not selected yet | Isolated MongoDB database(s) per tenant (future) | Tenant-owned healthcare and operational data |
 
-Tenant MongoDB is permanent architecture but **not yet implemented**. A tenant
-may eventually use multiple physical MongoDB databases while presenting one
-logical tenant data space. Future resolution must be server-side:
+Tenant healthcare and operational data will use isolated MongoDB database(s)
+per tenant in a future phase; MongoDB is **not implemented**. Phase 14A adds a
+central-platform Tenant/Organization identity only. A tenant may eventually use
+multiple physical MongoDB databases while presenting one logical tenant data
+space. Future resolution must be server-side:
 
 `Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → Subscription Entitlement → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
 
-Clients must never provide a database name or connection string. Correction 6
-adds type contracts only; it does not add a tenant resolver implementation,
-MongoDB connection modules, models, or provisioning.
+Clients must never provide a database name or connection string. The Tenant
+foundation does not add a tenant resolver implementation, MongoDB connection
+modules, tenant data models, or provisioning.
 
 Platform audit logs and security events are central-platform records stored in
 the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep
@@ -141,7 +143,7 @@ src/
 ├── app.controller.ts    # Liveness (/health) and database readiness (/ready)
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
-├── tenant/              # Future tenant isolation contracts only
+├── tenant/              # Tenant organization foundation and future isolation contracts
 ├── platform-security/   # Central audit-log and security-event repository/service
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
@@ -178,11 +180,30 @@ public/                  # Static files — Coming Soon splash page + assets
   bodies, query parameters, headers, cookies, or client-supplied role/permission
   IDs. Clients cannot choose `@RequirePermissions` values.
 
-## Tenant isolation contract — future architecture only
+## Tenant foundation and isolation boundary
 
-**Tenant isolation is not operational yet.** There are no tenant endpoints,
-membership persistence, tenant-owned repository implementations,
-database-registry records, or tenant storage connections in this correction.
+**The central Tenant/Organization identity is implemented; tenant isolation is
+not operational yet.** Phase 14A adds the platform Tenant record, repository,
+service, module, protected platform-administration endpoints, lifecycle audit
+events, and migration. There is no membership persistence, tenant-owned
+repository implementation, database-registry record, tenant storage
+connection, or tenant-facing business API.
+
+- Platform administrators use `/api/v1/platform/tenants` to create, list, and
+  inspect tenants, and `/api/v1/platform/tenants/:id/status` to change status.
+  Reads require existing `platform.read`; mutations require existing
+  `platform.manage`. The routes are authenticated and are not public.
+- A tenant has a normalized unique slug, legal/display names, and the explicit
+  `ACTIVE`, `SUSPENDED`, or `DEACTIVATED` lifecycle state. Deactivation is
+  terminal. The slug and UUID identify a record; neither grants membership or
+  authorization. `ACTIVE` may become `SUSPENDED` or `DEACTIVATED`;
+  `SUSPENDED` may become `ACTIVE` or `DEACTIVATED`; a repeated status is an
+  idempotent no-op.
+- Tenant creation and lifecycle changes record the trusted authenticated actor
+  and tenant subject in central platform audit records. Request bodies cannot
+  supply the actor or initial lifecycle state.
+- The versioned Prisma migration is present but has not been applied to
+  production. No production database was used for this phase.
 
 - A tenant ID supplied by a caller is only a selection candidate. A future
   server-side membership validator must verify that the authenticated platform
@@ -193,10 +214,11 @@ database-registry records, or tenant storage connections in this correction.
   Tenant authorization remains separate from platform authentication and from
   subscription/feature entitlement. A valid tenant member is not automatically
   entitled to every feature.
-- Tenant-owned repository methods require `TrustedTenantContext`; there is no
-  unscoped lookup, default tenant, or global-database fallback in the contract.
-  Implementations must scope every query with that context so one tenant's
-  context cannot access another tenant's records.
+- The generic tenant repository contract requires `TrustedTenantContext`; the
+  current Tenant identity repository is platform-scoped, not a tenant-owned
+  data repository. There is no default tenant or global-database fallback.
+  Future tenant-owned implementations must scope every query with trusted
+  context so one tenant's context cannot access another tenant's records.
 - `TenantStorageResolver` and `TenantDatabaseRegistry` both require trusted
   context. Storage routes contain one or more opaque registry-owned placements
   to allow future multi-database tenants; clients never supply physical
@@ -209,8 +231,9 @@ database-registry records, or tenant storage connections in this correction.
   Tenant is not a facility; a facility or branch ID cannot replace tenant
   authorization or widen tenant scope.
 - Platform storage is reserved for platform identities, authentication,
-  sessions, roles/permissions, future tenant and subscription metadata,
-  database-registry metadata, and platform audit/security records. Future
+  sessions, roles/permissions, current tenant identity/lifecycle metadata,
+  future subscription and database-registry metadata, and platform
+  audit/security records. Future
   tenant MongoDB storage is for tenant operational/healthcare data such as
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/

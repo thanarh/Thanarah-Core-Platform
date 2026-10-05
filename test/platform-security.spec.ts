@@ -102,6 +102,30 @@ describe('PlatformAuditService', () => {
         metadata: { actorUserId: 'attacker-controlled-user', requiredPermissionCount: 1 },
       }),
     );
+    expect(test.createSecurityEvent.mock.calls[0][0]).not.toHaveProperty('subjectTenantId');
+  });
+
+  it('associates tenant lifecycle audits with their tenant subject', async () => {
+    const test = repository();
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
+
+    await service.recordAudit({
+      eventType: PlatformAuditEventType.TENANT_CREATED,
+      actorUserId: 'trusted-platform-user',
+      subjectTenantId: 'tenant-record-id',
+      metadata: { tenantSlug: 'north-clinic', status: 'ACTIVE' },
+    });
+
+    expect(test.createAuditLog).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.TENANT_CREATED,
+        actorUserId: 'trusted-platform-user',
+        subjectTenantId: 'tenant-record-id',
+        metadata: { tenantSlug: 'north-clinic', status: 'ACTIVE' },
+      }),
+    );
   });
 
   it('does not throw when audit persistence fails', async () => {

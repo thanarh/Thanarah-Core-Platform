@@ -4,6 +4,6 @@
     "rootDir": "./",
     "incremental": false
   },
-  "include": ["src/**/*", "test/tenant-isolation-contract.spec.ts"],
+  "include": ["src/**/*", "test/tenant-*.spec.ts"],
   "exclude": ["node_modules", "dist"]
 }

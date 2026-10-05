@@ -10,6 +10,7 @@ import { GlobalExceptionFilter } from './common/filters/global-exception.filter'
 import { RequestIdInterceptor } from './common/interceptors/request-id.interceptor';
 import { AuthModule } from './auth/auth.module';
 import { PlatformSecurityModule } from './platform-security/platform-security.module';
+import { TenantModule } from './tenant/tenant.module';
 
 @Module({
   imports: [
@@ -18,6 +19,7 @@ import { PlatformSecurityModule } from './platform-security/platform-security.mo
     DatabaseModule,
     PlatformSecurityModule,
     AuthModule,
+    TenantModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
