@@ -49,6 +49,13 @@ enum PlatformAuditEventType {
   TENANT_MEMBERSHIP_ACTIVATED
   TENANT_MEMBERSHIP_SUSPENDED
   TENANT_MEMBERSHIP_REMOVED
+  TENANT_ROLE_CREATED
+  TENANT_ROLE_UPDATED
+  TENANT_ROLE_PERMISSIONS_UPDATED
+  TENANT_MEMBERSHIP_ROLE_ASSIGNED
+  TENANT_MEMBERSHIP_ROLE_REMOVED
+  TENANT_OWNER_ASSIGNED
+  TENANT_AUTHORIZATION_DENIED
 }
 
 enum PlatformSecurityEventType {
@@ -179,6 +186,7 @@ model Tenant {
   updatedAt       DateTime           @updatedAt
   auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
+  roles           TenantRole[]
 
   @@index([status])
   @@index([status, createdAt])
@@ -197,10 +205,62 @@ model TenantMembership {
   updatedAt       DateTime               @updatedAt
   tenant          Tenant                 @relation("TenantMembershipTenant", fields: [tenantId], references: [id], onDelete: Restrict)
   platformUser    User                   @relation("TenantMembershipPlatformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
+  roleAssignments TenantMembershipRole[]
 
   @@unique([tenantId, platformUserId])
+  @@unique([id, tenantId])
   @@index([tenantId, status, createdAt])
   @@index([platformUserId, status])
+}
+
+model TenantPermission {
+  id          String                 @id @default(uuid()) @db.Char(36)
+  code        String                 @unique @db.VarChar(128)
+  description String                 @db.VarChar(255)
+  createdAt   DateTime               @default(now())
+  updatedAt   DateTime               @updatedAt
+  roles       TenantRolePermission[]
+}
+
+model TenantRole {
+  id                String                 @id @default(uuid()) @db.Char(36)
+  tenantId          String                 @db.Char(36)
+  code              String                 @db.VarChar(64)
+  name              String                 @db.VarChar(128)
+  description       String?                @db.VarChar(512)
+  isSystemRole      Boolean                @default(false)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+  tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  permissions       TenantRolePermission[]
+  memberAssignments TenantMembershipRole[]
+
+  @@unique([tenantId, code])
+  @@unique([id, tenantId])
+  @@index([tenantId, isSystemRole])
+}
+
+model TenantRolePermission {
+  tenantRoleId       String           @db.Char(36)
+  tenantPermissionId String           @db.Char(36)
+  assignedAt         DateTime         @default(now())
+  role               TenantRole       @relation(fields: [tenantRoleId], references: [id], onDelete: Restrict)
+  permission         TenantPermission @relation(fields: [tenantPermissionId], references: [id], onDelete: Restrict)
+
+  @@id([tenantRoleId, tenantPermissionId])
+  @@index([tenantPermissionId])
+}
+
+model TenantMembershipRole {
+  tenantId     String           @db.Char(36)
+  membershipId String           @db.Char(36)
+  tenantRoleId String           @db.Char(36)
+  assignedAt   DateTime         @default(now())
+  membership   TenantMembership @relation(fields: [membershipId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  role         TenantRole       @relation(fields: [tenantRoleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([membershipId, tenantRoleId])
+  @@index([tenantId, tenantRoleId])
 }
 
 model PlatformAuditLog {

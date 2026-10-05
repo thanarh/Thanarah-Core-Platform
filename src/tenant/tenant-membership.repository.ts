@@ -26,6 +26,11 @@ export interface TenantMembershipListFilter {
   offset: number;
 }
 
+export type TenantMembershipStatusChangeResult =
+  | { kind: 'updated'; membership: TenantMembershipRecord }
+  | { kind: 'stale' }
+  | { kind: 'owner-protected' };
+
 @Injectable()
 export class TenantMembershipRepository {
   constructor(private readonly prisma: PrismaService) {}
@@ -75,20 +80,50 @@ export class TenantMembershipRepository {
     expectedStatus: TenantMembershipStatus,
     nextStatus: TenantMembershipStatus,
     changedAt: Date,
-  ): Promise<TenantMembershipRecord | null> {
-    const result = await this.prisma.tenantMembership.updateMany({
-      where: { id, tenantId, status: expectedStatus },
-      data: {
-        status: nextStatus,
-        statusChangedAt: changedAt,
-        updatedAt: changedAt,
-        ...(nextStatus === TenantMembershipStatus.ACTIVE ? { activatedAt: changedAt } : {}),
-        ...(nextStatus === TenantMembershipStatus.SUSPENDED ? { suspendedAt: changedAt } : {}),
-        ...(nextStatus === TenantMembershipStatus.REMOVED ? { removedAt: changedAt } : {}),
-      },
-    });
+  ): Promise<TenantMembershipStatusChangeResult> {
+    return this.prisma.$transaction(async (transaction) => {
+      const lockedTenant = await transaction.$queryRaw<Array<{ id: string }>>(
+        Prisma.sql`SELECT \`id\` FROM \`Tenant\` WHERE \`id\` = ${tenantId} FOR UPDATE`,
+      );
+      if (lockedTenant.length === 0) return { kind: 'stale' };
 
-    return result.count === 1 ? this.findByIdForTenant(id, tenantId) : null;
+      const current = await transaction.tenantMembership.findFirst({
+        where: { id, tenantId, status: expectedStatus },
+        select: { id: true },
+      });
+      if (!current) return { kind: 'stale' };
+
+      if (nextStatus !== TenantMembershipStatus.ACTIVE) {
+        const ownerAssignment = await transaction.tenantMembershipRole.findFirst({
+          where: {
+            membershipId: id,
+            tenantId,
+            role: { is: { code: 'OWNER' } },
+          },
+          select: { membershipId: true },
+        });
+        if (ownerAssignment) return { kind: 'owner-protected' };
+      }
+
+      const result = await transaction.tenantMembership.updateMany({
+        where: { id, tenantId, status: expectedStatus },
+        data: {
+          status: nextStatus,
+          statusChangedAt: changedAt,
+          updatedAt: changedAt,
+          ...(nextStatus === TenantMembershipStatus.ACTIVE ? { activatedAt: changedAt } : {}),
+          ...(nextStatus === TenantMembershipStatus.SUSPENDED ? { suspendedAt: changedAt } : {}),
+          ...(nextStatus === TenantMembershipStatus.REMOVED ? { removedAt: changedAt } : {}),
+        },
+      });
+      if (result.count !== 1) return { kind: 'stale' };
+
+      const membership = await transaction.tenantMembership.findFirst({
+        where: { id, tenantId },
+        select: tenantMembershipSelect,
+      });
+      return membership ? { kind: 'updated', membership } : { kind: 'stale' };
+    });
   }
 
   async hasActiveMembership(tenantId: string, platformUserId: string): Promise<boolean> {

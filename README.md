@@ -60,6 +60,42 @@ select a database name or provide a connection string. MongoDB must not be
 introduced into the current platform foundation before that design is
 explicitly implemented.
 
+## Authorization Foundations
+
+Thanarah keeps platform and tenant authorization separate:
+
+- **Platform:** `PlatformUser → PlatformRole → PlatformPermission`
+- **Tenant:** `PlatformUser → TenantMembership → TenantRole → TenantPermission`
+
+Tenant permissions are central, globally defined catalog entries in the
+`tenant.*` namespace. Tenant roles and their permission assignments belong to
+one tenant; the same role code may exist in another tenant without sharing
+assignments. Tenant permissions cannot grant platform permissions, and
+platform permissions do not grant tenant permissions.
+
+Membership establishes a user's relationship to a tenant; it does not itself
+authorize tenant operations. A tenant ID selects a possible scope; it is not a
+permission. Tenant authorization requires a server-validated active membership,
+trusted tenant context, and the permissions resolved from that membership's
+tenant role assignments. Subscription entitlements are a separate concept and
+are not implemented here.
+
+Each tenant receives the minimal `OWNER`, `ADMIN`, and `MEMBER` defaults through
+a platform-managed bootstrap operation. The initial owner must be a different,
+active tenant member selected by an authenticated platform administrator with
+`platform.manage`. An existing tenant owner can assign ownership to another
+active member, but cannot assign it to themselves. Owner assignments cannot be
+removed, and an owner membership cannot be suspended or removed through the
+current membership lifecycle API. Owner transfer and removal require a future
+explicit workflow. Tenant `OWNER` is not Platform `OWNER`.
+
+Tenant role routes use `/api/v1/tenants/:tenantId/...` and require platform
+authentication, active membership validation, trusted tenant context, and an
+explicit tenant permission. The initial-owner bootstrap route is
+`/api/v1/platform/tenants/:tenantId/roles/bootstrap` and uses platform
+authorization only. Healthcare-specific roles and operations remain future
+work.
+
 Production runs on **cPanel**:
 
 `cPanel → Thanarah Node.js application → central Prisma/MySQL/MariaDB database`
@@ -127,6 +163,7 @@ Thanarah-Core-Platform/
 - [x] Central Prisma 6 + MySQL/MariaDB persistence foundation
 - [x] Platform authentication, sessions, login, refresh, and logout foundation
 - [x] Platform role and permission authorization foundation
+- [x] Tenant organization, membership, and tenant role/permission foundations
 - [x] Coming Soon splash page (Arabic typewriter effect)
 - [ ] Tenant database registry and trusted server-side storage resolution
 - [ ] Isolated tenant MongoDB database(s) — planned, not implemented

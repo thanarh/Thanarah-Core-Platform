@@ -19,6 +19,7 @@ import {
   TenantMembershipPlatformUserNotFoundError,
   TenantMembershipSelfManagementError,
 } from './tenant-membership.errors';
+import { TenantOwnerProtectionError } from './tenant-authorization.errors';
 import type {
   TenantMembershipAccessLookup,
   TenantMembershipAccessQuery,
@@ -183,7 +184,7 @@ export class TenantMembershipService implements TenantMembershipAccessLookup {
     }
 
     const changedAt = new Date();
-    const updated = await this.memberships.changeStatusIfCurrent(
+    const change = await this.memberships.changeStatusIfCurrent(
       membershipId,
       tenantId,
       current.status,
@@ -191,12 +192,15 @@ export class TenantMembershipService implements TenantMembershipAccessLookup {
       changedAt,
     );
 
-    if (!updated) {
+    if (change.kind === 'owner-protected') throw new TenantOwnerProtectionError();
+
+    if (change.kind === 'stale') {
       const latest = await this.memberships.findByIdForTenant(membershipId, tenantId);
       if (!latest) throw new TenantMembershipNotFoundError();
       if (latest.status === nextStatus) return latest;
       throw new TenantMembershipLifecycleConflictError();
     }
+    const updated = change.membership;
 
     await this.audit.recordAudit({
       eventType: this.eventForStatus(nextStatus),

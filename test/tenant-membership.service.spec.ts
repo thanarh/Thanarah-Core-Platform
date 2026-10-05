@@ -14,6 +14,7 @@ import {
   TenantMembershipExistsError,
   TenantMembershipLifecycleConflictError,
 } from '../src/tenant/tenant-membership.errors';
+import { TenantOwnerProtectionError } from '../src/tenant/tenant-authorization.errors';
 import type {
   TenantMembershipRepository,
   TenantMembershipRecord,
@@ -86,9 +87,10 @@ describe('TenantMembershipService', () => {
     memberships.findByTenantAndPlatformUser.mockResolvedValue(null);
     memberships.findByIdForTenant.mockResolvedValue(membership());
     memberships.listForTenant.mockResolvedValue([membership()]);
-    memberships.changeStatusIfCurrent.mockResolvedValue(
-      membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
-    );
+    memberships.changeStatusIfCurrent.mockResolvedValue({
+      kind: 'updated',
+      membership: membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
+    });
     memberships.hasActiveMembership.mockResolvedValue(false);
     tenants.findById.mockResolvedValue(tenant());
     platformUsers.findAuthRecordById.mockResolvedValue({
@@ -187,9 +189,10 @@ describe('TenantMembershipService', () => {
 
   it('activates only an invited membership and attributes the audit to the manager', async () => {
     memberships.findByIdForTenant.mockResolvedValue(membership());
-    memberships.changeStatusIfCurrent.mockResolvedValue(
-      membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
-    );
+    memberships.changeStatusIfCurrent.mockResolvedValue({
+      kind: 'updated',
+      membership: membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
+    });
 
     await service.activate(tenantId, membershipId, actor);
 
@@ -220,12 +223,17 @@ describe('TenantMembershipService', () => {
       .mockResolvedValueOnce(membership({ status: TenantMembershipStatus.ACTIVE }))
       .mockResolvedValueOnce(membership({ status: TenantMembershipStatus.SUSPENDED }));
     memberships.changeStatusIfCurrent
-      .mockResolvedValueOnce(
-        membership({ status: TenantMembershipStatus.SUSPENDED, suspendedAt: timestamp }),
-      )
-      .mockResolvedValueOnce(
-        membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
-      );
+      .mockResolvedValueOnce({
+        kind: 'updated',
+        membership: membership({
+          status: TenantMembershipStatus.SUSPENDED,
+          suspendedAt: timestamp,
+        }),
+      })
+      .mockResolvedValueOnce({
+        kind: 'updated',
+        membership: membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
+      });
 
     await service.suspend(tenantId, membershipId, actor);
     await service.activate(tenantId, membershipId, actor);
@@ -261,9 +269,10 @@ describe('TenantMembershipService', () => {
   });
 
   it('removes an invited membership permanently and records a removal event', async () => {
-    memberships.changeStatusIfCurrent.mockResolvedValue(
-      membership({ status: TenantMembershipStatus.REMOVED, removedAt: timestamp }),
-    );
+    memberships.changeStatusIfCurrent.mockResolvedValue({
+      kind: 'updated',
+      membership: membership({ status: TenantMembershipStatus.REMOVED, removedAt: timestamp }),
+    });
 
     await service.remove(tenantId, membershipId, actor);
 
@@ -304,7 +313,7 @@ describe('TenantMembershipService', () => {
     memberships.findByIdForTenant
       .mockResolvedValueOnce(membership({ status: TenantMembershipStatus.ACTIVE }))
       .mockResolvedValueOnce(membership({ status: TenantMembershipStatus.REMOVED }));
-    memberships.changeStatusIfCurrent.mockResolvedValue(null);
+    memberships.changeStatusIfCurrent.mockResolvedValue({ kind: 'stale' });
 
     await expect(service.suspend(tenantId, membershipId, actor)).rejects.toBeInstanceOf(
       TenantMembershipLifecycleConflictError,
@@ -319,6 +328,18 @@ describe('TenantMembershipService', () => {
       ForbiddenException,
     );
     expect(memberships.changeStatusIfCurrent).not.toHaveBeenCalled();
+  });
+
+  it('does not suspend or remove an owner membership', async () => {
+    memberships.findByIdForTenant.mockResolvedValue(
+      membership({ status: TenantMembershipStatus.ACTIVE }),
+    );
+    memberships.changeStatusIfCurrent.mockResolvedValue({ kind: 'owner-protected' });
+
+    await expect(service.suspend(tenantId, membershipId, actor)).rejects.toBeInstanceOf(
+      TenantOwnerProtectionError,
+    );
+    expect(audit.recordAudit).not.toHaveBeenCalled();
   });
 
   it('scopes membership IDs to the route tenant and prevents cross-tenant confusion', async () => {

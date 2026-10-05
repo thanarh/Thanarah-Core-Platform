@@ -1,5 +1,5 @@
 import { TenantMembershipStatus } from '@prisma/client';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../src/database/prisma.service';
 import { TenantMembershipRepository } from '../src/tenant/tenant-membership.repository';
 
@@ -25,7 +25,8 @@ function membership(overrides: Record<string, unknown> = {}): Record<string, unk
 }
 
 describe('TenantMembershipRepository', () => {
-  const prisma = {
+  const transaction = {
+    $queryRaw: vi.fn(),
     tenantMembership: {
       create: vi.fn(),
       findUnique: vi.fn(),
@@ -33,8 +34,19 @@ describe('TenantMembershipRepository', () => {
       findMany: vi.fn(),
       updateMany: vi.fn(),
     },
+    tenantMembershipRole: {
+      findFirst: vi.fn(),
+    },
+  };
+  const prisma = {
+    ...transaction,
+    $transaction: vi.fn(async (callback: (client: typeof transaction) => Promise<unknown>) =>
+      callback(transaction),
+    ),
   };
   const repository = new TenantMembershipRepository(prisma as unknown as PrismaService);
+
+  beforeEach(() => vi.clearAllMocks());
 
   it('creates only the tenant/user relationship and relies on INVITED as the database default', async () => {
     prisma.tenantMembership.create.mockResolvedValue(membership());
@@ -99,12 +111,15 @@ describe('TenantMembershipRepository', () => {
 
   it('uses tenant, membership, and current status together for lifecycle writes', async () => {
     const otherTenantId = '44444444-4444-4444-8444-444444444444';
+    prisma.$queryRaw.mockResolvedValue([{ id: otherTenantId }]);
+    prisma.tenantMembership.findFirst
+      .mockResolvedValueOnce({ id: membershipId })
+      .mockResolvedValueOnce(
+        membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
+      );
     prisma.tenantMembership.updateMany.mockResolvedValue({ count: 1 });
-    prisma.tenantMembership.findFirst.mockResolvedValue(
-      membership({ status: TenantMembershipStatus.ACTIVE, activatedAt: timestamp }),
-    );
 
-    await repository.changeStatusIfCurrent(
+    const result = await repository.changeStatusIfCurrent(
       membershipId,
       otherTenantId,
       TenantMembershipStatus.INVITED,
@@ -112,6 +127,12 @@ describe('TenantMembershipRepository', () => {
       timestamp,
     );
 
+    expect(result).toMatchObject({
+      kind: 'updated',
+      membership: { status: TenantMembershipStatus.ACTIVE },
+    });
+    expect(prisma.$queryRaw).toHaveBeenCalled();
+    expect(prisma.$transaction).toHaveBeenCalledOnce();
     expect(prisma.tenantMembership.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
@@ -130,8 +151,35 @@ describe('TenantMembershipRepository', () => {
     expect(prisma.tenantMembership.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: membershipId, tenantId: otherTenantId },
+        select: expect.objectContaining({ status: true }),
       }),
     );
+  });
+
+  it('locks tenant lifecycle writes and refuses to deactivate an assigned owner', async () => {
+    prisma.$queryRaw.mockResolvedValue([{ id: tenantId }]);
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce({ id: membershipId });
+    prisma.tenantMembershipRole.findFirst.mockResolvedValue({ membershipId });
+
+    const result = await repository.changeStatusIfCurrent(
+      membershipId,
+      tenantId,
+      TenantMembershipStatus.ACTIVE,
+      TenantMembershipStatus.SUSPENDED,
+      timestamp,
+    );
+
+    expect(result).toEqual({ kind: 'owner-protected' });
+    expect(prisma.tenantMembershipRole.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          membershipId,
+          tenantId,
+          role: { is: { code: 'OWNER' } },
+        },
+      }),
+    );
+    expect(prisma.tenantMembership.updateMany).not.toHaveBeenCalled();
   });
 
   it('satisfies the active-membership contract only for ACTIVE rows on the exact pair', async () => {
