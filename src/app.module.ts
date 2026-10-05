@@ -11,6 +11,7 @@ import { RequestIdInterceptor } from './common/interceptors/request-id.intercept
 import { AuthModule } from './auth/auth.module';
 import { PlatformSecurityModule } from './platform-security/platform-security.module';
 import { TenantModule } from './tenant/tenant.module';
+import { PlatformCatalogModule } from './platform-catalog/platform-catalog.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { TenantModule } from './tenant/tenant.module';
     PlatformSecurityModule,
     AuthModule,
     TenantModule,
+    PlatformCatalogModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

@@ -20,6 +20,11 @@ export const PLATFORM_PERMISSION_CODES = [
   'security_events.update',
   'security_events.resolve',
   'system_health.read',
+  'plans.read',
+  'plans.manage',
+  'features.read',
+  'features.manage',
+  'plan_features.manage',
 ] as const;
 
 export type PlatformPermissionCode = (typeof PLATFORM_PERMISSION_CODES)[number];

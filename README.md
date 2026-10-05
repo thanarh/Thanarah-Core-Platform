@@ -103,7 +103,9 @@ is not a global guard. `/health`, `/ready`, `/docs`, and public login/refresh
 routes remain outside tenant authorization. The initial-owner bootstrap route
 uses platform authorization only. Missing-tenant-permission denials are recorded
 by the existing platform audit service using the trusted actor and tenant
-context. Subscription entitlements are separate and are not implemented here.
+context. Platform-level Plan and Feature definitions are separate from tenant
+authorization; subscriptions and runtime entitlement resolution are not
+implemented here.
 
 Each tenant receives the minimal `OWNER`, `ADMIN`, and `MEMBER` defaults through
 a platform-managed bootstrap operation. The initial owner must be a different,
@@ -119,6 +121,65 @@ authentication, active membership validation, trusted tenant context, and an
 explicit tenant permission. The initial-owner bootstrap route is
 `/api/v1/platform/tenants/:tenantId/roles/bootstrap` and uses platform
 authorization only.
+
+## SaaS Plan and Feature Foundation
+
+Plans and Features are reusable, platform-level catalog definitions stored in
+the central Prisma/MySQL database. Neither record has a `tenantId`; no tenant
+owns or manages catalog entries. A future tenant-specific Subscription will
+reference a Plan, but subscriptions and their lifecycle do not exist yet.
+
+**Authorization ≠ Entitlement. Plan ≠ Subscription. Feature ≠ Permission.**
+
+The two flows remain separate:
+
+`User → Tenant Membership → Tenant Permission`
+
+`Tenant → future Subscription → Plan → PlanFeature → Feature`
+
+Authorization and commercial entitlement are separate:
+
+- **Tenant Permission** answers whether an authenticated tenant member may
+  perform an operation.
+- **Feature entitlement** answers whether a tenant's future commercial
+  assignment allows a capability.
+- A future business operation requires both checks. A Plan including a Feature
+  does not authorize every member, and a member's permission does not grant a
+  capability excluded from the tenant's commercial assignment.
+
+`Feature` is not a tenant permission. This phase defines catalog records only;
+it does not resolve tenant entitlements or gate business operations.
+
+Plan keys and Feature keys are normalized, unique, and immutable after creation.
+Names and descriptions are presentation metadata. Plan lifecycle is `ACTIVE`,
+`INACTIVE`, or terminal `ARCHIVED`; Feature lifecycle is `ACTIVE` or `INACTIVE`.
+Only active Plans may have their Feature associations changed, and only active
+Features may be newly attached or enabled. Deactivating a Feature preserves its
+existing Plan associations. Plan and Feature records have no physical-delete
+API.
+
+`PlanFeature` is the normalized Plan-to-Feature relationship. It has a controlled
+`enabled` flag and no arbitrary client-supplied configuration or usage limits.
+It is a catalog definition, not a quota counter or runtime enforcement engine.
+An explicit relationship-removal endpoint removes only that association, not
+either catalog record.
+
+Platform APIs are:
+
+- `/api/v1/platform/plans` — create, list, inspect, update metadata, change
+  lifecycle, and manage Plan Features.
+- `/api/v1/platform/features` — create, list, inspect, update metadata, and
+  activate/deactivate Feature definitions.
+
+These routes use `PlatformAuthGuard` followed by
+`PlatformAuthorizationGuard`, with the dedicated `plans.*`, `features.*`, and
+`plan_features.manage` permissions. Tenant permissions cannot substitute for
+platform permissions. The baseline grants catalog administration to platform
+`OWNER`, `SUPER_ADMIN`, and `PLATFORM_ADMIN`; `SECURITY_ADMIN` and `SUPPORT_ADMIN`
+do not receive these catalog-management permissions.
+
+There are no pricing, currency, billing, payment, subscription, trial, renewal,
+usage-metering, quota-enforcement, or healthcare records in this foundation.
 
 ## Facility Foundation
 

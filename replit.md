@@ -260,14 +260,17 @@ API.
   Tenant is not a facility; a facility or branch ID cannot replace tenant
   authorization or widen tenant scope.
 - Platform storage is reserved for platform identities, authentication,
-  sessions, roles/permissions, current tenant identity/lifecycle and membership metadata,
-  future subscription and database-registry metadata, and platform
-  audit/security records. Future
+  sessions, roles/permissions, current tenant identity/lifecycle and membership
+  metadata, the platform-level SaaS Plan/Feature catalog, future subscription
+  and database-registry metadata, and platform audit/security records. Future
   tenant MongoDB storage is for tenant operational/healthcare data such as
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/
   insurance, and notifications. These persistence boundaries are architectural
   only; no tenant-owned operational or healthcare data models are added here.
+- Plans and Feature definitions are reusable central-platform metadata, not
+  tenant-owned permissions. There is no Subscription model, billing, tenant
+  entitlement resolution, or runtime entitlement gate yet.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

@@ -43,6 +43,17 @@ enum BranchStatus {
   DEACTIVATED
 }
 
+enum PlanStatus {
+  ACTIVE
+  INACTIVE
+  ARCHIVED
+}
+
+enum FeatureStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum TenantMembershipStatus {
   INVITED
   ACTIVE
@@ -78,6 +89,18 @@ enum PlatformAuditEventType {
   BRANCH_SUSPENDED
   BRANCH_ACTIVATED
   BRANCH_DEACTIVATED
+  PLAN_CREATED
+  PLAN_UPDATED
+  PLAN_ACTIVATED
+  PLAN_DEACTIVATED
+  PLAN_ARCHIVED
+  FEATURE_CREATED
+  FEATURE_UPDATED
+  FEATURE_ACTIVATED
+  FEATURE_DEACTIVATED
+  PLAN_FEATURE_ATTACHED
+  PLAN_FEATURE_UPDATED
+  PLAN_FEATURE_DETACHED
 }
 
 enum PlatformSecurityEventType {
@@ -315,6 +338,47 @@ model TenantMembershipRole {
 
   @@id([membershipId, tenantRoleId])
   @@index([tenantId, tenantRoleId])
+}
+
+model Plan {
+  id              String        @id @default(uuid()) @db.Char(36)
+  key             String        @unique @db.VarChar(64)
+  name            String        @db.VarChar(191)
+  description     String?       @db.VarChar(1000)
+  status          PlanStatus    @default(ACTIVE)
+  statusChangedAt DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  features        PlanFeature[]
+
+  @@index([status, createdAt])
+}
+
+model Feature {
+  id              String        @id @default(uuid()) @db.Char(36)
+  key             String        @unique @db.VarChar(64)
+  name            String        @db.VarChar(191)
+  description     String?       @db.VarChar(1000)
+  status          FeatureStatus @default(ACTIVE)
+  statusChangedAt DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  plans           PlanFeature[]
+
+  @@index([status, createdAt])
+}
+
+model PlanFeature {
+  planId    String   @db.Char(36)
+  featureId String   @db.Char(36)
+  enabled   Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  plan      Plan     @relation(fields: [planId], references: [id], onDelete: Restrict)
+  feature   Feature  @relation(fields: [featureId], references: [id], onDelete: Restrict)
+
+  @@id([planId, featureId])
+  @@index([featureId, createdAt])
 }
 
 model PlatformAuditLog {
