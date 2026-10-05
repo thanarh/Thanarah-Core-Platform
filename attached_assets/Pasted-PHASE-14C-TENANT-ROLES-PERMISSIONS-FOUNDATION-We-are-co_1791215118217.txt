@@ -1,0 +1,679 @@
+PHASE 14C — TENANT ROLES & PERMISSIONS FOUNDATION
+
+We are continuing Thanarah Phase 14.
+
+Completed and committed:
+
+Phase 14A:
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B:
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Previous corrections are also complete:
+
+- Authentication
+- Login / refresh / logout
+- Platform authorization
+- Platform roles/permissions
+- Platform audit/security
+- API/versioning/guard conventions
+- Tenant isolation contract
+
+Now implement ONLY Phase 14C:
+Tenant Roles & Permissions Foundation.
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Create the tenant-scoped authorization foundation:
+
+Platform User
+      ↓
+Tenant Membership
+      ↓
+Tenant Role
+      ↓
+Tenant Permission
+      ↓
+Tenant Operation
+
+Tenant authorization must remain completely separate from platform authorization.
+
+The existing platform authorization system must not be replaced, modified into tenant authorization, or mixed with tenant permissions.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement ONLY:
+
+- TenantPermission
+- TenantRole
+- TenantRolePermission
+- TenantMembershipRole or equivalent membership-to-role assignment
+- tenant permission resolution
+- tenant role resolution
+- tenant authorization foundation
+- minimal protected API/admin operations required to manage tenant roles/permissions
+- tests
+- audit integration
+- documentation
+
+DO NOT implement:
+
+- Facility
+- Branch
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- Visits
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Subscriptions
+- Plans
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry
+- Voice AI
+- Healthcare UI
+- Phase 14D+ functionality
+
+Do not automatically continue to Phase 14D.
+
+==================================================
+1. PLATFORM VS TENANT AUTHORIZATION
+==================================================
+
+This distinction is mandatory.
+
+Platform authorization:
+
+PlatformUser
+→ PlatformRole
+→ PlatformPermission
+
+Tenant authorization:
+
+PlatformUser
+→ TenantMembership
+→ TenantRole
+→ TenantPermission
+
+These are different permission namespaces.
+
+Never use a platform role as a tenant role.
+
+Never use a tenant role as a platform role.
+
+Never allow tenant permissions to grant platform permissions.
+
+Never allow platform permissions to silently grant tenant permissions.
+
+A platform administrator managing a tenant is still acting through platform authorization.
+
+A tenant member operating inside a tenant is authorized through tenant membership + tenant roles/permissions.
+
+==================================================
+2. TENANT PERMISSION MODEL
+==================================================
+
+Create a central Prisma model for tenant-scoped permissions.
+
+Use the existing naming, identifier, timestamp, and Prisma conventions.
+
+A permission should have a stable machine-readable key.
+
+Use a namespace that clearly separates tenant permissions from platform permissions.
+
+Examples of future-style permissions may include:
+
+tenant.members.read
+tenant.members.manage
+
+However, do NOT create a large healthcare permission catalog now.
+
+Create only the minimum permission definitions required by this phase.
+
+Permission identity must be unique.
+
+Do not allow arbitrary client-created permission keys through public APIs.
+
+==================================================
+3. TENANT ROLE MODEL
+==================================================
+
+Create a central Prisma model for TenantRole.
+
+A TenantRole belongs to a specific Tenant.
+
+A tenant role must never be global across all tenants.
+
+At minimum consider:
+
+- id
+- tenantId
+- name
+- stable key/code
+- description where justified
+- status if needed
+- createdAt
+- updatedAt
+
+Use explicit constraints and normalization.
+
+The same role key may exist in different tenants if that is architecturally appropriate.
+
+A role in Tenant A must never authorize a user in Tenant B.
+
+==================================================
+4. ROLE / PERMISSION RELATIONSHIP
+==================================================
+
+Create an explicit many-to-many relationship:
+
+TenantRole
+    ↓
+TenantRolePermission
+    ↓
+TenantPermission
+
+Do not store permission arrays as uncontrolled JSON if the existing architecture favors relational authorization.
+
+Permission assignment must be server-controlled.
+
+Do not accept arbitrary permission IDs from an untrusted client and automatically trust them.
+
+==================================================
+5. MEMBERSHIP / ROLE ASSIGNMENT
+==================================================
+
+Connect TenantMembership to TenantRole through an explicit assignment model or equivalent.
+
+The effective relationship must be:
+
+TenantMembership
+    ↓
+TenantRole assignment
+    ↓
+TenantPermission
+
+Role assignment must be tenant-scoped.
+
+A membership from Tenant A must never receive a role belonging to Tenant B.
+
+A role belonging to Tenant A must never be assigned to a membership belonging to Tenant B.
+
+Enforce this at the service/repository/database level where practical.
+
+Do not allow a request to assign a role by ID without validating tenant ownership.
+
+==================================================
+6. DEFAULT ROLES
+==================================================
+
+Do NOT blindly create a huge role catalog.
+
+Define only the minimum default tenant roles required for the current SaaS foundation.
+
+A reasonable foundation may include:
+
+- OWNER
+- ADMIN
+- MEMBER
+
+But inspect the existing architecture and Phase 14A/14B implementation first.
+
+If default roles are created automatically, ensure:
+
+- they belong to the correct Tenant
+- their permission assignments are explicit
+- they cannot accidentally become platform roles
+- cross-tenant role reuse is impossible
+
+Do not create healthcare-specific roles such as doctor, nurse, receptionist, accountant yet.
+
+Those belong to later domain phases.
+
+==================================================
+7. OWNER PROTECTION
+==================================================
+
+Tenant OWNER is a privileged tenant role.
+
+Define safe rules for OWNER management.
+
+At minimum:
+
+- a tenant must have a valid ownership path
+- arbitrary users cannot assign themselves OWNER
+- an ordinary tenant member cannot escalate themselves to OWNER
+- role assignment must be authorized
+- cross-tenant OWNER assignment must be impossible
+
+Do not copy the platform OWNER rules blindly.
+
+Tenant OWNER and Platform OWNER are different concepts.
+
+Document the distinction.
+
+If the architecture requires protection against removing the final OWNER, implement the minimum safe invariant:
+
+A tenant must not accidentally become ownerless through an ordinary role-management operation.
+
+Do not implement complex ownership transfer workflows yet unless necessary.
+
+==================================================
+8. TENANT AUTHORIZATION SERVICE
+==================================================
+
+Create a dedicated TenantAuthorizationService or equivalent policy service.
+
+It must resolve permissions using trusted server-side context:
+
+Authenticated Platform User
++
+Trusted Tenant Context
++
+Tenant Membership
++
+Tenant Role(s)
++
+Tenant Permission(s)
+
+It must NOT trust:
+
+- request body roles
+- query permissions
+- headers
+- cookies
+- client-provided role IDs
+- client-provided permission IDs
+- JWT tenant permissions supplied by the client
+- tenant IDs alone
+
+Authorization must fail closed.
+
+==================================================
+9. TENANT AUTHORIZATION GUARD
+==================================================
+
+Create a tenant-specific authorization mechanism without replacing PlatformAuthorizationGuard.
+
+Keep these separate:
+
+PlatformAuthGuard
+PlatformAuthorizationGuard
+
+Tenant authorization must be its own layer.
+
+The conceptual order for future tenant routes is:
+
+PlatformAuthGuard
+→ TrustedTenantContext
+→ TenantAuthorizationGuard
+
+Do not make tenant authorization global.
+
+Do not force tenant context onto health/readiness/docs.
+
+Do not break existing public auth routes.
+
+==================================================
+10. REQUIRED PERMISSION DECORATOR
+==================================================
+
+If the existing architecture supports @RequirePermissions for platform authorization, do not silently reuse it for tenant permissions if doing so would make the permission namespace ambiguous.
+
+Create a clearly separated tenant permission requirement mechanism if needed.
+
+The distinction must be obvious in code.
+
+For example, conceptually:
+
+@RequirePlatformPermissions(...)
+@RequireTenantPermissions(...)
+
+Do not necessarily use these exact names if the existing project has a better convention.
+
+The important requirement is:
+
+Platform permission requirements and tenant permission requirements must never be confused.
+
+==================================================
+11. TENANT CONTEXT
+==================================================
+
+Use the TrustedTenantContext contract created in Correction 6.
+
+Do not recreate a second tenant-context abstraction.
+
+Tenant authorization must require trusted tenant context.
+
+Do not resolve tenant identity directly from an arbitrary request parameter and treat it as trusted.
+
+The membership and role must be validated against the trusted tenant.
+
+==================================================
+12. ROLE MANAGEMENT
+==================================================
+
+Create only the minimum service/API operations required for tenant role administration.
+
+At minimum consider:
+
+- create tenant role
+- update tenant role metadata
+- assign/remove permissions from tenant role
+- assign/remove role from tenant membership
+- list roles
+- inspect role permissions
+
+All operations must verify:
+
+- authenticated platform user
+- trusted tenant context
+- active membership
+- appropriate tenant permission
+- role belongs to current tenant
+- membership belongs to current tenant
+- permission belongs to allowed tenant permission namespace
+
+Do not create generic unrestricted CRUD.
+
+==================================================
+13. BOOTSTRAP / INITIAL OWNER
+==================================================
+
+Phase 14B created memberships.
+
+Determine the safest way to bootstrap the initial Tenant OWNER role assignment without creating an insecure privilege-escalation path.
+
+Do not let an ordinary client request:
+
+"make me OWNER"
+
+and accept it.
+
+If initial owner assignment must happen through an administrative/platform-controlled flow, keep that distinction explicit.
+
+Do not implement invitation delivery.
+
+Do not implement subscription requirements yet.
+
+==================================================
+14. AUDIT / SECURITY
+==================================================
+
+Use the existing Platform Audit/Security foundation.
+
+Audit security-sensitive tenant authorization changes.
+
+At minimum consider:
+
+- tenant role created
+- tenant role updated
+- tenant permission assigned/removed
+- membership role assigned/removed
+- OWNER assignment/change
+- unauthorized tenant authorization attempt where appropriate
+
+Audit actor identity must come from trusted authenticated server context.
+
+Never trust client-provided actor IDs.
+
+Do not store:
+
+- passwords
+- tokens
+- cookies
+- secrets
+- database URLs
+- credentials
+
+in audit metadata.
+
+Keep tenant authorization audit data platform-central as SaaS/security metadata.
+
+Do not create a second audit system.
+
+==================================================
+15. DATABASE INTEGRITY
+==================================================
+
+Enforce tenant ownership boundaries.
+
+At minimum verify:
+
+TenantRole.tenantId
+must match
+TenantMembership.tenantId
+
+before assigning a role.
+
+TenantRolePermission must reference a valid tenant permission.
+
+If permissions are global definitions rather than tenant-owned rows, document that clearly and ensure they cannot become platform permissions.
+
+Choose one coherent model and preserve namespace separation.
+
+Prevent cross-tenant role assignment at service and repository level.
+
+Use database constraints where practical.
+
+==================================================
+16. SECURITY REQUIREMENTS
+==================================================
+
+Perform explicit checks for:
+
+- IDOR
+- privilege escalation
+- self-role escalation
+- self-OWNER escalation
+- cross-tenant role assignment
+- cross-tenant membership assignment
+- client-controlled permission IDs
+- client-controlled role IDs
+- platform permission leakage
+- tenant permission leakage into platform authorization
+- mass assignment
+- missing tenant context
+- missing membership
+- inactive membership
+- unauthorized permission assignment
+
+All failures must be fail-closed.
+
+==================================================
+17. TESTING
+==================================================
+
+Add comprehensive focused tests.
+
+At minimum test:
+
+1. tenant permission creation/seed behavior
+2. tenant role creation
+3. role uniqueness within tenant
+4. same role key across different tenants if supported
+5. role-permission assignment
+6. membership-role assignment
+7. cross-tenant role assignment rejection
+8. cross-tenant permission misuse rejection
+9. inactive membership rejection
+10. missing membership rejection
+11. missing tenant context rejection
+12. tenant permission authorization success
+13. tenant permission authorization denial
+14. platform permission does not grant tenant permission
+15. tenant permission does not grant platform permission
+16. client-provided role cannot escalate privileges
+17. client-provided permission cannot escalate privileges
+18. self-OWNER escalation rejected
+19. OWNER protection
+20. audit event creation
+21. trusted actor attribution
+22. unauthenticated request → 401
+23. authenticated but unauthorized → 403
+24. existing platform authorization tests remain unchanged
+25. existing authentication tests remain unchanged
+
+Include cross-tenant isolation tests as a first-class requirement.
+
+==================================================
+18. API
+==================================================
+
+Use the established convention:
+
+/api/v1/...
+
+Tenant role/permission administration endpoints must not be public.
+
+Use:
+
+PlatformAuthGuard
++
+TrustedTenantContext
++
+Tenant authorization
+
+Do not add public tenant APIs.
+
+Keep API surface minimal.
+
+Document route-level authorization clearly.
+
+==================================================
+19. DOCUMENTATION
+==================================================
+
+Update authoritative documentation.
+
+Document the final distinction:
+
+Platform:
+PlatformUser
+→ PlatformRole
+→ PlatformPermission
+
+Tenant:
+PlatformUser
+→ TenantMembership
+→ TenantRole
+→ TenantPermission
+
+Also document:
+
+- Tenant OWNER ≠ Platform OWNER
+- membership ≠ authorization
+- authorization ≠ subscription entitlement
+- tenant ID ≠ permission
+- tenant roles are tenant-specific
+- tenant permissions cannot grant platform permissions
+
+Clearly mark healthcare-specific roles as future.
+
+==================================================
+20. VALIDATION
+==================================================
+
+Run:
+
+- focused tests
+- full test suite
+- lint
+- typecheck
+- formatting
+- production build
+- Prisma validation
+- migration validation
+- git diff --check
+
+Restart the application.
+
+Verify:
+
+GET /health
+GET /ready
+GET /docs
+
+Verify representative tenant authorization behavior:
+
+- unauthenticated → 401
+- authenticated without membership → 403
+- active member without permission → 403
+- active member with required permission → expected success
+- cross-tenant role assignment → rejected
+
+Perform a final architecture/security review.
+
+==================================================
+21. SCOPE REVIEW
+==================================================
+
+Before committing, inspect the final diff.
+
+Explicitly confirm that NONE of the following were implemented:
+
+- Facility
+- Branch
+- Staff
+- Doctor
+- Patient
+- Scheduling
+- Appointment
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Plans
+- Subscriptions
+- Entitlements
+- Usage limits
+- MongoDB
+- Tenant database provisioning
+- Tenant database registry
+- Voice AI
+- Phase 14D+
+
+Do not continue automatically.
+
+==================================================
+22. COMMIT
+==================================================
+
+If all validation passes, create exactly one Conventional Commit:
+
+feat(tenant): add tenant roles and permissions foundation
+
+STOP after Phase 14C.
+
+Final report must contain:
+
+1. Files changed
+2. TenantPermission model
+3. TenantRole model
+4. Role-permission relationship
+5. Membership-role relationship
+6. Default roles and permissions
+7. Tenant authorization mechanism
+8. OWNER protection
+9. API endpoints
+10. Audit events
+11. Database constraints
+12. Tests and results
+13. Security review
+14. Build/lint/typecheck/Prisma results
+15. Commit hash
+16. Explicit confirmation that Phase 14D+ and all healthcare/MongoDB/subscription functionality were NOT implemented
