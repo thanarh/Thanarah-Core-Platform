@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TenantMembershipStatus } from '@prisma/client';
+import { Prisma, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 const tenantMembershipSelect = {
@@ -49,6 +49,21 @@ export class TenantMembershipRepository {
     return this.prisma.tenantMembership.findUnique({
       where: {
         tenantId_platformUserId: { tenantId, platformUserId },
+      },
+      select: tenantMembershipSelect,
+    });
+  }
+
+  findActiveForTenantAndPlatformUser(
+    tenantId: string,
+    platformUserId: string,
+  ): Promise<TenantMembershipRecord | null> {
+    return this.prisma.tenantMembership.findFirst({
+      where: {
+        tenantId,
+        platformUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
       },
       select: tenantMembershipSelect,
     });

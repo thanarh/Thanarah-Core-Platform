@@ -157,6 +157,18 @@ describe('Tenant role administration HTTP authorization', () => {
     expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
   });
 
+  it('returns 401 for malformed platform authentication before tenant lookup', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${tenantId}/roles`,
+      headers: { authorization: 'Bearer malformed' },
+    });
+
+    expect(response.statusCode).toBe(401);
+    expect(validator.validateMembership).not.toHaveBeenCalled();
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
+  });
+
   it('returns 403 when the authenticated platform user has no active tenant membership', async () => {
     validator.validateMembership.mockRejectedValueOnce(new TenantContextInvalidError());
 
@@ -171,13 +183,37 @@ describe('Tenant role administration HTTP authorization', () => {
     expect(roles.listRoles).not.toHaveBeenCalled();
   });
 
+  it('rejects a request for a different tenant when the user has no matching membership', async () => {
+    const otherTenantId = '99999999-9999-4999-8999-999999999999';
+    validator.validateMembership.mockRejectedValueOnce(new TenantContextInvalidError());
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${otherTenantId}/roles`,
+      headers: { authorization: 'Bearer valid' },
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(validator.validateMembership).toHaveBeenCalledWith({
+      authenticatedPlatformUser: authenticatedUser,
+      tenantIdCandidate: otherTenantId,
+    });
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
+    expect(roles.listRoles).not.toHaveBeenCalled();
+  });
+
   it('returns 403 for an active member without tenant.roles.read', async () => {
     tenantAuthorization.authorize.mockRejectedValueOnce(new TenantPermissionDeniedError());
 
     const response = await app.inject({
       method: 'GET',
-      url: `/api/v1/tenants/${tenantId}/roles`,
-      headers: { authorization: 'Bearer valid' },
+      url: `/api/v1/tenants/${tenantId}/roles?permission=tenant.roles.read&role=OWNER`,
+      headers: {
+        authorization: 'Bearer valid',
+        'x-tenant-id': ownerUserId,
+        'x-tenant-role': 'OWNER',
+        'x-tenant-permission': 'tenant.roles.read',
+      },
     });
 
     expect(response.statusCode).toBe(403);
@@ -185,6 +221,10 @@ describe('Tenant role administration HTTP authorization', () => {
       expect.objectContaining({ tenantId, membershipId, platformUserId }),
       'tenant.roles.read',
     );
+    expect(validator.validateMembership).toHaveBeenCalledWith({
+      authenticatedPlatformUser: authenticatedUser,
+      tenantIdCandidate: tenantId,
+    });
     expect(roles.listRoles).not.toHaveBeenCalled();
   });
 
@@ -209,6 +249,12 @@ describe('Tenant role administration HTTP authorization', () => {
     );
     expect(roles.listRoles).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId, membershipId, platformUserId }),
+    );
+    expect(validator.validateMembership.mock.invocationCallOrder[0]).toBeLessThan(
+      tenantAuthorization.authorize.mock.invocationCallOrder[0],
+    );
+    expect(tenantAuthorization.authorize.mock.invocationCallOrder[0]).toBeLessThan(
+      roles.listRoles.mock.invocationCallOrder[0],
     );
   });
 

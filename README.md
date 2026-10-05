@@ -60,7 +60,7 @@ select a database name or provide a connection string. MongoDB must not be
 introduced into the current platform foundation before that design is
 explicitly implemented.
 
-## Authorization Foundations
+## Authorization Model and Runtime
 
 Thanarah keeps platform and tenant authorization separate:
 
@@ -77,8 +77,33 @@ Membership establishes a user's relationship to a tenant; it does not itself
 authorize tenant operations. A tenant ID selects a possible scope; it is not a
 permission. Tenant authorization requires a server-validated active membership,
 trusted tenant context, and the permissions resolved from that membership's
-tenant role assignments. Subscription entitlements are a separate concept and
-are not implemented here.
+tenant role assignments. The runtime chain is:
+
+`Platform Authentication → Trusted Tenant Context → Active Tenant Membership → Tenant Role(s) → Tenant Permission(s) → Tenant Authorization Decision → Business Operation`
+
+For tenant role APIs, `PlatformAuthGuard` authenticates the platform user.
+`TenantContextGuard` treats the route's `:tenantId` only as a lookup input,
+checks the tenant and that authenticated user's active membership, and creates
+`TrustedTenantContext` only after validation. `TenantAuthorizationGuard` verifies
+that the authenticated user and route tenant match that context, then resolves
+the required permission from server-defined route metadata and central
+database-backed tenant role assignments. Request headers, query parameters,
+cookies, and body fields cannot supply tenant roles or permissions.
+
+Only `ACTIVE` tenants and `ACTIVE` memberships proceed to tenant authorization.
+`SUSPENDED` and `DEACTIVATED` tenants, and `INVITED`, `SUSPENDED`, or `REMOVED`
+memberships, are denied normal tenant operations. Missing or invalid platform
+authentication returns 401; an authenticated user without a usable membership
+or required tenant permission receives 403. Tenant lookup and membership
+failures use the same safe authorization response so tenant existence is not
+disclosed. Cross-tenant requests fail closed.
+
+Tenant authorization is applied only to explicitly protected tenant routes; it
+is not a global guard. `/health`, `/ready`, `/docs`, and public login/refresh
+routes remain outside tenant authorization. The initial-owner bootstrap route
+uses platform authorization only. Missing-tenant-permission denials are recorded
+by the existing platform audit service using the trusted actor and tenant
+context. Subscription entitlements are separate and are not implemented here.
 
 Each tenant receives the minimal `OWNER`, `ADMIN`, and `MEMBER` defaults through
 a platform-managed bootstrap operation. The initial owner must be a different,
@@ -93,8 +118,9 @@ Tenant role routes use `/api/v1/tenants/:tenantId/...` and require platform
 authentication, active membership validation, trusted tenant context, and an
 explicit tenant permission. The initial-owner bootstrap route is
 `/api/v1/platform/tenants/:tenantId/roles/bootstrap` and uses platform
-authorization only. Healthcare-specific roles and operations remain future
-work.
+authorization only. Facility, Branch, staff, healthcare, subscription and
+entitlement functionality, and MongoDB/tenant-database provisioning remain
+future phases.
 
 Production runs on **cPanel**:
 

@@ -1,4 +1,4 @@
-import { TenantMembershipStatus } from '@prisma/client';
+import { TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../src/database/prisma.service';
 import { TenantMembershipRepository } from '../src/tenant/tenant-membership.repository';
@@ -72,6 +72,23 @@ describe('TenantMembershipRepository', () => {
     expect(prisma.tenantMembership.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { tenantId_platformUserId: { tenantId, platformUserId } },
+      }),
+    );
+  });
+
+  it('validates active membership and tenant state in one tenant-scoped lookup', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValue(null);
+
+    await repository.findActiveForTenantAndPlatformUser(tenantId, platformUserId);
+
+    expect(prisma.tenantMembership.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: {
+          tenantId,
+          platformUserId,
+          status: TenantMembershipStatus.ACTIVE,
+          tenant: { is: { status: TenantStatus.ACTIVE } },
+        },
       }),
     );
   });

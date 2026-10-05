@@ -1,8 +1,7 @@
 import { Injectable } from '@nestjs/common';
-import { TenantMembershipStatus, TenantStatus } from '@prisma/client';
+import { TenantMembershipStatus } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { TenantMembershipRepository } from './tenant-membership.repository';
-import { TenantRepository } from './tenant.repository';
 import {
   TenantContextInvalidError,
   type TenantMembershipValidator,
@@ -15,10 +14,7 @@ import {
 
 @Injectable()
 export class TenantMembershipValidatorService implements TenantMembershipValidator {
-  constructor(
-    private readonly memberships: TenantMembershipRepository,
-    private readonly tenants: TenantRepository,
-  ) {}
+  constructor(private readonly memberships: TenantMembershipRepository) {}
 
   async validateMembership(input: {
     readonly authenticatedPlatformUser: AuthenticatedPlatformUser;
@@ -31,16 +27,17 @@ export class TenantMembershipValidatorService implements TenantMembershipValidat
       throw new TenantContextInvalidError();
     }
 
-    const tenant = await this.tenants.findById(tenantId);
-    if (!tenant || tenant.status !== TenantStatus.ACTIVE) {
-      throw new TenantContextInvalidError();
-    }
-
-    const membership = await this.memberships.findByTenantAndPlatformUser(
+    const authenticatedPlatformUserId = input.authenticatedPlatformUser.userId;
+    const membership = await this.memberships.findActiveForTenantAndPlatformUser(
       tenantId,
-      input.authenticatedPlatformUser.userId,
+      authenticatedPlatformUserId,
     );
-    if (!membership || membership.status !== TenantMembershipStatus.ACTIVE) {
+    if (
+      !membership ||
+      membership.tenantId.toLowerCase() !== tenantId ||
+      membership.platformUserId.toLowerCase() !== authenticatedPlatformUserId.toLowerCase() ||
+      membership.status !== TenantMembershipStatus.ACTIVE
+    ) {
       throw new TenantContextInvalidError();
     }
 

@@ -116,7 +116,7 @@ describe('TenantRoleService', () => {
     );
 
     expect(result.code).toBe('REPORT_VIEWER');
-    expect(tenantAuthorization.authorize).toHaveBeenCalledWith(context, 'tenant.roles.manage');
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
     expect(roles.create).toHaveBeenCalledWith({
       tenantId,
       code: 'REPORT_VIEWER',
@@ -176,10 +176,7 @@ describe('TenantRoleService', () => {
     );
 
     expect(updated.permissionCodes).toEqual(['tenant.roles.read']);
-    expect(tenantAuthorization.authorize).toHaveBeenCalledWith(
-      context,
-      'tenant.roles.permissions.manage',
-    );
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
     expect(roles.replacePermissions).toHaveBeenCalledWith(tenantId, roleId, permissionCodes);
 
     await expect(
@@ -229,13 +226,7 @@ describe('TenantRoleService', () => {
 
     await service.assignRole(context, membershipId, roleId, actor);
 
-    expect(tenantAuthorization.authorize).toHaveBeenNthCalledWith(
-      1,
-      context,
-      'tenant.members.roles.manage',
-    );
-    expect(tenantAuthorization.authorize).toHaveBeenNthCalledWith(
-      2,
+    expect(tenantAuthorization.authorize).toHaveBeenCalledExactlyOnceWith(
       context,
       'tenant.roles.permissions.manage',
     );

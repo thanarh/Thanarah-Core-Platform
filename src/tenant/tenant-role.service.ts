@@ -47,6 +47,10 @@ export type TenantRoleAuditContext = Pick<
 
 const DEFAULT_ROLE_CODES = new Set<string>(DEFAULT_TENANT_ROLES.map(({ code }) => code));
 
+/**
+ * Route-level tenant permissions are enforced by TenantAuthorizationGuard.
+ * Keep only role-dependent authorization checks, such as OWNER assignment, here.
+ */
 @Injectable()
 export class TenantRoleService {
   constructor(
@@ -58,7 +62,6 @@ export class TenantRoleService {
   ) {}
 
   async listRoles(context: TrustedTenantContext): Promise<ReturnType<typeof presentTenantRole>[]> {
-    await this.tenantAuthorization.authorize(context, 'tenant.roles.read');
     return (await this.roles.listForTenant(context.tenantId)).map(presentTenantRole);
   }
 
@@ -66,7 +69,6 @@ export class TenantRoleService {
     context: TrustedTenantContext,
     roleId: string,
   ): Promise<ReturnType<typeof presentTenantRole>> {
-    await this.tenantAuthorization.authorize(context, 'tenant.roles.read');
     this.assertRoleId(roleId);
     const role = await this.roles.findByIdForTenant(context.tenantId, roleId);
     if (!role) throw new TenantRoleNotFoundError();
@@ -80,7 +82,6 @@ export class TenantRoleService {
     requestContext: TenantRoleAuditContext = {},
   ): Promise<ReturnType<typeof presentTenantRole>> {
     this.assertActor(context, actor);
-    await this.tenantAuthorization.authorize(context, 'tenant.roles.manage');
     const parsed = createTenantRoleSchema.safeParse(input);
     if (!parsed.success) throw new TenantRoleInputValidationError();
     if (DEFAULT_ROLE_CODES.has(parsed.data.code)) throw new TenantRoleInputValidationError();
@@ -115,7 +116,6 @@ export class TenantRoleService {
     requestContext: TenantRoleAuditContext = {},
   ): Promise<ReturnType<typeof presentTenantRole>> {
     this.assertActor(context, actor);
-    await this.tenantAuthorization.authorize(context, 'tenant.roles.manage');
     this.assertRoleId(roleId);
     const parsed = updateTenantRoleSchema.safeParse(input);
     if (!parsed.success) throw new TenantRoleInputValidationError();
@@ -150,7 +150,6 @@ export class TenantRoleService {
     requestContext: TenantRoleAuditContext = {},
   ): Promise<ReturnType<typeof presentTenantRole>> {
     this.assertActor(context, actor);
-    await this.tenantAuthorization.authorize(context, 'tenant.roles.permissions.manage');
     this.assertRoleId(roleId);
     const parsed = replaceTenantRolePermissionsSchema.safeParse(input);
     if (!parsed.success) throw new TenantRoleInputValidationError();
@@ -188,7 +187,6 @@ export class TenantRoleService {
     context: TrustedTenantContext,
     membershipId: string,
   ): Promise<Array<{ assignedAt: Date; role: ReturnType<typeof presentTenantRole> }>> {
-    await this.tenantAuthorization.authorize(context, 'tenant.members.read');
     this.assertMembershipId(membershipId);
     const assignments = await this.membershipRoles.listForMembership(
       context.tenantId,
@@ -209,7 +207,6 @@ export class TenantRoleService {
     requestContext: TenantRoleAuditContext = {},
   ): Promise<void> {
     this.assertActor(context, actor);
-    await this.tenantAuthorization.authorize(context, 'tenant.members.roles.manage');
     this.assertMembershipId(membershipId);
     this.assertRoleId(roleId);
 
@@ -253,7 +250,6 @@ export class TenantRoleService {
     requestContext: TenantRoleAuditContext = {},
   ): Promise<void> {
     this.assertActor(context, actor);
-    await this.tenantAuthorization.authorize(context, 'tenant.members.roles.manage');
     this.assertMembershipId(membershipId);
     this.assertRoleId(roleId);
 
