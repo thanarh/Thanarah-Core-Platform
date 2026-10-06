@@ -1,4 +1,4 @@
-import { FeatureStatus, PlanStatus } from '@prisma/client';
+import { FeatureStatus, PlanStatus, Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../src/database/prisma.service';
 import { FeatureRepository } from '../src/platform-catalog/feature.repository';
@@ -38,6 +38,7 @@ describe('SaaS catalog repositories', () => {
       planId: 'plan-id',
       featureId: 'feature-id',
       enabled: true,
+      quotaLimits: null,
       feature: { id: 'feature-id', status: FeatureStatus.ACTIVE },
     };
     const prisma = {
@@ -64,7 +65,10 @@ describe('SaaS catalog repositories', () => {
     );
     await repository.findPlanFeature('plan-id', 'feature-id');
     await repository.attachFeature('plan-id', 'feature-id');
-    await repository.updateFeatureEnabled('plan-id', 'feature-id', false);
+    await repository.updateFeatureConfiguration('plan-id', 'feature-id', {
+      enabled: false,
+      quotaLimits: { BRANCHES: { type: 'COUNT', max: 3 } },
+    });
     await repository.detachFeature('plan-id', 'feature-id');
 
     expect(prisma.plan.updateMany).toHaveBeenCalledWith({
@@ -79,6 +83,15 @@ describe('SaaS catalog repositories', () => {
     expect(prisma.planFeature.create).toHaveBeenCalledWith(
       expect.objectContaining({ data: { planId: 'plan-id', featureId: 'feature-id' } }),
     );
+    expect(prisma.planFeature.updateMany).toHaveBeenCalledWith({
+      where: { planId: 'plan-id', featureId: 'feature-id' },
+      data: { enabled: false, quotaLimits: { BRANCHES: { type: 'COUNT', max: 3 } } },
+    });
+    await repository.updateFeatureConfiguration('plan-id', 'feature-id', { quotaLimits: null });
+    expect(prisma.planFeature.updateMany).toHaveBeenLastCalledWith({
+      where: { planId: 'plan-id', featureId: 'feature-id' },
+      data: { quotaLimits: Prisma.DbNull },
+    });
     expect(prisma.planFeature.deleteMany).toHaveBeenCalledWith({
       where: { planId: 'plan-id', featureId: 'feature-id' },
     });

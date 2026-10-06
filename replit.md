@@ -94,7 +94,8 @@ domain logic:
 The architecture must allow per-tenant enablement, plan and call-minute limits,
 usage tracking, billing integration, overage handling, call history, analytics,
 configurable business hours, and human handoff. Billing and usage tracking are
-not implemented yet.
+not implemented yet. A general PlanFeature quota-definition and decision
+foundation exists, but authoritative call-minute usage and enforcement do not.
 
 Do not add voice or telephony dependencies, database models or migrations,
 authentication changes, APIs, or tests until a future implementation phase
@@ -302,10 +303,18 @@ tenant-facing business API.
   Tenant/Feature-check endpoint. Denials use the generic `FEATURE_NOT_INCLUDED`
   response; checks are not audited individually and no cache is used.
 - Entitlement is runtime-only: no `TenantEntitlement` table, usage counters,
-  quota enforcement, billing, payments, invoices, trials, renewals, upgrades,
-  or downgrades. Any future entitlement cache must be invalidated on
-  Subscription, Plan, PlanFeature, and Feature changes. The Phase 16 migration
-  is versioned but has not been applied; startup does not apply migrations.
+  usage metering, business-route quota enforcement, billing, payments, invoices,
+  trials, renewals, upgrades, or downgrades. Any future entitlement cache must
+  be invalidated on Subscription, Plan, PlanFeature, and Feature changes.
+  Migrations are versioned but are not applied automatically at startup.
+- Phase 18 adds validated `PlanFeature.quotaLimits` definitions and a
+  `TenantQuotaService` decision contract. Server-defined resource keys are
+  separate from Feature keys; the service always verifies entitlement first.
+  `currentUsage` is validated decision input only, not authoritative usage, and
+  is never accepted from a business-route client. There is no trusted usage
+  source yet, so no quota guard is registered and no existing business route is
+  quota-enforced. No counters, events, metering, cache, workers, or billing are
+  added. The Phase 18 migration is versioned but has not been applied.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

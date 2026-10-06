@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, PlanStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type { PlanFeatureQuotaLimits } from './plan-feature-quota';
 
 const planSelect = {
   id: true,
@@ -17,6 +18,7 @@ const planFeatureSelect = {
   planId: true,
   featureId: true,
   enabled: true,
+  quotaLimits: true,
   createdAt: true,
   updatedAt: true,
   feature: {
@@ -117,14 +119,20 @@ export class PlanRepository {
     });
   }
 
-  async updateFeatureEnabled(
+  async updateFeatureConfiguration(
     planId: string,
     featureId: string,
-    enabled: boolean,
+    input: { enabled?: boolean; quotaLimits?: PlanFeatureQuotaLimits | null },
   ): Promise<PlanFeatureRecord | null> {
+    const data: Prisma.PlanFeatureUpdateManyMutationInput = {};
+    if (input.enabled !== undefined) data.enabled = input.enabled;
+    if (input.quotaLimits !== undefined) {
+      data.quotaLimits = input.quotaLimits === null ? Prisma.DbNull : input.quotaLimits;
+    }
+
     const result = await this.prisma.planFeature.updateMany({
       where: { planId, featureId },
-      data: { enabled },
+      data,
     });
     return result.count === 1 ? this.findPlanFeature(planId, featureId) : null;
   }

@@ -302,6 +302,9 @@ describe('Platform Plan and Feature HTTP authorization', () => {
       document.paths['/api/v1/platform/plans/{planId}/features']?.post?.requestBody?.content?.[
         'application/json'
       ]?.schema;
+    const updatePlanFeatureBody =
+      document.paths['/api/v1/platform/plans/{planId}/features/{featureId}']?.patch?.requestBody
+        ?.content?.['application/json']?.schema;
     const planIdParameter = document.paths['/api/v1/platform/plans/{planId}']?.get?.parameters;
     const planListParameters = document.paths['/api/v1/platform/plans']?.get?.parameters;
 
@@ -319,6 +322,22 @@ describe('Platform Plan and Feature HTTP authorization', () => {
       additionalProperties: false,
       required: ['featureId'],
       properties: { featureId: { type: 'string', format: 'uuid' } },
+    });
+    expect(updatePlanFeatureBody).toMatchObject({
+      type: 'object',
+      additionalProperties: false,
+      anyOf: [{ required: ['enabled'] }, { required: ['quotaLimits'] }],
+      properties: {
+        enabled: { type: 'boolean' },
+        quotaLimits: {
+          type: 'object',
+          nullable: true,
+          additionalProperties: false,
+          properties: {
+            BRANCHES: { oneOf: expect.any(Array) },
+          },
+        },
+      },
     });
     expect(planIdParameter).toEqual(
       expect.arrayContaining([

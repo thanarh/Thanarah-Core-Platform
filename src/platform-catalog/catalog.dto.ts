@@ -1,5 +1,6 @@
 import { FeatureStatus, PlanStatus } from '@prisma/client';
 import { z } from 'zod';
+import { planFeatureQuotaLimitsSchema } from './plan-feature-quota';
 
 function normalizeCatalogKey(value: string): string {
   return value.normalize('NFKC').trim().toUpperCase();
@@ -84,7 +85,13 @@ export const listFeaturesQuerySchema = z
   })
   .strict();
 
-export const updatePlanFeatureSchema = z.object({ enabled: z.boolean() }).strict();
+export const updatePlanFeatureSchema = z
+  .object({
+    enabled: z.boolean().optional(),
+    quotaLimits: planFeatureQuotaLimitsSchema.nullable().optional(),
+  })
+  .strict()
+  .refine((input) => Object.keys(input).length > 0);
 
 export const attachPlanFeatureSchema = z.object({ featureId: featureIdSchema }).strict();
 

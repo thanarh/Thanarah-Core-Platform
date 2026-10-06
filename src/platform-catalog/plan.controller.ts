@@ -53,7 +53,30 @@ import {
   type UpdatePlanFeatureInput,
   type UpdatePlanInput,
 } from './catalog.dto';
+import { PLAN_FEATURE_QUOTA_RESOURCE_KEYS } from './plan-feature-quota';
 import { PlanService } from './plan.service';
+
+type ApiSchemaObject = Extract<Parameters<typeof ApiBody>[0], { schema: unknown }>['schema'];
+
+const quotaLimitOpenApiSchema: ApiSchemaObject = {
+  oneOf: [
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type', 'max'],
+      properties: {
+        type: { type: 'string', enum: ['COUNT'] },
+        max: { type: 'integer', minimum: 0, maximum: Number.MAX_SAFE_INTEGER },
+      },
+    },
+    {
+      type: 'object',
+      additionalProperties: false,
+      required: ['type'],
+      properties: { type: { type: 'string', enum: ['UNLIMITED'] } },
+    },
+  ],
+};
 
 @ApiTags('Platform Plans')
 @ApiBearerAuth()
@@ -253,7 +276,7 @@ export class PlanController {
 
   @Patch(':planId/features/:featureId')
   @RequirePermissions('plan_features.manage')
-  @ApiOperation({ summary: 'Enable or disable a Feature on a Plan' })
+  @ApiOperation({ summary: 'Update a Plan Feature association and its quota definitions' })
   @ApiParam({
     name: 'planId',
     description: 'Plan UUID',
@@ -268,8 +291,22 @@ export class PlanController {
     schema: {
       type: 'object',
       additionalProperties: false,
-      required: ['enabled'],
-      properties: { enabled: { type: 'boolean' } },
+      anyOf: [{ required: ['enabled'] }, { required: ['quotaLimits'] }],
+      properties: {
+        enabled: { type: 'boolean' },
+        quotaLimits: {
+          type: 'object',
+          nullable: true,
+          additionalProperties: false,
+          description: 'Null clears configured limits. Resource keys are server-defined.',
+          properties: Object.fromEntries(
+            PLAN_FEATURE_QUOTA_RESOURCE_KEYS.map((resourceKey) => [
+              resourceKey,
+              quotaLimitOpenApiSchema,
+            ]),
+          ) as Record<string, ApiSchemaObject>,
+        },
+      },
     },
   })
   @ApiOkResponse({ description: 'Plan Feature updated' })

@@ -16,6 +16,7 @@ import {
   type UpdatePlanInput,
 } from './catalog.dto';
 import type { CatalogAuditContext } from './catalog-audit.context';
+import { planFeatureQuotaLimitsSchema } from './plan-feature-quota';
 import {
   CatalogIdInvalidError,
   FeatureNotFoundError,
@@ -28,6 +29,17 @@ import {
 } from './catalog.errors';
 import { FeatureRepository, type FeatureRecord } from './feature.repository';
 import { PlanRepository, type PlanFeatureRecord, type PlanRecord } from './plan.repository';
+
+function stableQuotaLimits(value: unknown): string | null {
+  if (value === null) return 'null';
+  const parsed = planFeatureQuotaLimitsSchema.safeParse(value);
+  if (!parsed.success) return null;
+  return JSON.stringify(
+    Object.keys(parsed.data)
+      .sort()
+      .map((resourceKey) => [resourceKey, parsed.data[resourceKey]]),
+  );
+}
 
 @Injectable()
 export class PlanService {
@@ -228,26 +240,44 @@ export class PlanService {
 
     const current = await this.plans.findPlanFeature(plan.id, feature.id);
     if (!current) throw new PlanFeatureNotFoundError();
-    if (parsed.data.enabled && feature.status !== FeatureStatus.ACTIVE) {
+    if (parsed.data.enabled === true && feature.status !== FeatureStatus.ACTIVE) {
       throw new PlanFeatureConflictError('Inactive Features cannot be enabled on a Plan');
     }
-    if (current.enabled === parsed.data.enabled) return current;
 
-    const updated = await this.plans.updateFeatureEnabled(plan.id, feature.id, parsed.data.enabled);
+    const changes: { enabled?: boolean; quotaLimits?: UpdatePlanFeatureInput['quotaLimits'] } = {};
+    if (parsed.data.enabled !== undefined && parsed.data.enabled !== current.enabled) {
+      changes.enabled = parsed.data.enabled;
+    }
+    if (
+      parsed.data.quotaLimits !== undefined &&
+      stableQuotaLimits(parsed.data.quotaLimits) !== stableQuotaLimits(current.quotaLimits)
+    ) {
+      changes.quotaLimits = parsed.data.quotaLimits;
+    }
+    if (Object.keys(changes).length === 0) return current;
+
+    const updated = await this.plans.updateFeatureConfiguration(plan.id, feature.id, changes);
     if (!updated) throw new PlanFeatureNotFoundError();
+
+    const auditMetadata: Record<string, unknown> = {
+      planId: plan.id,
+      planKey: plan.key,
+      featureId: feature.id,
+      featureKey: feature.key,
+      enabled: updated.enabled,
+    };
+    if (changes.quotaLimits !== undefined) {
+      auditMetadata.quotaResourceKeys = changes.quotaLimits
+        ? Object.keys(changes.quotaLimits).sort()
+        : [];
+    }
 
     await this.audit.recordAudit({
       eventType: PlatformAuditEventType.PLAN_FEATURE_UPDATED,
       actorUserId: actor.userId,
       sessionId: actor.sessionId,
       ...context,
-      metadata: {
-        planId: plan.id,
-        planKey: plan.key,
-        featureId: feature.id,
-        featureKey: feature.key,
-        enabled: updated.enabled,
-      },
+      metadata: auditMetadata,
     });
     return updated;
   }

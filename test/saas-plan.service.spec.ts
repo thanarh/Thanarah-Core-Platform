@@ -62,6 +62,7 @@ function association(overrides: Partial<PlanFeatureRecord> = {}): PlanFeatureRec
     planId,
     featureId,
     enabled: true,
+    quotaLimits: null,
     createdAt: now,
     updatedAt: now,
     feature: feature(),
@@ -80,7 +81,7 @@ describe('PlanService', () => {
     findPlanFeature: vi.fn(),
     listFeatures: vi.fn(),
     attachFeature: vi.fn(),
-    updateFeatureEnabled: vi.fn(),
+    updateFeatureConfiguration: vi.fn(),
     detachFeature: vi.fn(),
   };
   const features = { findById: vi.fn() };
@@ -98,7 +99,7 @@ describe('PlanService', () => {
     plans.findPlanFeature.mockResolvedValue(null);
     plans.listFeatures.mockResolvedValue([]);
     plans.attachFeature.mockResolvedValue(association());
-    plans.updateFeatureEnabled.mockResolvedValue(association({ enabled: false }));
+    plans.updateFeatureConfiguration.mockResolvedValue(association({ enabled: false }));
     plans.detachFeature.mockResolvedValue(true);
     features.findById.mockResolvedValue(feature());
     audit.recordAudit.mockResolvedValue(undefined);
@@ -331,13 +332,35 @@ describe('PlanService', () => {
     expect(plans.attachFeature).not.toHaveBeenCalled();
   });
 
-  it('updates only the enabled flag and prevents re-enabling an inactive Feature', async () => {
+  it('updates enabled state or quota definitions and prevents re-enabling an inactive Feature', async () => {
     plans.findPlanFeature.mockResolvedValueOnce(association());
-    plans.updateFeatureEnabled.mockResolvedValueOnce(association({ enabled: false }));
+    plans.updateFeatureConfiguration.mockResolvedValueOnce(association({ enabled: false }));
     await service.updateFeature(planId, featureId, { enabled: false }, actor);
-    expect(plans.updateFeatureEnabled).toHaveBeenCalledWith(planId, featureId, false);
+    expect(plans.updateFeatureConfiguration).toHaveBeenCalledWith(planId, featureId, {
+      enabled: false,
+    });
     expect(audit.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: PlatformAuditEventType.PLAN_FEATURE_UPDATED }),
+    );
+
+    plans.findPlanFeature.mockResolvedValueOnce(association());
+    plans.updateFeatureConfiguration.mockResolvedValueOnce(
+      association({ quotaLimits: { BRANCHES: { type: 'COUNT', max: 7 } } }),
+    );
+    await service.updateFeature(
+      planId,
+      featureId,
+      { quotaLimits: { BRANCHES: { type: 'COUNT', max: 7 } } },
+      actor,
+    );
+    expect(plans.updateFeatureConfiguration).toHaveBeenLastCalledWith(planId, featureId, {
+      quotaLimits: { BRANCHES: { type: 'COUNT', max: 7 } },
+    });
+    expect(audit.recordAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.PLAN_FEATURE_UPDATED,
+        metadata: expect.objectContaining({ quotaResourceKeys: ['BRANCHES'] }),
+      }),
     );
 
     plans.findPlanFeature.mockResolvedValueOnce(association({ enabled: false }));

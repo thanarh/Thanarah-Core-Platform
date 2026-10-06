@@ -160,11 +160,12 @@ Features may be newly attached or enabled. Deactivating a Feature preserves its
 existing Plan associations. Plan and Feature records have no physical-delete
 API.
 
-`PlanFeature` is the normalized Plan-to-Feature relationship. It has a controlled
-`enabled` flag and no arbitrary client-supplied configuration or usage limits.
-It is a catalog definition, not a quota counter or runtime enforcement engine.
-An explicit relationship-removal endpoint removes only that association, not
-either catalog record.
+`PlanFeature` is the normalized Plan-to-Feature relationship. Alongside its
+controlled `enabled` flag, it can hold validated quota definitions keyed by a
+server-defined resource. These are definitions only, not usage counters. The
+quota decision service is separate from feature entitlement and does not
+enforce any existing business route. An explicit relationship-removal endpoint
+removes only that association, not either catalog record.
 
 Platform APIs are:
 
@@ -181,7 +182,7 @@ platform permissions. The baseline grants catalog administration to platform
 do not receive these catalog-management permissions.
 
 This catalog phase adds no pricing, currency, billing, payment, trial, renewal,
-usage-metering, quota-enforcement, or healthcare records.
+usage metering, or healthcare records.
 
 ## SaaS Subscription Foundation
 
@@ -237,20 +238,23 @@ Platform endpoints:
 
 Create and lifecycle operations use the central `PlatformAuditLog` with trusted
 actor/session context, tenant subject, and safe identifiers/statuses. The
-versioned Prisma migration is present but has not been applied by this
+subscription Prisma migration is present but has not been applied by this
 implementation.
 
-**Authorization ≠ Subscription ≠ Entitlement ≠ Usage.** Authorization answers
-whether a user may perform an operation. Subscription records which commercial
-Plan is assigned to a Tenant. Phase 17 resolves entitlement separately; billing,
-payments, invoices, usage metering, quotas, automatic renewals,
-upgrade/downgrade workflows, trials, and payment providers remain out of scope.
+**Authorization ≠ Subscription ≠ Entitlement ≠ Quota ≠ Usage.** Authorization
+answers whether a user may perform an operation. Subscription records which
+commercial Plan is assigned to a Tenant. Phase 17 resolves entitlement
+separately, and Phase 18 adds quota definitions and a decision foundation.
+Billing, payments, invoices, authoritative usage metering, business-route quota
+enforcement, automatic renewals, upgrade/downgrade workflows, trials, and
+payment providers remain out of scope.
 
 ## SaaS Subscription Entitlement Runtime
 
-The runtime decision chain is:
+The runtime decision chain for a quota-protected operation is:
 
-`Authentication → Tenant Membership → Tenant Authorization → Current Subscription → Plan → PlanFeature → Feature Entitlement → Business Operation`
+`Authentication → Tenant Membership → Tenant Authorization → Current Subscription → Plan → PlanFeature → Feature Entitlement`
+`→ Quota Decision (when needed) → Business Operation`
 
 `TenantEntitlementService` requires a well-formed `TrustedTenantContext` and
 reuses Phase 16's current-Subscription lookup. It never selects a historical or
@@ -272,7 +276,32 @@ Denials use the generic `FEATURE_NOT_INCLUDED` response and do not reveal Plan,
 Subscription, or Feature details. Individual entitlement checks are not audited
 to avoid noisy events. No cache is used; if caching is added later, Subscription,
 Plan, PlanFeature, and Feature lifecycle changes must invalidate it. This
-foundation does not persist `TenantEntitlement` rows or enforce usage limits.
+foundation does not persist `TenantEntitlement` rows or gate existing business
+operations.
+
+## Usage Limits & Quota Foundation
+
+`PlanFeature.quotaLimits` stores validated limit definitions on the existing
+Plan-to-Feature relationship; no separate quota table or usage counter is
+introduced. The current server-defined quota resource key is `BRANCHES`. It is
+independent of Feature keys: a server caller supplies both the required Feature
+key and resource key.
+
+Limits are either `COUNT` with a non-negative safe-integer `max`, or explicit
+`UNLIMITED`. For `COUNT`, usage at or above `max` is `EXCEEDED`. A missing
+definition returns `NO_LIMIT_CONFIGURED`, but only after the current
+Subscription and Feature entitlement have been verified. Invalid stored
+configuration fails closed. Plan Feature administrators manage definitions
+through the existing protected Plan Feature update endpoint.
+
+`TenantQuotaService` accepts `currentUsage` only as an input to the decision
+contract and validates it as a finite, non-negative safe integer. No client
+route supplies that value, and the service does not treat it as an authoritative
+measurement or persist it. No quota guard is registered because the application
+does not yet have a trusted usage source. No business route is quota-enforced;
+usage counting, metering, caching, workers, and billing are not included.
+The Phase 18 Prisma migration is versioned but has not been applied; startup
+does not apply migrations.
 
 ## Facility Foundation
 

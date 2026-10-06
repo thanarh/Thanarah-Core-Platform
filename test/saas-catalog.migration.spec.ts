@@ -20,10 +20,10 @@ describe('SaaS Plan and Feature foundation schema', () => {
     expect(migration).not.toMatch(/INSERT INTO `(?:Plan|Feature)`/);
   });
 
-  it('uses a normalized relational PlanFeature with unique, restrictive foreign keys', () => {
+  it('uses a normalized PlanFeature with typed quota configuration and restrictive foreign keys', () => {
     expect(planFeatureModel).toMatch(/@@id\(\[planId, featureId\]\)/);
     expect(planFeatureModel).toMatch(/enabled\s+Boolean\s+@default\(true\)/);
-    expect(planFeatureModel).not.toMatch(/\bJson\b/);
+    expect(planFeatureModel).toMatch(/\bquotaLimits\s+Json\?/);
     expect(migration).toContain('PlanFeature_planId_fkey');
     expect(migration).toContain('PlanFeature_featureId_fkey');
     expect(migration).toContain('ON DELETE RESTRICT');
