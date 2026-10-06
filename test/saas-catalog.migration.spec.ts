@@ -17,8 +17,6 @@ describe('SaaS Plan and Feature foundation schema', () => {
     expect(featureModel).toMatch(/\bkey\s+String\s+@unique/);
     expect(planModel).not.toMatch(/\btenantId\b|\bprice\b|\bcurrency\b|\bbillingInterval\b/);
     expect(featureModel).not.toMatch(/\btenantId\b/);
-    expect(schema).not.toMatch(/model Subscription\s*\{/);
-    expect(schema).not.toMatch(/model TenantEntitlement\s*\{/);
     expect(migration).not.toMatch(/INSERT INTO `(?:Plan|Feature)`/);
   });
 

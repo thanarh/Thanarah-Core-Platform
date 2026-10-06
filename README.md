@@ -103,9 +103,8 @@ is not a global guard. `/health`, `/ready`, `/docs`, and public login/refresh
 routes remain outside tenant authorization. The initial-owner bootstrap route
 uses platform authorization only. Missing-tenant-permission denials are recorded
 by the existing platform audit service using the trusted actor and tenant
-context. Platform-level Plan and Feature definitions are separate from tenant
-authorization; subscriptions and runtime entitlement resolution are not
-implemented here.
+context. Platform-level Plan, Feature, and Subscription definitions are separate
+from tenant authorization. Runtime entitlement resolution is not implemented.
 
 Each tenant receives the minimal `OWNER`, `ADMIN`, and `MEMBER` defaults through
 a platform-managed bootstrap operation. The initial owner must be a different,
@@ -126,8 +125,8 @@ authorization only.
 
 Plans and Features are reusable, platform-level catalog definitions stored in
 the central Prisma/MySQL database. Neither record has a `tenantId`; no tenant
-owns or manages catalog entries. A future tenant-specific Subscription will
-reference a Plan, but subscriptions and their lifecycle do not exist yet.
+owns or manages catalog entries. Tenant-specific Subscription records reference
+these reusable Plans.
 
 **Authorization ≠ Entitlement. Plan ≠ Subscription. Feature ≠ Permission.**
 
@@ -135,7 +134,7 @@ The two flows remain separate:
 
 `User → Tenant Membership → Tenant Permission`
 
-`Tenant → future Subscription → Plan → PlanFeature → Feature`
+`Tenant → Subscription → Plan → PlanFeature → Feature`
 
 Authorization and commercial entitlement are separate:
 
@@ -178,8 +177,71 @@ platform permissions. The baseline grants catalog administration to platform
 `OWNER`, `SUPER_ADMIN`, and `PLATFORM_ADMIN`; `SECURITY_ADMIN` and `SUPPORT_ADMIN`
 do not receive these catalog-management permissions.
 
-There are no pricing, currency, billing, payment, subscription, trial, renewal,
-usage-metering, quota-enforcement, or healthcare records in this foundation.
+This catalog phase adds no pricing, currency, billing, payment, trial, renewal,
+usage-metering, quota-enforcement, or healthcare records.
+
+## SaaS Subscription Foundation
+
+`Tenant → Subscription → Plan → PlanFeature → Feature` is the central-platform
+commercial assignment relationship. Subscription records live in Prisma/MySQL;
+they are platform SaaS metadata, not tenant healthcare data. Plans remain
+reusable and do not acquire a `tenantId`.
+
+Persisted Subscription lifecycle states are `ACTIVE`, `SUSPENDED`, `CANCELLED`,
+and `EXPIRED`. The read-only `effectiveStatus` is date-aware and may report
+`SCHEDULED` for a future start or `EXPIRED` for an elapsed end without silently
+mutating the stored record. UTC `startsAt` is required, `endsAt` is nullable for
+open-ended periods, and period ends are exclusive. `cancelledAt` is set only by
+explicit cancellation. Historical rows are retained.
+
+`TRIALING` is omitted because this phase defines no trial workflow; `PAST_DUE`
+is omitted because billing is out of scope. A new assignment is stored as
+`ACTIVE`, unless its period has already ended, in which case it is stored as
+`EXPIRED`. A future start remains stored as `ACTIVE` but reads as `SCHEDULED`.
+`ACTIVE` may transition to `SUSPENDED` or `CANCELLED`; `SUSPENDED` may transition
+to `ACTIVE` or `CANCELLED`. Reactivation requires an active Tenant and an
+unended period. `ACTIVE` or `SUSPENDED` may transition to `EXPIRED` only after a
+non-null end date has passed. Cancellation is allowed only after the start and
+before the end, if present. `CANCELLED` and `EXPIRED` are terminal states;
+repeated or invalid transitions are rejected.
+
+The current effective Subscription is an `ACTIVE` row where
+`startsAt <= now < endsAt`, or where `endsAt` is null. The system rejects
+overlapping `ACTIVE` periods per Tenant and fails closed if a read finds more
+than one current row. Creates and lifecycle transitions lock the central Tenant
+row inside a MySQL `READ COMMITTED` transaction before checking or changing
+periods. This serializes competing writes for that Tenant. There is no database
+partial unique index for time ranges.
+
+Creating a Subscription requires an `ACTIVE` Tenant and an `ACTIVE` Plan.
+Later Tenant or Plan lifecycle changes do not delete or rewrite existing
+history. Only platform administrators can read or manage subscriptions in this
+phase; no tenant-facing subscription endpoint is exposed. Required platform
+permissions are `subscriptions.read` and `subscriptions.manage`; the baseline
+grants them to `OWNER`, `SUPER_ADMIN`, and `PLATFORM_ADMIN`.
+
+Platform endpoints:
+
+- `/api/v1/platform/subscriptions` — create and list.
+- `/api/v1/platform/subscriptions/current?tenantId=...` — resolve the current
+  effective row for one Tenant; returns `null` when none exists.
+- `/api/v1/platform/subscriptions/:subscriptionId` — read history by ID.
+- `/api/v1/platform/subscriptions/:subscriptionId/activate`
+- `/api/v1/platform/subscriptions/:subscriptionId/suspend`
+- `/api/v1/platform/subscriptions/:subscriptionId/cancel`
+- `/api/v1/platform/subscriptions/:subscriptionId/expire` — explicit lifecycle
+  transition only; no scheduled expiry worker exists.
+
+Create and lifecycle operations use the central `PlatformAuditLog` with trusted
+actor/session context, tenant subject, and safe identifiers/statuses. The
+versioned Prisma migration is present but has not been applied by this
+implementation.
+
+**Authorization ≠ Subscription ≠ Entitlement ≠ Usage.** Authorization answers
+whether a user may perform an operation. Subscription records which commercial
+Plan is assigned to a Tenant. Entitlement resolution and runtime gating are
+future work, as are billing, payments, invoices, usage metering, quotas,
+automatic renewals, upgrade/downgrade workflows, trials, and payment providers.
 
 ## Facility Foundation
 
@@ -220,9 +282,9 @@ delete route. Tenant permissions use `tenant.branches.*`; there is no
 facility-level or branch-level RBAC.
 
 Branches remain central platform metadata. They do not create MongoDB
-databases, represent healthcare records, or introduce subscriptions. Staff,
-Doctors, healthcare operations, subscriptions and entitlements, and
-MongoDB/tenant-database provisioning remain future phases.
+databases or represent healthcare records. Staff, Doctors, healthcare
+operations, entitlements, and MongoDB/tenant-database provisioning remain
+future phases.
 
 Production runs on **cPanel**:
 

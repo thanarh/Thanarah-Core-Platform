@@ -49,6 +49,13 @@ enum PlanStatus {
   ARCHIVED
 }
 
+enum SubscriptionStatus {
+  ACTIVE
+  SUSPENDED
+  CANCELLED
+  EXPIRED
+}
+
 enum FeatureStatus {
   ACTIVE
   INACTIVE
@@ -101,6 +108,11 @@ enum PlatformAuditEventType {
   PLAN_FEATURE_ATTACHED
   PLAN_FEATURE_UPDATED
   PLAN_FEATURE_DETACHED
+  SUBSCRIPTION_CREATED
+  SUBSCRIPTION_ACTIVATED
+  SUBSCRIPTION_SUSPENDED
+  SUBSCRIPTION_CANCELLED
+  SUBSCRIPTION_EXPIRED
 }
 
 enum PlatformSecurityEventType {
@@ -233,6 +245,7 @@ model Tenant {
   facilities      Facility[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
+  subscriptions   Subscription[]
 
   @@index([status])
   @@index([status, createdAt])
@@ -341,15 +354,16 @@ model TenantMembershipRole {
 }
 
 model Plan {
-  id              String        @id @default(uuid()) @db.Char(36)
-  key             String        @unique @db.VarChar(64)
-  name            String        @db.VarChar(191)
-  description     String?       @db.VarChar(1000)
-  status          PlanStatus    @default(ACTIVE)
-  statusChangedAt DateTime      @default(now())
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
+  id              String         @id @default(uuid()) @db.Char(36)
+  key             String         @unique @db.VarChar(64)
+  name            String         @db.VarChar(191)
+  description     String?        @db.VarChar(1000)
+  status          PlanStatus     @default(ACTIVE)
+  statusChangedAt DateTime       @default(now())
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
   features        PlanFeature[]
+  subscriptions   Subscription[]
 
   @@index([status, createdAt])
 }
@@ -379,6 +393,23 @@ model PlanFeature {
 
   @@id([planId, featureId])
   @@index([featureId, createdAt])
+}
+
+model Subscription {
+  id          String             @id @default(uuid()) @db.Char(36)
+  tenantId    String             @db.Char(36)
+  planId      String             @db.Char(36)
+  status      SubscriptionStatus @default(ACTIVE)
+  startsAt    DateTime
+  endsAt      DateTime?
+  cancelledAt DateTime?
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+  tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  plan        Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+
+  @@index([tenantId, status, startsAt, endsAt])
+  @@index([planId, createdAt])
 }
 
 model PlatformAuditLog {

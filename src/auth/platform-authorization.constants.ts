@@ -25,6 +25,8 @@ export const PLATFORM_PERMISSION_CODES = [
   'features.read',
   'features.manage',
   'plan_features.manage',
+  'subscriptions.read',
+  'subscriptions.manage',
 ] as const;
 
 export type PlatformPermissionCode = (typeof PLATFORM_PERMISSION_CODES)[number];

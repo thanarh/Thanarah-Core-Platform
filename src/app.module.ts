@@ -12,6 +12,7 @@ import { AuthModule } from './auth/auth.module';
 import { PlatformSecurityModule } from './platform-security/platform-security.module';
 import { TenantModule } from './tenant/tenant.module';
 import { PlatformCatalogModule } from './platform-catalog/platform-catalog.module';
+import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -22,6 +23,7 @@ import { PlatformCatalogModule } from './platform-catalog/platform-catalog.modul
     AuthModule,
     TenantModule,
     PlatformCatalogModule,
+    SubscriptionsModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

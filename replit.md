@@ -29,7 +29,7 @@ platform-user membership relationship. A tenant may eventually use multiple
 physical MongoDB databases while presenting one logical tenant data space.
 Future resolution must be server-side:
 
-`Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → Subscription Entitlement → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
+`Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → (future) Subscription/Entitlement Check → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
 
 Clients must never provide a database name or connection string. The Tenant
 foundation does not add a tenant resolver implementation, MongoDB connection
@@ -145,6 +145,8 @@ src/
 ├── config/              # Env validation (Zod schema), ConfigService
 ├── database/            # PrismaService (mock-safe), DatabaseModule
 ├── tenant/              # Tenant, central membership, and future isolation contracts
+├── platform-catalog/    # Central Plan and Feature definitions
+├── subscriptions/       # Tenant-specific platform Subscription foundation
 ├── platform-security/   # Central audit-log and security-event repository/service
 └── common/              # Shared constants, filters, interceptors, pipes
 prisma/
@@ -261,16 +263,33 @@ API.
   authorization or widen tenant scope.
 - Platform storage is reserved for platform identities, authentication,
   sessions, roles/permissions, current tenant identity/lifecycle and membership
-  metadata, the platform-level SaaS Plan/Feature catalog, future subscription
-  and database-registry metadata, and platform audit/security records. Future
+  metadata, the platform-level SaaS Plan/Feature catalog and Subscription
+  assignments, future database-registry metadata, and platform audit/security records. Future
   tenant MongoDB storage is for tenant operational/healthcare data such as
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/
   insurance, and notifications. These persistence boundaries are architectural
   only; no tenant-owned operational or healthcare data models are added here.
 - Plans and Feature definitions are reusable central-platform metadata, not
-  tenant-owned permissions. There is no Subscription model, billing, tenant
-  entitlement resolution, or runtime entitlement gate yet.
+  tenant-owned permissions. Subscription is a Tenant-specific assignment to a
+  reusable Plan, stored centrally with retained history. Creating one requires
+  an active Tenant and active Plan; later Plan lifecycle changes do not rewrite
+  existing assignments.
+- The platform-only subscription API is
+  `/api/v1/platform/subscriptions`. Reads require `subscriptions.read`;
+  mutations require `subscriptions.manage`. It does not use
+  `TenantAuthorizationGuard` and exposes no tenant-facing subscription route.
+  `ACTIVE`, `SUSPENDED`, `CANCELLED`, and `EXPIRED` are persisted states;
+  `SCHEDULED` and date-derived `EXPIRED` are effective read states. Periods are
+  UTC and end-exclusive, and history is never physically deleted.
+- Only one effective subscription period may exist for a Tenant. Create and
+  lifecycle writes lock the central Tenant row in a `READ COMMITTED` transaction
+  before checking overlap, serializing competing writes. Reads fail closed on
+  contradictory current records. Explicit expiration exists; there is no
+  expiration/renewal job.
+- Subscription does not imply billing, payment, entitlement enforcement, usage
+  metering, or quotas. Those remain out of scope. The migration is versioned but
+  has not been applied; startup does not apply migrations.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 
