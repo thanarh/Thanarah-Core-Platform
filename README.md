@@ -342,10 +342,38 @@ delete route. Tenant permissions use `tenant.branches.*`; there is no
 facility-level or branch-level RBAC.
 
 Branches remain central platform metadata. They do not create MongoDB
-databases or represent healthcare records. Staff, Doctors, healthcare
-operations, and MongoDB/tenant-database provisioning remain future phases.
+databases or represent healthcare records. Doctors, clinical staff records,
+healthcare operations, and MongoDB/tenant-database provisioning remain future
+phases. Tenant staff profiles are documented separately below.
 The entitlement runtime is implemented separately, but no existing business
 route is gated by it.
+
+## Tenant Staff Foundation
+
+Tenant staff profiles are central-platform metadata that link an existing
+`TenantMembership` to its existing platform `User`. Creating a staff profile
+does not create an authentication identity or change membership roles. The
+database enforces that the staff tenant, user, and membership all refer to the
+same tenant membership, and allows at most one staff profile per tenant user.
+
+Tenant staff routes use
+`/api/v1/tenants/:tenantId/staff[/.../:staffId]`. The route tenant ID only
+selects context; repository operations use the trusted tenant context. Creation
+accepts a membership ID, optional tenant-specific display name, and optional
+job title. The membership and platform user must both be active. The API does
+not accept user IDs, tenant IDs, roles, clinical details, or facility and branch
+assignments.
+
+Staff profiles use `ACTIVE`, `SUSPENDED`, and terminal `DEACTIVATED` states.
+They can be created, listed, read, updated, suspended, activated, and
+deactivated; they cannot be physically deleted. `tenant.staff.read` is granted
+to OWNER, ADMIN, and MEMBER. `tenant.staff.manage` is granted to OWNER and
+ADMIN and covers the complete staff-management lifecycle. Create, update, and
+lifecycle changes use central platform audit events.
+
+The Phase 19 migration is versioned but has not been applied. Staff profiles do
+not use entitlement, quota, or usage checks and do not add healthcare or other
+business modules.
 
 Production runs on **cPanel**:
 

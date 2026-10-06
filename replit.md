@@ -315,6 +315,11 @@ tenant-facing business API.
   source yet, so no quota guard is registered and no existing business route is
   quota-enforced. No counters, events, metering, cache, workers, or billing are
   added. The Phase 18 migration is versioned but has not been applied.
+- Phase 19 adds only central-platform tenant staff profiles linked to existing
+  active memberships and platform users. It does not add authentication
+  identities, roles, clinical staff data, healthcare/business modules, or
+  MongoDB data. Staff access uses tenant permissions and the trusted tenant
+  context; the Phase 19 migration is versioned but has not been applied.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

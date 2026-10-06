@@ -43,6 +43,12 @@ enum BranchStatus {
   DEACTIVATED
 }
 
+enum StaffStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
 enum PlanStatus {
   ACTIVE
   INACTIVE
@@ -96,6 +102,11 @@ enum PlatformAuditEventType {
   BRANCH_SUSPENDED
   BRANCH_ACTIVATED
   BRANCH_DEACTIVATED
+  STAFF_CREATED
+  STAFF_UPDATED
+  STAFF_SUSPENDED
+  STAFF_ACTIVATED
+  STAFF_DEACTIVATED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -147,6 +158,7 @@ model User {
   securitySubjectEvents PlatformSecurityEvent[] @relation("PlatformSecuritySubject")
   securityResolutions   PlatformSecurityEvent[] @relation("PlatformSecurityResolver")
   tenantMemberships     TenantMembership[]      @relation("TenantMembershipPlatformUser")
+  staffProfiles         Staff[]                 @relation("StaffPlatformUser")
 
   @@index([status])
 }
@@ -243,6 +255,7 @@ model Tenant {
   updatedAt       DateTime           @updatedAt
   auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
   facilities      Facility[]
+  staff           Staff[]            @relation("TenantStaffTenant")
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
   subscriptions   Subscription[]
@@ -282,6 +295,29 @@ model Branch {
   @@index([facilityId, status, createdAt])
 }
 
+model Staff {
+  id              String              @id @default(uuid()) @db.Char(36)
+  tenantId        String              @db.Char(36)
+  userId          String              @db.Char(36)
+  membershipId    String              @db.Char(36)
+  displayName     String              @db.VarChar(191)
+  jobTitle        String?             @db.VarChar(191)
+  status          StaffStatus         @default(ACTIVE)
+  statusChangedAt DateTime            @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  tenant          Tenant              @relation("TenantStaffTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  platformUser    User                @relation("StaffPlatformUser", fields: [userId], references: [id], onDelete: Restrict)
+  membership      TenantMembership    @relation("TenantStaffMembership", fields: [membershipId, tenantId, userId], references: [id, tenantId, platformUserId], onDelete: Restrict)
+
+  @@unique([tenantId, userId])
+  @@unique([membershipId, tenantId, userId])
+  @@index([tenantId, status, createdAt])
+  @@index([userId, status])
+}
+
 model TenantMembership {
   id              String                 @id @default(uuid()) @db.Char(36)
   tenantId        String                 @db.Char(36)
@@ -296,9 +332,11 @@ model TenantMembership {
   tenant          Tenant                 @relation("TenantMembershipTenant", fields: [tenantId], references: [id], onDelete: Restrict)
   platformUser    User                   @relation("TenantMembershipPlatformUser", fields: [platformUserId], references: [id], onDelete: Restrict)
   roleAssignments TenantMembershipRole[]
+  staffProfile    Staff?                 @relation("TenantStaffMembership")
 
   @@unique([tenantId, platformUserId])
   @@unique([id, tenantId])
+  @@unique([id, tenantId, platformUserId])
   @@index([tenantId, status, createdAt])
   @@index([platformUserId, status])
 }

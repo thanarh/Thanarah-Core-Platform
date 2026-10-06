@@ -16,6 +16,8 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.branches.suspend',
   'tenant.branches.activate',
   'tenant.branches.deactivate',
+  'tenant.staff.read',
+  'tenant.staff.manage',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -47,6 +49,11 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   { code: 'tenant.branches.suspend', description: 'Suspend an active branch' },
   { code: 'tenant.branches.activate', description: 'Activate a suspended branch' },
   { code: 'tenant.branches.deactivate', description: 'Permanently deactivate a branch' },
+  { code: 'tenant.staff.read', description: 'View tenant staff profiles' },
+  {
+    code: 'tenant.staff.manage',
+    description: 'Create, update, suspend, activate, and deactivate tenant staff profiles',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -77,6 +84,8 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.branches.update',
       'tenant.branches.suspend',
       'tenant.branches.activate',
+      'tenant.staff.read',
+      'tenant.staff.manage',
     ],
   },
   {
@@ -88,6 +97,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.roles.read',
       'tenant.facilities.read',
       'tenant.branches.read',
+      'tenant.staff.read',
     ],
   },
 ] as const satisfies ReadonlyArray<{
