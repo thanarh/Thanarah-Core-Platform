@@ -1,0 +1,1097 @@
+PHASE 17 — SUBSCRIPTION ENTITLEMENT RUNTIME
+
+We are continuing Thanarah after successful completion of Phase 16.
+
+Completed:
+
+Phase 14A
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D
+a80d97733fbb10e44ccf68c92578476775be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Phase 14E
+68cf8cc
+feat(tenant): add facility foundation
+
+Phase 14F
+2af2224
+feat(tenant): add branch foundation
+
+Phase 15
+5ab3353
+feat(saas): add plan and feature foundation
+
+Phase 16
+f8ea914
+feat(saas): add subscription foundation
+
+Current architecture:
+
+Tenant
+  ↓
+Subscription
+  ↓
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+Tenant authorization already exists separately:
+
+Authenticated User
+  ↓
+Tenant Membership
+  ↓
+Tenant Role
+  ↓
+Tenant Permission
+
+Now implement ONLY:
+
+PHASE 17 — SUBSCRIPTION ENTITLEMENT RUNTIME
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Create the runtime entitlement layer that answers:
+
+"Does this Tenant's current commercial subscription permit this Feature?"
+
+The final conceptual authorization chain becomes:
+
+Authentication
+    ↓
+Tenant Membership
+    ↓
+Tenant Authorization
+    ↓
+Current Subscription
+    ↓
+Plan
+    ↓
+PlanFeature
+    ↓
+Feature Entitlement
+    ↓
+Business Operation
+
+IMPORTANT:
+
+Tenant Authorization and Subscription Entitlement are separate.
+
+Authorization answers:
+
+"Is this authenticated tenant member allowed to perform this operation?"
+
+Entitlement answers:
+
+"Does this tenant's current commercial plan include this capability?"
+
+A future business operation will require BOTH.
+
+For example:
+
+User has:
+appointments.create
+
+BUT Tenant plan does not include:
+APPOINTMENTS
+
+→ DENY
+
+Tenant plan includes:
+APPOINTMENTS
+
+BUT User does not have:
+appointments.create
+
+→ DENY
+
+Both are required.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- Tenant entitlement resolution
+- Current subscription resolution integration
+- PlanFeature resolution
+- Feature availability decision
+- Entitlement service/policy
+- Tenant entitlement guard/decorator if appropriate
+- Safe entitlement caching only if clearly justified
+- Entitlement errors
+- Entitlement audit/security behavior where appropriate
+- Tests
+- Documentation
+- Minimal contract/test endpoint if required
+
+Do NOT implement:
+
+- Healthcare operations
+- Patients
+- Doctors
+- Staff
+- Departments
+- Scheduling
+- Appointments
+- Medical records
+- Billing
+- Payments
+- Invoices
+- Payment gateways
+- Usage metering
+- Usage counters
+- Quota enforcement
+- Subscription checkout
+- Upgrade workflow
+- Downgrade workflow
+- Renewal workflow
+- Trial workflow
+- MongoDB
+- Tenant database provisioning
+- Facility-level RBAC
+- Branch-level RBAC
+- Voice AI
+- Ownership handoff
+
+STOP after Phase 17.
+
+==================================================
+1. ARCHITECTURAL SEPARATION
+==================================================
+
+Do NOT merge entitlement with authorization.
+
+Keep:
+
+TenantAuthorizationService
+
+separate from:
+
+TenantEntitlementService
+
+Do not modify PlatformAuthorizationGuard to understand tenant subscriptions.
+
+Do not make PlatformAuthorizationGuard responsible for entitlements.
+
+Do not make TenantAuthorizationGuard responsible for subscription state.
+
+The correct sequence for future business operations is conceptually:
+
+PlatformAuthGuard
+→ TrustedTenantContext
+→ TenantAuthorization
+→ TenantEntitlement
+→ Business Service
+
+Do not globally apply entitlement to every route.
+
+==================================================
+2. CURRENT SUBSCRIPTION
+==================================================
+
+Reuse the Phase 16 current-subscription service/repository.
+
+Do NOT create a second definition of "current subscription."
+
+Current subscription must respect the exact Phase 16 semantics:
+
+- persisted ACTIVE state
+- startsAt <= now
+- endsAt null OR endsAt >= now according to the established exclusive/inclusive boundary semantics
+- cancelled subscriptions are not current
+- suspended subscriptions are not current
+- expired subscriptions are not current
+- overlapping active subscriptions are invalid
+- current lookup fails closed if conflicting current records are detected
+
+Inspect the actual Phase 16 implementation and reuse it.
+
+Do not duplicate the logic.
+
+==================================================
+3. ENTITLEMENT RESOLUTION
+==================================================
+
+Create a dedicated TenantEntitlementService or equivalent.
+
+Minimum conceptual operation:
+
+hasFeature(
+  trustedTenantContext,
+  featureKey
+)
+
+or an equivalent strongly typed service API.
+
+The service must:
+
+1. Require trusted tenant context.
+2. Resolve the current subscription.
+3. Resolve its Plan.
+4. Resolve the PlanFeature relationship.
+5. Resolve the Feature.
+6. Verify Feature status.
+7. Return an explicit entitlement decision.
+
+Never use:
+
+tenantId alone
+
+as proof of entitlement.
+
+Never trust:
+
+- client tenantId
+- client planId
+- client featureId
+- client featureKey as authorization evidence
+- request body entitlement flags
+- query parameters
+- headers
+- cookies
+
+Feature keys are identifiers for server-defined feature definitions, not client-controlled permission grants.
+
+==================================================
+4. NO SUBSCRIPTION
+==================================================
+
+Define safe behavior when a Tenant has no current subscription.
+
+Default:
+
+NO ACTIVE SUBSCRIPTION
+→ NOT ENTITLED
+
+Fail closed.
+
+Do not automatically grant FREE access unless a real FREE subscription exists.
+
+Do not invent a fallback plan.
+
+Do not silently assign a Plan.
+
+==================================================
+5. PLAN FEATURE
+==================================================
+
+A Feature is entitled only when the current subscription's Plan has an active valid PlanFeature relationship.
+
+Conceptually:
+
+Current Subscription
+→ Plan
+→ PlanFeature
+→ Feature
+
+All relationships must be validated server-side.
+
+Do not allow a client to submit:
+
+{
+  planId: "...",
+  featureId: "..."
+}
+
+and treat that as entitlement.
+
+The current subscription is the only source of the commercial plan.
+
+==================================================
+6. FEATURE STATUS
+==================================================
+
+Respect Feature lifecycle from Phase 15.
+
+If Feature is inactive:
+
+→ NOT ENTITLED
+
+Do not delete historical PlanFeature relationships merely because a Feature becomes inactive.
+
+Do not silently mutate Plans.
+
+The runtime decision must fail closed.
+
+==================================================
+7. PLAN STATUS
+==================================================
+
+Respect Plan lifecycle from Phase 15.
+
+If the current Subscription references a Plan that has later become INACTIVE or ARCHIVED:
+
+do NOT automatically rewrite the Subscription.
+
+For runtime entitlement:
+
+determine a consistent safe behavior.
+
+Preferred:
+
+INACTIVE/ARCHIVED PLAN
+→ NO ACTIVE ENTITLEMENT
+
+unless the established architecture explicitly defines another rule.
+
+Document the decision.
+
+Do not create a new subscription.
+
+Do not migrate the Tenant automatically.
+
+==================================================
+8. SUBSCRIPTION STATUS
+==================================================
+
+Only a commercially effective subscription may provide entitlement.
+
+At minimum:
+
+ACTIVE → eligible
+
+SUSPENDED → not entitled
+
+CANCELLED → not entitled
+
+EXPIRED → not entitled
+
+Do not treat historical subscriptions as entitlement sources.
+
+Do not use "latest subscription" as fallback.
+
+Do not use cancelled/expired subscriptions.
+
+==================================================
+9. ENTITLEMENT DECISION
+==================================================
+
+Do not return a vague boolean internally if more information is useful.
+
+Prefer a structured server-side result such as conceptually:
+
+ENTITLED
+NOT_ENTITLED_NO_SUBSCRIPTION
+NOT_ENTITLED_PLAN
+NOT_ENTITLED_FEATURE
+NOT_ENTITLED_PLAN_FEATURE
+NOT_ENTITLED_SUBSCRIPTION_STATUS
+
+Use the project's established domain-result/error conventions if they provide a better pattern.
+
+Do not expose excessive internal information to clients.
+
+A public API may return a stable safe error such as:
+
+FEATURE_NOT_INCLUDED
+
+or the project's equivalent.
+
+==================================================
+10. ENTITLEMENT ERROR
+==================================================
+
+Create a stable application/domain error for a denied entitlement.
+
+Example conceptual behavior:
+
+Authenticated
++
+Tenant membership valid
++
+Tenant permission valid
++
+Feature not included in plan
+
+→ 403
+
+Do NOT return:
+
+401
+
+because the user is authenticated.
+
+Do NOT expose:
+
+"Your plan is PRO and missing feature X"
+
+unless that information is intentionally part of a safe future product API.
+
+Keep operational errors minimal.
+
+==================================================
+11. ENTITLEMENT GUARD
+==================================================
+
+If appropriate, implement a dedicated:
+
+TenantEntitlementGuard
+
+It must remain separate from:
+
+PlatformAuthGuard
+TenantAuthorizationGuard
+
+It should:
+
+1. Require authenticated request context.
+2. Require trusted tenant context.
+3. Read server-defined feature metadata.
+4. Resolve current subscription.
+5. Resolve PlanFeature.
+6. Verify entitlement.
+7. Fail closed.
+
+Do NOT make it global.
+
+Do NOT apply it automatically to every tenant route.
+
+==================================================
+12. ENTITLEMENT DECORATOR
+==================================================
+
+If the existing architecture supports route metadata, introduce a tenant-specific decorator such as:
+
+@RequireTenantFeature("APPOINTMENTS")
+
+or the project's equivalent.
+
+The feature key must be defined by the server.
+
+Do not allow:
+
+@RequireTenantFeature(req.body.feature)
+
+or any request-controlled feature selection.
+
+Do not mix this metadata with:
+
+@RequireTenantPermissions(...)
+
+Keep them distinct.
+
+Conceptually:
+
+@RequireTenantPermissions("appointments.create")
+@RequireTenantFeature("APPOINTMENTS")
+
+A future route can require both.
+
+Do NOT add a healthcare route just to demonstrate this.
+
+==================================================
+13. PERMISSION + ENTITLEMENT
+==================================================
+
+This is mandatory.
+
+Do not make entitlement replace authorization.
+
+Do not make authorization replace entitlement.
+
+Future operation:
+
+User wants to create an appointment.
+
+Authorization:
+appointments.create
+
+Entitlement:
+APPOINTMENTS
+
+Both must pass.
+
+If either fails:
+
+DENY.
+
+Phase 17 only establishes the entitlement side and its composition mechanism.
+
+Do not implement actual appointment functionality.
+
+==================================================
+14. TENANT CONTEXT
+==================================================
+
+Reuse TrustedTenantContext from Phase 14D.
+
+Do not create another tenant context.
+
+Entitlement must always operate inside trusted tenant scope.
+
+Fail closed when context is absent or malformed.
+
+Never derive tenant context from:
+
+- subscription ID
+- plan ID
+- feature ID
+- client body
+- client query
+- client header
+
+Tenant context comes first.
+
+==================================================
+15. TENANT AUTHORIZATION
+==================================================
+
+Do not bypass TenantAuthorizationGuard.
+
+An entitlement does not give a user permission.
+
+Example:
+
+Plan includes:
+PATIENTS
+
+User has no:
+patients.read
+
+→ DENY
+
+Another user:
+
+User has:
+patients.read
+
+Tenant plan does not include:
+PATIENTS
+
+→ DENY
+
+Only both together permit a future operation.
+
+==================================================
+16. PLATFORM ADMINISTRATION
+==================================================
+
+Platform administrators already manage:
+
+Plans
+Features
+Subscriptions
+
+Do not require tenant entitlement to perform platform administration.
+
+Platform APIs remain:
+
+PlatformAuthGuard
++
+PlatformAuthorizationGuard
+
+Do not accidentally put TenantEntitlementGuard on platform SaaS management routes.
+
+==================================================
+17. ENTITLEMENT QUERY
+==================================================
+
+Avoid excessive database round trips.
+
+Prefer a repository query that can resolve:
+
+current subscription
++
+plan
++
+active plan feature
++
+active feature
+
+efficiently.
+
+However:
+
+do not sacrifice correctness for premature optimization.
+
+Do not introduce Redis or external cache in this phase.
+
+Do not add complex distributed caching.
+
+Correctness and tenant isolation come first.
+
+==================================================
+18. CACHING
+==================================================
+
+Do not add a new external cache.
+
+If the application already has a safe in-process cache abstraction, inspect it before using it.
+
+If no such abstraction exists:
+
+DO NOT create one just for Phase 17.
+
+Entitlement correctness is more important than micro-optimization.
+
+Future subscription changes must invalidate any future entitlement cache.
+
+Document this future requirement if caching is intentionally deferred.
+
+==================================================
+19. USAGE LIMITS
+==================================================
+
+Do NOT implement usage limits.
+
+Even if PlanFeature configuration contains values such as:
+
+maxPatients
+maxBranches
+maxStorage
+
+do not enforce them.
+
+Phase 17 only answers:
+
+"Is this Feature included?"
+
+Not:
+
+"Has the Tenant exceeded its quota?"
+
+Usage enforcement will be a separate future layer.
+
+==================================================
+20. FEATURE CONFIGURATION
+==================================================
+
+If Phase 15 PlanFeature already has configuration:
+
+Do not reinterpret it as a usage counter.
+
+Do not implement arbitrary configuration logic.
+
+For now:
+
+configuration may be returned internally where needed,
+
+but entitlement should remain an explicit feature availability decision.
+
+Do not create a generic rules engine.
+
+==================================================
+21. AUDIT / SECURITY
+==================================================
+
+Do NOT audit every successful entitlement check.
+
+That would create excessive noise.
+
+Audit only security-significant entitlement failures if the existing security/audit architecture supports it and if the event is operationally useful.
+
+Do not create a second audit system.
+
+If recording a denial:
+
+- use trusted actor
+- use trusted tenant
+- use safe feature identifier
+- never record tokens
+- never record cookies
+- never record Authorization headers
+- never record secrets
+- never record DATABASE_URL
+
+Do not leak entitlement internals through logs.
+
+==================================================
+22. API
+==================================================
+
+Do NOT create a broad public entitlement API.
+
+Do not allow clients to ask arbitrary:
+
+"Does tenant X have feature Y?"
+
+because that can become an information disclosure surface.
+
+If a diagnostic/admin endpoint is genuinely necessary for testing:
+
+keep it platform-protected and clearly internal.
+
+Otherwise test entitlement through service/guard integration.
+
+Do not create tenant-facing subscription-management endpoints.
+
+==================================================
+23. TEST CONTRACT ENDPOINT
+==================================================
+
+If the existing test architecture needs an HTTP route to prove the guard:
+
+create the smallest possible protected contract/test route.
+
+It must:
+
+- use trusted tenant context
+- require a server-defined feature
+- return a simple success response
+- not implement healthcare business logic
+
+Clearly mark/document it as a contract/integration route if such routes already exist.
+
+Do not create fake production business APIs.
+
+==================================================
+24. TESTING
+==================================================
+
+Create comprehensive entitlement tests.
+
+BASIC:
+
+1. active subscription + active PlanFeature + active Feature → ENTITLED
+2. no subscription → NOT_ENTITLED
+3. suspended subscription → NOT_ENTITLED
+4. cancelled subscription → NOT_ENTITLED
+5. expired subscription → NOT_ENTITLED
+
+PLAN:
+
+6. inactive Plan → NOT_ENTITLED
+7. archived Plan → NOT_ENTITLED
+8. current subscription references correct Plan
+9. historical subscription cannot provide entitlement
+10. latest-created subscription cannot bypass current-subscription semantics
+
+FEATURE:
+
+11. active Feature → eligible
+12. inactive Feature → NOT_ENTITLED
+13. nonexistent Feature → NOT_ENTITLED
+14. Feature belonging to another Plan → NOT_ENTITLED
+
+PLAN FEATURE:
+
+15. missing PlanFeature → NOT_ENTITLED
+16. active PlanFeature → ENTITLED
+17. inactive Feature relationship cannot grant entitlement
+18. duplicate relationships cannot produce inconsistent results
+
+TENANT ISOLATION:
+
+19. Tenant A subscription cannot grant Tenant B entitlement
+20. Tenant B subscription cannot grant Tenant A entitlement
+21. client tenantId cannot influence entitlement
+22. client planId cannot influence entitlement
+23. client featureId cannot influence entitlement
+24. cross-tenant subscription cannot be selected
+
+AUTHORIZATION SEPARATION:
+
+25. entitlement does not grant tenant permission
+26. tenant permission does not grant entitlement
+27. platform permission does not grant entitlement
+28. tenant user cannot manipulate entitlement through client input
+
+GUARD:
+
+29. unauthenticated → 401
+30. missing tenant context → fail closed
+31. no entitlement → 403
+32. entitled + authenticated + valid tenant context → success
+33. feature metadata is server-defined
+34. feature cannot be selected from request input
+
+COMPOSITION:
+
+35. permission passes + entitlement passes → success
+36. permission passes + entitlement fails → 403
+37. permission fails + entitlement passes → 403
+38. both fail → 403
+
+SUBSCRIPTION EDGE CASES:
+
+39. subscription starts in future → NOT_ENTITLED
+40. subscription end boundary behaves according to Phase 16 semantics
+41. overlapping current subscriptions fail closed
+42. current-subscription conflict cannot accidentally grant entitlement
+43. plan archived after subscription creation behaves according to documented rule
+
+AUDIT:
+
+44. entitlement denial does not leak secrets
+45. trusted actor/tenant attribution if denial auditing is implemented
+46. no sensitive headers/tokens in metadata
+
+REGRESSION:
+
+47. all authentication tests pass
+48. all platform authorization tests pass
+49. all tenant membership tests pass
+50. all tenant role tests pass
+51. all tenant authorization tests pass
+52. all Facility tests pass
+53. all Branch tests pass
+54. all Plan tests pass
+55. all Feature tests pass
+56. all Subscription tests pass
+
+Add additional tests required by the implementation.
+
+==================================================
+25. OPENAPI
+==================================================
+
+If a contract/test endpoint or entitlement-related endpoint is exposed:
+
+document:
+
+- authentication
+- authorization
+- required tenant feature
+- request/response schemas
+- 401
+- 403
+- 404 where applicable
+
+Do not expose internal entitlement implementation details.
+
+Run OpenAPI contract tests if the project has them.
+
+==================================================
+26. SECURITY REVIEW
+==================================================
+
+Perform a focused security review for:
+
+- cross-tenant entitlement leakage
+- tenantId manipulation
+- planId manipulation
+- featureId manipulation
+- featureKey manipulation
+- subscription ID manipulation
+- historical subscription abuse
+- archived Plan bypass
+- inactive Feature bypass
+- permission/entitlement confusion
+- missing TrustedTenantContext
+- client-controlled metadata
+- information disclosure
+- accidental global guard behavior
+- direct Prisma access from controllers
+- caching stale entitlements
+- privilege escalation
+
+Fix all critical/high severity issues before committing.
+
+==================================================
+27. DATABASE
+==================================================
+
+Prefer NO schema changes in Phase 17.
+
+The Phase 15/16 models should already provide everything required:
+
+Tenant
+Subscription
+Plan
+PlanFeature
+Feature
+
+Only change Prisma schema if the implementation proves a real missing invariant.
+
+If schema changes are genuinely required:
+
+- explain why
+- create proper migration
+- validate migration
+- inspect DDL
+- do not modify unrelated migrations
+- do not apply to production
+
+Do not create TenantEntitlement unless a demonstrated architectural requirement makes it unavoidable.
+
+The current subscription + PlanFeature relationship is the source of truth.
+
+==================================================
+28. DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation.
+
+Document the final layered decision:
+
+Authentication
+    ↓
+Tenant Membership
+    ↓
+Tenant Authorization
+    ↓
+Current Subscription
+    ↓
+Plan
+    ↓
+PlanFeature
+    ↓
+Feature Entitlement
+    ↓
+Business Operation
+
+Explicitly document:
+
+Authorization ≠ Entitlement
+
+Permission ≠ Feature
+
+Plan ≠ Subscription
+
+Subscription ≠ Billing
+
+Entitlement ≠ Usage Limit
+
+Also document:
+
+- no subscription means no entitlement
+- inactive subscription means no entitlement
+- inactive/archived Plan does not grant new runtime entitlement
+- inactive Feature does not grant entitlement
+- historical subscriptions do not grant entitlement
+- entitlement is tenant-scoped
+- feature metadata is server-controlled
+- client input cannot grant entitlement
+
+==================================================
+29. VALIDATION
+==================================================
+
+Run:
+
+- focused Phase 17 tests
+- full test suite
+- lint
+- formatting
+- both TypeScript checks
+- production build
+- Prisma validation
+- migration validation if schema changed
+- OpenAPI contract validation
+- git diff --check
+
+Restart the application.
+
+Runtime checks:
+
+GET /health → 200
+
+GET /docs → 200
+
+If a protected entitlement contract route exists:
+
+unauthenticated → 401
+
+authenticated without entitlement → 403
+
+authenticated with entitlement → success
+
+/ready must reflect actual database availability.
+
+If no DB is configured:
+
+/ready → 503
+
+Do not fake database connectivity.
+
+Do not apply migrations.
+
+==================================================
+30. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff.
+
+Explicitly confirm that the following were NOT implemented:
+
+- Healthcare
+- Patients
+- Doctors
+- Staff
+- Scheduling
+- Appointments
+- Medical records
+- Billing
+- Payments
+- Invoices
+- Payment gateways
+- Checkout
+- Trials
+- Renewal workflows
+- Upgrade workflows
+- Downgrade workflows
+- Usage metering
+- Usage counters
+- Quota enforcement
+- TenantEntitlement persistence unless strictly required
+- MongoDB
+- Tenant database registry
+- Tenant DB provisioning
+- Facility-level RBAC
+- Branch-level RBAC
+- Voice AI
+- Ownership handoff
+
+Do not start Phase 18 automatically.
+
+STOP after Phase 17.
+
+==================================================
+31. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(saas): add subscription entitlement runtime
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+Leave the attached specification untouched and uncommitted.
+
+==================================================
+32. FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Entitlement service behavior
+3. Current subscription integration
+4. PlanFeature resolution
+5. Feature status behavior
+6. Subscription status behavior
+7. Authorization vs entitlement separation
+8. Guard/decorator behavior
+9. API/contract route behavior if any
+10. Audit/security behavior
+11. Database/migration changes
+12. Test count and results
+13. OpenAPI validation
+14. Lint/typecheck/build/Prisma results
+15. Runtime verification
+16. Security review findings
+17. Commit hash
+18. Explicit confirmation that Healthcare, Billing, Usage Metering, MongoDB, and all later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 18.
