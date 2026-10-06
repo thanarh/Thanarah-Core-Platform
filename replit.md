@@ -27,9 +27,9 @@ per tenant in a future phase; MongoDB is **not implemented**. Phase 14A adds a
 central-platform Tenant/Organization identity; Phase 14B adds its central
 platform-user membership relationship. A tenant may eventually use multiple
 physical MongoDB databases while presenting one logical tenant data space.
-Future resolution must be server-side:
+All tenant-scoped business decisions must be server-side:
 
-`Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization → (future) Subscription/Entitlement Check → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
+`Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization (where required) → Subscription Entitlement (where required) → Business Service → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
 
 Clients must never provide a database name or connection string. The Tenant
 foundation does not add a tenant resolver implementation, MongoDB connection
@@ -185,13 +185,14 @@ public/                  # Static files — Coming Soon splash page + assets
 
 ## Tenant foundation and isolation boundary
 
-**Tenant and membership identity are implemented; tenant authorization and
-isolation are not operational yet.** Phase 14A adds the platform Tenant record
-and administration endpoints. Phase 14B adds central TenantMembership
+**Tenant identity, membership, and tenant authorization are implemented; tenant
+data isolation is not operational yet.** Phase 14A adds the platform Tenant
+record and administration endpoints. Phase 14B adds central TenantMembership
 persistence, lifecycle operations, audit events, and membership administration
-endpoints. There is no tenant-owned repository implementation,
-database-registry record, tenant storage connection, or tenant-facing business
-API.
+endpoints. Phase 14C adds trusted tenant context, tenant roles/permissions, and
+the `TenantAuthorizationGuard`. There is no tenant-owned repository
+implementation, database-registry record, tenant storage connection, or
+tenant-facing business API.
 
 - Platform administrators use `/api/v1/platform/tenants` to create, list, and
   inspect tenants, and `/api/v1/platform/tenants/:id/status` to change status.
@@ -228,7 +229,7 @@ API.
   returns true only for an `ACTIVE` row for that exact pair. It is a relationship
   check only: it does not authenticate users, create `TrustedTenantContext`, or
   authorize tenant operations. Tenant roles/permissions and the
-  `TenantAuthorizationGuard` remain future Phase 14C work.
+  `TenantAuthorizationGuard` are implemented separately in Phase 14C.
 - Invitation, activation, suspension, and removal write central audit events
   with actor, platform-user subject, and tenant subject. Actor identity comes
   only from authenticated server context; request bodies cannot choose actors,
@@ -287,9 +288,24 @@ API.
   before checking overlap, serializing competing writes. Reads fail closed on
   contradictory current records. Explicit expiration exists; there is no
   expiration/renewal job.
-- Subscription does not imply billing, payment, entitlement enforcement, usage
-  metering, or quotas. Those remain out of scope. The migration is versioned but
-  has not been applied; startup does not apply migrations.
+- Tenant entitlement is a separate runtime decision. The non-global
+  `TenantEntitlementGuard` reads server-defined `@RequireTenantFeature(...)`
+  metadata and resolves only from a well-formed `TrustedTenantContext`, the
+  Phase 16 current-Subscription service, an active Plan, an enabled PlanFeature,
+  and an active Feature. No current Subscription, historical fallback,
+  inactive/archived Plan, inactive Feature, or disabled/missing relationship
+  grants entitlement.
+- Entitlement does not replace tenant permission checks. A future business
+  route must compose `TenantAuthorizationGuard` with
+  `TenantEntitlementGuard`; neither guard is global. Existing business routes
+  are not entitlement-gated, and there is no public arbitrary
+  Tenant/Feature-check endpoint. Denials use the generic `FEATURE_NOT_INCLUDED`
+  response; checks are not audited individually and no cache is used.
+- Entitlement is runtime-only: no `TenantEntitlement` table, usage counters,
+  quota enforcement, billing, payments, invoices, trials, renewals, upgrades,
+  or downgrades. Any future entitlement cache must be invalidated on
+  Subscription, Plan, PlanFeature, and Feature changes. The Phase 16 migration
+  is versioned but has not been applied; startup does not apply migrations.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

@@ -42,6 +42,22 @@ export interface TrustedTenantContext {
   readonly [trustedTenantContextBrand]: true;
 }
 
+const tenantContextUuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function isWellFormedTrustedTenantContext(value: unknown): value is TrustedTenantContext {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const context = value as Record<string, unknown>;
+  return (
+    typeof context.tenantId === 'string' &&
+    tenantContextUuidPattern.test(context.tenantId) &&
+    typeof context.membershipId === 'string' &&
+    tenantContextUuidPattern.test(context.membershipId) &&
+    typeof context.platformUserId === 'string' &&
+    context.platformUserId.trim().length > 0
+  );
+}
+
 export interface TrustedTenantContextFactory {
   fromValidatedMembership(membership: ValidatedTenantMembership): TrustedTenantContext;
 }

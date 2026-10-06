@@ -26,9 +26,10 @@ import { TenantRoleRepository } from './tenant-role.repository';
 import { TenantRoleService } from './tenant-role.service';
 import { TenantRepository } from './tenant.repository';
 import { TenantService } from './tenant.service';
+import { TenantEntitlementModule } from './tenant-entitlement.module';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, PlatformSecurityModule],
+  imports: [AuthModule, DatabaseModule, PlatformSecurityModule, TenantEntitlementModule],
   controllers: [
     TenantController,
     TenantMembershipController,
@@ -55,6 +56,6 @@ import { TenantService } from './tenant.service';
     TenantService,
     TrustedTenantContextFactoryService,
   ],
-  exports: [TenantMembershipService, TenantService],
+  exports: [TenantEntitlementModule, TenantMembershipService, TenantService],
 })
 export class TenantModule {}

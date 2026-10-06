@@ -104,7 +104,8 @@ routes remain outside tenant authorization. The initial-owner bootstrap route
 uses platform authorization only. Missing-tenant-permission denials are recorded
 by the existing platform audit service using the trusted actor and tenant
 context. Platform-level Plan, Feature, and Subscription definitions are separate
-from tenant authorization. Runtime entitlement resolution is not implemented.
+from tenant authorization. Runtime feature entitlement is also a separate
+decision; no existing business route is gated by it.
 
 Each tenant receives the minimal `OWNER`, `ADMIN`, and `MEMBER` defaults through
 a platform-managed bootstrap operation. The initial owner must be a different,
@@ -140,14 +141,16 @@ Authorization and commercial entitlement are separate:
 
 - **Tenant Permission** answers whether an authenticated tenant member may
   perform an operation.
-- **Feature entitlement** answers whether a tenant's future commercial
-  assignment allows a capability.
+- **Feature entitlement** answers whether the Tenant's current effective
+  Subscription resolves to an active Plan with an enabled relationship to an
+  active Feature.
 - A future business operation requires both checks. A Plan including a Feature
   does not authorize every member, and a member's permission does not grant a
   capability excluded from the tenant's commercial assignment.
 
-`Feature` is not a tenant permission. This phase defines catalog records only;
-it does not resolve tenant entitlements or gate business operations.
+`Feature` is not a tenant permission. Phase 15 defined catalog records; Phase 17
+adds runtime entitlement resolution without changing any existing business
+route.
 
 Plan keys and Feature keys are normalized, unique, and immutable after creation.
 Names and descriptions are presentation metadata. Plan lifecycle is `ACTIVE`,
@@ -239,9 +242,37 @@ implementation.
 
 **Authorization ≠ Subscription ≠ Entitlement ≠ Usage.** Authorization answers
 whether a user may perform an operation. Subscription records which commercial
-Plan is assigned to a Tenant. Entitlement resolution and runtime gating are
-future work, as are billing, payments, invoices, usage metering, quotas,
-automatic renewals, upgrade/downgrade workflows, trials, and payment providers.
+Plan is assigned to a Tenant. Phase 17 resolves entitlement separately; billing,
+payments, invoices, usage metering, quotas, automatic renewals,
+upgrade/downgrade workflows, trials, and payment providers remain out of scope.
+
+## SaaS Subscription Entitlement Runtime
+
+The runtime decision chain is:
+
+`Authentication → Tenant Membership → Tenant Authorization → Current Subscription → Plan → PlanFeature → Feature Entitlement → Business Operation`
+
+`TenantEntitlementService` requires a well-formed `TrustedTenantContext` and
+reuses Phase 16's current-Subscription lookup. It never selects a historical or
+latest-created Subscription as a fallback. A current, date-effective
+`ACTIVE` Subscription, an `ACTIVE` Plan, an enabled `PlanFeature`, and an
+`ACTIVE` Feature are all required. Missing or conflicting current state fails
+closed; inactive or archived Plans, inactive Features, and disabled/missing
+PlanFeature relationships do not grant entitlement.
+
+Tenant routes can opt in with server-defined metadata such as
+`@RequireTenantFeature('APPOINTMENTS')` and the non-global
+`TenantEntitlementGuard`. The feature key is read from route metadata, never
+from request input. The guard remains separate from
+`TenantAuthorizationGuard`; a business route must require both its tenant
+permission and its Feature. No existing business route is entitlement-gated,
+and there is no public API for querying arbitrary Tenant/Feature pairs.
+
+Denials use the generic `FEATURE_NOT_INCLUDED` response and do not reveal Plan,
+Subscription, or Feature details. Individual entitlement checks are not audited
+to avoid noisy events. No cache is used; if caching is added later, Subscription,
+Plan, PlanFeature, and Feature lifecycle changes must invalidate it. This
+foundation does not persist `TenantEntitlement` rows or enforce usage limits.
 
 ## Facility Foundation
 
@@ -283,8 +314,9 @@ facility-level or branch-level RBAC.
 
 Branches remain central platform metadata. They do not create MongoDB
 databases or represent healthcare records. Staff, Doctors, healthcare
-operations, entitlements, and MongoDB/tenant-database provisioning remain
-future phases.
+operations, and MongoDB/tenant-database provisioning remain future phases.
+The entitlement runtime is implemented separately, but no existing business
+route is gated by it.
 
 Production runs on **cPanel**:
 
