@@ -1,0 +1,1289 @@
+PHASE 16 — SUBSCRIPTION FOUNDATION
+
+We are continuing Thanarah after successful completion of Phase 15.
+
+Completed:
+
+Phase 14A
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D
+a80d97733fbb10e44ccf68c92578476775be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Phase 14E
+68cf8cc
+feat(tenant): add facility foundation
+
+Phase 14F
+2af2224
+feat(tenant): add branch foundation
+
+Phase 15
+5ab3353
+feat(saas): add plan and feature foundation
+
+Current SaaS architecture:
+
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+Now implement ONLY:
+
+PHASE 16 — SUBSCRIPTION FOUNDATION
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Introduce the Tenant Subscription foundation.
+
+The target commercial relationship becomes:
+
+Tenant
+  ↓
+Subscription
+  ↓
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+A Subscription represents a Tenant's commercial assignment to a Plan.
+
+A Plan remains a reusable platform-level definition.
+
+A Subscription is tenant-specific.
+
+This phase establishes subscription persistence and lifecycle.
+
+IMPORTANT:
+
+Do NOT implement billing.
+
+Do NOT implement payments.
+
+Do NOT implement invoices.
+
+Do NOT implement payment gateways.
+
+Do NOT implement usage metering.
+
+Do NOT implement runtime entitlement enforcement.
+
+Do NOT implement upgrade/downgrade workflows.
+
+Do NOT implement automatic renewal jobs.
+
+Do NOT implement external payment provider integrations.
+
+STOP after Phase 16.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- Subscription domain model
+- Tenant → Subscription relationship
+- Subscription → Plan relationship
+- Subscription lifecycle/status
+- Subscription period dates
+- Current/historical subscription semantics
+- Subscription repository
+- Subscription service
+- Platform administration APIs for subscription management
+- Tenant-scoped read access only if architecturally appropriate
+- Subscription audit events
+- Validation
+- Tests
+- Documentation
+- Prisma migration if required
+
+Do NOT implement:
+
+- Billing
+- Payments
+- Invoices
+- Refunds
+- Payment providers
+- Stripe
+- PayPal
+- Geidea
+- Paymob
+- Apple Pay
+- Subscription checkout
+- Automatic recurring charging
+- Usage metering
+- Usage counters
+- Quotas
+- Entitlement enforcement
+- TenantEntitlement
+- Healthcare
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- MongoDB
+- Tenant database provisioning
+- Backup system
+- Voice AI
+- Ownership handoff
+- Facility-level RBAC
+- Branch-level RBAC
+
+==================================================
+1. ARCHITECTURAL BOUNDARY
+==================================================
+
+Subscription belongs to the SaaS/platform domain.
+
+Store Subscription in the CENTRAL PLATFORM DATABASE.
+
+Use:
+
+Prisma
++
+MySQL/MariaDB
+
+Do NOT put Subscription into tenant MongoDB.
+
+Tenant operational data remains separate.
+
+The relationship is:
+
+Tenant
+  1
+  |
+  | has many historically
+  ↓
+Subscription
+  |
+  | references
+  ↓
+Plan
+
+A Tenant may have historical subscriptions.
+
+Only one subscription may be the current effective subscription at a time.
+
+==================================================
+2. PLAN VS SUBSCRIPTION
+==================================================
+
+This distinction is mandatory.
+
+Plan:
+
+A reusable platform-defined commercial package.
+
+Subscription:
+
+A Tenant-specific assignment to a Plan for a defined period/lifecycle.
+
+Example:
+
+Plan:
+PRO
+
+Tenant:
+Tenant A
+
+Subscription:
+Tenant A → PRO
+starts: 2026-10-01
+ends: 2026-11-01
+
+Do not put tenantId on Plan.
+
+Do not put subscriptionId on Plan.
+
+Plan remains reusable.
+
+==================================================
+3. SUBSCRIPTION MODEL
+==================================================
+
+Create a Subscription model using existing Prisma conventions.
+
+At minimum evaluate:
+
+- id
+- tenantId
+- planId
+- status
+- startsAt
+- endsAt
+- cancelledAt
+- createdAt
+- updatedAt
+
+Only add additional fields if they are necessary for a clean lifecycle.
+
+Do NOT add:
+
+- price
+- currency
+- billingInterval
+- paymentProvider
+- externalSubscriptionId
+- invoiceId
+- paymentMethodId
+- autoCharge
+- gateway metadata
+
+Those belong to future billing/payment phases.
+
+==================================================
+4. SUBSCRIPTION STATUS
+==================================================
+
+Use an explicit lifecycle.
+
+Recommended states:
+
+TRIALING
+ACTIVE
+PAST_DUE
+SUSPENDED
+CANCELLED
+EXPIRED
+
+However, BEFORE implementing:
+
+Inspect the existing architecture and determine whether every one of these states is justified in this phase.
+
+Important:
+
+PAST_DUE is normally billing-related.
+
+Since billing is explicitly OUT OF SCOPE, do NOT introduce PAST_DUE merely because it is common in subscription systems.
+
+Prefer the smallest correct lifecycle for this phase.
+
+A reasonable initial lifecycle may be:
+
+TRIALING
+ACTIVE
+SUSPENDED
+CANCELLED
+EXPIRED
+
+If you choose a different lifecycle, document why.
+
+Do not create speculative statuses.
+
+==================================================
+5. STATUS SEMANTICS
+==================================================
+
+Define clear meanings.
+
+TRIALING:
+
+Tenant has a temporary subscription period before normal active service.
+
+ACTIVE:
+
+Subscription is currently active.
+
+SUSPENDED:
+
+Subscription has been explicitly suspended by an authorized platform operation.
+
+CANCELLED:
+
+Subscription has been cancelled.
+
+EXPIRED:
+
+Subscription period ended without remaining active entitlement.
+
+Important:
+
+Do not confuse:
+
+CANCELLED
+
+with:
+
+EXPIRED.
+
+Cancellation is an explicit lifecycle action.
+
+Expiration is a period-based state.
+
+Do not automatically run expiration jobs in this phase.
+
+==================================================
+6. DATE SEMANTICS
+==================================================
+
+Use explicit UTC timestamps.
+
+startsAt:
+When the subscription period begins.
+
+endsAt:
+When the current subscription period ends.
+
+cancelledAt:
+When cancellation occurred.
+
+Rules:
+
+- startsAt is required.
+- endsAt may be nullable only if the architecture explicitly supports open-ended subscriptions.
+- cancelledAt is nullable.
+- cancelledAt should only exist after cancellation.
+- cancelledAt must not be earlier than startsAt.
+- endsAt must not be earlier than startsAt.
+
+Do not use local server time.
+
+Use DateTime/UTC consistently with the existing project.
+
+==================================================
+7. CURRENT SUBSCRIPTION
+==================================================
+
+This is critical.
+
+A Tenant may have historical subscriptions.
+
+Example:
+
+Tenant A:
+
+Subscription 1
+FREE
+EXPIRED
+
+Subscription 2
+PRO
+CANCELLED
+
+Subscription 3
+ENTERPRISE
+ACTIVE
+
+Only Subscription 3 is current.
+
+The system must prevent contradictory current subscriptions.
+
+Define a clear invariant for the current effective subscription.
+
+Do NOT simply assume:
+
+"latest created subscription = current subscription."
+
+Current state must be determined from explicit lifecycle/date semantics.
+
+==================================================
+8. CONCURRENT SUBSCRIPTIONS
+==================================================
+
+Do not allow two simultaneously effective subscriptions for the same Tenant if the architecture defines only one current subscription.
+
+The database and/or service layer must protect this invariant as far as practical.
+
+Think about race conditions:
+
+Request A:
+creates ACTIVE subscription for Tenant X
+
+Request B:
+simultaneously creates ACTIVE subscription for Tenant X
+
+Both must not succeed if that would violate the single-current-subscription invariant.
+
+Do not rely only on application-level "check then insert".
+
+Use an appropriate database strategy compatible with MySQL/MariaDB and the existing Prisma architecture.
+
+If MySQL does not support the exact partial unique index semantics needed, use a safe transactional/service strategy and document it.
+
+Do not invent unsupported Prisma schema syntax.
+
+==================================================
+9. HISTORICAL SUBSCRIPTIONS
+==================================================
+
+Do NOT delete old subscriptions.
+
+Subscription history is commercially important.
+
+A Tenant should be able to have:
+
+historical
++
+current
+
+subscriptions.
+
+Do not mutate old subscriptions into unrelated plans just to represent an upgrade.
+
+Future upgrades/downgrades should create new subscription periods/records according to a future commercial workflow.
+
+That workflow is NOT implemented now.
+
+==================================================
+10. PLAN LIFECYCLE INTERACTION
+==================================================
+
+A Subscription references a Plan.
+
+Important case:
+
+A Plan becomes INACTIVE or ARCHIVED after an existing Tenant subscription references it.
+
+Do NOT automatically delete or rewrite the Subscription.
+
+Historical subscription integrity must remain.
+
+Do not automatically migrate the Tenant to another Plan.
+
+Do not automatically cancel the Subscription merely because the Plan is archived.
+
+For NEW subscriptions:
+
+an inactive/archived Plan must not be assignable.
+
+For existing subscriptions:
+
+preserve historical relationship.
+
+Document this explicitly.
+
+==================================================
+11. TENANT LIFECYCLE INTERACTION
+==================================================
+
+Subscription belongs to a Tenant.
+
+Do not create a subscription for a nonexistent Tenant.
+
+Do not allow a removed/deactivated Tenant to receive a new subscription.
+
+However, historical subscription records must remain available for audit/history.
+
+Do not cascade-delete subscription history when Tenant status changes.
+
+Use the existing Tenant lifecycle semantics.
+
+Do not invent a second Tenant lifecycle.
+
+==================================================
+12. AUTHORIZATION
+==================================================
+
+Subscription administration is a PLATFORM/SaaS administration operation in this phase.
+
+Use:
+
+PlatformAuthGuard
++
+PlatformAuthorizationGuard
+
+Do NOT use TenantAuthorizationGuard for subscription administration.
+
+Do not allow normal tenant members to create/change subscriptions.
+
+Do not allow tenant permissions to substitute platform permissions.
+
+Future tenant-facing subscription visibility may be introduced later, but the administrative mutation API is platform-controlled now.
+
+==================================================
+13. PLATFORM PERMISSIONS
+==================================================
+
+Inspect the existing platform permission model.
+
+Add only the minimum permissions required.
+
+Conceptually:
+
+subscriptions.read
+subscriptions.create
+subscriptions.update
+subscriptions.suspend
+subscriptions.cancel
+subscriptions.activate
+
+Do not blindly create all of these.
+
+Use the project's established permission naming conventions.
+
+Do not create platform permissions for billing/payment because those are out of scope.
+
+Preserve existing platform role protections.
+
+Do not weaken OWNER/SUPER_ADMIN/PLATFORM_ADMIN semantics.
+
+==================================================
+14. SUBSCRIPTION ADMINISTRATION
+==================================================
+
+Implement the minimum safe administrative operations.
+
+Required:
+
+CREATE subscription
+
+READ/LIST subscriptions
+
+READ subscription by ID
+
+STATUS lifecycle operations required by the chosen state machine
+
+Do not implement:
+
+upgrade
+
+downgrade
+
+renew
+
+checkout
+
+payment
+
+refund
+
+invoice
+
+automatic renewal
+
+payment retry
+
+==================================================
+15. CREATE SUBSCRIPTION
+==================================================
+
+Creation must:
+
+1. Authenticate platform administrator.
+2. Verify platform permission.
+3. Resolve Tenant.
+4. Verify Tenant exists.
+5. Verify Tenant can receive a subscription.
+6. Resolve Plan.
+7. Verify Plan exists.
+8. Verify Plan is ACTIVE.
+9. Validate dates.
+10. Verify no conflicting current subscription exists.
+11. Create subscription atomically.
+12. Audit the operation.
+
+Do not allow the client to bypass these rules.
+
+Do not accept an arbitrary status from the client.
+
+For example, do NOT allow:
+
+{
+  status: "ACTIVE"
+}
+
+to blindly determine lifecycle.
+
+The service decides initial status according to the supported business operation.
+
+==================================================
+16. PLAN ASSIGNMENT
+==================================================
+
+Subscription creation must reference an existing Plan.
+
+Do not create a new Plan automatically.
+
+Do not accept:
+
+planName
+
+as a replacement for planId unless the API contract explicitly defines a lookup mechanism.
+
+Prefer stable plan ID/key resolution on the server.
+
+Verify the Plan is active.
+
+==================================================
+17. TENANT ASSIGNMENT
+==================================================
+
+Subscription tenant ownership must come from the authorized platform operation.
+
+Do not create a Subscription for a tenant based solely on a client-controlled hidden field.
+
+Because this is a platform administrative API, the requested tenantId is an input, but the service must validate it against the central Tenant record and its lifecycle.
+
+Do not trust arbitrary tenant IDs as authorization.
+
+The authenticated platform administrator's platform permissions control the operation.
+
+==================================================
+18. CANCEL
+==================================================
+
+Cancellation must be explicit.
+
+Cancellation should:
+
+- set appropriate status
+- set cancelledAt
+- preserve historical record
+- not delete Subscription
+- not delete Plan
+- not delete Tenant data
+
+Do not implement automatic payment cancellation because payments do not exist yet.
+
+If the existing business semantics support "cancel at period end", do NOT implement that unless necessary.
+
+Keep cancellation simple and explicit.
+
+==================================================
+19. SUSPEND / ACTIVATE
+==================================================
+
+If SUSPENDED is included:
+
+Implement explicit lifecycle transitions.
+
+Example:
+
+ACTIVE → SUSPENDED
+SUSPENDED → ACTIVE
+
+Validate transitions server-side.
+
+Do not accept arbitrary status changes.
+
+Do not let clients directly mutate status.
+
+If TRIALING is included:
+
+Define explicitly which transitions are valid.
+
+For example:
+
+TRIALING → ACTIVE
+TRIALING → CANCELLED
+TRIALING → EXPIRED
+
+Do not invent transitions without documenting them.
+
+==================================================
+20. EXPIRATION
+==================================================
+
+Do NOT build a scheduler or background worker.
+
+Do NOT implement automatic expiration jobs.
+
+However, the service must have a clear model for expired subscriptions.
+
+If a request encounters a subscription whose endsAt is already in the past, do not silently claim it is active.
+
+Choose a consistent approach:
+
+- explicit lifecycle transition service
+OR
+- effective-state calculation
+
+and document it.
+
+Do not create hidden background mutation.
+
+Do not silently mutate database state during arbitrary reads unless the architecture already has such a pattern.
+
+Prefer explicit lifecycle state.
+
+==================================================
+21. CURRENT SUBSCRIPTION QUERY
+==================================================
+
+Provide a safe repository/service capability to resolve the current effective subscription for a Tenant.
+
+It must not:
+
+- trust latest created record
+- return cancelled/expired records as active
+- cross tenant boundaries
+- ignore subscription dates
+
+It must use server-side lifecycle/date rules.
+
+This capability is foundational for later entitlement enforcement.
+
+Do NOT implement entitlement enforcement now.
+
+==================================================
+22. TENANT-FACING ACCESS
+==================================================
+
+Do not build a complete tenant subscription management UI/API.
+
+If a read-only endpoint is architecturally necessary for future work, keep it minimal and strictly tenant-scoped.
+
+Do not allow tenant users to mutate their subscription.
+
+Do not expose platform-only administrative fields.
+
+Do not expose payment information because none exists.
+
+If no tenant-facing endpoint is necessary, do not create one.
+
+==================================================
+23. PLAN RELATIONSHIP
+==================================================
+
+Subscription → Plan must use a proper foreign key.
+
+Do not duplicate Plan name/key onto Subscription as the source of truth.
+
+A historical snapshot of plan display information is NOT required in this phase.
+
+Do not over-model billing snapshots.
+
+Future billing/subscription history can introduce commercial snapshots if required.
+
+==================================================
+24. DATABASE CONSTRAINTS
+==================================================
+
+At minimum:
+
+- Subscription.tenantId required.
+- Subscription.planId required.
+- valid Tenant foreign key.
+- valid Plan foreign key.
+- indexes for tenantId.
+- indexes useful for current subscription lookup.
+- appropriate status/date indexes.
+- constraints against invalid relationships where practical.
+
+Do not cascade-delete subscription history.
+
+Use restrictive behavior unless existing architecture requires otherwise.
+
+==================================================
+25. REPOSITORY ARCHITECTURE
+==================================================
+
+Follow:
+
+Controller
+→ Platform Authorization
+→ Service
+→ Subscription Repository
+→ Prisma
+→ MySQL/MariaDB
+
+Controllers must not access Prisma directly.
+
+Keep Subscription repository separate from Plan repository.
+
+Do not create a generic "commercial repository" abstraction unless necessary.
+
+Repository methods should make tenant scope explicit where applicable.
+
+==================================================
+26. AUDIT
+==================================================
+
+Reuse PlatformAuditLog.
+
+Add only the required subscription audit events.
+
+Possible events:
+
+SUBSCRIPTION_CREATED
+SUBSCRIPTION_ACTIVATED
+SUBSCRIPTION_SUSPENDED
+SUBSCRIPTION_CANCELLED
+SUBSCRIPTION_EXPIRED
+
+Only add events actually used.
+
+Audit metadata may include safe identifiers such as:
+
+- subscriptionId
+- tenantId
+- planId
+- previousStatus
+- newStatus
+
+Do NOT include:
+
+- passwords
+- access tokens
+- refresh tokens
+- cookies
+- authorization headers
+- payment credentials
+- DATABASE_URL
+- secrets
+
+Actor must come from trusted platform authentication context.
+
+==================================================
+27. API DESIGN
+==================================================
+
+Use versioned platform APIs.
+
+Conceptually:
+
+POST
+/api/v1/platform/subscriptions
+
+GET
+/api/v1/platform/subscriptions
+
+GET
+/api/v1/platform/subscriptions/:subscriptionId
+
+Lifecycle operations:
+
+POST
+/api/v1/platform/subscriptions/:subscriptionId/activate
+
+POST
+/api/v1/platform/subscriptions/:subscriptionId/suspend
+
+POST
+/api/v1/platform/subscriptions/:subscriptionId/cancel
+
+Use the existing project conventions if they provide a better equivalent.
+
+Do not create:
+
+/checkout
+/payment
+/invoice
+/renew
+/upgrade
+/downgrade
+
+==================================================
+28. INPUT VALIDATION
+==================================================
+
+Validate:
+
+tenantId:
+- valid identifier
+- required where applicable
+
+planId:
+- valid identifier
+- required
+
+startsAt:
+- valid UTC datetime
+
+endsAt:
+- valid UTC datetime if provided
+- must not precede startsAt
+
+status:
+- NOT client-controlled during normal create/update operations
+
+Do not accept arbitrary lifecycle strings.
+
+Use DTO/schema validation consistent with existing APIs.
+
+==================================================
+29. OPENAPI
+==================================================
+
+All subscription endpoints must have proper OpenAPI documentation.
+
+Document:
+
+- request bodies
+- response schemas
+- UUID formats if applicable
+- route parameters
+- authentication requirements
+- required permissions
+- 401
+- 403
+- 404
+- 409 where appropriate
+- validation errors
+
+Do not leave subscription endpoints undocumented.
+
+Add contract tests if the project already has OpenAPI contract testing.
+
+==================================================
+30. ERROR SEMANTICS
+==================================================
+
+Use stable safe application errors.
+
+Examples:
+
+Unauthenticated:
+→ 401
+
+Authenticated without required platform permission:
+→ 403
+
+Tenant not found:
+→ appropriate safe not-found behavior
+
+Plan not found:
+→ 404
+
+Inactive Plan for new Subscription:
+→ 409 or established business-rule error
+
+Conflicting current Subscription:
+→ 409
+
+Invalid lifecycle transition:
+→ 409 or established domain error
+
+Do not expose raw Prisma errors.
+
+Do not expose SQL/database details.
+
+==================================================
+31. CONCURRENCY / TRANSACTIONS
+==================================================
+
+Subscription creation and current-subscription conflict handling must be transaction-safe.
+
+Consider concurrent requests for the same Tenant.
+
+Do not implement:
+
+check current
+then insert
+
+as two unrelated operations without considering race conditions.
+
+Use Prisma transactions and an appropriate isolation/locking strategy compatible with MySQL/MariaDB.
+
+If the database constraint cannot fully represent "one current subscription" because of nullable/date semantics, enforce it safely in the service transaction and document the invariant.
+
+Do not claim concurrency safety without testing or explaining the mechanism.
+
+==================================================
+32. TESTING
+==================================================
+
+Create comprehensive tests.
+
+MODEL:
+
+1. Subscription requires Tenant.
+2. Subscription requires Plan.
+3. invalid Tenant rejected.
+4. invalid Plan rejected.
+5. foreign keys are correct.
+6. appropriate indexes exist.
+
+CREATE:
+
+7. authorized platform admin can create.
+8. unauthenticated → 401.
+9. insufficient platform permission → 403.
+10. nonexistent Tenant → safe failure.
+11. inactive/deactivated Tenant cannot receive new subscription.
+12. nonexistent Plan → 404.
+13. inactive/archived Plan cannot receive new subscription.
+14. invalid date range rejected.
+15. client cannot force arbitrary status.
+16. duplicate current subscription prevented.
+
+LIFECYCLE:
+
+17. valid TRIALING transition if implemented.
+18. valid ACTIVE transition.
+19. valid SUSPENDED transition if implemented.
+20. valid CANCELLED transition.
+21. valid EXPIRED handling if implemented.
+22. invalid transitions rejected.
+23. cancelledAt set correctly.
+24. cancellation preserves record.
+
+CURRENT SUBSCRIPTION:
+
+25. current subscription resolves correctly.
+26. expired subscription is not returned as active.
+27. cancelled subscription is not returned as active.
+28. historical subscriptions remain accessible.
+29. current lookup is tenant-specific.
+30. latest-created historical record cannot incorrectly override effective state.
+
+PLAN INTERACTION:
+
+31. archived Plan cannot receive new subscription.
+32. existing historical Subscription still references archived Plan safely.
+33. Plan cannot be silently changed through Subscription mutation.
+
+TENANT ISOLATION:
+
+34. Subscription belongs to correct Tenant.
+35. cross-tenant lookup is rejected/not found safely.
+36. client-controlled tenantId cannot bypass platform authorization.
+37. tenant user cannot mutate Subscription through platform API.
+
+CONCURRENCY:
+
+38. concurrent current-subscription creation cannot produce two conflicting current subscriptions.
+39. transaction failure rolls back safely.
+
+AUDIT:
+
+40. creation audited.
+41. lifecycle transitions audited.
+42. actor attribution correct.
+43. safe metadata only.
+
+OPENAPI:
+
+44. request body schemas exist.
+45. response schemas exist.
+46. UUID formats documented where applicable.
+47. auth/permission requirements documented.
+
+REGRESSION:
+
+48. all authentication tests pass.
+49. all platform authorization tests pass.
+50. all tenant membership tests pass.
+51. all tenant role tests pass.
+52. all tenant authorization tests pass.
+53. all Facility tests pass.
+54. all Branch tests pass.
+55. all Plan tests pass.
+56. all Feature tests pass.
+
+Add additional tests required by the actual implementation.
+
+==================================================
+33. SECURITY REVIEW
+==================================================
+
+Review specifically for:
+
+- privilege escalation
+- unauthorized tenant subscription mutation
+- tenantId manipulation
+- planId manipulation
+- cross-tenant access
+- IDOR
+- duplicate current subscriptions
+- race conditions
+- invalid lifecycle transitions
+- archived Plan bypass
+- client-controlled status
+- unsafe cancellation
+- direct Prisma access from controllers
+- audit leakage
+- payment/billing code accidentally introduced
+
+Fix critical/high severity issues before committing.
+
+==================================================
+34. DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation.
+
+Document:
+
+Tenant
+  ↓
+Subscription
+  ↓
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+
+Explicitly document:
+
+- Plan is reusable platform metadata.
+- Subscription is tenant-specific.
+- Historical subscriptions are preserved.
+- Only one current effective subscription is allowed per Tenant.
+- Subscription authorization is platform-controlled in this phase.
+- Subscription is NOT billing.
+- Subscription is NOT payment.
+- Subscription is NOT entitlement enforcement.
+- Subscription is NOT usage metering.
+
+Also document:
+
+Authorization:
+"Can this user perform the operation?"
+
+Subscription:
+"Which commercial plan is assigned to this Tenant?"
+
+Entitlement:
+"Does that plan permit this capability?"
+
+Usage:
+"Has the Tenant exceeded its allowed limit?"
+
+These remain separate layers.
+
+==================================================
+35. MIGRATION
+==================================================
+
+If Prisma schema changes are required:
+
+- create proper migration
+- inspect generated SQL
+- validate schema
+- validate migration DDL
+- do not modify unrelated migrations
+- do not rewrite migration history
+- do not apply migration to production
+- do not apply migration to an unavailable development database
+
+==================================================
+36. RUNTIME VALIDATION
+==================================================
+
+Run:
+
+- focused Subscription tests
+- full test suite
+- lint
+- formatting
+- both TypeScript checks
+- production build
+- Prisma schema validation
+- offline migration/schema comparison
+- git diff --check
+
+Restart application.
+
+Verify:
+
+GET /health → 200
+
+GET /docs → 200
+
+Unauthenticated Subscription request → 401
+
+/ready must report actual database state.
+
+If no DB is configured:
+
+/ready → 503
+
+Do not fake database connectivity.
+
+Do not apply migrations.
+
+==================================================
+37. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff.
+
+Explicitly confirm that the following were NOT implemented:
+
+- Billing
+- Payments
+- Payment gateways
+- Invoices
+- Refunds
+- Checkout
+- Automatic charging
+- Renewal jobs
+- Upgrade workflow
+- Downgrade workflow
+- Usage metering
+- Usage counters
+- Quotas
+- Runtime entitlement enforcement
+- TenantEntitlement
+- Healthcare
+- Staff
+- Doctors
+- Patients
+- Scheduling
+- Appointments
+- MongoDB
+- Tenant database registry
+- Tenant DB provisioning
+- Backups
+- Voice AI
+- Facility-level RBAC
+- Branch-level RBAC
+- Ownership handoff
+
+Do not automatically start Phase 17.
+
+STOP after Phase 16.
+
+==================================================
+38. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(saas): add subscription foundation
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+Leave the attached specification untouched and uncommitted.
+
+==================================================
+39. FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Subscription model
+3. Tenant → Subscription → Plan relationship
+4. Subscription lifecycle/statuses
+5. Date semantics
+6. Current subscription invariant
+7. Concurrency protection
+8. Plan interaction
+9. Authorization behavior
+10. API endpoints
+11. Audit behavior
+12. Database/migration changes
+13. Test count and results
+14. OpenAPI validation
+15. Lint/typecheck/build/Prisma results
+16. Runtime verification
+17. Security review findings
+18. Commit hash
+19. Explicit confirmation that Billing, Payments, Entitlement Runtime, Usage Metering, Healthcare, MongoDB, and later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 17.
