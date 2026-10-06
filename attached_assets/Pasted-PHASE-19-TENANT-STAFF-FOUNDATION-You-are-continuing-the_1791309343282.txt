@@ -1,0 +1,803 @@
+PHASE 19 — TENANT STAFF FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+Do NOT invent AI-looking abstractions, placeholder architecture, fake production behavior, unnecessary files, or speculative future implementations.
+
+IMPORTANT:
+Implement ONLY Phase 19.
+Do not start Phase 20 or any healthcare business module.
+Do not implement patients, doctors' clinical profiles, appointments, scheduling, medical records, prescriptions, billing, MongoDB tenant business data, notifications, or Voice AI.
+
+==================================================
+1. ARCHITECTURAL CONTEXT — MUST PRESERVE
+==================================================
+
+Thanarah has two persistence domains:
+
+A) CENTRAL PLATFORM DATABASE
+Prisma 6 + MySQL/MariaDB.
+
+Used for:
+- Platform users / global identities
+- Authentication
+- Platform roles and permissions
+- Tenants
+- Tenant memberships
+- Tenant roles and permissions
+- Facilities
+- Branches
+- Plans
+- Features
+- Plan features
+- Subscriptions
+- Entitlement configuration
+- Usage/quota definitions
+- SaaS/platform metadata
+- Audit/security metadata
+- Future staff identity/administrative metadata
+
+B) TENANT OPERATIONAL DATABASES
+MongoDB.
+
+Used later for tenant healthcare/operational data such as:
+- Patients
+- Doctors' clinical data
+- Appointments
+- Visits/encounters
+- Medical records
+- Clinical notes
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Notifications
+- Other operational healthcare data
+
+DO NOT move tenant healthcare data into the central Prisma database.
+
+Phase 19 must remain on the CENTRAL DATABASE only.
+
+==================================================
+2. EXISTING IDENTITY MODEL
+==================================================
+
+The system already has:
+
+Global Platform User
+    ↓
+Tenant Membership
+    ↓
+Tenant authorization
+    ↓
+Facility / Branch scope
+    ↓
+Business operations
+
+A Platform User is NOT automatically a staff member.
+
+A Tenant Membership establishes that a global identity belongs to a tenant.
+
+Phase 19 introduces the explicit concept:
+
+Tenant Membership
+    ↓
+Tenant Staff Profile
+
+This distinction is intentional.
+
+Do NOT create a second authentication identity.
+Do NOT duplicate password/authentication data.
+Do NOT create another user table.
+Do NOT make Staff a replacement for TenantMembership.
+
+==================================================
+3. PHASE 19 GOAL
+==================================================
+
+Create the foundation for a tenant staff member.
+
+A staff record represents a person's operational employment/staff relationship with a tenant.
+
+It must be:
+
+- Tenant scoped
+- Linked to an existing Platform User
+- Linked to an existing Tenant Membership
+- Explicitly lifecycle-managed
+- Authorization-aware
+- Audited
+- Safe against cross-tenant access
+- Independent from platform roles
+- Independent from tenant roles/permissions
+- Independent from subscription entitlement
+- Independent from healthcare clinical data
+
+The staff record is an organizational identity/profile layer.
+
+==================================================
+4. DATA MODEL
+==================================================
+
+First inspect the existing Prisma schema and current migration history.
+
+Do NOT assume model names if they already exist.
+Reuse the exact existing models and naming conventions.
+
+Introduce a central Staff model only if the existing architecture does not already provide an equivalent.
+
+Recommended conceptual relationship:
+
+Tenant
+  └── Staff
+        ├── User
+        └── TenantMembership
+
+Staff must NOT duplicate tenantId relationships in a way that can drift.
+
+The relationship must make tenant ownership unambiguous.
+
+Required conceptual fields:
+
+- id
+- tenantId
+- userId
+- membershipId
+- staff status
+- display/employee information appropriate for staff administration
+- createdAt
+- updatedAt
+
+Use the project's established ID and timestamp conventions.
+
+Do not add speculative fields such as:
+- salary
+- payroll
+- employment contracts
+- national ID
+- medical license
+- specialty
+- clinical department
+- doctor credentials
+- schedules
+- availability
+- commission
+- billing data
+
+Those belong to later phases.
+
+==================================================
+5. STAFF STATUS LIFECYCLE
+==================================================
+
+Define an explicit StaffStatus lifecycle.
+
+Minimum states:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Rules:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED is terminal in this phase.
+
+Do NOT implement deletion.
+
+Do NOT silently reactivate a DEACTIVATED staff record.
+
+Repeated transition to the current state should follow the project's established idempotency conventions.
+
+All invalid transitions must fail safely.
+
+==================================================
+6. MEMBERSHIP RELATIONSHIP
+==================================================
+
+A Staff record can only exist for an existing TenantMembership.
+
+The membership must belong to:
+
+- the same tenant
+- the same platform user
+
+Staff creation must reject:
+
+- missing membership
+- membership belonging to another tenant
+- membership belonging to another user
+- REMOVED membership
+- invalid tenant context
+
+The exact rules for INVITED/SUSPENDED membership should be consistent with the existing TenantMembership lifecycle and authorization foundation.
+
+Do not invent contradictory membership behavior.
+
+A staff record must never become a bypass around TenantMembership.
+
+==================================================
+7. STAFF UNIQUENESS
+==================================================
+
+A platform user must not have multiple active staff records for the same tenant.
+
+Prefer a schema-level uniqueness constraint that prevents duplicate tenant/user staff identity.
+
+Do not rely only on controller checks.
+
+If a historical DEACTIVATED staff record exists, follow the simplest safe rule consistent with the architecture.
+
+Do not introduce staff-history/versioning complexity in this phase unless the existing schema requires it.
+
+==================================================
+8. AUTHORIZATION
+==================================================
+
+Use the existing tenant authorization system.
+
+Do NOT create:
+- global auth guards
+- duplicate tenant guards
+- staff-specific authentication
+- client-controlled permission checks
+
+All staff endpoints must use the established:
+
+TrustedTenantContext
++
+TenantAuthorizationGuard
++
+server-defined permission metadata
+
+Introduce a minimal staff permission namespace if the existing tenant permission system does not already contain suitable permissions.
+
+Suggested permissions:
+
+staff.read
+staff.manage
+
+Do not add unnecessary granular permissions yet.
+
+Expected semantics:
+
+staff.read
+- list/read tenant staff
+
+staff.manage
+- create staff
+- activate
+- suspend
+- deactivate
+- update allowed staff administrative fields
+
+Use the existing permission naming and storage conventions exactly.
+
+Backfill default tenant roles consistently with previous tenant/facility/branch permissions.
+
+Do not modify platform permissions.
+
+==================================================
+9. STAFF APIs
+==================================================
+
+Create tenant-scoped administrative endpoints following the project's existing API conventions.
+
+Suggested API shape:
+
+GET
+/api/v1/tenant/staff
+
+GET
+/api/v1/tenant/staff/:staffId
+
+POST
+/api/v1/tenant/staff
+
+PATCH
+/api/v1/tenant/staff/:staffId
+
+POST
+/api/v1/tenant/staff/:staffId/activate
+
+POST
+/api/v1/tenant/staff/:staffId/suspend
+
+POST
+/api/v1/tenant/staff/:staffId/deactivate
+
+IMPORTANT:
+
+Use the project's actual established route conventions if they differ.
+Do not create duplicate routing conventions.
+
+Every lookup must be tenant-scoped from TrustedTenantContext.
+
+Never accept tenantId as an authority source from:
+- request body
+- query
+- arbitrary header
+- client-selected context
+
+The server-derived TrustedTenantContext is authoritative.
+
+Do not expose physical database identifiers.
+
+==================================================
+10. CREATE STAFF
+==================================================
+
+Creating staff should require an existing Platform User / Tenant Membership relationship.
+
+Do NOT create a new Platform User automatically in this phase.
+
+The endpoint should receive only the minimum data necessary to associate an existing tenant member with staff.
+
+Validate all IDs and input shapes.
+
+Creation must verify:
+
+1. authenticated platform user
+2. valid TrustedTenantContext
+3. active tenant
+4. valid tenant membership
+5. membership belongs to current tenant
+6. membership belongs to selected platform user
+7. membership is eligible for staff association
+8. no duplicate staff relationship exists
+
+Do not allow the caller to select:
+- tenantId as authority
+- tenant roles
+- platform roles
+- permissions
+- subscription
+- entitlement
+- facility ownership
+- branch ownership
+
+Those remain separate systems.
+
+==================================================
+11. FACILITY / BRANCH SCOPE
+==================================================
+
+Do NOT permanently attach Staff to a Facility or Branch in Phase 19 unless the existing architecture already requires it.
+
+The hierarchy remains:
+
+Tenant
+  └── Facilities
+        └── Branches
+
+Staff belongs to the Tenant at this stage.
+
+Facility/Branch assignment is a later organizational-scope capability.
+
+Do not invent staffFacilityId or staffBranchId just because those concepts will exist later.
+
+==================================================
+12. ROLE SEPARATION
+==================================================
+
+A Staff record is NOT a role.
+
+Do not store:
+- role name
+- permission list
+- platform role
+- tenant role
+
+inside Staff unless the existing schema specifically requires a non-authoritative display field.
+
+Tenant authorization remains:
+
+TenantMembership
++
+TenantRole
++
+TenantPermission
+
+Staff is only the staff identity/profile layer.
+
+A staff member can therefore later have:
+- staff profile
+- one or more tenant roles
+- facility/branch scope
+- healthcare specialization/profile
+
+without coupling those systems together.
+
+==================================================
+13. STAFF PROFILE FIELDS
+==================================================
+
+Keep the initial staff profile intentionally minimal.
+
+Use only administrative identity fields required for the foundation.
+
+Examples of acceptable fields:
+
+- employeeCode, if useful and architecturally justified
+- displayName / preferred display name
+- jobTitle, only if treated as non-authoritative descriptive data
+- status
+- timestamps
+
+Do NOT add healthcare-specific attributes yet.
+
+Do NOT create a Doctor model in this phase.
+
+Do NOT create Nurse, Receptionist, Accountant, etc. models.
+
+All of those can later build on Staff.
+
+==================================================
+14. SERVICE / REPOSITORY ARCHITECTURE
+==================================================
+
+Follow the established layering:
+
+Controller
+→ Service / Policy
+→ Repository
+→ Prisma Infrastructure
+
+Controllers must NOT:
+- call Prisma directly
+- implement lifecycle rules
+- resolve tenant identity manually
+- trust client permissions
+- implement business authorization
+
+Repositories must be tenant-scoped by construction.
+
+Do not create a generic repository abstraction merely for appearance.
+
+Reuse existing repository/service patterns where appropriate.
+
+==================================================
+15. AUDIT
+==================================================
+
+All staff lifecycle mutations must produce durable central audit records using the existing audit system.
+
+At minimum cover:
+
+- STAFF_CREATED
+- STAFF_UPDATED
+- STAFF_ACTIVATED
+- STAFF_SUSPENDED
+- STAFF_DEACTIVATED
+
+Use the project's existing audit naming conventions if they already exist.
+
+Audit metadata must NOT contain:
+- passwords
+- access tokens
+- refresh tokens
+- secrets
+- sensitive authentication material
+
+Audit events must contain enough context to understand:
+- actor
+- tenant
+- staff target
+- action
+- result where appropriate
+
+Do not add audit events for harmless read operations unless the existing policy requires them.
+
+==================================================
+16. SECURITY
+==================================================
+
+Must test:
+
+- unauthenticated access → 401
+- missing tenant authorization → denied
+- wrong tenant staff ID → not accessible
+- client-supplied tenantId cannot escape tenant scope
+- client-supplied membershipId cannot cross tenants
+- client-supplied userId cannot associate another tenant's identity
+- cross-tenant staff lookup fails
+- cross-tenant mutation fails
+- insufficient tenant permission fails
+- deactivated staff cannot be incorrectly reactivated
+- removed membership cannot create staff
+- duplicate staff association rejected
+
+Do not leak whether another tenant owns a staff record.
+
+Use safe error behavior consistent with existing tenant resources.
+
+==================================================
+17. PLATFORM ROLE SEPARATION
+==================================================
+
+Platform admins may have existing platform permissions to manage tenants and SaaS resources.
+
+Do NOT automatically grant platform roles access to tenant staff operations.
+
+Tenant staff management must use the tenant authorization model.
+
+Do not bypass tenant membership/authorization because the caller is a platform administrator unless the existing architecture explicitly defines such a capability.
+
+Do not create a hidden platform backdoor.
+
+==================================================
+18. SUBSCRIPTION / ENTITLEMENT / QUOTA
+==================================================
+
+Do NOT add subscription logic to staff CRUD in this phase.
+
+Do NOT call TenantEntitlementGuard unless the existing architecture explicitly requires a staff feature entitlement.
+
+Do NOT introduce quota usage.
+
+Do not conflate:
+
+Authorization:
+"Can this actor manage staff?"
+
+Entitlement:
+"Does this tenant have this feature?"
+
+Quota:
+"Has this tenant exceeded a usage limit?"
+
+Phase 19 is primarily authorization + staff foundation.
+
+If an existing global architectural rule requires feature gating, document it rather than inventing a new staff-specific subscription feature.
+
+==================================================
+19. DATABASE / MIGRATION
+==================================================
+
+If a Staff table/model is required:
+
+- create the Prisma schema changes
+- create a migration
+- verify generated migration SQL against Prisma schema
+- do NOT apply the migration to production
+- do NOT connect to production
+- do NOT modify unrelated schemas
+
+The migration must preserve referential integrity.
+
+Use appropriate foreign keys and restrictive behavior.
+
+Do not cascade-delete tenant staff data accidentally.
+
+Remember:
+Central Prisma DB stores platform/organizational metadata.
+Tenant healthcare data remains MongoDB and is NOT part of this phase.
+
+==================================================
+20. OPENAPI
+==================================================
+
+Update Swagger/OpenAPI documentation for the staff endpoints.
+
+Document:
+- request DTOs
+- response DTOs
+- status transitions
+- authorization requirements
+- validation errors where appropriate
+
+Do not expose internal Prisma models directly.
+
+Do not expose:
+- password hashes
+- token hashes
+- internal database credentials
+- physical MongoDB identifiers
+- secrets
+
+==================================================
+21. TEST REQUIREMENTS
+==================================================
+
+Add focused tests.
+
+Minimum coverage should include at least:
+
+A. Creation
+- valid staff creation
+- duplicate staff rejected
+- missing membership rejected
+- wrong tenant membership rejected
+- removed membership rejected
+- invalid user rejected
+
+B. Reads
+- list tenant staff
+- read staff
+- empty tenant
+- cross-tenant staff inaccessible
+
+C. Update
+- allowed administrative update
+- invalid input rejected
+- unauthorized update rejected
+
+D. Lifecycle
+- ACTIVE → SUSPENDED
+- SUSPENDED → ACTIVE
+- ACTIVE → DEACTIVATED
+- SUSPENDED → DEACTIVATED
+- DEACTIVATED cannot reactivate
+- invalid transitions rejected
+- idempotent same-state behavior
+
+E. Authorization
+- unauthenticated → 401
+- staff.read required for reads
+- staff.manage required for mutations
+- client permission injection ignored
+- client tenantId injection ignored
+- cross-tenant access denied
+
+F. Membership integrity
+- tenant/user mismatch
+- membership/tenant mismatch
+- membership/user mismatch
+- removed membership
+- staff never bypasses membership
+
+G. Audit
+- creation audited
+- update audited
+- lifecycle transitions audited
+- failed unauthorized attempts do not create false successful mutation audits
+
+H. Regression
+- all existing tenant authorization tests remain passing
+- all subscription tests remain passing
+- all entitlement tests remain passing
+- all quota tests remain passing
+- platform authorization remains unaffected
+
+Target strong coverage rather than artificially chasing a number.
+
+==================================================
+22. TEST-ONLY PROBE
+==================================================
+
+If a test-only protected route is necessary to verify the complete authorization chain, it may be added.
+
+Rules:
+
+- test-only
+- protected
+- never exposed in production
+- no client-selected authority
+- no production business behavior
+- remove it if the existing test infrastructure can verify the behavior without it
+
+Do NOT create a production staff discovery endpoint merely to test the architecture.
+
+==================================================
+23. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- Doctor model
+- Doctor profile
+- medical license
+- specialties
+- departments
+- patients
+- appointments
+- schedules
+- availability
+- visits
+- medical records
+- prescriptions
+- documents
+- billing
+- insurance
+- notifications
+- MongoDB tenant business data
+- staff attendance
+- payroll
+- HR module
+- recruitment
+- contracts
+- Voice AI
+- telephony
+- usage metering
+- Redis
+- workers
+- billing integration
+- subscription enforcement
+- quota counters
+
+Do not refactor unrelated modules.
+
+Do not rename existing architecture merely for stylistic reasons.
+
+Do not introduce unnecessary dependencies.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+24. VALIDATION
+==================================================
+
+Before declaring Phase 19 complete:
+
+1. Prisma validation
+2. Prisma generated schema check
+3. Migration SQL/schema consistency check
+4. TypeScript check
+5. Lint
+6. Formatting
+7. Full test suite
+8. Focused staff tests
+9. Production build
+10. Start/restart application
+11. GET /health
+12. GET /docs
+13. Verify existing /ready behavior remains truthful
+14. Verify no production test-only route is exposed
+15. Inspect git diff
+16. Confirm no secrets were added
+17. Confirm no unrelated files changed
+
+Do NOT claim production database migration was applied unless it actually was.
+
+==================================================
+25. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly ONE commit:
+
+feat(tenant): add tenant staff foundation
+
+Use the existing repository hooks.
+
+Do NOT use:
+--no-verify
+
+Do not commit the uploaded specification or unrelated files.
+
+==================================================
+26. FINAL REPORT
+==================================================
+
+After implementation, STOP.
+
+Do not start Phase 20.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Prisma model/schema changes
+5. Migration name
+6. Staff lifecycle
+7. Membership relationship rules
+8. Authorization permissions
+9. API endpoints
+10. Audit events
+11. Security/cross-tenant protections
+12. Test count and focused test count
+13. TypeScript/build/lint/format results
+14. Prisma validation/migration verification
+15. Runtime /health and /docs result
+16. Whether migration was applied
+17. Any architectural decision that required deviation
+18. Explicit list of things NOT implemented
+
+Do not report success until the actual validation commands pass.
