@@ -1,0 +1,1158 @@
+PHASE 18 — USAGE LIMITS & QUOTA FOUNDATION
+
+We are continuing Thanarah after successful completion of Phase 17.
+
+Completed:
+
+Phase 14A
+73140a8 — feat(tenant): add tenant organization foundation
+
+Phase 14B
+e9d55b3 — feat(tenant): add tenant membership foundation
+
+Phase 14C
+5b8d3ce — feat(tenant): add tenant roles and permissions foundation
+
+Phase 14D
+a80d97733fbb10e44ccf68c925784767be4f20
+feat(tenant): enforce tenant authorization runtime
+
+Phase 14E
+68cf8cc
+feat(tenant): add facility foundation
+
+Phase 14F
+2af2224
+feat(tenant): add branch foundation
+
+Phase 15
+5ab3353
+feat(saas): add plan and feature foundation
+
+Phase 16
+f8ea914
+feat(saas): add subscription foundation
+
+Phase 17
+ad162be
+feat(saas): add subscription entitlement runtime
+
+Current commercial architecture:
+
+Tenant
+  ↓
+Current Subscription
+  ↓
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature Entitlement
+  ↓
+Usage Limit / Quota
+  ↓
+Future Business Operation
+
+Current authorization architecture remains separate:
+
+Authenticated User
+  ↓
+Tenant Membership
+  ↓
+Tenant Role
+  ↓
+Tenant Permission
+
+Now implement ONLY:
+
+PHASE 18 — USAGE LIMITS & QUOTA FOUNDATION
+
+==================================================
+PRIMARY OBJECTIVE
+==================================================
+
+Introduce the foundation for plan-based usage limits.
+
+The system must distinguish:
+
+AUTHORIZATION
+"Is this user allowed to perform this operation?"
+
+ENTITLEMENT
+"Does the Tenant's current plan include this feature?"
+
+QUOTA
+"Is the Tenant currently within the allowed usage limit?"
+
+These are three separate concepts.
+
+Future business operations may require:
+
+Authentication
++
+Tenant Authorization
++
+Feature Entitlement
++
+Quota Availability
+
+Do NOT merge these layers.
+
+==================================================
+STRICT SCOPE
+==================================================
+
+Implement only:
+
+- Plan-level usage limit definitions
+- PlanFeature/Plan quota configuration where architecturally appropriate
+- Usage limit definition/value resolution
+- Quota decision service
+- Tenant-scoped quota evaluation
+- Clear quota result/error semantics
+- Guard/decorator foundation if justified
+- Tests
+- Documentation
+- Prisma migration ONLY if genuinely required
+
+Do NOT implement:
+
+- Actual usage counters
+- Usage event ingestion
+- Metering pipelines
+- Redis
+- Background workers
+- Scheduled aggregation
+- Billing
+- Payments
+- Invoices
+- Subscription checkout
+- Upgrade workflow
+- Downgrade workflow
+- Renewal workflow
+- Healthcare
+- Patients
+- Doctors
+- Staff
+- Appointments
+- Scheduling
+- MongoDB
+- Tenant database provisioning
+- Facility-level RBAC
+- Branch-level RBAC
+- Voice AI
+- Ownership handoff
+
+STOP after Phase 18.
+
+==================================================
+1. IMPORTANT ARCHITECTURAL DECISION
+==================================================
+
+Do NOT create arbitrary quota tables just because quota systems commonly have them.
+
+First inspect Phase 15 PlanFeature configuration.
+
+If PlanFeature already supports a safe configuration structure, prefer extending that established architecture rather than introducing duplicate quota configuration models.
+
+The goal is:
+
+Plan
+  ↓
+PlanFeature
+  ↓
+Feature
+  +
+optional limit configuration
+
+Example conceptual configuration:
+
+PATIENTS
+  enabled: true
+  max: 1000
+
+BRANCHES
+  enabled: true
+  max: 3
+
+STAFF
+  enabled: true
+  max: 10
+
+However:
+
+Do NOT assume these exact feature keys exist.
+
+Do NOT create healthcare feature records merely to demonstrate quotas.
+
+Do NOT create actual usage counters.
+
+==================================================
+2. ENTITLEMENT VS QUOTA
+==================================================
+
+Mandatory separation:
+
+Feature Entitlement:
+
+"Is this feature included?"
+
+Quota:
+
+"How much of this feature/resource is allowed?"
+
+Example:
+
+Plan includes:
+BRANCHES
+
+Quota:
+max = 3
+
+Tenant currently has:
+3 branches
+
+Result:
+
+ENTITLED = YES
+QUOTA AVAILABLE = NO
+
+Therefore the next creation must eventually be blocked.
+
+But Phase 18 does NOT implement Branch creation enforcement.
+
+It only establishes the quota decision foundation.
+
+==================================================
+3. QUOTA RESOURCE DEFINITION
+==================================================
+
+Create a stable server-defined representation for quota resources.
+
+A quota resource is NOT necessarily the same thing as a Feature.
+
+Examples:
+
+BRANCHES
+STAFF
+PATIENTS
+STORAGE_BYTES
+
+These are conceptual examples only.
+
+Do not add every future resource.
+
+Inspect the existing Feature/PlanFeature architecture.
+
+Prefer stable machine-readable keys.
+
+Do not accept arbitrary quota keys from clients.
+
+==================================================
+4. LIMIT TYPES
+==================================================
+
+Keep the first implementation intentionally small.
+
+At minimum support:
+
+COUNT
+
+If configuration needs to distinguish unlimited:
+
+UNLIMITED
+
+or an explicit null/unbounded representation.
+
+Do not implement:
+
+- time-series limits
+- rate limits
+- bandwidth limits
+- storage billing
+- API request billing
+- token billing
+- per-minute quotas
+
+Those belong to future metering phases.
+
+==================================================
+5. LIMIT VALUE SEMANTICS
+==================================================
+
+Define clear semantics.
+
+Examples:
+
+max = 10
+
+means:
+
+currentUsage < 10
+→ quota available
+
+currentUsage >= 10
+→ quota exceeded
+
+Do not allow negative limits.
+
+Do not allow NaN/infinite values.
+
+Use safe integer validation.
+
+If unlimited is supported, represent it explicitly rather than using magic values such as:
+
+-1
+-999999
+999999999
+
+unless the existing architecture already defines such a convention.
+
+Prefer explicit semantics.
+
+==================================================
+6. NO USAGE COUNTERS YET
+==================================================
+
+This phase MUST NOT create real usage counters.
+
+Do NOT create:
+
+TenantUsage
+UsageCounter
+UsageEvent
+MeteringEvent
+
+unless the existing architecture already contains one and the implementation genuinely requires it.
+
+We are creating:
+
+Quota Definition
++
+Quota Decision Contract
+
+not:
+
+Quota Metering System.
+
+==================================================
+7. QUOTA DECISION SERVICE
+==================================================
+
+Create a dedicated:
+
+TenantQuotaService
+
+or equivalent.
+
+It must remain separate from:
+
+TenantAuthorizationService
+TenantEntitlementService
+
+Conceptual API:
+
+checkQuota(
+  trustedTenantContext,
+  resourceKey,
+  currentUsage
+)
+
+or an equivalent strongly typed API.
+
+The service should resolve:
+
+Trusted Tenant
+→ Current Subscription
+→ Plan
+→ Relevant PlanFeature/configuration
+→ Limit
+→ Compare with supplied usage
+→ Decision
+
+IMPORTANT:
+
+currentUsage is only an input to the decision contract in this phase.
+
+It is NOT persisted by Phase 18.
+
+==================================================
+8. CURRENT SUBSCRIPTION
+==================================================
+
+Reuse Phase 16 current subscription logic.
+
+Do NOT implement another definition of current subscription.
+
+Do NOT select:
+
+latest subscription
+
+as a fallback.
+
+Only the effective current subscription may determine quota configuration.
+
+If no active subscription:
+
+→ quota unavailable
+
+Fail closed.
+
+==================================================
+9. PLAN STATUS
+==================================================
+
+Respect Phase 17 behavior.
+
+If the current subscription references:
+
+INACTIVE
+or
+ARCHIVED
+
+Plan:
+
+quota must not be treated as available.
+
+Do not migrate the Tenant.
+
+Do not rewrite Subscription.
+
+Do not automatically assign another Plan.
+
+==================================================
+10. SUBSCRIPTION STATUS
+==================================================
+
+Quota configuration is available only for an effective subscription.
+
+At minimum:
+
+ACTIVE → eligible
+
+SUSPENDED → not eligible
+
+CANCELLED → not eligible
+
+EXPIRED → not eligible
+
+TRIALING is not currently implemented and must not be invented.
+
+==================================================
+11. FEATURE ENTITLEMENT
+==================================================
+
+Quota evaluation must NOT bypass Feature entitlement.
+
+If the relevant Feature is not entitled:
+
+→ quota is NOT available
+
+Correct sequence:
+
+Current Subscription
+→ Plan
+→ PlanFeature
+→ Feature
+→ Feature Entitlement
+→ Quota Configuration
+
+Do not treat a quota as permission to use a feature.
+
+==================================================
+12. FEATURE WITHOUT QUOTA
+==================================================
+
+A feature may be entitled without having a finite quota.
+
+Examples:
+
+A feature may simply be:
+
+enabled = true
+
+with no maximum.
+
+Interpret this carefully.
+
+If the feature has no quota configured:
+
+The quota layer should return something equivalent to:
+
+NO_LIMIT_CONFIGURED
+
+not:
+
+QUOTA_EXCEEDED
+
+and not:
+
+DENIED
+
+The final business policy can decide whether unlimited/no-limit is allowed.
+
+Do not invent arbitrary defaults.
+
+==================================================
+13. UNLIMITED
+==================================================
+
+If explicit unlimited is supported:
+
+UNLIMITED
+→ quota available
+
+even if currentUsage is high.
+
+But still require:
+
+- valid tenant context
+- active subscription
+- active plan
+- active feature entitlement
+
+Unlimited does not bypass entitlement.
+
+==================================================
+14. CURRENT USAGE INPUT
+==================================================
+
+Validate currentUsage:
+
+- integer
+- non-negative
+- finite
+- safe integer
+
+Reject invalid values.
+
+Do not trust client-supplied usage as actual production usage.
+
+Document clearly:
+
+Phase 18 currentUsage is a decision input for the quota contract.
+
+Future production usage will come from a trusted usage/metering source.
+
+==================================================
+15. FUTURE USAGE SOURCE
+==================================================
+
+Document the future architecture:
+
+Business Operation
+  ↓
+Trusted Usage Source
+  ↓
+Current Usage
+  ↓
+Quota Decision
+
+Possible future usage sources:
+
+- database counts
+- usage event aggregation
+- dedicated metering
+- storage accounting
+
+Do NOT implement these now.
+
+==================================================
+16. QUOTA RESULT
+==================================================
+
+Prefer a structured decision.
+
+Conceptually:
+
+AVAILABLE
+EXCEEDED
+NO_LIMIT_CONFIGURED
+NOT_ENTITLED
+NO_SUBSCRIPTION
+INVALID_CONTEXT
+
+Use project conventions where available.
+
+Do not expose excessive internal details through HTTP responses.
+
+A future business route may convert:
+
+EXCEEDED
+
+into a stable 403 or 409 according to business semantics.
+
+Do not attach quota enforcement to existing business APIs in Phase 18.
+
+==================================================
+17. QUOTA ERROR
+==================================================
+
+If a quota guard is implemented, define a stable application error.
+
+Example:
+
+QUOTA_EXCEEDED
+
+Do not expose:
+
+current usage
+maximum
+plan name
+internal feature configuration
+
+unless explicitly intended by a future product-facing API.
+
+Keep default errors safe.
+
+==================================================
+18. QUOTA GUARD
+==================================================
+
+Do NOT automatically create a global quota guard.
+
+If a guard is useful for future composition, create a dedicated:
+
+TenantQuotaGuard
+
+but keep it:
+
+- non-global
+- route-scoped
+- server-configured
+- independent from TenantAuthorizationGuard
+- independent from TenantEntitlementGuard
+
+A future route may conceptually use:
+
+@RequireTenantPermissions(...)
+@RequireTenantFeature(...)
+@RequireTenantQuota(...)
+
+Do NOT attach these decorators to healthcare routes because those routes do not exist yet.
+
+==================================================
+19. QUOTA DECORATOR
+==================================================
+
+If implemented, quota metadata must be server-defined.
+
+Conceptually:
+
+@RequireTenantQuota("BRANCHES")
+
+The resource key must not come from:
+
+- request body
+- query
+- headers
+- cookies
+- arbitrary client input
+
+Do not allow:
+
+@RequireTenantQuota(req.body.resource)
+
+==================================================
+20. PERMISSION + ENTITLEMENT + QUOTA
+==================================================
+
+Document the future combined gate:
+
+Authentication
+        ↓
+Tenant Membership
+        ↓
+Tenant Permission
+        ↓
+Feature Entitlement
+        ↓
+Quota Availability
+        ↓
+Business Operation
+
+Each layer has a different responsibility.
+
+Do not collapse them into one "canAccess" boolean without preserving the underlying decision reasons internally.
+
+==================================================
+21. TENANT ISOLATION
+==================================================
+
+Quota decisions are tenant-scoped.
+
+Tenant A's:
+
+- Subscription
+- Plan
+- Feature
+- Limit
+
+must never affect Tenant B.
+
+The service must require TrustedTenantContext.
+
+Do not accept tenantId as the source of truth.
+
+Do not allow:
+
+client tenantId
+→ quota lookup
+
+without trusted context.
+
+==================================================
+22. CLIENT INPUT
+==================================================
+
+Never trust client input for:
+
+- planId
+- subscriptionId
+- featureId
+- featureKey
+- quota resource
+- limit
+- entitlement
+- actual usage
+
+Only currentUsage may be accepted as a contract input for Phase 18 testing/decision evaluation, and it must be treated as untrusted measurement data rather than authoritative usage.
+
+The actual plan and limit always come from server-side records.
+
+==================================================
+23. CACHING
+==================================================
+
+Do NOT introduce Redis.
+
+Do NOT introduce external cache.
+
+Do NOT introduce distributed cache.
+
+If an existing safe cache abstraction exists, inspect it first.
+
+Otherwise do not add caching.
+
+Future cache invalidation will need to consider:
+
+- Plan changes
+- PlanFeature changes
+- Subscription changes
+- Feature status changes
+
+Document this future consideration if relevant.
+
+==================================================
+24. AUDIT
+==================================================
+
+Do NOT audit every successful quota check.
+
+Do not create noisy audit logs.
+
+Quota decisions are expected to occur frequently once business routes exist.
+
+If a security-significant denial is appropriate, reuse existing security/audit architecture.
+
+Never log:
+
+- tokens
+- passwords
+- cookies
+- Authorization headers
+- secrets
+- DATABASE_URL
+- raw request bodies
+
+Do not create a second audit system.
+
+==================================================
+25. API
+==================================================
+
+Do NOT create a broad public quota API.
+
+Do not expose arbitrary:
+
+"check tenant quota"
+
+endpoints to clients.
+
+If testing needs an HTTP contract:
+
+create the smallest possible test-only route.
+
+It must not be exposed in production.
+
+Prefer service/guard integration tests.
+
+==================================================
+26. TEST CONTRACT
+==================================================
+
+If an HTTP contract route is created:
+
+It must use:
+
+- Platform authentication where appropriate
+- Trusted Tenant Context
+- Tenant entitlement
+- Quota decision
+
+It must use server-defined resource metadata.
+
+Do not implement healthcare logic.
+
+Do not expose it in production.
+
+==================================================
+27. TESTING
+==================================================
+
+Create comprehensive focused tests.
+
+BASIC:
+
+1. active subscription + entitled feature + finite limit + usage below limit → AVAILABLE
+2. usage equal to limit → EXCEEDED
+3. usage above limit → EXCEEDED
+4. unlimited configuration → AVAILABLE
+5. no limit configured → NO_LIMIT_CONFIGURED
+6. no subscription → not available
+7. suspended subscription → not available
+8. cancelled subscription → not available
+9. expired subscription → not available
+
+PLAN:
+
+10. inactive Plan → not available
+11. archived Plan → not available
+12. current subscription selects correct Plan
+13. historical subscription cannot provide quota
+14. latest-created subscription cannot bypass current-subscription semantics
+
+FEATURE:
+
+15. active entitled Feature → eligible
+16. inactive Feature → not available
+17. missing PlanFeature → not available
+18. feature not entitled → not available
+19. quota cannot grant entitlement
+
+LIMIT VALIDATION:
+
+20. negative currentUsage rejected
+21. non-integer currentUsage rejected
+22. unsafe integer rejected
+23. negative limit rejected
+24. invalid limit configuration rejected
+25. explicit unlimited behaves correctly
+26. no-limit configuration behaves correctly
+
+TENANT ISOLATION:
+
+27. Tenant A cannot use Tenant B's quota configuration
+28. Tenant B cannot use Tenant A's subscription
+29. client tenantId cannot influence quota
+30. client planId cannot influence quota
+31. client featureId cannot influence quota
+32. client limit cannot influence quota
+33. cross-tenant trusted context mismatch fails closed
+
+SEPARATION:
+
+34. entitlement without quota availability → quota denial
+35. quota configuration without entitlement → denial
+36. quota availability does not grant tenant permission
+37. tenant permission does not grant entitlement
+38. platform permission does not grant quota
+
+GUARD:
+
+39. unauthenticated → 401
+40. missing tenant context → fail closed
+41. missing entitlement → denied
+42. quota exceeded → denied
+43. valid entitlement + available quota → success
+44. server-defined resource metadata only
+
+COMPOSITION:
+
+45. permission pass + entitlement pass + quota pass → success
+46. permission pass + entitlement pass + quota fail → denied
+47. permission pass + entitlement fail → denied
+48. permission fail + entitlement pass + quota pass → denied
+49. all three fail → denied
+
+AUDIT:
+
+50. quota checks do not generate noisy audit records
+51. any security denial audit uses trusted actor/tenant
+52. no sensitive metadata leakage
+
+REGRESSION:
+
+53. all authentication tests pass
+54. all platform authorization tests pass
+55. all tenant membership tests pass
+56. all tenant role tests pass
+57. all tenant authorization tests pass
+58. all Facility tests pass
+59. all Branch tests pass
+60. all Plan tests pass
+61. all Feature tests pass
+62. all Subscription tests pass
+63. all Entitlement tests pass
+
+Add additional tests required by implementation.
+
+==================================================
+28. DATABASE
+==================================================
+
+Prefer NO schema changes.
+
+Phase 15/16 should already contain the necessary PlanFeature configuration foundation.
+
+Before changing Prisma:
+
+inspect the existing PlanFeature configuration.
+
+If it can safely represent quota configuration:
+
+reuse it.
+
+Do NOT create duplicate structures such as:
+
+PlanQuota
+FeatureQuota
+TenantQuota
+
+unless a real architectural gap is demonstrated.
+
+If a schema change is genuinely necessary:
+
+- explain why
+- create proper migration
+- validate schema
+- validate DDL
+- do not modify unrelated migrations
+- do not apply production migration
+
+==================================================
+29. DOCUMENTATION
+==================================================
+
+Update authoritative architecture documentation.
+
+Document:
+
+Authorization
+→ Tenant Permission
+
+Entitlement
+→ PlanFeature / Feature
+
+Quota
+→ Plan-based limit configuration + trusted usage input
+
+Usage Metering
+→ future phase
+
+Final conceptual chain:
+
+Authentication
+    ↓
+Tenant Membership
+    ↓
+Tenant Authorization
+    ↓
+Current Subscription
+    ↓
+Feature Entitlement
+    ↓
+Quota Availability
+    ↓
+Business Operation
+
+Explicitly document:
+
+- quota does not grant permission
+- quota does not grant entitlement
+- entitlement does not imply unlimited usage
+- no subscription means no quota entitlement
+- actual usage is not persisted in Phase 18
+- client-provided currentUsage is not authoritative production usage
+- no metering pipeline exists yet
+- no usage counters exist yet
+
+==================================================
+30. OPENAPI
+==================================================
+
+If a test/contract route is exposed during development:
+
+document:
+
+- authentication
+- tenant context
+- required feature
+- quota resource
+- request/response schemas
+- 401
+- 403
+- 409 where applicable
+
+Do not expose internal implementation details.
+
+Ensure any development-only contract route is not exposed in production.
+
+==================================================
+31. SECURITY REVIEW
+==================================================
+
+Perform a focused security review for:
+
+- cross-tenant quota leakage
+- tenantId manipulation
+- planId manipulation
+- subscriptionId manipulation
+- featureId manipulation
+- featureKey manipulation
+- quota resource manipulation
+- limit manipulation
+- usage spoofing
+- entitlement bypass
+- authorization bypass
+- stale configuration
+- missing TrustedTenantContext
+- global guard mistakes
+- information disclosure
+- direct Prisma access from controllers
+- duplicate quota definitions
+
+Fix critical/high severity issues before committing.
+
+==================================================
+32. RUNTIME VALIDATION
+==================================================
+
+Run:
+
+- focused Phase 18 tests
+- full test suite
+- lint
+- formatting
+- both TypeScript checks
+- production build
+- Prisma validation
+- migration validation if schema changed
+- OpenAPI contract validation if applicable
+- git diff --check
+
+Restart the application.
+
+Verify:
+
+GET /health → 200
+
+GET /docs → 200
+
+Any protected quota contract route without authentication → 401
+
+/ready must report actual database availability.
+
+If no DB is configured:
+
+/ready → 503
+
+Do not fake database connectivity.
+
+Do not apply migrations.
+
+==================================================
+33. SCOPE CONTROL
+==================================================
+
+Before committing, inspect the final diff.
+
+Explicitly confirm that the following were NOT implemented:
+
+- Usage counters
+- Usage events
+- Metering
+- Aggregation workers
+- Redis
+- Distributed cache
+- Billing
+- Payments
+- Invoices
+- Payment gateways
+- Checkout
+- Subscription renewal
+- Upgrade
+- Downgrade
+- Healthcare
+- Patients
+- Doctors
+- Staff
+- Scheduling
+- Appointments
+- Medical records
+- MongoDB
+- Tenant database registry
+- Tenant DB provisioning
+- Facility-level RBAC
+- Branch-level RBAC
+- Voice AI
+- Ownership handoff
+
+Do not automatically start Phase 19.
+
+STOP after Phase 18.
+
+==================================================
+34. COMMIT
+==================================================
+
+If and only if all validation passes, create exactly one Conventional Commit:
+
+feat(saas): add usage limit foundation
+
+Do not bypass commit hooks.
+
+Do not use:
+
+--no-verify
+
+Do not modify or commit unrelated files.
+
+Leave the attached specification untouched and uncommitted.
+
+==================================================
+35. FINAL REPORT
+==================================================
+
+Report:
+
+1. Files changed
+2. Existing PlanFeature configuration reused or schema changes made
+3. Quota resource model/definition
+4. Limit semantics
+5. TenantQuotaService behavior
+6. Entitlement integration
+7. Authorization separation
+8. Guard/decorator behavior
+9. Test/contract route behavior if any
+10. Database/migration changes
+11. Test count and results
+12. OpenAPI validation
+13. Lint/typecheck/build/Prisma results
+14. Runtime verification
+15. Security review findings
+16. Commit hash
+17. Explicit confirmation that actual usage counters, metering, billing, healthcare, MongoDB, and all later phases were NOT implemented
+
+STOP.
+Do not continue to Phase 19.
