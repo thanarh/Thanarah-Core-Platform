@@ -27,6 +27,10 @@ per tenant in a future phase; MongoDB is **not implemented**. Phase 14A adds a
 central-platform Tenant/Organization identity; Phase 14B adds its central
 platform-user membership relationship. A tenant may eventually use multiple
 physical MongoDB databases while presenting one logical tenant data space.
+Phase 27 adds only a tenant-scoped Patient demographic foundation through the
+current Prisma/MySQL healthcare persistence, as a phase-specific exception. It
+does not implement MongoDB or change the permanent tenant-storage target; do not
+extend this exception to other operational healthcare data.
 All tenant-scoped business decisions must be server-side:
 
 `Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization (where required) → Subscription Entitlement (where required) → Business Service → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → MongoDB Connection Manager → Tenant Repository → Tenant Data`
@@ -271,7 +275,9 @@ tenant-facing business API.
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/
   insurance, and notifications. These persistence boundaries are architectural
-  only; no tenant-owned operational or healthcare data models are added here.
+  targets, not a statement that MongoDB is implemented. Phase 27 adds the
+  tenant-scoped Patient demographic foundation to current Prisma/MySQL storage
+  as a phase-specific exception; no other tenant healthcare domain is added.
 - Plans and Feature definitions are reusable central-platform metadata, not
   tenant-owned permissions. Subscription is a Tenant-specific assignment to a
   reusable Plan, stored centrally with retained history. Creating one requires

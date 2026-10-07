@@ -99,7 +99,7 @@ describe('Phase 23 Doctor schema and migration', () => {
       /\b(Patient|Appointment|MedicalRecord|Prescription|Diagnosis)\b/i,
     );
     expect(schema).not.toMatch(
-      /model (Patient|Appointment|MedicalRecord|Prescription|Diagnosis|DoctorFacilityAssignment|DoctorBranchAssignment)\s*\{/,
+      /model (Appointment|MedicalRecord|Prescription|Diagnosis|DoctorFacilityAssignment|DoctorBranchAssignment)\s*\{/,
     );
     expect(migration).not.toMatch(/MongoDB|CREATE COLLECTION/i);
   });

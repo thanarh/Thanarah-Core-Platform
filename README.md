@@ -50,9 +50,13 @@ Thanarah uses two permanent, distinct persistence systems:
   authentication, sessions, platform roles and permissions, and other
   platform-level metadata.
 - **Tenant data:** isolated MongoDB database(s) will store each tenant's
-  healthcare and operational data. This layer is planned and **not yet
-  implemented**. A tenant may eventually span multiple physical MongoDB
-  databases while remaining one logical tenant data space.
+  healthcare and operational data. This remains the permanent target and is
+  **not yet implemented**. A tenant may eventually span multiple physical
+  MongoDB databases while remaining one logical tenant data space.
+- **Phase 27 exception:** the tenant-scoped Patient demographic foundation uses
+  the existing Prisma/MySQL healthcare persistence for this phase, as specified.
+  This does not implement tenant MongoDB storage or change the permanent target;
+  do not treat it as approval to add other operational healthcare data centrally.
 
 Future tenant storage will be resolved only on the server through trusted
 tenant context and a central tenant database registry. Clients must never

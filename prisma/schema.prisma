@@ -49,6 +49,11 @@ enum StaffStatus {
   DEACTIVATED
 }
 
+enum PatientStatus {
+  ACTIVE
+  INACTIVE
+}
+
 enum TenantCatalogStatus {
   ACTIVE
   SUSPENDED
@@ -141,6 +146,9 @@ enum PlatformAuditEventType {
   DOCTOR_DEPARTMENT_UNASSIGNED
   DOCTOR_SPECIALTY_ASSIGNED
   DOCTOR_SPECIALTY_UNASSIGNED
+  PATIENT_CREATED
+  PATIENT_UPDATED
+  PATIENT_STATUS_CHANGED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -294,6 +302,7 @@ model Tenant {
   specialties     Specialty[]
   services        Service[]
   doctors         Doctor[]
+  patients        Patient[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
   subscriptions   Subscription[]
@@ -540,6 +549,31 @@ model Service {
   @@unique([tenantId, code])
   @@index([tenantId, createdAt])
   @@index([tenantId, status, createdAt])
+}
+
+model Patient {
+  id            String        @id @default(uuid()) @db.Char(36)
+  tenantId      String        @db.Char(36)
+  patientNumber String        @db.VarChar(64)
+  firstName     String        @db.VarChar(191)
+  middleName    String?       @db.VarChar(191)
+  lastName      String        @db.VarChar(191)
+  preferredName String?       @db.VarChar(191)
+  dateOfBirth   DateTime?     @db.Date
+  gender        String?       @db.VarChar(32)
+  phone         String?       @db.VarChar(32)
+  email         String?       @db.VarChar(191)
+  nationalId    String?       @db.VarChar(64)
+  address       String?       @db.VarChar(2000)
+  status        PatientStatus @default(ACTIVE)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+  tenant        Tenant        @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, patientNumber])
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, createdAt])
 }
 
 model Doctor {
