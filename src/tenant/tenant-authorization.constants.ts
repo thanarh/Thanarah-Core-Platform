@@ -26,6 +26,8 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.departments.manage',
   'tenant.specialties.read',
   'tenant.specialties.manage',
+  'tenant.doctors.read',
+  'tenant.doctors.manage',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -94,6 +96,11 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.specialties.manage',
     description: 'Create, update, and change the lifecycle of tenant specialty definitions',
   },
+  { code: 'tenant.doctors.read', description: 'View tenant doctor profiles and assignments' },
+  {
+    code: 'tenant.doctors.manage',
+    description: 'Create, update, and manage tenant doctor profiles and assignments',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -134,6 +141,8 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.departments.manage',
       'tenant.specialties.read',
       'tenant.specialties.manage',
+      'tenant.doctors.read',
+      'tenant.doctors.manage',
     ],
   },
   {
@@ -150,6 +159,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.staff.scope.read',
       'tenant.departments.read',
       'tenant.specialties.read',
+      'tenant.doctors.read',
     ],
   },
 ] as const satisfies ReadonlyArray<{

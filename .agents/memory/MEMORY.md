@@ -1,1 +1,2 @@
 - [Swagger DTO metadata](swagger-openapi-metadata.md) — declare primitive property types explicitly for reliable OpenAPI generation in tests.
+- [Doctor catalog assignments](doctor-catalog-assignments.md) — keep Department and Specialty links independent; inherit organizational scope from Staff.

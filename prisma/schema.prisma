@@ -129,6 +129,15 @@ enum PlatformAuditEventType {
   SPECIALTY_ACTIVATED
   SPECIALTY_SUSPENDED
   SPECIALTY_DEACTIVATED
+  DOCTOR_CREATED
+  DOCTOR_UPDATED
+  DOCTOR_ACTIVATED
+  DOCTOR_SUSPENDED
+  DOCTOR_DEACTIVATED
+  DOCTOR_DEPARTMENT_ASSIGNED
+  DOCTOR_DEPARTMENT_UNASSIGNED
+  DOCTOR_SPECIALTY_ASSIGNED
+  DOCTOR_SPECIALTY_UNASSIGNED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -280,6 +289,7 @@ model Tenant {
   staff           Staff[]            @relation("TenantStaffTenant")
   departments     Department[]
   specialties     Specialty[]
+  doctors         Doctor[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
   subscriptions   Subscription[]
@@ -289,35 +299,35 @@ model Tenant {
 }
 
 model Facility {
-  id              String         @id @default(uuid()) @db.Char(36)
-  tenantId        String         @db.Char(36)
-  name            String         @db.VarChar(191)
-  status          FacilityStatus @default(ACTIVE)
-  statusChangedAt DateTime       @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime       @default(now())
-  updatedAt       DateTime       @updatedAt
-  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  branches              Branch[]
-  staffAssignments      StaffFacilityAssignment[]
-  staffBranchAssignments StaffBranchAssignment[]     @relation("StaffBranchAssignmentFacility")
+  id                     String                    @id @default(uuid()) @db.Char(36)
+  tenantId               String                    @db.Char(36)
+  name                   String                    @db.VarChar(191)
+  status                 FacilityStatus            @default(ACTIVE)
+  statusChangedAt        DateTime                  @default(now())
+  suspendedAt            DateTime?
+  deactivatedAt          DateTime?
+  createdAt              DateTime                  @default(now())
+  updatedAt              DateTime                  @updatedAt
+  tenant                 Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branches               Branch[]
+  staffAssignments       StaffFacilityAssignment[]
+  staffBranchAssignments StaffBranchAssignment[]   @relation("StaffBranchAssignmentFacility")
 
   @@unique([id, tenantId])
   @@index([tenantId, status, createdAt])
 }
 
 model Branch {
-  id              String       @id @default(uuid()) @db.Char(36)
-  facilityId      String       @db.Char(36)
-  name            String       @db.VarChar(191)
-  status          BranchStatus @default(ACTIVE)
-  statusChangedAt DateTime     @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  facility        Facility                  @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  id               String                  @id @default(uuid()) @db.Char(36)
+  facilityId       String                  @db.Char(36)
+  name             String                  @db.VarChar(191)
+  status           BranchStatus            @default(ACTIVE)
+  statusChangedAt  DateTime                @default(now())
+  suspendedAt      DateTime?
+  deactivatedAt    DateTime?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+  facility         Facility                @relation(fields: [facilityId], references: [id], onDelete: Restrict)
   staffAssignments StaffBranchAssignment[]
 
   @@unique([id, facilityId])
@@ -325,24 +335,25 @@ model Branch {
 }
 
 model Staff {
-  id              String              @id @default(uuid()) @db.Char(36)
-  tenantId        String              @db.Char(36)
-  userId          String              @db.Char(36)
-  membershipId    String              @db.Char(36)
-  displayName     String              @db.VarChar(191)
-  jobTitle        String?             @db.VarChar(191)
-  status          StaffStatus         @default(ACTIVE)
-  statusChangedAt DateTime            @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  tenant          Tenant              @relation("TenantStaffTenant", fields: [tenantId], references: [id], onDelete: Restrict)
-  platformUser    User                @relation("StaffPlatformUser", fields: [userId], references: [id], onDelete: Restrict)
-  membership      TenantMembership    @relation("TenantStaffMembership", fields: [membershipId, tenantId, userId], references: [id, tenantId, platformUserId], onDelete: Restrict)
+  id                  String                    @id @default(uuid()) @db.Char(36)
+  tenantId            String                    @db.Char(36)
+  userId              String                    @db.Char(36)
+  membershipId        String                    @db.Char(36)
+  displayName         String                    @db.VarChar(191)
+  jobTitle            String?                   @db.VarChar(191)
+  status              StaffStatus               @default(ACTIVE)
+  statusChangedAt     DateTime                  @default(now())
+  suspendedAt         DateTime?
+  deactivatedAt       DateTime?
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  tenant              Tenant                    @relation("TenantStaffTenant", fields: [tenantId], references: [id], onDelete: Restrict)
+  platformUser        User                      @relation("StaffPlatformUser", fields: [userId], references: [id], onDelete: Restrict)
+  membership          TenantMembership          @relation("TenantStaffMembership", fields: [membershipId, tenantId, userId], references: [id, tenantId, platformUserId], onDelete: Restrict)
   roleAssignments     StaffRoleAssignment[]
   facilityAssignments StaffFacilityAssignment[]
   branchAssignments   StaffBranchAssignment[]
+  doctor              Doctor?
 
   @@unique([id, tenantId])
   @@unique([tenantId, userId])
@@ -426,11 +437,11 @@ model TenantMembershipRole {
 }
 
 model StaffRoleAssignment {
-  tenantId     String    @db.Char(36)
-  staffId      String    @db.Char(36)
-  tenantRoleId String    @db.Char(36)
-  assignedAt   DateTime  @default(now())
-  staff        Staff     @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  tenantId     String     @db.Char(36)
+  staffId      String     @db.Char(36)
+  tenantRoleId String     @db.Char(36)
+  assignedAt   DateTime   @default(now())
+  staff        Staff      @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
   role         TenantRole @relation(fields: [tenantRoleId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@id([staffId, tenantRoleId])
@@ -452,8 +463,8 @@ model StaffFacilityAssignment {
 }
 
 model StaffBranchAssignment {
-  tenantId String @db.Char(36)
-  staffId  String @db.Char(36)
+  tenantId   String   @db.Char(36)
+  staffId    String   @db.Char(36)
   /// Derived from Branch.facilityId; retained to enforce tenant and parent-facility integrity.
   facilityId String   @db.Char(36)
   branchId   String   @db.Char(36)
@@ -469,17 +480,18 @@ model StaffBranchAssignment {
 }
 
 model Department {
-  id              String              @id @default(uuid()) @db.Char(36)
-  tenantId        String              @db.Char(36)
-  name            String              @db.VarChar(191)
-  description     String?             @db.VarChar(512)
-  status          TenantCatalogStatus @default(ACTIVE)
-  statusChangedAt DateTime            @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  id                String                       @id @default(uuid()) @db.Char(36)
+  tenantId          String                       @db.Char(36)
+  name              String                       @db.VarChar(191)
+  description       String?                      @db.VarChar(512)
+  status            TenantCatalogStatus          @default(ACTIVE)
+  statusChangedAt   DateTime                     @default(now())
+  suspendedAt       DateTime?
+  deactivatedAt     DateTime?
+  createdAt         DateTime                     @default(now())
+  updatedAt         DateTime                     @updatedAt
+  tenant            Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  doctorAssignments DoctorDepartmentAssignment[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, name])
@@ -487,21 +499,69 @@ model Department {
 }
 
 model Specialty {
-  id              String              @id @default(uuid()) @db.Char(36)
-  tenantId        String              @db.Char(36)
-  name            String              @db.VarChar(191)
-  description     String?             @db.VarChar(512)
-  status          TenantCatalogStatus @default(ACTIVE)
-  statusChangedAt DateTime            @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime            @default(now())
-  updatedAt       DateTime            @updatedAt
-  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  id                String                      @id @default(uuid()) @db.Char(36)
+  tenantId          String                      @db.Char(36)
+  name              String                      @db.VarChar(191)
+  description       String?                     @db.VarChar(512)
+  status            TenantCatalogStatus         @default(ACTIVE)
+  statusChangedAt   DateTime                    @default(now())
+  suspendedAt       DateTime?
+  deactivatedAt     DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
+  tenant            Tenant                      @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  doctorAssignments DoctorSpecialtyAssignment[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, name])
   @@index([tenantId, status, createdAt])
+}
+
+model Doctor {
+  id                      String                       @id @default(uuid()) @db.Char(36)
+  tenantId                String                       @db.Char(36)
+  staffId                 String                       @db.Char(36)
+  professionalDisplayName String?                      @db.VarChar(191)
+  status                  StaffStatus                  @default(ACTIVE)
+  statusChangedAt         DateTime                     @default(now())
+  suspendedAt             DateTime?
+  deactivatedAt           DateTime?
+  createdAt               DateTime                     @default(now())
+  updatedAt               DateTime                     @updatedAt
+  tenant                  Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  staff                   Staff                        @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  departmentAssignments   DoctorDepartmentAssignment[]
+  specialtyAssignments    DoctorSpecialtyAssignment[]
+
+  @@unique([id, tenantId])
+  @@unique([staffId, tenantId])
+  @@index([tenantId, status, createdAt])
+}
+
+model DoctorDepartmentAssignment {
+  tenantId     String     @db.Char(36)
+  doctorId     String     @db.Char(36)
+  departmentId String     @db.Char(36)
+  createdAt    DateTime   @default(now())
+  doctor       Doctor     @relation(fields: [doctorId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  department   Department @relation(fields: [departmentId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([doctorId, departmentId])
+  @@index([doctorId, tenantId])
+  @@index([departmentId, tenantId])
+}
+
+model DoctorSpecialtyAssignment {
+  tenantId    String    @db.Char(36)
+  doctorId    String    @db.Char(36)
+  specialtyId String    @db.Char(36)
+  createdAt   DateTime  @default(now())
+  doctor      Doctor    @relation(fields: [doctorId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  specialty   Specialty @relation(fields: [specialtyId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([doctorId, specialtyId])
+  @@index([doctorId, tenantId])
+  @@index([specialtyId, tenantId])
 }
 
 model Plan {

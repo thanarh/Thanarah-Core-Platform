@@ -23,9 +23,7 @@ describe('Phase 22 department and specialty schema and migration', () => {
       expect(model).toMatch(/@@unique\(\[tenantId,\s*name\]\)/);
       expect(model).toMatch(/@@index\(\[tenantId,\s*status,\s*createdAt\]\)/);
       expect(model).toMatch(/onDelete: Restrict/);
-      expect(model).not.toMatch(
-        /\b(doctor|patient|appointment|schedule|facility|branch|staff)\w*/i,
-      );
+      expect(model).not.toMatch(/\b(patient|appointment|schedule|facility|branch|staff)\w*/i);
     }
     expect(migration).toContain('Department_tenantId_name_key');
     expect(migration).toContain('Specialty_tenantId_name_key');
@@ -83,7 +81,7 @@ describe('Phase 22 department and specialty schema and migration', () => {
   it('keeps Department and Specialty independent from each other and other domains', () => {
     expect(departmentModel).not.toMatch(/\bspecialtyId\b|\bspecialties\b/i);
     expect(specialtyModel).not.toMatch(/\bdepartmentId\b|\bdepartments\b/i);
-    expect(migration).not.toMatch(/\b(Doctor|Patient|Appointment|Schedule|MedicalRecord)\b/i);
+    expect(migration).not.toMatch(/\b(Patient|Appointment|Schedule|MedicalRecord)\b/i);
     expect(migration).not.toMatch(/\bDROP\s+(TABLE|COLUMN|INDEX)\b/i);
   });
 });
