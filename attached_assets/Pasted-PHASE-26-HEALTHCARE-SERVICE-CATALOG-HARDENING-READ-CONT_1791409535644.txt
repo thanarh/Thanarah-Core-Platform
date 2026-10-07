@@ -1,0 +1,594 @@
+PHASE 26 — HEALTHCARE SERVICE CATALOG HARDENING & READ CONTRACT
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+Do not implement or scaffold later healthcare modules.
+Do not implement patients, appointments, scheduling, visits, medical records, billing, insurance, prescriptions, or service booking.
+Do not redesign existing architecture.
+Do not contact production.
+Do not apply any migration to production.
+
+CURRENT VERIFIED STATE
+
+Phase 25 is completed and committed:
+
+972ceca05cdc80a5f7aaa16e6703b9315cad9393
+feat(healthcare): add tenant service catalog foundation
+
+Verified:
+- 728 tests passed
+- 78 test files passed
+- Build passed
+- Root type-check passed
+- Lint passed
+- Format passed
+- Service migration validated offline
+- Migration NOT applied
+- Production NOT contacted
+
+Existing Service Catalog:
+- Tenant-scoped Service model
+- tenant.services.read
+- tenant.services.manage
+- SERVICE_CREATED
+- SERVICE_UPDATED
+- SERVICE_STATUS_CHANGED
+- GET collection
+- GET by ID
+- POST create
+- PATCH update
+- POST activate
+- POST suspend
+- POST deactivate
+- No DELETE
+
+Pre-existing unrelated tenant-contracts type-check debt:
+- 10 errors
+- Do not mix them into this phase
+- Do not modify those unrelated tests unless absolutely required by a regression caused by this phase
+
+PHASE OBJECTIVE
+
+Harden and formalize the existing Service Catalog READ contract.
+
+The goal is NOT to add a new healthcare domain.
+
+The goal is to make Service listing and retrieval production-grade before any future module starts depending on the Service catalog.
+
+This phase must establish:
+
+1. deterministic tenant-scoped service listing
+2. safe filtering
+3. stable pagination
+4. explicit ordering
+5. consistent response contract
+6. lifecycle-aware read behavior
+7. cross-tenant isolation
+8. regression coverage
+
+Do not introduce service relationships to other healthcare entities.
+
+==================================================
+1. INSPECT EXISTING IMPLEMENTATION FIRST
+==================================================
+
+Before changing code, inspect:
+
+- Service Prisma model
+- Service repository
+- Service service
+- Service controller
+- Service DTOs
+- Service OpenAPI definitions
+- Service tests
+- Department catalog implementation
+- Specialty catalog implementation
+- Tenant authorization implementation
+- TrustedTenantContext
+- existing pagination conventions anywhere in the project
+- existing API response conventions
+- existing validation conventions
+
+Reuse established project conventions.
+
+Do NOT create a second pagination abstraction if the project already has one.
+
+Do NOT create a generic search framework.
+
+Do NOT refactor unrelated modules merely for stylistic consistency.
+
+==================================================
+2. SERVICE LIST READ CONTRACT
+==================================================
+
+Harden:
+
+GET
+/api/v1/tenants/:tenantId/services
+
+The endpoint must remain:
+
+- authenticated
+- tenant-scoped
+- permission protected
+- fail-closed
+
+Required permission:
+
+tenant.services.read
+
+The tenant scope must always come from TrustedTenantContext.
+
+The client must NOT be able to override tenant scope through:
+
+- body
+- query parameter
+- header
+- cookie
+- arbitrary tenantId values
+
+The route tenantId may be used only as the route scope input that is validated against TrustedTenantContext according to the existing architecture.
+
+==================================================
+3. PAGINATION
+==================================================
+
+Implement the project's established pagination style.
+
+If no established pagination abstraction exists, use a simple page-based contract:
+
+Query parameters:
+
+page
+pageSize
+
+Defaults:
+
+page = 1
+pageSize = 20
+
+Maximum:
+
+pageSize = 100
+
+Rules:
+
+- page must be a positive integer
+- pageSize must be a positive integer
+- reject invalid values
+- reject zero
+- reject negative values
+- reject non-numeric values
+- reject unreasonable values above the maximum
+
+Do not silently convert invalid values into valid values.
+
+The response should expose enough metadata for a client to paginate safely, following existing API response conventions.
+
+At minimum the contract must make it possible to determine:
+
+- current page
+- page size
+- total matching records
+- whether another page exists
+
+Do not expose database implementation details.
+
+==================================================
+4. DETERMINISTIC ORDERING
+==================================================
+
+Service listing must have deterministic ordering.
+
+Do NOT rely on database default ordering.
+
+Use an explicit stable ordering.
+
+Preferred:
+
+createdAt ASC/DESC plus id as a deterministic tie-breaker
+
+Choose the direction according to existing catalog conventions.
+
+The important requirement is:
+
+Two identical requests against unchanged data must return records in the same deterministic order.
+
+If createdAt values are equal, id must provide deterministic ordering.
+
+Document the ordering contract.
+
+==================================================
+5. FILTERING
+==================================================
+
+Add only filtering that is justified for the Service catalog.
+
+At minimum support lifecycle/status filtering:
+
+status
+
+Example:
+
+GET /api/v1/tenants/:tenantId/services?status=ACTIVE
+
+Rules:
+
+- validate status against the existing Service lifecycle enum
+- invalid status must be rejected
+- no arbitrary Prisma filter object
+- no raw database expressions
+- no client-controlled SQL/Prisma operators
+
+Do NOT add:
+- doctor filters
+- department filters
+- specialty filters
+- branch filters
+- facility filters
+- patient filters
+- price filters
+- insurance filters
+- appointment filters
+
+Those relationships do not exist in this phase.
+
+==================================================
+6. NAME SEARCH
+==================================================
+
+Add a simple optional name search if consistent with the existing project conventions.
+
+Query:
+
+search
+
+Behavior:
+
+- case-insensitive where supported safely by the database/provider
+- partial matching
+- bounded input length
+- no raw SQL
+- no arbitrary field selection
+- no wildcard/operator injection
+
+Do not build a full-text search engine.
+
+Do not add external search infrastructure.
+
+If the existing project has no safe convention for this, omit name search and explicitly report why.
+
+==================================================
+7. RESPONSE CONTRACT
+==================================================
+
+Formalize the GET collection response.
+
+Follow the existing Thanarah API response envelope.
+
+Do not introduce a second incompatible envelope.
+
+Each Service item should expose only intended public catalog fields.
+
+Do NOT expose:
+- database internals
+- Prisma internals
+- authorization internals
+- tenant security metadata
+- audit internals
+- subscription information
+- internal repository metadata
+
+The response should be suitable for future frontend consumption.
+
+Do not expose fields that were intentionally omitted from Phase 25.
+
+==================================================
+8. LIFECYCLE-AWARE READS
+==================================================
+
+Define the read behavior explicitly.
+
+For collection requests:
+
+If status is omitted:
+- follow the existing healthcare catalog convention
+- do not silently invent a new interpretation
+
+If status is supplied:
+- return only services matching the requested lifecycle status
+
+For GET by ID:
+
+GET
+/api/v1/tenants/:tenantId/services/:serviceId
+
+Must:
+
+- remain tenant-scoped
+- reject cross-tenant access
+- return a safe not-found response when the service does not belong to the tenant
+- never leak whether the ID exists in another tenant
+
+Do not introduce a public/global service lookup.
+
+==================================================
+9. CROSS-TENANT SECURITY
+==================================================
+
+Add adversarial tests.
+
+At minimum:
+
+- Tenant A lists services and receives only Tenant A
+- Tenant A cannot see Tenant B services
+- Tenant A cannot retrieve Tenant B service by ID
+- Tenant A cannot influence tenant scope with query parameters
+- Tenant A cannot influence tenant scope with body fields
+- tenantId mismatch with TrustedTenantContext is rejected
+- unauthorized tenant user cannot list services
+- inactive/suspended membership cannot list services
+- inactive tenant cannot list services if that is already the established tenant authorization contract
+
+Do not rely only on controller tests.
+
+Test repository/service scoping where appropriate.
+
+==================================================
+10. PAGINATION SECURITY & CORRECTNESS
+==================================================
+
+Test:
+
+- default page
+- explicit page
+- explicit pageSize
+- maximum pageSize
+- invalid page
+- invalid pageSize
+- page beyond total results
+- empty result page
+- deterministic ordering
+- total count correctness
+- hasNext correctness
+
+Do not allow page/pageSize to produce unreasonable database work.
+
+Use bounded page size.
+
+==================================================
+11. FILTER TESTS
+==================================================
+
+Test:
+
+- ACTIVE filter
+- SUSPENDED filter
+- DEACTIVATED filter
+- invalid status
+- search matching
+- search not matching
+- search length validation if implemented
+- combined search + status + pagination
+- tenant isolation while filtering
+
+==================================================
+12. DATABASE / QUERY QUALITY
+==================================================
+
+Use repository/service boundaries.
+
+Controllers must NOT access Prisma directly.
+
+Avoid N+1 queries.
+
+Do not load unrelated relations.
+
+Do not add relations to Service merely for convenience.
+
+Use the smallest database projection required by the response contract where consistent with existing repository patterns.
+
+Do not introduce caching.
+
+Do not introduce Redis.
+
+Do not introduce MongoDB.
+
+Do not introduce Elasticsearch/OpenSearch.
+
+Do not introduce external infrastructure.
+
+==================================================
+13. INDEX REVIEW
+==================================================
+
+Review whether the Service model has appropriate indexes for the READ contract.
+
+Only add indexes that are directly justified by the implemented queries.
+
+Potentially relevant fields:
+
+- tenantId
+- tenantId + status
+- tenantId + createdAt
+- tenantId + code if code exists
+- tenantId + name if required by the actual query contract
+
+Do NOT blindly add every possible index.
+
+If an index is needed:
+- add it to Prisma
+- generate a migration
+- validate it offline
+- do NOT apply it to production
+
+If no additional index is justified, report that explicitly.
+
+==================================================
+14. OPENAPI
+==================================================
+
+Update Swagger/OpenAPI for:
+
+- page
+- pageSize
+- status
+- search, if implemented
+- response metadata
+- validation constraints
+- ordering behavior
+
+Keep documentation exact.
+
+Do not document unsupported future behavior.
+
+==================================================
+15. AUDIT
+==================================================
+
+This is a READ-contract hardening phase.
+
+Do NOT create audit events for every GET request.
+
+Do not change existing:
+
+SERVICE_CREATED
+SERVICE_UPDATED
+SERVICE_STATUS_CHANGED
+
+unless a regression is discovered.
+
+==================================================
+16. TESTING REQUIREMENTS
+==================================================
+
+Run:
+
+1. focused Service tests
+2. Service HTTP tests
+3. tenant authorization regression
+4. permission regression
+5. migration/schema validation
+6. project-wide tests
+7. build
+8. root type-check
+9. lint
+10. format
+
+The final full suite must remain green.
+
+The pre-existing tenant-contracts errors must remain identified separately.
+
+Do not modify them simply to make the phase look green.
+
+==================================================
+17. MIGRATION SAFETY
+==================================================
+
+If schema/index changes are required:
+
+- generate a new migration
+- validate Prisma schema
+- inspect migration contents
+- verify the migration only contains changes required by Phase 26
+- perform offline validation
+- do NOT apply to production
+
+If no migration is required, state that explicitly.
+
+Never connect to the production database from Replit.
+
+==================================================
+18. SCOPE BOUNDARY
+==================================================
+
+STOP after the Service READ contract is hardened.
+
+Do NOT implement:
+
+Patient
+Appointment
+Scheduling
+Availability
+Visit
+Encounter
+Medical Record
+Prescription
+Billing
+Insurance
+Payment
+Service Booking
+Doctor-Service relationship
+Department-Service relationship
+Specialty-Service relationship
+Facility-Service relationship
+Branch-Service relationship
+Pricing
+Insurance Pricing
+Service Duration
+Service Capacity
+Service Packages
+Subscriptions
+Usage Metering
+
+Those are outside Phase 26.
+
+==================================================
+19. PRODUCTION SAFETY
+==================================================
+
+Before final commit confirm:
+
+- production was NOT contacted
+- production database was NOT connected
+- no production migration was applied
+- no production secrets were changed
+- uploaded architecture specification was not modified
+- unrelated modules were not changed unnecessarily
+
+==================================================
+20. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Do not use:
+
+--no-verify
+
+Run the normal repository commit checks.
+
+Create ONE focused commit only after all checks pass.
+
+Commit message:
+
+feat(healthcare): harden tenant service catalog reads
+
+==================================================
+FINAL REPORT
+==================================================
+
+After completion report only:
+
+1. exact commit hash
+2. focused Service test result
+3. full suite result
+4. build result
+5. root type-check result
+6. lint result
+7. format result
+8. migration name/status or "no migration required"
+9. exact API read contract added/changed
+10. filters added
+11. pagination contract
+12. ordering contract
+13. indexes added, if any
+14. confirmation production was NOT contacted
+15. confirmation no later healthcare scope was implemented
+16. any pre-existing failures
+
+Do NOT claim completion unless the implementation and checks actually pass.
