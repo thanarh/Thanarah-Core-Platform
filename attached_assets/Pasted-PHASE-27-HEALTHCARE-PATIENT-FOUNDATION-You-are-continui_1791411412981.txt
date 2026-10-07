@@ -1,0 +1,733 @@
+PHASE 27 — HEALTHCARE PATIENT FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+Do not implement appointments, scheduling, visits, medical records, prescriptions, billing, insurance, payments, notifications, patient portal, or any clinical workflow.
+
+Do not redesign existing architecture.
+Do not contact production.
+Do not apply migrations to production.
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest completed commits:
+
+972ceca05cdc80a5f7aaa16e6703b9315cad9393
+feat(healthcare): add tenant service catalog foundation
+
+d856728
+feat(healthcare): harden tenant service catalog reads
+
+Latest verified state:
+- 736 tests passed
+- Build passed
+- Root type-check passed
+- Lint passed
+- Format passed
+- Prisma validation passed
+- Service migration validated offline
+- Production was not contacted
+- Production migrations were not applied
+
+Known unrelated technical debt:
+- tenant-contracts type-check has 10 pre-existing errors
+- They are outside the current work
+- Do not modify them merely to make this phase appear clean
+
+Existing architecture:
+- Platform identity is separate from tenant membership
+- Tenant != Facility != Branch
+- Staff is linked to tenant membership
+- Staff roles are separate from membership roles
+- Staff facility/branch scope exists
+- Department and Specialty catalogs exist
+- Doctor is linked to Staff
+- Doctor professional profile exists
+- Service Catalog exists
+- Tenant authorization is separate from platform authorization
+- TrustedTenantContext is mandatory
+- Central Prisma/MySQL database stores platform/SaaS foundation
+- MongoDB is reserved for tenant healthcare/operational persistence later
+- Audit/security foundations exist
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Create the foundational Tenant Patient domain.
+
+A Patient represents a person receiving healthcare services inside a specific Tenant.
+
+The Patient is TENANT-SCOPED.
+
+A patient in Tenant A must be completely isolated from Tenant B.
+
+This phase establishes only the patient's identity/demographic foundation.
+
+The Patient must NOT yet participate in:
+- appointments
+- visits
+- encounters
+- medical records
+- prescriptions
+- billing
+- insurance
+- payments
+- service booking
+- scheduling
+- notifications
+- clinical workflows
+
+==================================================
+1. ARCHITECTURAL DISTINCTION
+==================================================
+
+Do NOT confuse:
+
+Platform User
+Tenant Membership
+Staff
+Doctor
+Patient
+
+A Patient is NOT a Platform User.
+
+A Patient does NOT require:
+- PlatformUser
+- TenantMembership
+- Staff
+- Doctor
+- login credentials
+- platform role
+- tenant role
+
+Do not create an authentication account for every Patient.
+
+Do not put patient authorization into the staff/member authorization model.
+
+Patient access will be addressed by a future patient-portal phase.
+
+==================================================
+2. CENTRAL VS TENANT DATA
+==================================================
+
+For this phase, implement the Patient foundation using the same persistence architecture already used by the current healthcare catalog foundations.
+
+Do not introduce MongoDB yet.
+
+Do not create a second database abstraction.
+
+Do not create a separate patient database.
+
+The Patient model must remain explicitly tenant-scoped so that later migration/expansion of healthcare operational data can preserve the established tenant storage boundary.
+
+==================================================
+3. PATIENT DATA MODEL
+==================================================
+
+Create a tenant-scoped Patient model.
+
+Minimum fields:
+
+- id
+- tenantId
+- patientNumber
+- firstName
+- middleName
+- lastName
+- preferredName
+- dateOfBirth
+- gender
+- phone
+- email
+- nationalId
+- address
+- status
+- createdAt
+- updatedAt
+
+IMPORTANT:
+
+Before implementing, inspect existing project conventions and the architecture specification for naming/validation conventions.
+
+Do not blindly add fields that the current architecture does not justify.
+
+If any field above conflicts with an existing established convention, follow the established architecture and report the deviation.
+
+==================================================
+4. PATIENT NUMBER
+==================================================
+
+Patient number is a TENANT-SCOPED business identifier.
+
+It must NOT be globally unique.
+
+Example:
+
+Tenant A:
+PAT-000001
+
+Tenant B:
+PAT-000001
+
+Both are valid.
+
+The database uniqueness rule must therefore be:
+
+tenantId + patientNumber
+
+Do NOT use global uniqueness.
+
+Do NOT expose database IDs as the patient's business identifier.
+
+Do not create automatic human-readable numbering unless the repository already has an established safe numbering mechanism.
+
+If automatic generation is implemented, it must be concurrency-safe.
+
+If automatic generation cannot be implemented safely within this phase, make patientNumber explicitly supplied and validated, and report that decision.
+
+Never implement a naive:
+MAX(patientNumber) + 1
+
+approach.
+
+==================================================
+5. PERSONAL DATA VALIDATION
+==================================================
+
+Implement strict validation.
+
+Names:
+- required fields must not be empty
+- normalize whitespace
+- reject invalid oversized input
+- follow existing project name validation conventions
+- do not silently alter meaningful user data
+
+Email:
+- optional
+- validate format when supplied
+- normalize according to existing project conventions
+
+Phone:
+- optional
+- validate safely
+- do not create a full telecom normalization framework
+
+Date of birth:
+- optional if architecture permits
+- must be a valid date
+- must not be in the future
+
+Gender:
+- use an explicit controlled enum only if the architecture already establishes one
+- do not invent a large clinical terminology system in this phase
+
+National ID:
+- optional
+- treat as sensitive personal data
+- validate length/format only according to an established project rule
+- do not assume a country-specific national ID format unless already defined by the project
+
+Address:
+- optional
+- plain text
+- bounded length
+- reject HTML-like markup
+
+Do not add medical or clinical fields.
+
+==================================================
+6. PATIENT STATUS
+==================================================
+
+Use a simple lifecycle consistent with the existing healthcare catalog architecture.
+
+Preferred lifecycle:
+
+ACTIVE
+INACTIVE
+
+If the existing project has a different established person/patient lifecycle convention, reuse it instead.
+
+Do not create:
+- DECEASED
+- ARCHIVED
+- DISCHARGED
+- SUSPENDED
+
+unless the architecture already requires those states.
+
+This phase is not a clinical lifecycle engine.
+
+Status changes must be explicit and audited.
+
+==================================================
+7. PATIENT PERMISSIONS
+==================================================
+
+Create a dedicated tenant patient permission namespace.
+
+At minimum:
+
+tenant.patients.read
+tenant.patients.manage
+
+Do NOT reuse:
+- tenant.staff.*
+- tenant.doctors.*
+- tenant.services.*
+
+Patient permissions must remain independent.
+
+Use the existing default tenant-role permission conventions.
+
+Do not grant patient permissions to roles beyond the established default policy.
+
+Inspect the current OWNER / ADMIN / MEMBER permission assignments and follow the same pattern unless the architecture explicitly requires otherwise.
+
+==================================================
+8. API
+==================================================
+
+Implement tenant-scoped APIs following the existing healthcare module architecture.
+
+GET
+/api/v1/tenants/:tenantId/patients
+
+GET
+/api/v1/tenants/:tenantId/patients/:patientId
+
+POST
+/api/v1/tenants/:tenantId/patients
+
+PATCH
+/api/v1/tenants/:tenantId/patients/:patientId
+
+Lifecycle endpoint(s) must follow the existing catalog convention.
+
+Do NOT implement DELETE.
+
+Do NOT implement patient login.
+
+Do NOT implement patient portal.
+
+Do NOT implement public patient endpoints.
+
+==================================================
+9. CREATE PATIENT
+==================================================
+
+Creation requires:
+
+- authenticated tenant context
+- active tenant
+- tenant.patients.manage
+- valid patient payload
+
+tenantId must come from TrustedTenantContext.
+
+Never accept tenant ownership from the request body.
+
+Reject protected fields such as:
+- tenantId
+- internal authorization fields
+- audit fields
+- lifecycle manipulation fields when not part of the specific lifecycle endpoint
+- database timestamps
+- internal identifiers
+
+The server owns:
+- tenant association
+- ID generation
+- timestamps
+- lifecycle initialization
+
+==================================================
+10. UPDATE PATIENT
+==================================================
+
+PATCH must:
+
+- remain tenant-scoped
+- require tenant.patients.manage
+- prevent tenant reassignment
+- prevent ID mutation
+- prevent unauthorized lifecycle changes through arbitrary PATCH fields
+- distinguish omitted fields from explicit nullable values
+- reject empty updates
+
+Changing patient demographic/contact information must NOT:
+- alter Staff
+- alter Doctor
+- create a PlatformUser
+- alter tenant membership
+- alter permissions
+- alter subscriptions
+
+==================================================
+11. PATIENT READS
+==================================================
+
+GET collection:
+
+GET
+/api/v1/tenants/:tenantId/patients
+
+Must be tenant-scoped.
+
+Use the same hardened read principles established in Phase 26.
+
+If the existing pagination contract is now standardized, reuse it.
+
+Do NOT invent a second pagination system.
+
+At minimum preserve:
+- deterministic ordering
+- bounded pagination
+- tenant isolation
+- explicit filtering
+
+Possible patient filters for this phase:
+
+status
+patientNumber
+
+Do NOT implement broad patient search unless an established safe search convention now exists.
+
+Do not add:
+- doctor filter
+- branch filter
+- facility filter
+- service filter
+- appointment filter
+
+Those relationships do not exist yet.
+
+==================================================
+12. PATIENT NUMBER LOOKUP
+==================================================
+
+The patientNumber lookup must always be tenant-scoped.
+
+Example:
+
+Tenant A requesting PAT-000001
+must never retrieve Tenant B's PAT-000001.
+
+Do not create a global patient-number lookup endpoint.
+
+==================================================
+13. SECURITY / PRIVACY
+==================================================
+
+Patient data is sensitive personal data.
+
+Do not log full patient payloads.
+
+Audit metadata must not unnecessarily contain:
+- national ID
+- full address
+- email
+- phone
+- date of birth
+
+Use safe resource identifiers and event metadata.
+
+Do not expose sensitive fields in error messages.
+
+Do not leak whether another tenant has a patient with a given patientNumber.
+
+Cross-tenant access must result in the same safe not-found/authorization behavior established by the platform.
+
+==================================================
+14. AUDIT
+==================================================
+
+Add patient-specific audit events.
+
+At minimum:
+
+PATIENT_CREATED
+PATIENT_UPDATED
+PATIENT_STATUS_CHANGED
+
+Follow the existing audit architecture exactly.
+
+Audit records must include appropriate:
+- actor
+- tenant
+- resource
+- action
+- safe metadata
+
+Do not store the entire patient object in audit metadata.
+
+Do not audit ordinary GET requests.
+
+==================================================
+15. DATABASE DESIGN
+==================================================
+
+Add the Prisma Patient model.
+
+Required relationship:
+
+Tenant
+  └── Patient
+
+The Patient must not require relationships to:
+- Staff
+- Doctor
+- Department
+- Specialty
+- Facility
+- Branch
+- Service
+- Subscription
+
+Add appropriate constraints/indexes only when justified.
+
+At minimum carefully consider:
+
+- tenantId
+- tenantId + patientNumber
+- tenantId + status
+- tenantId + createdAt
+
+Do not blindly create indexes for every field.
+
+Do not create global indexes that undermine tenant isolation.
+
+==================================================
+16. OPENAPI
+==================================================
+
+Document:
+
+- Patient DTOs
+- create request
+- update request
+- collection response
+- patient response
+- lifecycle endpoint(s)
+- pagination
+- status filtering
+- patientNumber filtering
+- validation rules
+- permissions
+
+Do not document future clinical functionality.
+
+==================================================
+17. TESTING
+==================================================
+
+Create comprehensive tests.
+
+At minimum:
+
+AUTHORIZATION
+- unauthenticated request rejected
+- missing patient read permission rejected
+- missing patient manage permission rejected
+
+TENANT ISOLATION
+- Tenant A cannot read Tenant B patient
+- Tenant A cannot update Tenant B patient
+- Tenant A cannot change Tenant B patient status
+- Tenant A cannot retrieve Tenant B patient by patientNumber
+- client-supplied tenantId cannot override TrustedTenantContext
+
+CREATE
+- valid patient
+- required field validation
+- duplicate patientNumber within same tenant rejected
+- same patientNumber in different tenants allowed
+
+UPDATE
+- valid update
+- partial update
+- null clearing where allowed
+- empty update rejected
+- protected field injection rejected
+
+VALIDATION
+- invalid email
+- invalid phone
+- future date of birth
+- oversized names
+- invalid status
+- HTML-like address
+- invalid patientNumber
+
+READ
+- deterministic ordering
+- pagination
+- status filtering
+- patientNumber filtering
+- tenant-scoped totals
+- empty result
+- cross-tenant isolation
+
+LIFECYCLE
+- valid transition
+- invalid transition
+- status changes audited
+
+AUDIT
+- patient creation audited
+- patient update audited
+- patient status change audited
+- sensitive patient information not unnecessarily included in audit metadata
+
+REGRESSION
+- existing Service tests
+- Doctor tests
+- Staff tests
+- Department/Specialty tests
+- tenant authorization tests
+- permission migration regression
+
+==================================================
+18. CONCURRENCY
+==================================================
+
+If patientNumber is client supplied:
+
+- database uniqueness must be the final authority
+- concurrent duplicate creation must fail safely
+
+If automatic patientNumber generation is implemented:
+
+- it MUST be concurrency safe
+- do not use MAX + 1
+- use an existing safe sequencing mechanism if one already exists
+
+Do not invent an unsafe counter.
+
+==================================================
+19. NO PATIENT PORTAL
+==================================================
+
+Explicitly do NOT implement:
+
+- patient login
+- patient password
+- OTP
+- patient session
+- patient JWT
+- patient refresh token
+- patient roles
+- patient permissions
+- patient portal
+
+Patient authentication is a separate future architecture decision.
+
+==================================================
+20. NO CLINICAL DATA
+==================================================
+
+Do not add:
+
+diagnoses
+symptoms
+allergies
+medications
+vital signs
+lab results
+imaging results
+clinical notes
+medical history
+procedures
+prescriptions
+encounters
+
+This phase is demographic/identity foundation only.
+
+==================================================
+21. PRODUCTION SAFETY
+==================================================
+
+Before finishing:
+
+- confirm production database was NOT contacted
+- confirm no production migration was applied
+- confirm no production secrets were changed
+- confirm uploaded architecture specification was untouched
+- confirm no unrelated scope was implemented
+
+==================================================
+22. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Run the normal repository hooks.
+
+Create ONE focused commit after all verification passes.
+
+Commit message:
+
+feat(healthcare): add tenant patient foundation
+
+==================================================
+23. FINAL VERIFICATION
+==================================================
+
+Run:
+
+- focused Patient tests
+- Patient HTTP tests
+- tenant isolation tests
+- authorization regression tests
+- permission regression tests
+- full test suite
+- Prisma validation
+- migration/offline comparison
+- build
+- root type-check
+- lint
+- format
+- restart configured app
+- verify /health
+
+The known 10 tenant-contracts type-check errors remain separate baseline debt.
+
+Do not modify unrelated files just to remove those errors.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report only:
+
+1. exact commit hash
+2. total tests passed/failed
+3. focused Patient tests
+4. build status
+5. root type-check status
+6. lint status
+7. format status
+8. Prisma/migration status
+9. Patient model summary
+10. API endpoints
+11. permissions
+12. audit events
+13. pagination/filtering contract
+14. confirmation production was NOT contacted
+15. confirmation no patient portal/clinical modules were implemented
+16. any pre-existing failures
+
+Do NOT claim Phase 27 is complete unless all required implementation and verification steps actually pass.
