@@ -1,0 +1,440 @@
+PHASE 25 — HEALTHCARE SERVICES FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+IMPORTANT:
+This is ONE PHASE ONLY.
+Do not implement, anticipate, scaffold, or partially implement later healthcare modules.
+Do not redesign existing architecture.
+Do not modify unrelated files.
+Do not touch production.
+Do not apply migrations to production.
+Do not weaken existing authentication, authorization, tenant isolation, entitlement, quota, audit, or security rules.
+
+CURRENT VERIFIED STATE:
+- NestJS + Fastify
+- Prisma 6 + MySQL/MariaDB for central platform data
+- MongoDB is reserved for tenant healthcare/operational data later
+- Tenant != Facility != Branch
+- Global identity != Tenant membership != Staff
+- Tenant authorization is separate from platform authorization
+- TrustedTenantContext is already enforced
+- Tenant-scoped repositories/contracts are established
+- Facility and Branch foundations exist
+- Department and Specialty foundations exist
+- Staff + Staff roles + facility/branch scope exist
+- Doctor foundation exists
+- Doctor professional profile foundation exists
+- SaaS Plan / Feature / Subscription / Entitlement / Usage-limit foundations exist
+- Audit and security foundations exist
+- Existing tests are green for implemented phases
+- There are 10 pre-existing unrelated test-only type-check errors in the tenant-contracts suite; do not mix them into this phase
+- Production database must not be contacted from Replit
+- Uploaded architecture specification must remain untouched
+
+PHASE OBJECTIVE
+
+Add the foundational healthcare "Service Catalog" for each tenant.
+
+A healthcare service represents something a tenant offers to patients/customers, such as:
+- Consultation
+- Follow-up consultation
+- Dental cleaning
+- Laboratory test
+- Imaging service
+- Physiotherapy session
+- Procedure
+- Vaccination
+etc.
+
+This phase is ONLY about defining and managing the tenant's service catalog.
+
+DO NOT implement:
+- Patients
+- Appointments
+- Scheduling
+- Doctor availability
+- Booking
+- Visits / encounters
+- Medical records
+- Prescriptions
+- Billing
+- Insurance
+- Payments
+- Notifications
+- Service booking
+- Doctor-service assignment
+- Branch-service assignment
+- Department-service assignment
+- Specialty-service assignment
+- Pricing engine
+- Insurance pricing
+- Inventory
+- Clinical workflows
+- Service execution
+- Usage metering
+- Subscription enforcement on services
+- MongoDB persistence
+- Public patient-facing service APIs
+
+ARCHITECTURAL RULE
+
+Services belong to the TENANT.
+
+Do not make Facility, Branch, Department, Specialty, Doctor, Staff, Patient, Appointment, or Subscription a required relationship of Service in this phase.
+
+A service may later be associated with those domains, but Phase 25 must keep the Service catalog independently manageable.
+
+CENTRAL DATA MODEL
+
+Use the existing central Prisma/MySQL architecture consistently with the current healthcare catalog foundations.
+
+Add a tenant-scoped Service model.
+
+Minimum conceptual fields:
+
+- id
+- tenantId
+- name
+- code
+- description
+- status
+- createdAt
+- updatedAt
+
+Status should follow the existing healthcare catalog lifecycle convention already used by Department and Specialty.
+
+Do not invent a new lifecycle model if an existing reusable convention already exists.
+
+SERVICE CODE
+
+`code` is optional unless the existing catalog conventions establish otherwise.
+
+If implemented:
+- normalize consistently
+- enforce uniqueness within the tenant
+- never use global uniqueness across all tenants
+
+SERVICE NAME
+
+- required
+- normalized consistently with existing catalog conventions
+- tenant-scoped uniqueness if that is consistent with Department/Specialty behavior
+
+DESCRIPTION
+
+- optional
+- plain text only
+- reject HTML-like markup
+- enforce a reasonable explicit maximum length
+- follow the same validation style already established in the Doctor professional profile phase where applicable
+
+DO NOT add:
+- price
+- currency
+- duration
+- tax
+- insurance price
+- commission
+- doctor fee
+- branch price
+- department
+- specialty
+- appointment settings
+
+Those belong to later phases and must not be guessed here.
+
+PERMISSIONS
+
+Create a dedicated tenant service permission namespace following the established tenant healthcare permission conventions.
+
+At minimum:
+
+- tenant.services.read
+- tenant.services.manage
+
+Do not reuse unrelated permissions.
+
+Follow the exact existing permission architecture:
+- permissions are server-defined
+- never trust client-supplied permissions
+- authorization is tenant-scoped
+- platform authorization and tenant authorization remain separate
+- default role permission assignments must be handled consistently with previous healthcare catalog phases
+
+Use the established role defaults rather than inventing a new authorization policy.
+
+API
+
+Implement tenant-scoped APIs following the existing controller/service/repository architecture.
+
+Expected shape:
+
+GET
+/api/v1/tenants/:tenantId/services
+
+GET
+/api/v1/tenants/:tenantId/services/:serviceId
+
+POST
+/api/v1/tenants/:tenantId/services
+
+PATCH
+/api/v1/tenants/:tenantId/services/:serviceId
+
+Lifecycle endpoint(s) should follow the same convention already used by Department and Specialty.
+
+Do not create DELETE if the existing healthcare catalog lifecycle convention uses deactivation instead of deletion.
+
+All routes must:
+- require authenticated tenant membership
+- require active tenant
+- establish TrustedTenantContext
+- enforce tenant service permissions
+- prevent cross-tenant access
+- never trust tenantId from request body
+- derive tenant scope from trusted server-side context
+- prevent changing tenant ownership through PATCH
+
+VALIDATION
+
+Implement strict DTO/schema validation.
+
+Reject:
+- missing required name
+- invalid IDs
+- empty strings where not allowed
+- oversized fields
+- HTML-like description content
+- attempts to modify protected ownership/security fields
+- cross-tenant service references
+- invalid lifecycle transitions
+
+PATCH behavior must distinguish:
+- omitted field = unchanged
+- explicit null = only allowed where the field is nullable and should be cleared
+- empty update = rejected
+
+Follow the validation behavior already established by previous phases.
+
+TENANT ISOLATION
+
+This is mandatory.
+
+A service from Tenant A must never be:
+- returned to Tenant B
+- updated by Tenant B
+- transitioned by Tenant B
+- readable using another tenant's service ID
+- affected through an ID supplied by the client
+
+Use tenant-qualified queries/repositories consistently.
+
+Do not rely on:
+`WHERE service.id = :serviceId`
+
+when tenant scope is required.
+
+Use the established tenant-scoped repository pattern.
+
+AUDIT
+
+Add service-specific audit events following the existing audit architecture.
+
+At minimum:
+- SERVICE_CREATED
+- SERVICE_UPDATED
+- SERVICE_STATUS_CHANGED
+
+Use the established audit actor/tenant/resource conventions.
+
+Do not log secrets or unnecessary sensitive data.
+
+AUDIT FAILURE BEHAVIOR must remain consistent with the existing architecture.
+
+OPENAPI
+
+Document all new endpoints, DTOs, parameters, responses, permissions, and lifecycle behavior.
+
+Keep Swagger/OpenAPI consistent with existing tenant healthcare modules.
+
+DATABASE
+
+Create the Prisma schema/model and migration required for the new Service catalog.
+
+Do not apply the migration to production.
+
+Do not connect to production to test it.
+
+Run Prisma validation/generation locally as appropriate.
+
+Do not alter existing migration history.
+
+TESTING
+
+Add comprehensive tests.
+
+At minimum cover:
+
+1. Authentication
+- unauthenticated request rejected
+
+2. Tenant authorization
+- missing tenant permission rejected
+- correct permission succeeds
+
+3. Tenant isolation
+- Tenant A cannot read Tenant B service
+- Tenant A cannot update Tenant B service
+- Tenant A cannot change Tenant B service status
+- client-supplied tenant IDs cannot escape TrustedTenantContext
+
+4. CRUD
+- create
+- list
+- read
+- update
+
+5. Validation
+- invalid name
+- invalid code if code exists
+- oversized description
+- HTML-like description
+- empty PATCH
+- protected-field mutation attempts
+
+6. Uniqueness
+- duplicate service name/code within same tenant according to the chosen contract
+- same name/code in different tenants must remain valid
+
+7. Lifecycle
+- valid transitions
+- invalid transitions
+- inactive/deactivated services behave according to catalog conventions
+
+8. Audit
+- create audited
+- update audited
+- status transition audited
+
+9. Authorization regression
+- existing platform authorization still works
+- existing tenant authorization still works
+- no regression to Department, Specialty, Doctor, Staff, Facility, or Branch modules
+
+10. Build/type/lint/format
+- all relevant checks must pass
+
+TEST QUALITY
+
+Do not only test happy paths.
+
+Include negative and adversarial cases, especially:
+- cross-tenant IDs
+- body tenantId injection
+- protected field injection
+- unauthorized role
+- inactive tenant
+- inactive membership
+- inactive/deactivated service
+- duplicate records
+- malformed IDs
+
+ARCHITECTURAL QUALITY
+
+Before coding, inspect the existing:
+- Department module
+- Specialty module
+- Doctor module
+- Tenant authorization implementation
+- TrustedTenantContext
+- audit implementation
+- Prisma naming/index conventions
+- OpenAPI conventions
+- migration conventions
+- test conventions
+
+Reuse established patterns instead of creating parallel abstractions.
+
+Do not duplicate:
+- tenant context
+- authorization guards
+- audit infrastructure
+- lifecycle helpers
+- validation utilities
+- repository abstractions
+
+Do not add generic abstractions "for future use" unless they are genuinely required by this phase.
+
+IMPORTANT SCOPE BOUNDARY
+
+The final implementation must stop at:
+
+TENANT
+  └── SERVICE CATALOG
+       ├── Service
+       ├── Service lifecycle
+       ├── Service permissions
+       ├── Service APIs
+       ├── Service validation
+       └── Service audit
+
+No relationships to:
+Doctor
+Staff
+Department
+Specialty
+Facility
+Branch
+Patient
+Appointment
+Visit
+Billing
+Insurance
+Subscription
+
+unless an existing architectural constraint absolutely requires one. If such a constraint appears, STOP and report it instead of silently expanding the phase.
+
+PRODUCTION SAFETY
+
+Before finishing:
+- confirm no production DB was contacted
+- confirm no production migration was applied
+- confirm no production secrets were changed
+- confirm uploaded architecture specification was not modified
+- confirm no unrelated files were changed unnecessarily
+
+GIT
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Use the repository's existing Conventional Commit/Husky/commitlint process.
+
+Create ONE focused commit only after:
+- tests pass
+- build passes
+- lint/format/type checks pass according to existing project conventions
+- migration is generated/validated but not applied to production
+
+Commit message:
+
+feat(healthcare): add tenant service catalog foundation
+
+FINAL REPORT
+
+After implementation, report only:
+1. exact commit hash
+2. tests: passed/failed and total
+3. build/typecheck/lint/format status
+4. migration name/status
+5. files/modules added or changed
+6. API endpoints added
+7. permissions added
+8. audit events added
+9. confirmation that production was NOT contacted
+10. confirmation that no unrelated scope was implemented
+11. any pre-existing failures that were not caused by this phase
+
+Do NOT claim the phase is complete unless the implementation and checks actually pass.
