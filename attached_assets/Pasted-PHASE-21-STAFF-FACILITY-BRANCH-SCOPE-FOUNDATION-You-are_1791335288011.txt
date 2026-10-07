@@ -1,0 +1,998 @@
+PHASE 21 — STAFF FACILITY & BRANCH SCOPE FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+Do NOT invent AI-looking abstractions, placeholder architecture, fake production behavior, unnecessary abstractions, or speculative future implementations.
+
+IMPORTANT:
+Implement ONLY Phase 21.
+Do not start Phase 22.
+Do not implement doctors, patients, departments, specialties, appointments, scheduling, medical records, prescriptions, billing, insurance, MongoDB healthcare data, notifications, or Voice AI.
+
+==================================================
+1. CURRENT ARCHITECTURE
+==================================================
+
+Thanarah has two persistence domains.
+
+CENTRAL PLATFORM DATABASE
+- Prisma 6
+- MySQL/MariaDB
+
+TENANT OPERATIONAL DATABASES
+- MongoDB
+- Future healthcare and operational data
+
+Central database currently contains the platform and organizational foundation:
+
+Platform User
+Tenant
+Tenant Membership
+Tenant Roles
+Tenant Permissions
+Staff
+Staff Role Assignments
+Facility
+Branch
+Plans
+Features
+Plan Features
+Subscriptions
+Entitlements
+Quota definitions
+Audit/Security
+
+Tenant MongoDB will later contain healthcare/operational data.
+
+Do NOT move healthcare data into Prisma.
+
+==================================================
+2. CURRENT ORGANIZATIONAL HIERARCHY
+==================================================
+
+The intended hierarchy is:
+
+Tenant
+  ├── Facility
+  │     └── Branch
+  │
+  └── Staff
+        └── Staff Role Assignment
+              └── Tenant Role
+                    └── Tenant Permissions
+
+Important:
+
+Tenant != Facility
+Facility != Branch
+Staff != Facility
+Staff != Branch
+Role != Scope
+
+A Staff member is currently tenant-wide.
+
+Phase 21 introduces organizational scope.
+
+==================================================
+3. PHASE 21 GOAL
+==================================================
+
+Create the foundation for assigning Staff to:
+
+- Facilities
+- Branches
+
+The purpose is to establish WHERE a staff member operates.
+
+This is NOT yet about:
+
+- doctor scheduling
+- patient access
+- appointment access
+- clinical permissions
+- department access
+- specialty access
+
+It is purely organizational scope.
+
+Conceptually:
+
+Staff
+  ↓
+Facility Assignment
+  ↓
+Facility
+
+and:
+
+Staff
+  ↓
+Branch Assignment
+  ↓
+Branch
+  ↓
+Facility
+  ↓
+Tenant
+
+==================================================
+4. FIRST INSPECT EXISTING IMPLEMENTATION
+==================================================
+
+Before changing code, inspect:
+
+- Staff model
+- Facility model
+- Branch model
+- TenantMembership
+- StaffRoleAssignment
+- TenantAuthorizationGuard
+- TrustedTenantContext
+- existing tenant repositories
+- existing audit conventions
+- existing lifecycle conventions
+- existing migration history
+- existing API route conventions
+- existing permission naming
+
+Do NOT assume model names or APIs.
+
+Reuse existing patterns.
+
+Do NOT create duplicate Facility or Branch models.
+
+Do NOT create a second organizational hierarchy.
+
+==================================================
+5. CORE DESIGN DECISION
+==================================================
+
+Determine whether Staff should have:
+
+A) direct StaffFacilityAssignment and StaffBranchAssignment relations
+
+OR
+
+B) another existing organizational-scope mechanism can safely represent this.
+
+Prefer explicit assignment models if the existing architecture has no equivalent.
+
+Do not store:
+
+facilityId
+branchId
+
+as arbitrary mutable fields directly on Staff if that would prevent:
+
+- multiple facility assignments
+- multiple branch assignments
+- future reassignment
+- historical organizational relationships
+
+A staff member may eventually work at multiple facilities and branches.
+
+The model must support that without schema redesign.
+
+==================================================
+6. STAFF FACILITY ASSIGNMENT
+==================================================
+
+If required, introduce a minimal:
+
+StaffFacilityAssignment
+
+Conceptually:
+
+- id
+- staffId
+- facilityId
+- createdAt
+- updatedAt if appropriate
+
+Uniqueness:
+
+(staffId, facilityId)
+
+A staff member cannot be assigned to the same facility twice.
+
+Tenant ownership must be enforced:
+
+Staff.tenantId == Facility.tenantId
+
+Use database constraints where practical.
+
+Do not trust client tenantId.
+
+==================================================
+7. STAFF BRANCH ASSIGNMENT
+==================================================
+
+If required, introduce:
+
+StaffBranchAssignment
+
+Conceptually:
+
+- id
+- staffId
+- branchId
+- createdAt
+- updatedAt if appropriate
+
+Uniqueness:
+
+(staffId, branchId)
+
+Tenant ownership must be enforced:
+
+Staff.tenantId == Branch.tenantId
+
+Because:
+
+Branch → Facility → Tenant
+
+the system must verify:
+
+Staff.tenantId
+==
+Branch.tenantId
+==
+Branch.Facility.tenantId
+
+Do not duplicate facility ownership incorrectly.
+
+==================================================
+8. BRANCH / FACILITY SEMANTICS
+==================================================
+
+A Branch belongs to exactly one Facility.
+
+A Facility belongs to exactly one Tenant.
+
+A Staff member belongs to exactly one Tenant.
+
+Therefore:
+
+Staff may be assigned to:
+- multiple facilities
+- multiple branches
+
+but ONLY within the same tenant.
+
+A branch assignment automatically implies that the staff operates within that branch's facility.
+
+Do NOT automatically create a separate StaffFacilityAssignment merely because a branch was assigned.
+
+This would create redundant state.
+
+However, if the existing architecture requires explicit facility assignment before branch assignment, document and enforce that rule instead.
+
+Choose the simpler model that avoids contradictory scope records.
+
+==================================================
+9. SCOPE DOES NOT EQUAL AUTHORIZATION
+==================================================
+
+This is critical.
+
+Facility/Branch assignment describes organizational scope.
+
+It does NOT automatically create permissions.
+
+Do NOT implement:
+
+"assigned to branch → can read everything in branch"
+
+Do NOT implement clinical access.
+
+Do NOT implement patient access.
+
+Do NOT implement appointment access.
+
+Do NOT modify TenantPermission semantics.
+
+The current model remains:
+
+Authentication
+→ Tenant Membership
+→ Tenant Authorization
+→ Staff status
+→ Organizational Scope
+→ Future business operation
+
+Phase 21 only creates the scope foundation.
+
+==================================================
+10. STAFF STATUS
+==================================================
+
+Existing Staff statuses:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Preserve current lifecycle.
+
+Assignment behavior:
+
+- ACTIVE staff may receive assignments.
+- SUSPENDED staff must not gain effective operational scope.
+- DEACTIVATED staff must not gain effective operational scope.
+
+Do NOT delete assignments automatically when staff is suspended.
+
+Preserve organizational configuration.
+
+Do NOT automatically delete assignments when staff is deactivated.
+
+Historical/configuration integrity should remain intact.
+
+Whether assignments can be added to a suspended/deactivated staff must follow the simplest safe rule consistent with Phase 19.
+
+Do not invent contradictory behavior.
+
+==================================================
+11. FACILITY / BRANCH STATUS
+==================================================
+
+Existing lifecycle:
+
+Facility:
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Branch:
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Do not assign a staff member to an inactive/deactivated organizational unit unless there is a clear existing lifecycle rule that requires it.
+
+Preferred behavior:
+
+- ACTIVE facility → assignable
+- SUSPENDED facility → reject new assignment
+- DEACTIVATED facility → reject new assignment
+
+For branches:
+
+- ACTIVE branch → assignable
+- SUSPENDED branch → reject new assignment
+- DEACTIVATED branch → reject new assignment
+
+Existing assignments should not be silently deleted when a Facility/Branch is suspended or deactivated.
+
+Effective scope must be inactive when its parent organizational unit is inactive.
+
+Do not create a second status engine.
+
+==================================================
+12. AUTHORIZATION
+==================================================
+
+Use the existing tenant authorization system.
+
+Do NOT create:
+
+FacilityAuthorizationGuard
+BranchAuthorizationGuard
+StaffScopeGuard
+
+unless the existing architecture truly requires a narrowly scoped reusable component.
+
+Do not duplicate tenant authorization.
+
+Introduce minimum permissions only if needed.
+
+Inspect current naming first.
+
+Suggested if no equivalent exists:
+
+staff.scope.read
+staff.scope.manage
+
+But reuse the project's established permission naming convention.
+
+Read:
+- view staff facility/branch assignments
+
+Manage:
+- add/remove assignments
+
+Do not allow scope management through client-supplied permissions.
+
+==================================================
+13. API DESIGN
+==================================================
+
+Use the project's established route conventions.
+
+Possible structure:
+
+GET
+/api/v1/tenants/:tenantId/staff/:staffId/facilities
+
+POST
+/api/v1/tenants/:tenantId/staff/:staffId/facilities
+
+DELETE
+/api/v1/tenants/:tenantId/staff/:staffId/facilities/:facilityId
+
+GET
+/api/v1/tenants/:tenantId/staff/:staffId/branches
+
+POST
+/api/v1/tenants/:tenantId/staff/:staffId/branches
+
+DELETE
+/api/v1/tenants/:tenantId/staff/:staffId/branches/:branchId
+
+Use existing route conventions if they differ.
+
+Do not create duplicate API styles.
+
+Requests must contain only the target resource identifier where appropriate.
+
+Do NOT accept authoritative:
+
+tenantId
+facility ownership
+branch ownership
+permissions
+roles
+
+from the body.
+
+If tenantId appears in the URL because that is the existing route convention, validate it against TrustedTenantContext. It must never override TrustedTenantContext.
+
+==================================================
+14. FACILITY ASSIGNMENT
+==================================================
+
+When assigning a facility:
+
+Verify:
+
+1. authenticated actor
+2. TrustedTenantContext
+3. staff exists
+4. staff belongs to current tenant
+5. facility exists
+6. facility belongs to current tenant
+7. facility is ACTIVE
+8. staff is eligible
+9. assignment does not already exist
+
+Then create assignment.
+
+Do not modify Staff itself.
+
+Do not modify Facility itself.
+
+Do not modify roles or permissions.
+
+==================================================
+15. BRANCH ASSIGNMENT
+==================================================
+
+When assigning a branch:
+
+Verify:
+
+1. authenticated actor
+2. TrustedTenantContext
+3. staff exists
+4. staff belongs to current tenant
+5. branch exists
+6. branch belongs to current tenant
+7. branch's facility belongs to current tenant
+8. branch is ACTIVE
+9. parent facility is ACTIVE
+10. staff is eligible
+11. assignment does not already exist
+
+Then create assignment.
+
+Do not create a facility assignment automatically unless the architecture explicitly requires it.
+
+==================================================
+16. REMOVE ASSIGNMENT
+==================================================
+
+Removing an assignment must:
+
+- verify tenant scope
+- verify staff ownership
+- verify target facility/branch ownership
+- verify assignment exists
+- verify actor has scope-management permission
+- remove only the assignment
+
+Do not:
+
+- deactivate Staff
+- deactivate Facility
+- deactivate Branch
+- change roles
+- change permissions
+- modify membership
+- modify subscriptions
+
+==================================================
+17. MULTIPLE ASSIGNMENTS
+==================================================
+
+The schema MUST support:
+
+Staff A
+→ Facility 1
+→ Facility 2
+
+and:
+
+Staff A
+→ Branch 1
+→ Branch 2
+→ Branch 3
+
+where all belong to the same Tenant.
+
+Do not constrain staff to one facility or one branch.
+
+Do not create arrays/JSON fields for this.
+
+Use relational assignments.
+
+==================================================
+18. TENANT ISOLATION
+==================================================
+
+This phase must be extremely strict.
+
+Reject:
+
+Staff from Tenant A
++
+Facility from Tenant B
+
+Reject:
+
+Staff from Tenant A
++
+Branch from Tenant B
+
+Reject:
+
+Staff from Tenant A
++
+Branch belonging to Facility in Tenant B
+
+Reject:
+
+client-supplied tenantId attempting to override TrustedTenantContext.
+
+Use:
+
+- tenant-scoped queries
+- relational constraints
+- TrustedTenantContext
+- server-side ownership validation
+
+Never trust:
+
+- body.tenantId
+- query.tenantId
+- custom tenant headers
+- role IDs
+- permission IDs
+- facility ownership supplied by client
+
+==================================================
+19. DATABASE INTEGRITY
+==================================================
+
+If assignment models are required, use composite tenant-qualified foreign keys where appropriate.
+
+The database should make impossible relationships difficult or impossible.
+
+Examples:
+
+StaffFacilityAssignment
+→ Staff
+
+StaffFacilityAssignment
+→ Facility
+
+StaffBranchAssignment
+→ Staff
+
+StaffBranchAssignment
+→ Branch
+
+For branch assignment, preserve:
+
+Branch → Facility → Tenant
+
+Do not create a duplicated tenant relationship that can drift unless it is required to enforce composite integrity.
+
+If tenantId is included in assignment tables, ensure it is consistent through composite foreign keys.
+
+Use restrictive delete behavior.
+
+Avoid accidental cascade deletion of organizational assignment data.
+
+==================================================
+20. EFFECTIVE SCOPE
+==================================================
+
+Implement only the minimal scope resolution required to prove the foundation.
+
+A staff member's effective scope should consider:
+
+Staff ACTIVE
+AND
+Facility ACTIVE
+AND
+Branch ACTIVE
+AND
+parent Facility ACTIVE
+
+where applicable.
+
+Do NOT build a generalized authorization engine for scope.
+
+Do NOT introduce caching.
+
+Do NOT introduce Redis.
+
+Do NOT introduce background workers.
+
+Do NOT implement patient/appointment filtering yet.
+
+If a reusable scope resolver is required, keep it narrowly defined and infrastructure-appropriate.
+
+==================================================
+21. ROLE INTERACTION
+==================================================
+
+Staff roles from Phase 20 remain independent.
+
+Example:
+
+Staff
+→ Role: RECEPTIONIST
+→ Facility A
+→ Branch A1
+
+This means:
+
+The staff has a role.
+
+The staff has organizational assignments.
+
+It does NOT yet mean the staff can access patients or appointments.
+
+Do not modify role definitions.
+
+Do not create branch-specific role copies.
+
+Do not create facility-specific permission records.
+
+==================================================
+22. AUDIT
+==================================================
+
+Add durable audit events.
+
+At minimum:
+
+STAFF_FACILITY_ASSIGNED
+STAFF_FACILITY_UNASSIGNED
+STAFF_BRANCH_ASSIGNED
+STAFF_BRANCH_UNASSIGNED
+
+Use existing audit naming conventions if they differ.
+
+Audit should identify:
+
+- actor
+- tenant
+- staff
+- facility or branch
+- action
+- result where appropriate
+
+Never record:
+
+- passwords
+- access tokens
+- refresh tokens
+- secrets
+
+Do not create noisy read audit events.
+
+Failed cross-tenant attempts must not create fake successful assignment events.
+
+==================================================
+23. API RESPONSE DESIGN
+==================================================
+
+Return stable DTOs.
+
+Do not return raw Prisma models.
+
+For facility assignments, expose only appropriate organizational fields.
+
+For branch assignments, expose:
+
+- branch identity
+- branch name/label
+- facility identity/name where appropriate
+- status where useful
+
+Do not expose internal database metadata unnecessarily.
+
+==================================================
+24. OPENAPI
+==================================================
+
+Document:
+
+Facility assignment APIs
+Branch assignment APIs
+
+Include:
+
+- DTOs
+- authorization requirements
+- validation errors
+- conflict behavior
+- not-found behavior
+- lifecycle restrictions
+
+Do not expose internal Prisma schema directly.
+
+==================================================
+25. TEST REQUIREMENTS
+==================================================
+
+Add focused tests.
+
+A. Facility assignments
+
+- valid assignment
+- duplicate assignment
+- list assignments
+- remove assignment
+- invalid staff
+- invalid facility
+- inactive facility
+- cross-tenant facility
+- suspended/deactivated staff behavior
+
+B. Branch assignments
+
+- valid assignment
+- duplicate assignment
+- list assignments
+- remove assignment
+- invalid staff
+- invalid branch
+- inactive branch
+- inactive parent facility
+- cross-tenant branch
+- branch from another tenant's facility
+- suspended/deactivated staff behavior
+
+C. Tenant isolation
+
+- staff A + facility B rejected
+- staff A + branch B rejected
+- client tenant injection rejected
+- URL tenant mismatch rejected
+- cross-tenant reads rejected
+- cross-tenant deletes rejected
+
+D. Authorization
+
+- unauthenticated → 401
+- missing read permission → denied
+- missing manage permission → denied
+- client-supplied permission injection ignored
+
+E. Effective scope
+
+- active staff + active facility → effective
+- suspended staff → no effective scope
+- deactivated staff → no effective scope
+- suspended facility → no effective scope
+- deactivated facility → no effective scope
+- suspended branch → no effective branch scope
+- deactivated branch → no effective branch scope
+- inactive parent facility → no effective branch scope
+
+F. Multiple assignments
+
+- one staff → multiple facilities
+- one staff → multiple branches
+
+G. Audit
+
+- assignment audited
+- removal audited
+- failed mutation does not create success audit
+
+H. Regression
+
+Existing:
+- tenant tests
+- staff tests
+- staff-role tests
+- authorization tests
+- subscription tests
+- entitlement tests
+- quota tests
+- platform authorization tests
+
+must remain passing.
+
+==================================================
+26. TEST-ONLY ROUTES
+==================================================
+
+Do not create production test routes unless absolutely required.
+
+If a test-only protected route is required:
+
+- clearly isolate it
+- ensure it is never registered in production
+- verify Swagger does not expose it in production
+
+Prefer direct integration tests over adding routes.
+
+==================================================
+27. MIGRATION
+==================================================
+
+If schema changes are necessary:
+
+- modify Prisma schema
+- create migration
+- inspect SQL
+- verify generated DDL matches migration
+- do NOT apply migration to production
+- do NOT connect to production
+
+Do not modify unrelated migrations.
+
+==================================================
+28. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- Doctors
+- Doctor specialties
+- Departments
+- Patients
+- Appointments
+- Scheduling
+- Availability
+- Visits
+- Medical records
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Notifications
+- MongoDB healthcare schemas
+- Staff attendance
+- Payroll
+- HR
+- Recruitment
+- Contracts
+- Voice AI
+- Telephony
+- Usage metering
+- Redis
+- workers
+- billing integrations
+- new subscription features
+- quota counters
+- branch-specific roles
+- facility-specific roles
+- clinical authorization
+
+Do not refactor unrelated code.
+
+Do not rename established models without necessity.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+29. VALIDATION
+==================================================
+
+Before completion:
+
+1. Prisma validation
+2. Prisma client generation
+3. Migration/schema consistency
+4. TypeScript checks
+5. Lint
+6. Formatting
+7. Focused Phase 21 tests
+8. Full test suite
+9. Production build
+10. Restart application
+11. GET /health
+12. GET /docs
+13. Verify /ready remains truthful
+14. Verify no production test route
+15. Inspect git diff
+16. Confirm no secrets
+17. Confirm architecture specification untouched
+18. Confirm only intended files changed
+
+Do not claim migration applied unless it actually was.
+
+==================================================
+30. COMMIT
+==================================================
+
+If and only if all checks pass:
+
+Create exactly ONE commit:
+
+feat(tenant): add staff facility and branch scope foundation
+
+Use repository hooks.
+
+Do NOT use:
+
+--no-verify
+
+Do not commit unrelated files.
+
+==================================================
+31. FINAL REPORT
+==================================================
+
+STOP after Phase 21.
+
+Do not start Phase 22.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Whether new assignment models were required
+5. Prisma schema changes
+6. Migration name
+7. Facility assignment model
+8. Branch assignment model
+9. Tenant integrity rules
+10. Staff lifecycle behavior
+11. Facility/branch lifecycle behavior
+12. Effective scope behavior
+13. Permissions added/reused
+14. API endpoints
+15. Audit events
+16. Cross-tenant protections
+17. Focused test count
+18. Full test count
+19. TypeScript/build/lint/format results
+20. Prisma validation/migration verification
+21. /health result
+22. /docs result
+23. /ready result
+24. Whether migration was applied
+25. Any architectural deviations and why
+26. Explicit list of everything NOT implemented
+
+Do not claim Phase 21 is complete until all actual validation commands pass.
