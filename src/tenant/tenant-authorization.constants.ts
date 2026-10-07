@@ -26,6 +26,8 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.departments.manage',
   'tenant.specialties.read',
   'tenant.specialties.manage',
+  'tenant.services.read',
+  'tenant.services.manage',
   'tenant.doctors.read',
   'tenant.doctors.manage',
 ] as const;
@@ -96,6 +98,11 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.specialties.manage',
     description: 'Create, update, and change the lifecycle of tenant specialty definitions',
   },
+  { code: 'tenant.services.read', description: 'View services in the tenant service catalog' },
+  {
+    code: 'tenant.services.manage',
+    description: 'Create, update, and change the lifecycle of tenant services',
+  },
   { code: 'tenant.doctors.read', description: 'View tenant doctor profiles and assignments' },
   {
     code: 'tenant.doctors.manage',
@@ -141,6 +148,8 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.departments.manage',
       'tenant.specialties.read',
       'tenant.specialties.manage',
+      'tenant.services.read',
+      'tenant.services.manage',
       'tenant.doctors.read',
       'tenant.doctors.manage',
     ],
@@ -159,6 +168,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.staff.scope.read',
       'tenant.departments.read',
       'tenant.specialties.read',
+      'tenant.services.read',
       'tenant.doctors.read',
     ],
   },

@@ -129,6 +129,9 @@ enum PlatformAuditEventType {
   SPECIALTY_ACTIVATED
   SPECIALTY_SUSPENDED
   SPECIALTY_DEACTIVATED
+  SERVICE_CREATED
+  SERVICE_UPDATED
+  SERVICE_STATUS_CHANGED
   DOCTOR_CREATED
   DOCTOR_UPDATED
   DOCTOR_ACTIVATED
@@ -289,6 +292,7 @@ model Tenant {
   staff           Staff[]            @relation("TenantStaffTenant")
   departments     Department[]
   specialties     Specialty[]
+  services        Service[]
   doctors         Doctor[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
@@ -514,6 +518,26 @@ model Specialty {
 
   @@unique([id, tenantId])
   @@unique([tenantId, name])
+  @@index([tenantId, status, createdAt])
+}
+
+model Service {
+  id              String              @id @default(uuid()) @db.Char(36)
+  tenantId        String              @db.Char(36)
+  name            String              @db.VarChar(191)
+  code            String?             @db.VarChar(64)
+  description     String?             @db.VarChar(2000)
+  status          TenantCatalogStatus @default(ACTIVE)
+  statusChangedAt DateTime            @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, name])
+  @@unique([tenantId, code])
   @@index([tenantId, status, createdAt])
 }
 

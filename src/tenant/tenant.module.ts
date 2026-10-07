@@ -40,6 +40,9 @@ import { TenantStaffScopeService } from './tenant-staff-scope.service';
 import { TenantHealthcareCatalogController } from './tenant-healthcare-catalog.controller';
 import { HealthcareCatalogRepository } from './healthcare-catalog.repository';
 import { HealthcareCatalogService } from './healthcare-catalog.service';
+import { TenantServiceCatalogController } from './tenant-service-catalog.controller';
+import { ServiceCatalogRepository } from './service-catalog.repository';
+import { ServiceCatalogService } from './service-catalog.service';
 import { DoctorController } from './doctor.controller';
 import { DoctorRepository } from './doctor.repository';
 import { DoctorService } from './doctor.service';
@@ -63,6 +66,7 @@ import { DoctorService } from './doctor.service';
     TenantStaffRoleController,
     TenantStaffScopeController,
     TenantHealthcareCatalogController,
+    TenantServiceCatalogController,
     DoctorController,
   ],
   providers: [
@@ -85,6 +89,8 @@ import { DoctorService } from './doctor.service';
     TenantStaffScopeService,
     HealthcareCatalogRepository,
     HealthcareCatalogService,
+    ServiceCatalogRepository,
+    ServiceCatalogService,
     DoctorRepository,
     DoctorService,
     TenantRepository,
