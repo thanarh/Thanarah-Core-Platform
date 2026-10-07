@@ -1,0 +1,1005 @@
+PHASE 23 — DOCTOR FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+
+Implement ONLY Phase 23.
+Do not start Phase 24.
+
+==================================================
+1. PHASE GOAL
+==================================================
+
+Create the foundational Doctor domain.
+
+A Doctor is a healthcare-specific profile built on an existing Staff record.
+
+The intended identity chain is:
+
+Platform User
+    ↓
+Tenant Membership
+    ↓
+Staff
+    ↓
+Doctor Profile
+    ├── Department relationship
+    └── Specialty relationship
+    ↓
+Future healthcare operations
+
+IMPORTANT:
+
+Doctor is NOT:
+- a Platform User
+- a Tenant Membership
+- a Staff replacement
+- a Tenant Role
+- a Permission
+- an Entitlement
+- a Facility
+- a Branch
+
+Doctor is a specialized healthcare profile associated with an existing Staff identity.
+
+==================================================
+2. DATABASE BOUNDARY
+==================================================
+
+Phase 23 uses the CENTRAL Prisma database for:
+
+- Doctor administrative/profile metadata
+- Department references
+- Specialty references
+- Tenant ownership metadata
+
+Do NOT create MongoDB healthcare collections in this phase.
+
+MongoDB remains reserved for future tenant operational/clinical data.
+
+Do NOT move clinical records, encounters, prescriptions, or patient data into Prisma.
+
+==================================================
+3. FIRST INSPECT CURRENT IMPLEMENTATION
+==================================================
+
+Before coding inspect:
+
+- Staff
+- TenantMembership
+- PlatformUser
+- Department
+- Specialty
+- Facility
+- Branch
+- StaffRoleAssignment
+- Staff scope assignments
+- TrustedTenantContext
+- TenantAuthorizationGuard
+- tenant authorization resolution
+- lifecycle conventions
+- audit conventions
+- API conventions
+- OpenAPI conventions
+- Prisma migration conventions
+
+Also inspect whether any Doctor/Physician/Provider model already exists.
+
+If an equivalent already exists, reuse it.
+
+Do NOT create duplicate Doctor models.
+
+==================================================
+4. CORE DOCTOR MODEL
+==================================================
+
+If no existing equivalent exists, create a tenant-scoped Doctor model.
+
+Conceptually:
+
+Doctor
+- id
+- tenantId
+- staffId
+- professional/admin fields only
+- status
+- createdAt
+- updatedAt
+
+Use existing project ID and timestamp conventions.
+
+Doctor must reference an existing Staff record.
+
+Do NOT duplicate:
+
+- password
+- authentication data
+- platform user identity
+- tenant membership identity
+- tenant role
+- permissions
+
+Those already belong to existing models.
+
+==================================================
+5. ONE DOCTOR PROFILE PER STAFF
+==================================================
+
+A Staff member may have at most one Doctor profile per tenant.
+
+Prefer a database uniqueness constraint:
+
+(staffId)
+
+or the appropriate tenant-qualified equivalent if required by the existing schema.
+
+Do NOT allow:
+
+Staff A
+→ Doctor A
+→ Doctor B
+
+inside the same tenant.
+
+Creation must reject duplicate doctor profiles.
+
+==================================================
+6. TENANT INTEGRITY
+==================================================
+
+Doctor, Staff, Department, and Specialty must all belong to the same tenant.
+
+Never trust client-provided tenant ownership.
+
+If Doctor has tenantId, enforce:
+
+Doctor.tenantId == Staff.tenantId
+
+If Doctor references Department:
+
+Doctor.tenantId == Department.tenantId
+
+If Doctor references Specialty:
+
+Doctor.tenantId == Specialty.tenantId
+
+Use database composite foreign keys where practical.
+
+Do not create relationships that can drift across tenants.
+
+Cross-tenant relationships must fail closed.
+
+==================================================
+7. DOCTOR STATUS
+==================================================
+
+Use a lifecycle consistent with Staff.
+
+Preferred:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Rules:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED is terminal.
+
+Do not hard-delete Doctor records.
+
+Do not silently reactivate DEACTIVATED doctors.
+
+Use the project's existing same-state/idempotency conventions.
+
+==================================================
+8. STAFF ELIGIBILITY
+==================================================
+
+Doctor creation requires:
+
+- authenticated actor
+- valid TrustedTenantContext
+- active tenant
+- existing Staff
+- Staff belongs to current tenant
+- Staff is ACTIVE
+- Staff membership remains valid
+- Staff is not already associated with another Doctor profile
+
+A SUSPENDED or DEACTIVATED Staff member must not be converted into an active Doctor profile.
+
+Do not bypass Staff lifecycle.
+
+==================================================
+9. STAFF / DOCTOR LIFECYCLE RELATIONSHIP
+==================================================
+
+Doctor is subordinate to Staff.
+
+If Staff becomes:
+
+SUSPENDED
+or
+DEACTIVATED
+
+Doctor must not be considered operationally active.
+
+Do NOT automatically delete Doctor.
+
+Do NOT silently rewrite Doctor status unless the existing lifecycle architecture explicitly requires it.
+
+Instead, define and test effective Doctor availability using:
+
+Staff ACTIVE
+AND
+Doctor ACTIVE
+
+This prevents a Doctor profile from bypassing Staff lifecycle.
+
+If the project already has a standardized effective-state pattern, reuse it.
+
+==================================================
+10. DEPARTMENT RELATIONSHIP
+==================================================
+
+Phase 22 intentionally created independent Department and Specialty catalogs.
+
+Phase 23 may now connect Doctor to those catalogs.
+
+Do NOT store department IDs as JSON arrays.
+
+A Doctor may potentially belong to multiple departments.
+
+Therefore inspect the product architecture and implement the smallest relational structure that supports the intended multi-department model.
+
+Preferred if multiple departments are supported:
+
+DoctorDepartmentAssignment
+
+Conceptually:
+
+- doctorId
+- departmentId
+- tenant-qualified integrity
+- createdAt
+
+Unique:
+
+(doctorId, departmentId)
+
+If the current architecture/specification clearly establishes exactly one primary department, do not invent multi-department behavior.
+
+Inspect first and document the decision.
+
+==================================================
+11. SPECIALTY RELATIONSHIP
+==================================================
+
+A Doctor may have one or multiple specialties.
+
+Do NOT store specialty IDs as JSON.
+
+Prefer an explicit relational assignment model if multiple specialties are supported.
+
+Conceptually:
+
+DoctorSpecialtyAssignment
+
+- doctorId
+- specialtyId
+- tenant-qualified integrity
+- createdAt
+
+Unique:
+
+(doctorId, specialtyId)
+
+Do NOT create duplicate specialty definitions.
+
+Reuse the tenant Specialty catalog from Phase 22.
+
+==================================================
+12. IMPORTANT: DEPARTMENT VS SPECIALTY
+==================================================
+
+Do not confuse:
+
+Department
+with
+Specialty.
+
+Example:
+
+Department:
+Cardiology Department
+
+Specialty:
+Interventional Cardiology
+
+A Doctor may be associated with one or more departments and one or more specialties according to the product model.
+
+Do not create automatic Department creation when assigning a Specialty.
+
+Do not automatically infer one from the other.
+
+Both references must be explicit.
+
+==================================================
+13. FACILITY / BRANCH
+==================================================
+
+Do NOT duplicate Phase 21 scope inside Doctor.
+
+Doctor inherits organizational identity from Staff.
+
+Staff already has:
+
+Staff
+→ Facility assignments
+→ Branch assignments
+
+Do NOT create:
+
+DoctorFacilityAssignment
+DoctorBranchAssignment
+
+in Phase 23 unless the existing architecture proves Staff scope is insufficient.
+
+The intended relationship remains:
+
+Doctor
+→ Staff
+→ Facility / Branch scope
+
+Do not create contradictory parallel scope systems.
+
+==================================================
+14. ROLES / PERMISSIONS
+==================================================
+
+Doctor is NOT a role.
+
+Do not create a "doctor permission system."
+
+Doctor permissions continue to come from:
+
+Staff
+→ Staff Role Assignment
+→ Tenant Role
+→ Tenant Permissions
+
+Use existing tenant authorization.
+
+Do NOT create:
+
+DoctorAuthorizationGuard
+DoctorRole
+DoctorPermission
+
+unless an existing architectural requirement proves otherwise.
+
+==================================================
+15. DOCTOR PERMISSIONS
+==================================================
+
+Inspect existing permission naming conventions.
+
+Introduce minimal permissions if needed:
+
+doctor.read
+doctor.manage
+
+or the established equivalent.
+
+Read permission:
+- list/read doctor profiles
+
+Manage permission:
+- create/update/lifecycle/manage doctor profile relationships
+
+Do NOT automatically grant these permissions to a Staff member merely because they are a Doctor.
+
+Authorization remains role-driven.
+
+==================================================
+16. DOCTOR PROFILE FIELDS
+==================================================
+
+Keep the first Doctor profile intentionally minimal.
+
+Allowed fields may include professional administrative identifiers that are explicitly needed by the architecture.
+
+Examples:
+
+- professional display name if different from Staff display name
+- professional code/identifier if justified
+- biography/short description if justified
+- status
+
+Do NOT add speculative clinical fields.
+
+Do NOT add:
+
+- medical license system
+- license verification workflow
+- board certifications
+- consultation pricing
+- working hours
+- appointment duration
+- availability
+- schedule
+- patient count
+- clinical notes
+- diagnosis
+- prescriptions
+- medical records
+- insurance
+- billing
+
+Those belong to later phases.
+
+If a license identifier is required by an existing specification, implement only the field, not an entire licensing subsystem.
+
+==================================================
+17. API DESIGN
+==================================================
+
+Follow established API conventions.
+
+Possible:
+
+GET
+/api/v1/tenants/:tenantId/doctors
+
+GET
+/api/v1/tenants/:tenantId/doctors/:doctorId
+
+POST
+/api/v1/tenants/:tenantId/doctors
+
+PATCH
+/api/v1/tenants/:tenantId/doctors/:doctorId
+
+POST
+/api/v1/tenants/:tenantId/doctors/:doctorId/activate
+
+POST
+/api/v1/tenants/:tenantId/doctors/:doctorId/suspend
+
+POST
+/api/v1/tenants/:tenantId/doctors/:doctorId/deactivate
+
+Use the project's actual route convention if different.
+
+Do not create duplicate API styles.
+
+==================================================
+18. DOCTOR CREATION
+==================================================
+
+POST should require an existing Staff ID.
+
+Conceptually:
+
+{
+  "staffId": "...",
+  ...
+}
+
+Do NOT allow:
+
+- tenantId as authoritative ownership
+- platformUserId
+- membershipId
+- role IDs
+- permission IDs
+- subscription IDs
+- entitlement IDs
+- facility IDs for scope
+- branch IDs for scope
+
+Those are resolved/validated by the server.
+
+Creation must verify:
+
+1. TrustedTenantContext
+2. active tenant
+3. staff exists
+4. staff belongs to current tenant
+5. staff is ACTIVE
+6. staff membership is valid
+7. no existing Doctor profile
+8. supplied Department IDs belong to current tenant
+9. supplied Specialty IDs belong to current tenant
+10. supplied profile fields are valid
+
+==================================================
+19. DEPARTMENT / SPECIALTY ASSIGNMENTS
+==================================================
+
+If DoctorDepartmentAssignment and DoctorSpecialtyAssignment are required:
+
+Provide tenant-scoped management endpoints.
+
+Possible:
+
+GET
+/api/v1/tenants/:tenantId/doctors/:doctorId/departments
+
+POST
+/api/v1/tenants/:tenantId/doctors/:doctorId/departments
+
+DELETE
+/api/v1/tenants/:tenantId/doctors/:doctorId/departments/:departmentId
+
+GET
+/api/v1/tenants/:tenantId/doctors/:doctorId/specialties
+
+POST
+/api/v1/tenants/:tenantId/doctors/:doctorId/specialties
+
+DELETE
+/api/v1/tenants/:tenantId/doctors/:doctorId/specialties/:specialtyId
+
+Use existing route conventions if they differ.
+
+All operations must be tenant-scoped.
+
+Do not allow cross-tenant department/specialty assignment.
+
+==================================================
+20. EFFECTIVE DOCTOR STATE
+==================================================
+
+Create a clear server-side concept of effective doctor availability/state.
+
+At minimum:
+
+Doctor is operationally active only when:
+
+Tenant ACTIVE
+AND
+Staff ACTIVE
+AND
+Doctor ACTIVE
+
+Department/Specialty status may affect whether a particular relationship is usable later, but do NOT build appointment/business authorization around it yet.
+
+Do not create a new authorization system for this.
+
+Test this effective-state logic.
+
+==================================================
+21. FACILITY / BRANCH EFFECTIVE SCOPE
+==================================================
+
+Doctor inherits Staff's scope.
+
+Do not duplicate scope.
+
+For future business operations:
+
+Doctor
+→ Staff
+→ Staff Facility/Branch assignments
+
+If Staff is suspended:
+- Doctor is not operationally active.
+
+If Staff has no active organizational scope:
+- Doctor may still exist as an administrative profile.
+- Do NOT automatically treat that as authorization failure.
+- Do NOT invent business-route restrictions in this phase.
+
+Scope remains descriptive organizational context, not authorization.
+
+==================================================
+22. AUDIT
+==================================================
+
+Use the existing durable audit system.
+
+At minimum:
+
+DOCTOR_CREATED
+DOCTOR_UPDATED
+DOCTOR_ACTIVATED
+DOCTOR_SUSPENDED
+DOCTOR_DEACTIVATED
+
+If assignment models are introduced:
+
+DOCTOR_DEPARTMENT_ASSIGNED
+DOCTOR_DEPARTMENT_UNASSIGNED
+DOCTOR_SPECIALTY_ASSIGNED
+DOCTOR_SPECIALTY_UNASSIGNED
+
+Use existing naming conventions if different.
+
+Audit should identify:
+
+- actor
+- tenant
+- doctor
+- staff
+- target department/specialty where applicable
+- action
+- result where appropriate
+
+Never store:
+
+- passwords
+- access tokens
+- refresh tokens
+- secrets
+
+Do not audit normal reads unless existing policy requires it.
+
+==================================================
+23. DELETE POLICY
+==================================================
+
+Do NOT hard-delete Doctor profiles.
+
+Do NOT expose DELETE endpoints.
+
+Use lifecycle deactivation.
+
+Do not cascade-delete Doctor when Staff is deactivated.
+
+Preserve historical organizational relationships.
+
+==================================================
+24. TENANT ISOLATION
+==================================================
+
+Must reject:
+
+Doctor tenant A
++
+Staff tenant B
+
+Doctor tenant A
++
+Department tenant B
+
+Doctor tenant A
++
+Specialty tenant B
+
+Staff tenant A
++
+Doctor tenant B
+
+Any client attempt to manipulate tenant ownership.
+
+Use:
+
+- TrustedTenantContext
+- tenant-scoped repositories
+- composite foreign keys
+- server-side ownership validation
+
+Do not trust client tenant IDs.
+
+==================================================
+25. AUTHORIZATION TESTS
+==================================================
+
+Test:
+
+- unauthenticated → 401
+- missing doctor.read → denied
+- missing doctor.manage → denied
+- client permission injection ignored
+- client tenant injection rejected
+- platform role cannot bypass tenant authorization
+- Doctor existence does not create permissions
+- Doctor role assumptions do not bypass Staff role authorization
+
+==================================================
+26. DOCTOR LIFECYCLE TESTS
+==================================================
+
+Test:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+DEACTIVATED → cannot reactivate
+
+Also:
+
+Active Doctor + Active Staff = operationally active
+
+Active Doctor + Suspended Staff = not operationally active
+
+Active Doctor + Deactivated Staff = not operationally active
+
+Suspended Doctor + Active Staff = not operationally active
+
+==================================================
+27. DEPARTMENT TESTS
+==================================================
+
+If assignments are implemented:
+
+- valid department assignment
+- duplicate assignment
+- cross-tenant department rejected
+- inactive department behavior
+- remove assignment
+- list assignments
+
+Do not infer specialty automatically.
+
+==================================================
+28. SPECIALTY TESTS
+==================================================
+
+If assignments are implemented:
+
+- valid specialty assignment
+- duplicate assignment
+- cross-tenant specialty rejected
+- inactive specialty behavior
+- remove assignment
+- list assignments
+
+Do not infer department automatically.
+
+==================================================
+29. STAFF INTEGRITY TESTS
+==================================================
+
+Test:
+
+- invalid staff
+- staff from another tenant
+- suspended staff
+- deactivated staff
+- removed membership
+- duplicate Doctor profile
+- staff/tenant mismatch
+- Doctor never creates a new Platform User
+- Doctor never creates a new Tenant Membership
+
+==================================================
+30. REGRESSION
+==================================================
+
+All existing tests must remain passing:
+
+- platform auth
+- platform authorization
+- tenant
+- membership
+- tenant roles
+- tenant authorization
+- facility
+- branch
+- plans
+- subscriptions
+- entitlement
+- quota
+- staff
+- staff roles
+- staff scope
+- department
+- specialty
+
+Do not weaken existing security tests.
+
+==================================================
+31. OPENAPI
+==================================================
+
+Document:
+
+- Doctor endpoints
+- Department assignment endpoints if implemented
+- Specialty assignment endpoints if implemented
+- DTOs
+- lifecycle values
+- authorization requirements
+- validation/conflict errors
+
+Do not expose Prisma internals.
+
+==================================================
+32. DATABASE / MIGRATION
+==================================================
+
+If schema changes are required:
+
+- update Prisma schema
+- create migration
+- inspect generated SQL
+- verify migration matches generated schema
+- use tenant-qualified constraints
+- use restrictive deletes
+- avoid accidental cascade deletion
+
+Do NOT apply the migration.
+
+Do NOT connect to production.
+
+Do NOT modify unrelated migrations.
+
+==================================================
+33. MONGODB
+==================================================
+
+Do NOT create MongoDB collections.
+
+Do NOT create:
+- medical records
+- patient collections
+- encounter collections
+- prescription collections
+- doctor clinical documents
+
+Doctor foundation remains central metadata.
+
+==================================================
+34. SUBSCRIPTION / ENTITLEMENT / QUOTA
+==================================================
+
+Do not add new subscription logic.
+
+Do not add entitlement checks unless an existing global rule explicitly requires it.
+
+Do not consume quotas.
+
+Do not create usage events.
+
+Keep:
+
+Authorization
+separate from
+Entitlement
+separate from
+Quota.
+
+==================================================
+35. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- Patients
+- Appointments
+- Scheduling
+- Availability
+- Doctor working hours
+- Services
+- Consultation pricing
+- Visits
+- Medical records
+- Clinical notes
+- Diagnoses
+- Prescriptions
+- Documents
+- Billing
+- Insurance
+- Licensing workflows
+- License verification
+- Doctor ratings
+- Reviews
+- Notifications
+- WhatsApp
+- Voice AI
+- Telephony
+- Redis
+- Workers
+- MongoDB clinical schemas
+
+Do not refactor unrelated modules.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+36. VALIDATION
+==================================================
+
+Before completion:
+
+1. Prisma validation
+2. Prisma client generation
+3. Generated schema/migration consistency
+4. TypeScript
+5. Lint
+6. Formatting
+7. Focused Doctor tests
+8. Full test suite
+9. Production build
+10. Safe runtime validation
+
+IMPORTANT SECURITY RULE:
+
+If the configured application workflow contains a DATABASE_URL that could point to production, DO NOT start or restart that workflow merely for validation.
+
+In that situation:
+
+- use build checks
+- mocked/integration HTTP tests
+- Prisma validation
+- schema/migration verification
+- safe local test infrastructure
+
+Do NOT contact production.
+
+If /health, /docs, or /ready can be safely verified without a production database, do so.
+
+Never apply the migration to production.
+
+==================================================
+37. GIT
+==================================================
+
+If and only if all validation passes:
+
+Create exactly ONE commit:
+
+feat(healthcare): add doctor foundation
+
+Use repository hooks.
+
+DO NOT use:
+
+--no-verify
+
+Do not commit unrelated files.
+
+Do not commit the uploaded architecture specification.
+
+==================================================
+38. FINAL REPORT
+==================================================
+
+STOP after Phase 23.
+
+Do not begin Phase 24.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Existing models reused
+5. Doctor model design
+6. Staff → Doctor relationship
+7. Department relationship decision
+8. Specialty relationship decision
+9. Facility/Branch scope inheritance decision
+10. Doctor lifecycle
+11. Effective Doctor state
+12. Permissions added/reused
+13. API endpoints
+14. Audit events
+15. Tenant-integrity constraints
+16. Cross-tenant security tests
+17. Focused test count
+18. Full test count
+19. TypeScript result
+20. Lint result
+21. Formatting result
+22. Build result
+23. Prisma validation result
+24. Migration/schema verification
+25. Runtime validation result
+26. Whether migration was applied
+27. Whether production was contacted
+28. Any architectural deviation and why
+29. Explicit list of everything NOT implemented
+
+Do not claim completion until the actual validation commands pass.
