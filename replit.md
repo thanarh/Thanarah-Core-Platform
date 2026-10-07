@@ -320,6 +320,13 @@ tenant-facing business API.
   identities, roles, clinical staff data, healthcare/business modules, or
   MongoDB data. Staff access uses tenant permissions and the trusted tenant
   context; the Phase 19 migration is versioned but has not been applied.
+- Phase 20 adds tenant-wide role assignments to existing staff and tenant
+  roles. Membership role grants remain an explicit authorization source;
+  active staff-role grants are resolved additively through the existing tenant
+  authorization service. Suspended/deactivated staff profiles fail closed.
+  OWNER assignment remains owner-only and OWNER assignments cannot be removed
+  through ordinary role management. No facility/branch role scope is added;
+  the Phase 20 migration is versioned but has not been applied.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
 

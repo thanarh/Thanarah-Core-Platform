@@ -31,6 +31,9 @@ import { TenantQuotaModule } from './tenant-quota.module';
 import { TenantStaffController } from './tenant-staff.controller';
 import { TenantStaffRepository } from './tenant-staff.repository';
 import { TenantStaffService } from './tenant-staff.service';
+import { TenantStaffRoleController } from './tenant-staff-role.controller';
+import { TenantStaffRoleRepository } from './tenant-staff-role.repository';
+import { TenantStaffRoleService } from './tenant-staff-role.service';
 
 @Module({
   imports: [
@@ -48,6 +51,7 @@ import { TenantStaffService } from './tenant-staff.service';
     FacilityController,
     BranchController,
     TenantStaffController,
+    TenantStaffRoleController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -63,6 +67,8 @@ import { TenantStaffService } from './tenant-staff.service';
     BranchService,
     TenantStaffRepository,
     TenantStaffService,
+    TenantStaffRoleRepository,
+    TenantStaffRoleService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,

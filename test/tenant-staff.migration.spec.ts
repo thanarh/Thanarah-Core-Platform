@@ -49,7 +49,7 @@ describe('Tenant Staff foundation schema and migration', () => {
 
   it('seeds read/manage permissions to the default tenant roles', () => {
     const staffPermissions = TENANT_PERMISSION_DEFINITIONS.filter(({ code }) =>
-      code.startsWith('tenant.staff.'),
+      ['tenant.staff.read', 'tenant.staff.manage'].includes(code),
     );
     expect(staffPermissions.map(({ code }) => code)).toEqual([
       'tenant.staff.read',

@@ -1,4 +1,4 @@
-import { TenantMembershipStatus, TenantStatus } from '@prisma/client';
+import { StaffStatus, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../src/database/prisma.service';
 import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
@@ -30,6 +30,7 @@ describe('TenantMembershipRoleRepository', () => {
       findUnique: vi.fn(),
       upsert: vi.fn(),
     },
+    staffRoleAssignment: { findFirst: vi.fn() },
   };
   const prisma = {
     $transaction: vi.fn(async (callback: (client: typeof transaction) => Promise<unknown>) =>
@@ -40,47 +41,95 @@ describe('TenantMembershipRoleRepository', () => {
       findFirst: vi.fn(),
       findMany: vi.fn(),
     },
+    staffRoleAssignment: { findFirst: vi.fn() },
   };
   const repository = new TenantMembershipRoleRepository(prisma as unknown as PrismaService);
 
   beforeEach(() => vi.clearAllMocks());
 
-  it('resolves only permissions attached to the trusted tenant membership and de-duplicates them', async () => {
-    prisma.tenantMembershipRole.findMany.mockResolvedValue([
-      {
-        role: {
-          permissions: [
-            { permission: { code: 'tenant.roles.read' } },
-            { permission: { code: 'tenant.members.read' } },
-          ],
+  it('combines membership and active staff role permissions and de-duplicates them', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce({
+      roleAssignments: [
+        {
+          role: {
+            permissions: [
+              { permission: { code: 'tenant.roles.read' } },
+              { permission: { code: 'tenant.members.read' } },
+            ],
+          },
         },
-      },
-      {
-        role: {
-          permissions: [{ permission: { code: 'tenant.roles.read' } }],
+        {
+          role: {
+            permissions: [{ permission: { code: 'tenant.roles.read' } }],
+          },
         },
+      ],
+      staffProfile: {
+        status: StaffStatus.ACTIVE,
+        roleAssignments: [
+          {
+            role: {
+              permissions: [
+                { permission: { code: 'tenant.staff.read' } },
+                { permission: { code: 'tenant.roles.read' } },
+              ],
+            },
+          },
+        ],
       },
-    ]);
+    });
 
     await expect(repository.resolvePermissionCodes(context)).resolves.toEqual([
       'tenant.roles.read',
       'tenant.members.read',
+      'tenant.staff.read',
     ]);
-    expect(prisma.tenantMembershipRole.findMany).toHaveBeenCalledWith(
+    expect(prisma.tenantMembership.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {
+          id: actorMembershipId,
           tenantId,
-          membershipId: actorMembershipId,
-          membership: {
-            is: {
-              platformUserId: actorId,
-              status: TenantMembershipStatus.ACTIVE,
-              tenant: { is: { status: TenantStatus.ACTIVE } },
-            },
-          },
+          platformUserId: actorId,
+          status: TenantMembershipStatus.ACTIVE,
+          tenant: { is: { status: TenantStatus.ACTIVE } },
+        },
+        select: {
+          roleAssignments: expect.any(Object),
+          staffProfile: expect.any(Object),
         },
       }),
     );
+  });
+
+  it('preserves membership role grants when a membership has no staff profile', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce({
+      roleAssignments: [{ role: { permissions: [{ permission: { code: 'tenant.roles.read' } }] } }],
+      staffProfile: null,
+    });
+
+    await expect(repository.resolvePermissionCodes(context)).resolves.toEqual([
+      'tenant.roles.read',
+    ]);
+  });
+
+  it.each([StaffStatus.SUSPENDED, StaffStatus.DEACTIVATED])(
+    'fails closed for %s staff linked to an active membership',
+    async (status) => {
+      prisma.tenantMembership.findFirst.mockResolvedValueOnce({
+        roleAssignments: [
+          { role: { permissions: [{ permission: { code: 'tenant.roles.read' } }] } },
+        ],
+        staffProfile: { status, roleAssignments: [] },
+      });
+
+      await expect(repository.resolvePermissionCodes(context)).resolves.toEqual([]);
+    },
+  );
+
+  it('returns no permissions when the trusted active membership is unavailable', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce(null);
+
+    await expect(repository.resolvePermissionCodes(context)).resolves.toEqual([]);
   });
 
   it('does not reveal membership roles when the membership belongs to another tenant', async () => {
@@ -197,10 +246,56 @@ describe('TenantMembershipRoleRepository', () => {
           tenantId,
           membershipId: actorMembershipId,
           role: { is: { code: 'OWNER' } },
+          membership: {
+            is: {
+              platformUserId: actorId,
+              status: TenantMembershipStatus.ACTIVE,
+              tenant: { is: { status: TenantStatus.ACTIVE } },
+            },
+          },
         },
       }),
     );
     expect(transaction.tenantMembershipRole.upsert).not.toHaveBeenCalled();
+  });
+
+  it('recognizes an active staff OWNER as an owner for existing membership role operations', async () => {
+    transaction.$queryRaw.mockResolvedValue([{ id: tenantId }]);
+    transaction.tenant.findUnique.mockResolvedValue({ status: TenantStatus.ACTIVE });
+    transaction.tenantMembership.findFirst
+      .mockResolvedValueOnce({ id: actorMembershipId })
+      .mockResolvedValueOnce({ id: targetMembershipId, platformUserId: targetUserId });
+    transaction.tenantRole.findFirst.mockResolvedValue({ id: roleId, code: 'OWNER' });
+    transaction.tenantMembershipRole.findFirst.mockResolvedValue(null);
+    transaction.staffRoleAssignment.findFirst.mockResolvedValue({ staffId: 'staff-id' });
+    transaction.tenantMembershipRole.findUnique.mockResolvedValue(null);
+    transaction.tenantMembershipRole.upsert.mockResolvedValue({});
+
+    await expect(
+      repository.assign({
+        tenantId,
+        actorMembershipId,
+        actorPlatformUserId: actorId,
+        targetMembershipId,
+        roleId,
+      }),
+    ).resolves.toMatchObject({ kind: 'changed', roleCode: 'OWNER' });
+    expect(transaction.staffRoleAssignment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId,
+          staff: {
+            is: expect.objectContaining({
+              membershipId: actorMembershipId,
+              userId: actorId,
+              status: StaffStatus.ACTIVE,
+            }),
+          },
+          role: { is: { code: 'OWNER' } },
+        }),
+      }),
+    );
+    expect(transaction.tenantMembershipRole.upsert).toHaveBeenCalled();
   });
 
   it('refuses owner-role removal and scopes other role removals to the selected tenant', async () => {

@@ -20,6 +20,9 @@ import { APP_CONSTANTS } from '../src/common/constants/app.constants';
 import { TenantStaffController } from '../src/tenant/tenant-staff.controller';
 import { TenantStaffNotFoundError } from '../src/tenant/tenant-staff.errors';
 import { TenantStaffService } from '../src/tenant/tenant-staff.service';
+import { TenantStaffRoleController } from '../src/tenant/tenant-staff-role.controller';
+import { TenantStaffRoleAssignmentNotFoundError } from '../src/tenant/tenant-staff-role.errors';
+import { TenantStaffRoleService } from '../src/tenant/tenant-staff-role.service';
 import { TenantAuthorizationGuard } from '../src/tenant/tenant-authorization.guard';
 import type { TenantAuthorizationService } from '../src/tenant/tenant-authorization.service';
 import {
@@ -39,6 +42,7 @@ const tenantId = '11111111-1111-4111-8111-111111111111';
 const otherTenantId = '99999999-9999-4999-8999-999999999999';
 const membershipId = '22222222-2222-4222-8222-222222222222';
 const staffId = '33333333-3333-4333-8333-333333333333';
+const roleId = '66666666-6666-4666-8666-666666666666';
 const platformUserId = '44444444-4444-4444-8444-444444444444';
 const staff = {
   id: staffId,
@@ -53,6 +57,16 @@ const staff = {
   updatedAt: '2026-10-06T10:00:00.000Z',
 };
 const root = `/api/v1/tenants/${tenantId}/staff`;
+const staffRoleRoot = `${root}/${staffId}/roles`;
+const staffRole = {
+  staffId,
+  roleId,
+  roleCode: 'REPORT_VIEWER',
+  roleName: 'Report Viewer',
+  roleDescription: null,
+  isSystemRole: false,
+  assignedAt: '2026-10-07T10:00:00.000Z',
+};
 const authenticatedUser: AuthenticatedPlatformUser = {
   userId: platformUserId,
   sessionId: '55555555-5555-4555-8555-555555555555',
@@ -100,6 +114,11 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     activate: vi.fn(),
     deactivate: vi.fn(),
   };
+  const staffRoleService = {
+    list: vi.fn(),
+    assign: vi.fn(),
+    remove: vi.fn(),
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -113,6 +132,9 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     staffService.suspend.mockResolvedValue(staff);
     staffService.activate.mockResolvedValue(staff);
     staffService.deactivate.mockResolvedValue(staff);
+    staffRoleService.list.mockResolvedValue({ items: [staffRole] });
+    staffRoleService.assign.mockResolvedValue(staffRole);
+    staffRoleService.remove.mockResolvedValue(undefined);
 
     const tenantContextGuard = new TenantContextGuard(
       validator as unknown as TenantMembershipValidatorService,
@@ -128,13 +150,18 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     );
 
     const module = await Test.createTestingModule({
-      controllers: [TenantStaffController, StaffPlatformAuthorizationProbeController],
+      controllers: [
+        TenantStaffController,
+        TenantStaffRoleController,
+        StaffPlatformAuthorizationProbeController,
+      ],
       providers: [
         PlatformAuthGuard,
         PlatformAuthorizationGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,
         TenantStaffService,
+        TenantStaffRoleService,
       ],
     })
       .overrideGuard(PlatformAuthGuard)
@@ -147,6 +174,8 @@ describe('Tenant Staff HTTP authorization and routing', () => {
       .useValue(tenantAuthorizationGuard)
       .overrideProvider(TenantStaffService)
       .useValue(staffService)
+      .overrideProvider(TenantStaffRoleService)
+      .useValue(staffRoleService)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -322,5 +351,129 @@ describe('Tenant Staff HTTP authorization and routing', () => {
       expect.objectContaining({ tenantId }),
       staffId,
     );
+  });
+
+  it('requires authentication before resolving tenant staff role assignments', async () => {
+    const response = await app.inject({ method: 'GET', url: staffRoleRoot });
+
+    expect(response.statusCode).toBe(401);
+    expect(validator.validateMembership).not.toHaveBeenCalled();
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
+    expect(staffRoleService.list).not.toHaveBeenCalled();
+  });
+
+  it('requires tenant staff role permissions for each role assignment endpoint', async () => {
+    const requests = [
+      {
+        method: 'GET',
+        url: staffRoleRoot,
+        permission: 'tenant.staff.roles.read',
+        action: 'list',
+      },
+      {
+        method: 'POST',
+        url: staffRoleRoot,
+        permission: 'tenant.staff.roles.manage',
+        action: 'assign',
+        payload: { roleId },
+      },
+      {
+        method: 'DELETE',
+        url: `${staffRoleRoot}/${roleId}`,
+        permission: 'tenant.staff.roles.manage',
+        action: 'remove',
+      },
+    ] as const;
+
+    for (const request of requests) {
+      const response = await app.inject({
+        method: request.method,
+        url: request.url,
+        headers: validHeaders,
+        payload: 'payload' in request ? request.payload : undefined,
+      });
+
+      expect(response.statusCode).toBe(
+        request.method === 'DELETE' ? 204 : request.method === 'POST' ? 201 : 200,
+      );
+      expect(tenantAuthorization.authorize).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId }),
+        request.permission,
+      );
+      expect(staffRoleService[request.action]).toHaveBeenCalled();
+    }
+  });
+
+  it('rejects client-supplied tenant or permission values in a role assignment body', async () => {
+    const response = await app.inject({
+      method: 'POST',
+      url: staffRoleRoot,
+      headers: validHeaders,
+      payload: { roleId, tenantId: otherTenantId, permissionCodes: ['platform.manage'] },
+    });
+
+    expect(response.statusCode).toBe(400);
+    expect(staffRoleService.assign).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    {
+      method: 'GET',
+      url: staffRoleRoot,
+      permission: 'tenant.staff.roles.read',
+      action: 'list',
+    },
+    {
+      method: 'POST',
+      url: staffRoleRoot,
+      permission: 'tenant.staff.roles.manage',
+      action: 'assign',
+    },
+  ])(
+    'does not let a platform role bypass missing $permission',
+    async ({ method, url, permission, action }) => {
+      tenantAuthorization.authorize.mockRejectedValueOnce(new ForbiddenException());
+
+      const response = await app.inject({
+        method,
+        url,
+        headers: validHeaders,
+        payload: method === 'POST' ? { roleId } : undefined,
+      });
+
+      expect(response.statusCode).toBe(403);
+      expect(tenantAuthorization.authorize).toHaveBeenCalledWith(
+        expect.objectContaining({ tenantId }),
+        permission,
+      );
+      expect(staffRoleService[action]).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects a staff role path whose tenant does not match the trusted membership', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${otherTenantId}/staff/${staffId}/roles`,
+      headers: validHeaders,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
+    expect(staffRoleService.list).not.toHaveBeenCalled();
+  });
+
+  it('returns a non-enumerating 404 for a missing or out-of-tenant assignment', async () => {
+    staffRoleService.assign.mockRejectedValueOnce(new TenantStaffRoleAssignmentNotFoundError());
+
+    const response = await app.inject({
+      method: 'POST',
+      url: staffRoleRoot,
+      headers: validHeaders,
+      payload: { roleId },
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.body).not.toContain(otherTenantId);
+    expect(staffRoleService.assign).toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, TenantMembershipStatus, TenantStatus } from '@prisma/client';
+import { Prisma, StaffStatus, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import type { TrustedTenantContext } from './tenant-context.contract';
 import { PrismaService } from '../database/prisma.service';
 import { tenantRoleSelect, type TenantRoleRecord } from './tenant-role.repository';
@@ -27,48 +27,100 @@ export class TenantMembershipRoleRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolvePermissionCodes(context: TrustedTenantContext): Promise<string[]> {
-    const assignments = await this.prisma.tenantMembershipRole.findMany({
+    const membership = await this.prisma.tenantMembership.findFirst({
       where: {
+        id: context.membershipId,
         tenantId: context.tenantId,
-        membershipId: context.membershipId,
-        membership: {
-          is: {
-            platformUserId: context.platformUserId,
-            status: TenantMembershipStatus.ACTIVE,
-            tenant: { is: { status: TenantStatus.ACTIVE } },
-          },
-        },
+        platformUserId: context.platformUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
       },
       select: {
-        role: {
+        roleAssignments: {
           select: {
-            permissions: {
-              select: { permission: { select: { code: true } } },
+            role: {
+              select: {
+                permissions: {
+                  select: { permission: { select: { code: true } } },
+                },
+              },
+            },
+          },
+        },
+        staffProfile: {
+          select: {
+            status: true,
+            roleAssignments: {
+              select: {
+                role: {
+                  select: {
+                    permissions: {
+                      select: { permission: { select: { code: true } } },
+                    },
+                  },
+                },
+              },
             },
           },
         },
       },
     });
 
+    if (!membership) return [];
+    if (membership.staffProfile && membership.staffProfile.status !== StaffStatus.ACTIVE) return [];
+
     return [
       ...new Set(
-        assignments.flatMap((assignment) =>
-          assignment.role.permissions.map(({ permission }) => permission.code),
-        ),
+        membership.roleAssignments
+          .flatMap((assignment) =>
+            assignment.role.permissions.map(({ permission }) => permission.code),
+          )
+          .concat(
+            (membership.staffProfile?.roleAssignments ?? []).flatMap((assignment) =>
+              assignment.role.permissions.map(({ permission }) => permission.code),
+            ),
+          ),
       ),
     ];
   }
 
   async hasRoleCode(tenantId: string, membershipId: string, roleCode: string): Promise<boolean> {
-    const assignment = await this.prisma.tenantMembershipRole.findFirst({
+    const membershipAssignment = await this.prisma.tenantMembershipRole.findFirst({
       where: {
         tenantId,
         membershipId,
         role: { is: { code: roleCode } },
+        membership: {
+          is: {
+            status: TenantMembershipStatus.ACTIVE,
+            tenant: { is: { status: TenantStatus.ACTIVE } },
+          },
+        },
       },
       select: { membershipId: true },
     });
-    return assignment !== null;
+    if (membershipAssignment) return true;
+
+    const staffAssignment = await this.prisma.staffRoleAssignment.findFirst({
+      where: {
+        tenantId,
+        staff: {
+          is: {
+            membershipId,
+            status: StaffStatus.ACTIVE,
+            membership: {
+              is: {
+                status: TenantMembershipStatus.ACTIVE,
+                tenant: { is: { status: TenantStatus.ACTIVE } },
+              },
+            },
+          },
+        },
+        role: { is: { code: roleCode } },
+      },
+      select: { staffId: true },
+    });
+    return staffAssignment !== null;
   }
 
   async listForMembership(
@@ -132,15 +184,44 @@ export class TenantMembershipRoleRepository {
       }
 
       if (role.code === 'OWNER') {
-        const actorIsOwner = await transaction.tenantMembershipRole.findFirst({
+        const actorMembershipOwner = await transaction.tenantMembershipRole.findFirst({
           where: {
             tenantId: input.tenantId,
             membershipId: input.actorMembershipId,
             role: { is: { code: 'OWNER' } },
+            membership: {
+              is: {
+                platformUserId: input.actorPlatformUserId,
+                status: TenantMembershipStatus.ACTIVE,
+                tenant: { is: { status: TenantStatus.ACTIVE } },
+              },
+            },
           },
           select: { membershipId: true },
         });
-        if (!actorIsOwner) return { kind: 'owner-only' };
+        const actorStaffOwner = actorMembershipOwner
+          ? null
+          : await transaction.staffRoleAssignment.findFirst({
+              where: {
+                tenantId: input.tenantId,
+                staff: {
+                  is: {
+                    membershipId: input.actorMembershipId,
+                    userId: input.actorPlatformUserId,
+                    status: StaffStatus.ACTIVE,
+                    membership: {
+                      is: {
+                        status: TenantMembershipStatus.ACTIVE,
+                        tenant: { is: { status: TenantStatus.ACTIVE } },
+                      },
+                    },
+                  },
+                },
+                role: { is: { code: 'OWNER' } },
+              },
+              select: { staffId: true },
+            });
+        if (!actorMembershipOwner && !actorStaffOwner) return { kind: 'owner-only' };
       }
 
       const existing = await transaction.tenantMembershipRole.findUnique({

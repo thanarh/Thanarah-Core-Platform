@@ -107,6 +107,8 @@ enum PlatformAuditEventType {
   STAFF_SUSPENDED
   STAFF_ACTIVATED
   STAFF_DEACTIVATED
+  STAFF_ROLE_ASSIGNED
+  STAFF_ROLE_REMOVED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -311,7 +313,9 @@ model Staff {
   tenant          Tenant              @relation("TenantStaffTenant", fields: [tenantId], references: [id], onDelete: Restrict)
   platformUser    User                @relation("StaffPlatformUser", fields: [userId], references: [id], onDelete: Restrict)
   membership      TenantMembership    @relation("TenantStaffMembership", fields: [membershipId, tenantId, userId], references: [id, tenantId, platformUserId], onDelete: Restrict)
+  roleAssignments StaffRoleAssignment[]
 
+  @@unique([id, tenantId])
   @@unique([tenantId, userId])
   @@unique([membershipId, tenantId, userId])
   @@index([tenantId, status, createdAt])
@@ -362,6 +366,7 @@ model TenantRole {
   tenant            Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   permissions       TenantRolePermission[]
   memberAssignments TenantMembershipRole[]
+  staffAssignments  StaffRoleAssignment[]
 
   @@unique([tenantId, code])
   @@unique([id, tenantId])
@@ -388,6 +393,19 @@ model TenantMembershipRole {
   role         TenantRole       @relation(fields: [tenantRoleId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@id([membershipId, tenantRoleId])
+  @@index([tenantId, tenantRoleId])
+}
+
+model StaffRoleAssignment {
+  tenantId     String    @db.Char(36)
+  staffId      String    @db.Char(36)
+  tenantRoleId String    @db.Char(36)
+  assignedAt   DateTime  @default(now())
+  staff        Staff     @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  role         TenantRole @relation(fields: [tenantRoleId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([staffId, tenantRoleId])
+  @@index([tenantId, staffId])
   @@index([tenantId, tenantRoleId])
 }
 

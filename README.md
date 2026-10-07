@@ -375,6 +375,29 @@ The Phase 19 migration is versioned but has not been applied. Staff profiles do
 not use entitlement, quota, or usage checks and do not add healthcare or other
 business modules.
 
+## Tenant Staff Role Assignments
+
+Staff role assignments link an existing tenant staff profile to an existing
+tenant role. They use a separate join model because tenant membership role
+assignments are specifically membership-scoped. Composite foreign keys enforce
+that the staff profile and role belong to the same tenant.
+
+Tenant authorization continues to resolve the existing membership role grants
+and adds the assigned staff role grants for an active staff profile. These are
+an explicit union of role permissions, resolved from the current role
+definitions on each authorization check. A linked suspended or deactivated
+staff profile receives no tenant permissions; inactive memberships and
+inactive tenants continue to fail the existing context checks. Removing a
+staff-role assignment removes only that source; a permission still granted by
+another assigned role remains effective. OWNER assignment remains owner-only
+and OWNER assignments are protected from ordinary removal.
+
+The staff-role API is tenant-scoped:
+`/api/v1/tenants/:tenantId/staff/:staffId/roles`. It lists, assigns, and removes
+roles without changing role definitions, tenant membership, or permission
+records. Staff role assignments are tenant-wide; facility and branch scopes
+are not included. The Phase 20 migration is versioned but has not been applied.
+
 Production runs on **cPanel**:
 
 `cPanel → Thanarah Node.js application → central Prisma/MySQL/MariaDB database`
