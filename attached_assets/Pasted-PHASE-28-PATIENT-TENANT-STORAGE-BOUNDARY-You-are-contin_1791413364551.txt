@@ -1,0 +1,755 @@
+PHASE 28 — PATIENT TENANT STORAGE BOUNDARY
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+This phase exists specifically to resolve the architectural storage exception introduced in Phase 27.
+
+Do not add new Patient features.
+Do not add appointments.
+Do not add scheduling.
+Do not add visits.
+Do not add encounters.
+Do not add medical records.
+Do not add prescriptions.
+Do not add billing.
+Do not add insurance.
+Do not add payments.
+Do not add patient authentication.
+Do not add a patient portal.
+
+Do not redesign unrelated modules.
+Do not contact production.
+Do not apply any migration to production.
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest completed commits:
+
+972ceca05cdc80a5f7aaa16e6703b9315cad9393
+feat(healthcare): add tenant service catalog foundation
+
+d856728
+feat(healthcare): harden tenant service catalog reads
+
+93c4edc
+feat(healthcare): add tenant patient foundation
+
+Latest verified Phase 27 state:
+
+- 766 tests passed
+- 83 test files passed
+- Build passed
+- Root type-check passed
+- Lint passed
+- Format passed
+- Prisma schema validation passed
+- Patient migration validated offline
+- Application workflow restarted successfully
+- /health returned HTTP 200
+- Production was NOT contacted
+- No production migration was applied
+- Uploaded architecture specification remains unchanged/untracked/unstaged
+
+KNOWN ARCHITECTURAL ISSUE FROM PHASE 27
+
+Patient was implemented temporarily in Prisma/MySQL.
+
+That is NOT the target architecture.
+
+The permanent architecture requires healthcare operational/tenant data to live behind tenant-isolated storage.
+
+The central Prisma/MySQL database is for platform/SaaS data.
+
+The target boundary is:
+
+CENTRAL PLATFORM DATABASE
+
+Tenant
+Tenant Membership
+Platform Identity
+Staff foundation
+SaaS plans
+Subscriptions
+Entitlements
+Platform/security/audit metadata
+Other platform-level metadata
+
+TENANT-ISOLATED STORAGE
+
+Patient
+and future healthcare operational data
+
+The purpose of Phase 28 is to establish this boundary correctly before more healthcare modules depend on Patient.
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Move the Patient persistence boundary from direct central Prisma/MySQL persistence toward the established Tenant Storage architecture.
+
+The end state must make Patient persistence explicitly tenant-storage based.
+
+The application/service layer must not know:
+- MongoDB connection strings
+- MongoDB database names
+- physical database identifiers
+- credentials
+- tenant database URLs
+
+Those details belong to the Tenant Storage infrastructure layer.
+
+The Patient domain must depend on a repository/storage contract, not directly on Prisma.
+
+==================================================
+1. FIRST: INSPECT EXISTING TENANT STORAGE CONTRACT
+==================================================
+
+Before writing code, inspect the repository for the existing architecture established for:
+
+- TrustedTenantContext
+- Tenant Storage Resolver
+- Tenant DB Registry
+- tenant-scoped repositories
+- storage abstractions
+- MongoDB/Mongoose remnants
+- any existing tenant storage interfaces
+- central Prisma repository conventions
+
+Do NOT create a duplicate TenantStorageResolver if one already exists.
+
+Do NOT create a second TenantDbRegistry.
+
+Do NOT create a second tenant-context abstraction.
+
+Reuse the existing architecture.
+
+If the existing tenant-storage contract is incomplete, extend it minimally rather than creating parallel infrastructure.
+
+==================================================
+2. HARD ARCHITECTURAL BOUNDARY
+==================================================
+
+Patient code must follow:
+
+Controller
+  ↓
+Patient Service / Policy
+  ↓
+Patient Repository Contract
+  ↓
+Tenant Storage Infrastructure
+  ↓
+Tenant-isolated database
+
+The Patient Service must NOT:
+
+- import PrismaClient directly
+- access MongoClient directly
+- access Mongoose directly
+- construct MongoDB database names
+- read tenant database URLs
+- read database credentials
+- select a physical tenant database
+
+The repository implementation is responsible for storage.
+
+==================================================
+3. CENTRAL DATABASE ROLE
+==================================================
+
+The central Prisma/MySQL database must NOT remain the authoritative persistence location for Patient records after this phase.
+
+Do not create a second central Patient table.
+
+Do not duplicate Patient records in both central MySQL and tenant MongoDB as permanent runtime state.
+
+Do not use MySQL as a fallback if tenant storage is unavailable.
+
+Fail closed.
+
+==================================================
+4. PATIENT REPOSITORY CONTRACT
+==================================================
+
+Define or adapt a Patient repository contract that is explicitly tenant-scoped.
+
+The repository must require TrustedTenantContext or an equivalent server-generated tenant storage context according to the existing architecture.
+
+Do not allow repository callers to provide:
+
+- arbitrary tenantId
+- database name
+- Mongo URI
+- physical database ID
+- connection string
+
+The repository must derive storage from trusted tenant context.
+
+Conceptually:
+
+PatientService
+  → PatientRepository
+      → TenantStorageResolver
+          → Tenant database
+
+Do not expose physical storage identifiers to the domain layer.
+
+==================================================
+5. STORAGE RESOLUTION
+==================================================
+
+Tenant storage resolution must be fail-closed.
+
+For a valid tenant:
+
+1. TrustedTenantContext establishes tenant identity.
+2. Tenant Storage Resolver obtains the tenant's storage registry information.
+3. Infrastructure resolves the appropriate physical database.
+4. Patient repository operates only inside that resolved tenant storage.
+
+If storage resolution fails:
+
+- do not silently fall back to central MySQL
+- do not guess a database
+- do not create a new database automatically
+- do not continue against another tenant
+- return the project's established safe infrastructure/storage error
+
+Do not expose:
+- MongoDB URI
+- database name
+- internal storage IDs
+- connection credentials
+
+to API responses.
+
+==================================================
+6. MULTI-PHYSICAL-DATABASE SUPPORT
+==================================================
+
+The architecture must remain compatible with the permanent requirement that one logical Tenant may eventually use multiple physical databases.
+
+Do NOT hard-code:
+
+Tenant → exactly one Mongo database
+
+The abstraction should allow:
+
+Tenant
+  ↓
+logical tenant storage
+  ↓
+one or more physical database targets
+
+For Phase 28:
+
+You do NOT need to implement sharding, partitioning, automatic capacity management, or rebalancing.
+
+But do not design the repository contract in a way that makes those future capabilities impossible.
+
+The Patient repository should operate against a logical tenant storage context, not a raw database name.
+
+==================================================
+7. MONGO IMPLEMENTATION
+==================================================
+
+Use the project's existing MongoDB approach if one already exists.
+
+If no usable tenant Mongo infrastructure exists yet:
+
+DO NOT invent a production-ready Mongo deployment system in this phase.
+
+Instead implement the minimum infrastructure contract necessary to establish the boundary, with a clearly defined development adapter/test double if required.
+
+Do not introduce:
+- Docker Compose
+- Atlas dependency
+- paid infrastructure
+- external SaaS database
+- production credentials
+
+The phase must remain safe to run in the current Replit environment without contacting production.
+
+==================================================
+8. PATIENT SCHEMA IN TENANT STORAGE
+==================================================
+
+The Patient document/model must contain the Patient domain fields established in Phase 27.
+
+Preserve the existing Patient API/domain contract unless a storage-specific change is genuinely required.
+
+At minimum preserve:
+
+- patient identity
+- patientNumber
+- names
+- dateOfBirth
+- gender where already established
+- phone
+- email
+- nationalId where already established
+- address
+- status
+- createdAt
+- updatedAt
+
+Do not add clinical fields.
+
+Do not add appointment fields.
+
+Do not add billing fields.
+
+Do not add insurance fields.
+
+==================================================
+9. TENANT KEY / DOCUMENT ISOLATION
+==================================================
+
+Even though physical tenant storage provides isolation, preserve explicit tenant ownership at the domain/storage boundary where the architecture requires it.
+
+Do not rely only on:
+
+"the database name proves the tenant"
+
+The repository must still operate with trusted tenant context.
+
+Never allow a document from one logical tenant storage context to be read through another tenant context.
+
+Cross-tenant access must fail closed.
+
+==================================================
+10. PATIENT NUMBER
+==================================================
+
+Preserve the Phase 27 rule:
+
+patientNumber is tenant-scoped.
+
+Do not make it globally unique.
+
+The storage implementation must enforce tenant-local uniqueness.
+
+If the storage architecture requires a unique index:
+
+create it in the tenant storage schema/index definition.
+
+Do NOT create a central MySQL uniqueness constraint for Patient.
+
+Do not use:
+
+MAX(patientNumber) + 1
+
+for generation.
+
+If Phase 27 already uses supplied patientNumber, preserve that contract unless a storage-specific issue requires a safe change.
+
+==================================================
+11. MIGRATION / DATA MOVEMENT
+==================================================
+
+This is critical.
+
+DO NOT perform an automatic production data migration.
+
+Do NOT connect to production.
+
+Do NOT attempt to copy production Patient records.
+
+Do NOT delete the existing central Patient table in production.
+
+This phase is establishing the runtime/storage architecture.
+
+For development/test:
+
+If a local migration or fixture is required, keep it isolated and safe.
+
+If the repository currently contains a central Prisma Patient model only because of Phase 27, determine whether it should now be removed from the central Prisma schema.
+
+If removing it:
+
+- create a Prisma migration
+- validate it offline
+- DO NOT apply it to production
+- clearly report that the migration is destructive if applicable
+
+However:
+
+DO NOT remove the central Patient table merely because "Mongo is planned" unless the new tenant-storage implementation is actually sufficient for all current Patient runtime operations and tests.
+
+The end state must not leave the application in a broken half-migrated state.
+
+==================================================
+12. BACKWARD COMPATIBILITY
+==================================================
+
+Existing Patient API endpoints must continue to work.
+
+At minimum:
+
+GET
+/api/v1/tenants/:tenantId/patients
+
+GET
+/api/v1/tenants/:tenantId/patients/:patientId
+
+POST
+/api/v1/tenants/:tenantId/patients
+
+PATCH
+/api/v1/tenants/:tenantId/patients/:patientId
+
+Existing lifecycle endpoints must continue to work.
+
+Do not change public API shape unnecessarily.
+
+The frontend must not need to know that storage moved.
+
+==================================================
+13. AUTHORIZATION
+==================================================
+
+Do not change the existing Patient permissions:
+
+tenant.patients.read
+tenant.patients.manage
+
+Continue using:
+
+TrustedTenantContext
++
+TenantAuthorizationGuard
+
+Do not introduce storage-specific permissions.
+
+Do not bypass tenant authorization because storage is isolated.
+
+Authentication and authorization remain application-layer concerns.
+
+==================================================
+14. AUDIT
+==================================================
+
+Keep existing Patient audit events:
+
+PATIENT_CREATED
+PATIENT_UPDATED
+PATIENT_STATUS_CHANGED
+
+Audit storage remains part of the existing central platform/security audit architecture unless the existing architecture explicitly says otherwise.
+
+Do NOT move the audit subsystem into tenant MongoDB in this phase.
+
+Audit records must not expose physical tenant database identifiers.
+
+==================================================
+15. ERROR CONTRACT
+==================================================
+
+Define safe storage errors.
+
+Examples conceptually:
+
+TENANT_STORAGE_UNAVAILABLE
+TENANT_STORAGE_NOT_CONFIGURED
+TENANT_STORAGE_RESOLUTION_FAILED
+
+Use the project's existing error architecture.
+
+Do not expose:
+- Mongo error strings
+- connection strings
+- database names
+- internal driver errors
+- credentials
+
+to clients.
+
+Do not invent multiple overlapping error systems.
+
+==================================================
+16. TESTING
+==================================================
+
+Add comprehensive tests for the new storage boundary.
+
+A. Repository contract
+
+Test:
+- tenant context required
+- repository cannot operate without trusted tenant context
+- physical database information never comes from client input
+- tenant scope is preserved
+
+B. Storage resolution
+
+Test:
+- valid tenant resolves correct logical storage
+- missing registry configuration fails
+- invalid storage configuration fails
+- storage unavailable fails
+- no fallback to central MySQL
+- no cross-tenant resolution
+
+C. Patient CRUD
+
+Test:
+- create
+- read
+- list
+- update
+- activate
+- deactivate
+
+through the repository abstraction.
+
+D. Tenant isolation
+
+Test:
+- Tenant A cannot read Tenant B
+- Tenant A cannot update Tenant B
+- same patientNumber can exist in different tenants
+- tenant context controls storage resolution
+
+E. API regression
+
+Existing Patient HTTP tests must continue to pass.
+
+F. Authorization regression
+
+Existing tenant authorization tests must continue to pass.
+
+G. Existing module regression
+
+Run relevant tests for:
+- Service
+- Doctor
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+- Tenant authorization
+- SaaS entitlement foundations
+
+H. Full suite
+
+Run the entire project test suite.
+
+==================================================
+17. NO PRODUCTION CONNECTION
+==================================================
+
+This phase must NOT:
+
+- connect to cPanel production
+- inspect production Mongo
+- inspect production MySQL
+- run production migrations
+- copy production data
+- modify production secrets
+- restart production services
+
+Replit must remain isolated from production.
+
+==================================================
+18. DATABASE REGISTRY
+==================================================
+
+If Tenant DB Registry already exists:
+
+reuse it.
+
+If it does not yet exist:
+
+DO NOT implement a complete provisioning platform in Phase 28.
+
+Implement only the minimum registry/storage contract necessary for Patient to resolve logical tenant storage safely.
+
+The registry must be capable of eventually representing:
+
+logical tenant storage
+→ one or more physical storage targets
+
+Do not hard-code a single physical database forever.
+
+==================================================
+19. BACKUPS
+==================================================
+
+Do NOT implement backups in Phase 28.
+
+Do NOT implement:
+- backup scheduler
+- restore engine
+- retention engine
+- backup encryption
+- backup storage
+
+Only ensure the storage abstraction does not make future backup/restore impossible.
+
+==================================================
+20. CAPACITY / MULTI-DATABASE
+==================================================
+
+Do NOT implement:
+
+- automatic database creation
+- automatic sharding
+- automatic tenant splitting
+- capacity monitoring
+- rebalancing
+- migration between physical databases
+
+Only preserve the architecture boundary required for these future capabilities.
+
+==================================================
+21. CODE QUALITY
+==================================================
+
+Follow existing project structure.
+
+Do not create generic "future" abstractions without a real use in this phase.
+
+Do not add comments explaining obvious code.
+
+Do not write AI-style documentation.
+
+Use the project's existing naming and folder conventions.
+
+Keep the implementation production-oriented.
+
+No temporary TODO scaffolding.
+
+No fake implementations pretending to be production-ready.
+
+==================================================
+22. ARCHITECTURAL ACCEPTANCE CRITERIA
+==================================================
+
+Phase 28 is accepted only if:
+
+1. Patient domain/service no longer directly depends on Prisma for runtime persistence.
+
+2. Patient persistence goes through an explicit tenant-scoped repository/storage boundary.
+
+3. Physical tenant storage details remain inside infrastructure.
+
+4. Tenant context controls storage resolution.
+
+5. Client input cannot select physical storage.
+
+6. No fallback to central MySQL occurs when tenant storage is unavailable.
+
+7. Existing Patient APIs continue to work.
+
+8. Existing Patient permissions continue to work.
+
+9. Existing Patient audit events continue to work.
+
+10. Cross-tenant access tests pass.
+
+11. The design remains compatible with one logical tenant using multiple physical databases later.
+
+12. No production system was contacted.
+
+13. No production migration was applied.
+
+14. No unrelated healthcare feature was implemented.
+
+==================================================
+23. MIGRATION DECISION
+==================================================
+
+Before changing the Prisma Patient model, determine the actual safe end state.
+
+If the Patient central table can be removed safely because all runtime Patient operations now use tenant storage:
+
+- remove the Patient model from central Prisma
+- create a migration
+- validate the migration offline
+- do not apply it to production
+
+If removing it would leave any current dependency broken:
+
+- do NOT remove it
+- instead establish the storage boundary first
+- document that central Patient persistence remains temporarily during the controlled transition
+
+Do not create a misleading architecture where the code claims tenant storage but silently still uses MySQL.
+
+The final runtime behavior must be truthful.
+
+==================================================
+24. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Create ONE focused commit only after verification passes.
+
+Commit message:
+
+refactor(healthcare): establish patient tenant storage boundary
+
+==================================================
+25. VERIFICATION
+==================================================
+
+Run:
+
+- focused Patient tests
+- Patient repository tests
+- storage resolver tests
+- tenant isolation tests
+- Patient HTTP tests
+- authorization regression tests
+- relevant healthcare regression tests
+- full test suite
+- Prisma validation
+- migration/offline comparison if schema changed
+- build
+- root type-check
+- lint
+- format
+- restart configured app
+- verify /health
+
+The known tenant-contracts baseline errors must remain separately reported if they still exist.
+
+Do not alter unrelated tests merely to hide them.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report only:
+
+1. exact commit hash
+2. final Patient storage architecture
+3. whether Patient runtime persistence is now tenant-storage based
+4. whether the central Prisma Patient model remains or was removed
+5. migration name/status
+6. repository/storage contracts added or changed
+7. storage resolver changes
+8. tenant isolation test results
+9. full test count
+10. build/type-check/lint/format results
+11. /health result
+12. confirmation production was NOT contacted
+13. confirmation no production migration was applied
+14. confirmation no production data was moved/deleted
+15. confirmation no later healthcare modules were implemented
+16. any remaining architectural limitation
+
+Do NOT claim Phase 28 is complete unless the runtime storage behavior actually satisfies the stated acceptance criteria.
