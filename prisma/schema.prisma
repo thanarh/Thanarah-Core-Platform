@@ -49,6 +49,12 @@ enum StaffStatus {
   DEACTIVATED
 }
 
+enum TenantCatalogStatus {
+  ACTIVE
+  SUSPENDED
+  DEACTIVATED
+}
+
 enum PlanStatus {
   ACTIVE
   INACTIVE
@@ -113,6 +119,16 @@ enum PlatformAuditEventType {
   STAFF_FACILITY_UNASSIGNED
   STAFF_BRANCH_ASSIGNED
   STAFF_BRANCH_UNASSIGNED
+  DEPARTMENT_CREATED
+  DEPARTMENT_UPDATED
+  DEPARTMENT_ACTIVATED
+  DEPARTMENT_SUSPENDED
+  DEPARTMENT_DEACTIVATED
+  SPECIALTY_CREATED
+  SPECIALTY_UPDATED
+  SPECIALTY_ACTIVATED
+  SPECIALTY_SUSPENDED
+  SPECIALTY_DEACTIVATED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -262,6 +278,8 @@ model Tenant {
   auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
   facilities      Facility[]
   staff           Staff[]            @relation("TenantStaffTenant")
+  departments     Department[]
+  specialties     Specialty[]
   memberships     TenantMembership[] @relation("TenantMembershipTenant")
   roles           TenantRole[]
   subscriptions   Subscription[]
@@ -448,6 +466,42 @@ model StaffBranchAssignment {
   @@index([staffId, tenantId])
   @@index([facilityId, tenantId])
   @@index([branchId, facilityId])
+}
+
+model Department {
+  id              String              @id @default(uuid()) @db.Char(36)
+  tenantId        String              @db.Char(36)
+  name            String              @db.VarChar(191)
+  description     String?             @db.VarChar(512)
+  status          TenantCatalogStatus @default(ACTIVE)
+  statusChangedAt DateTime            @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, name])
+  @@index([tenantId, status, createdAt])
+}
+
+model Specialty {
+  id              String              @id @default(uuid()) @db.Char(36)
+  tenantId        String              @db.Char(36)
+  name            String              @db.VarChar(191)
+  description     String?             @db.VarChar(512)
+  status          TenantCatalogStatus @default(ACTIVE)
+  statusChangedAt DateTime            @default(now())
+  suspendedAt     DateTime?
+  deactivatedAt   DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+  tenant          Tenant              @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([id, tenantId])
+  @@unique([tenantId, name])
+  @@index([tenantId, status, createdAt])
 }
 
 model Plan {

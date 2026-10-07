@@ -1,0 +1,1 @@
+- [Swagger DTO metadata](swagger-openapi-metadata.md) — declare primitive property types explicitly for reliable OpenAPI generation in tests.

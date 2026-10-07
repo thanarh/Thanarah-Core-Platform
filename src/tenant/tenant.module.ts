@@ -37,6 +37,9 @@ import { TenantStaffRoleService } from './tenant-staff-role.service';
 import { TenantStaffScopeController } from './tenant-staff-scope.controller';
 import { TenantStaffScopeRepository } from './tenant-staff-scope.repository';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
+import { TenantHealthcareCatalogController } from './tenant-healthcare-catalog.controller';
+import { HealthcareCatalogRepository } from './healthcare-catalog.repository';
+import { HealthcareCatalogService } from './healthcare-catalog.service';
 
 @Module({
   imports: [
@@ -56,6 +59,7 @@ import { TenantStaffScopeService } from './tenant-staff-scope.service';
     TenantStaffController,
     TenantStaffRoleController,
     TenantStaffScopeController,
+    TenantHealthcareCatalogController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -75,6 +79,8 @@ import { TenantStaffScopeService } from './tenant-staff-scope.service';
     TenantStaffRoleService,
     TenantStaffScopeRepository,
     TenantStaffScopeService,
+    HealthcareCatalogRepository,
+    HealthcareCatalogService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,
