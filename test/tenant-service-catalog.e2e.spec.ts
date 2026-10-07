@@ -44,7 +44,6 @@ const validatedMembership = {
 
 const serviceResponse = {
   id: serviceId,
-  tenantId,
   name: 'Consultation',
   code: 'CONS-01',
   description: 'General consultation',
@@ -97,7 +96,13 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
       },
     );
     serviceCatalog.create.mockResolvedValue(serviceResponse);
-    serviceCatalog.list.mockResolvedValue({ items: [serviceResponse], limit: 50, offset: 0 });
+    serviceCatalog.list.mockResolvedValue({
+      items: [serviceResponse],
+      limit: 50,
+      offset: 0,
+      total: 1,
+      hasNext: false,
+    });
     serviceCatalog.findById.mockResolvedValue(serviceResponse);
     serviceCatalog.update.mockResolvedValue(serviceResponse);
     serviceCatalog.activate.mockResolvedValue(serviceResponse);
@@ -170,6 +175,14 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
     allowedPermissions.add('tenant.services.read');
     const read = await app.inject({ method: 'GET', url: `${root}/services`, headers });
     expect(read.statusCode).toBe(200);
+    expect(read.json()).toMatchObject({
+      items: [serviceResponse],
+      limit: 50,
+      offset: 0,
+      total: 1,
+      hasNext: false,
+    });
+    expect(read.json().items[0]).not.toHaveProperty('tenantId');
     expect(serviceCatalog.list).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), {
       limit: 50,
       offset: 0,
@@ -188,6 +201,70 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
       expect.objectContaining({ tenantId }),
       'tenant.services.manage',
     );
+  });
+
+  it('does not allow body, header, cookie, or query values to override trusted tenant scope', async () => {
+    const hintedTenant = await app.inject({
+      method: 'GET',
+      url: `${root}/services`,
+      headers: {
+        ...headers,
+        'x-tenant-id': otherTenantId,
+        cookie: `tenantId=${otherTenantId}`,
+      },
+      payload: { tenantId: otherTenantId },
+    });
+
+    expect(hintedTenant.statusCode).toBe(200);
+    expect(serviceCatalog.list).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), {
+      limit: 50,
+      offset: 0,
+    });
+
+    const queryOverride = await app.inject({
+      method: 'GET',
+      url: `${root}/services?tenantId=${otherTenantId}`,
+      headers,
+    });
+    expect(queryOverride.statusCode).toBe(400);
+    expect(serviceCatalog.list).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects invalid pagination and lifecycle query values', async () => {
+    for (const query of [
+      'status=INVALID',
+      'limit=0',
+      'limit=-1',
+      'limit=101',
+      'limit=not-a-number',
+      'limit=',
+      'offset=-1',
+      'offset=not-a-number',
+      'offset=100001',
+      'offset=',
+    ]) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `${root}/services?${query}`,
+        headers,
+      });
+      expect(response.statusCode, query).toBe(400);
+    }
+    expect(serviceCatalog.list).not.toHaveBeenCalled();
+  });
+
+  it('accepts the maximum bounded limit and offset', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: `${root}/services?limit=100&offset=100000`,
+      headers,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(serviceCatalog.list).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), {
+      limit: 100,
+      offset: 100_000,
+    });
   });
 
   it('creates, lists, reads, and updates tenant-owned services', async () => {
@@ -335,13 +412,21 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
 
     validator.validateMembership.mockRejectedValueOnce(new TenantContextInvalidError());
     const inactiveMembership = await app.inject({
-      method: 'POST',
+      method: 'GET',
       url: `${root}/services`,
       headers,
-      payload: { name: 'Consultation' },
     });
     expect(inactiveMembership.statusCode).toBe(403);
-    expect(serviceCatalog.create).not.toHaveBeenCalled();
+    expect(serviceCatalog.list).not.toHaveBeenCalled();
+
+    validator.validateMembership.mockRejectedValueOnce(new TenantContextInvalidError());
+    const inactiveTenant = await app.inject({
+      method: 'GET',
+      url: `${root}/services`,
+      headers,
+    });
+    expect(inactiveTenant.statusCode).toBe(403);
+    expect(serviceCatalog.list).not.toHaveBeenCalled();
   });
 
   it('documents service DTOs, permissions, filters, lifecycle, and error responses in OpenAPI', () => {
@@ -375,14 +460,31 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
           in: 'query',
           schema: { enum: ['ACTIVE', 'SUSPENDED', 'DEACTIVATED'], type: 'string' },
         }),
+        expect.objectContaining({
+          name: 'limit',
+          in: 'query',
+          schema: expect.objectContaining({ minimum: 1, maximum: 100 }),
+        }),
+        expect.objectContaining({
+          name: 'offset',
+          in: 'query',
+          schema: expect.objectContaining({ minimum: 0, maximum: 100000 }),
+        }),
       ]),
     );
+    expect(list?.description).toContain('createdAt descending then id descending');
 
     const responseSchema = document.components?.schemas?.ServiceResponseDto as {
       properties?: Record<string, { enum?: string[]; maxLength?: number; nullable?: boolean }>;
     };
     expect(responseSchema.properties?.code).toMatchObject({ maxLength: 64, nullable: true });
     expect(responseSchema.properties?.status?.enum).toEqual(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']);
+    expect(responseSchema.properties?.tenantId).toBeUndefined();
+    const listSchema = document.components?.schemas?.ServiceListResponseDto as {
+      properties?: Record<string, { type?: string; minimum?: number; maximum?: number }>;
+    };
+    expect(listSchema.properties?.total).toMatchObject({ type: 'number', minimum: 0 });
+    expect(listSchema.properties?.hasNext).toMatchObject({ type: 'boolean' });
     for (const path of [
       resourcePath,
       `${resourcePath}/activate`,

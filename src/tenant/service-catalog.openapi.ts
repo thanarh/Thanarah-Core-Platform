@@ -50,9 +50,6 @@ export class ServiceResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ type: String, format: 'uuid' })
-  tenantId!: string;
-
   @ApiProperty({ type: String, maxLength: 191 })
   name!: string;
 
@@ -90,4 +87,14 @@ export class ServiceListResponseDto {
 
   @ApiProperty({ type: Number, minimum: 0 })
   offset!: number;
+
+  @ApiProperty({
+    type: Number,
+    minimum: 0,
+    description: 'Total matching services before applying limit and offset.',
+  })
+  total!: number;
+
+  @ApiProperty({ type: Boolean, description: 'Whether another result slice is available.' })
+  hasNext!: boolean;
 }

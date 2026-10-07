@@ -9,7 +9,6 @@ import type {
 
 const serviceSelect = {
   id: true,
-  tenantId: true,
   name: true,
   code: true,
   description: true,
@@ -68,17 +67,25 @@ export class ServiceCatalogRepository {
     });
   }
 
-  list(tenantId: string, query: ListServicesQuery): Promise<ServiceCatalogRecord[]> {
-    return this.prisma.service.findMany({
-      where: {
-        tenantId,
-        ...(query.status ? { status: query.status } : {}),
-      },
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip: query.offset,
-      take: query.limit,
-      select: serviceSelect,
-    });
+  async list(
+    tenantId: string,
+    query: ListServicesQuery,
+  ): Promise<{ items: ServiceCatalogRecord[]; total: number }> {
+    const where = {
+      tenantId,
+      ...(query.status ? { status: query.status } : {}),
+    };
+    const [items, total] = await Promise.all([
+      this.prisma.service.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        skip: query.offset,
+        take: query.limit,
+        select: serviceSelect,
+      }),
+      this.prisma.service.count({ where }),
+    ]);
+    return { items, total };
   }
 
   async update(

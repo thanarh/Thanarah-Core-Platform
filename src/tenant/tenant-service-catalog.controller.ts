@@ -42,6 +42,7 @@ import { RequireTenantPermissions } from './tenant-require-permissions.decorator
 import {
   createServiceSchema,
   listServicesQuerySchema,
+  MAX_SERVICE_LIST_OFFSET,
   serviceIdSchema,
   updateServiceSchema,
   type CreateServiceInput,
@@ -91,11 +92,30 @@ export class TenantServiceCatalogController {
   @ApiOperation({
     summary: 'List services in the trusted tenant',
     description:
-      'Returns active, suspended, and deactivated services by default. Use status to filter; tenant scope comes from TrustedTenantContext.',
+      'Returns active, suspended, and deactivated services by default. Use status to filter. Pagination uses limit/offset, and results are ordered by createdAt descending then id descending. Tenant scope comes from TrustedTenantContext.',
   })
-  @ApiQuery({ name: 'status', required: false, enum: TenantCatalogStatus })
-  @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100 })
-  @ApiQuery({ name: 'offset', required: false, type: Number, minimum: 0 })
+  @ApiQuery({
+    name: 'status',
+    required: false,
+    enum: TenantCatalogStatus,
+    description: 'Optional lifecycle filter. Omitted status includes all lifecycle states.',
+  })
+  @ApiQuery({
+    name: 'limit',
+    required: false,
+    type: Number,
+    minimum: 1,
+    maximum: 100,
+    description: 'Maximum services to return; defaults to 50.',
+  })
+  @ApiQuery({
+    name: 'offset',
+    required: false,
+    type: Number,
+    minimum: 0,
+    maximum: MAX_SERVICE_LIST_OFFSET,
+    description: 'Number of matching services to skip; defaults to 0.',
+  })
   @ApiOkResponse({ type: ServiceListResponseDto })
   @ApiBadRequestResponse({ description: 'Service list filters are invalid' })
   @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })

@@ -10,6 +10,7 @@ import { tenantIdSchema } from './tenant.dto';
 import {
   createServiceSchema,
   listServicesQuerySchema,
+  MAX_SERVICE_LIST_OFFSET,
   serviceIdSchema,
   updateServiceSchema,
   type CreateServiceInput,
@@ -74,13 +75,21 @@ export class ServiceCatalogService {
   async list(
     context: TrustedTenantContext,
     query: ListServicesQuery,
-  ): Promise<{ items: ServiceCatalogRecord[]; limit: number; offset: number }> {
+  ): Promise<{
+    items: ServiceCatalogRecord[];
+    limit: number;
+    offset: number;
+    total: number;
+    hasNext: boolean;
+  }> {
     const tenantId = this.tenantId(context);
     const parsed = listServicesQuerySchema.safeParse(query);
     if (!parsed.success) throw new ServiceInputValidationError();
     const { limit, offset } = parsed.data;
-    const items = await this.services.list(tenantId, parsed.data);
-    return { items, limit, offset };
+    const { items, total } = await this.services.list(tenantId, parsed.data);
+    const nextOffset = offset + limit;
+    const hasNext = nextOffset <= MAX_SERVICE_LIST_OFFSET && nextOffset < total;
+    return { items, limit, offset, total, hasNext };
   }
 
   async findById(context: TrustedTenantContext, id: string): Promise<ServiceCatalogRecord> {

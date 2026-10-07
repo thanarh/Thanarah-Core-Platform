@@ -36,11 +36,27 @@ export const updateServiceSchema = z
   .strict()
   .refine((service) => Object.values(service).some((value) => value !== undefined));
 
+export const MAX_SERVICE_LIST_OFFSET = 100_000;
+
+const serviceListIntegerSchema = (
+  minimum: number,
+  maximum: number,
+): z.ZodType<number, z.ZodTypeDef, number | string> =>
+  z
+    .union([
+      z.number().int(),
+      z
+        .string()
+        .regex(/^\d+$/u)
+        .transform((value) => Number(value)),
+    ])
+    .pipe(z.number().int().min(minimum).max(maximum));
+
 export const listServicesQuerySchema = z
   .object({
     status: z.nativeEnum(TenantCatalogStatus).optional(),
-    limit: z.coerce.number().int().min(1).max(100).default(50),
-    offset: z.coerce.number().int().min(0).max(100_000).default(0),
+    limit: serviceListIntegerSchema(1, 100).default(50),
+    offset: serviceListIntegerSchema(0, MAX_SERVICE_LIST_OFFSET).default(0),
   })
   .strict();
 

@@ -40,7 +40,6 @@ const requestContext = {
 function record(status = TenantCatalogStatus.ACTIVE): ServiceCatalogRecord {
   return {
     id: serviceId,
-    tenantId,
     name: 'Consultation',
     code: 'CONS-01',
     description: 'General consultation',
@@ -114,7 +113,7 @@ describe('ServiceCatalogService', () => {
 
   it('lists with tenant scope, lifecycle filters, and pagination without auditing reads', async () => {
     const item = record(TenantCatalogStatus.SUSPENDED);
-    services.list.mockResolvedValue([item]);
+    services.list.mockResolvedValue({ items: [item], total: 26 });
 
     await expect(
       service.list(context, {
@@ -122,13 +121,54 @@ describe('ServiceCatalogService', () => {
         limit: 20,
         offset: 5,
       }),
-    ).resolves.toEqual({ items: [item], limit: 20, offset: 5 });
+    ).resolves.toEqual({ items: [item], limit: 20, offset: 5, total: 26, hasNext: true });
     expect(services.list).toHaveBeenCalledWith(tenantId, {
       status: TenantCatalogStatus.SUSPENDED,
       limit: 20,
       offset: 5,
     });
     expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('reports no next slice for an empty or final result slice', async () => {
+    services.list
+      .mockResolvedValueOnce({ items: [], total: 0 })
+      .mockResolvedValueOnce({ items: [record()], total: 1 })
+      .mockResolvedValueOnce({ items: [record()], total: 100_021 });
+
+    await expect(service.list(context, { limit: 20, offset: 0 })).resolves.toEqual({
+      items: [],
+      limit: 20,
+      offset: 0,
+      total: 0,
+      hasNext: false,
+    });
+    await expect(service.list(context, { limit: 20, offset: 0 })).resolves.toMatchObject({
+      total: 1,
+      hasNext: false,
+    });
+    await expect(service.list(context, { limit: 20, offset: 100_000 })).resolves.toMatchObject({
+      total: 100_021,
+      hasNext: false,
+    });
+  });
+
+  it('rejects invalid list filters and unsafe pagination values', async () => {
+    for (const query of [
+      { status: 'UNKNOWN', limit: 20, offset: 0 },
+      { limit: 0, offset: 0 },
+      { limit: 101, offset: 0 },
+      { limit: 'not-a-number', offset: 0 },
+      { limit: 20, offset: -1 },
+      { limit: 20, offset: '' },
+      { limit: 20, offset: 100_001 },
+      { limit: 20, offset: 0, tenantId: otherTenantId },
+    ]) {
+      await expect(service.list(context, query as never)).rejects.toBeInstanceOf(
+        ServiceInputValidationError,
+      );
+    }
+    expect(services.list).not.toHaveBeenCalled();
   });
 
   it('reads only a service returned for the trusted tenant', async () => {

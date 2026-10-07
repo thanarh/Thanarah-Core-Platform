@@ -10,7 +10,6 @@ const createdAt = new Date('2026-10-07T10:00:00.000Z');
 
 const serviceRecord = {
   id: serviceId,
-  tenantId,
   name: 'Consultation',
   code: 'CONS-01',
   description: 'General consultation',
@@ -33,6 +32,7 @@ function makePrisma(): {
   tenant: { findFirst: ReturnType<typeof vi.fn> };
   service: {
     create: ReturnType<typeof vi.fn>;
+    count: ReturnType<typeof vi.fn>;
     findFirst: ReturnType<typeof vi.fn>;
     findMany: ReturnType<typeof vi.fn>;
     updateMany: ReturnType<typeof vi.fn>;
@@ -42,6 +42,7 @@ function makePrisma(): {
     tenant: { findFirst: vi.fn() },
     service: {
       create: vi.fn(),
+      count: vi.fn(),
       findFirst: vi.fn(),
       findMany: vi.fn(),
       updateMany: vi.fn(),
@@ -83,7 +84,6 @@ describe('ServiceCatalogRepository', () => {
           description: 'General consultation',
         },
         select: expect.objectContaining({
-          tenantId: true,
           name: true,
           code: true,
           description: true,
@@ -94,9 +94,7 @@ describe('ServiceCatalogRepository', () => {
   });
 
   it('allows equal names and codes when they belong to different tenants', async () => {
-    prisma.service.create
-      .mockResolvedValueOnce(serviceRecord)
-      .mockResolvedValueOnce({ ...serviceRecord, tenantId: otherTenantId });
+    prisma.service.create.mockResolvedValueOnce(serviceRecord).mockResolvedValueOnce(serviceRecord);
 
     await expect(
       repository.create(tenantId, { name: 'Consultation', code: 'CONS-01' }),
@@ -117,14 +115,16 @@ describe('ServiceCatalogRepository', () => {
   it('constrains reads and lists to the trusted tenant', async () => {
     prisma.service.findFirst.mockResolvedValue(null);
     prisma.service.findMany.mockResolvedValue([serviceRecord]);
+    prisma.service.count.mockResolvedValue(1);
 
     await expect(repository.findById(tenantId, serviceId)).resolves.toBeNull();
     expect(prisma.service.findFirst).toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId, id: serviceId } }),
     );
-    await expect(repository.list(tenantId, { limit: 20, offset: 5 })).resolves.toEqual([
-      serviceRecord,
-    ]);
+    await expect(repository.list(tenantId, { limit: 20, offset: 5 })).resolves.toEqual({
+      items: [serviceRecord],
+      total: 1,
+    });
     expect(prisma.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { tenantId },
@@ -133,24 +133,31 @@ describe('ServiceCatalogRepository', () => {
         take: 20,
       }),
     );
+    expect(prisma.service.count).toHaveBeenCalledWith({ where: { tenantId } });
     expect(prisma.service.findFirst).not.toHaveBeenCalledWith(
       expect.objectContaining({ where: { tenantId: otherTenantId, id: serviceId } }),
     );
   });
 
-  it('supports administrative lifecycle filtering', async () => {
+  it.each([
+    TenantCatalogStatus.ACTIVE,
+    TenantCatalogStatus.SUSPENDED,
+    TenantCatalogStatus.DEACTIVATED,
+  ])('applies the %s lifecycle filter to rows and total count', async (status) => {
     prisma.service.findMany.mockResolvedValue([]);
+    prisma.service.count.mockResolvedValue(0);
 
     await repository.list(tenantId, {
-      status: TenantCatalogStatus.SUSPENDED,
+      status,
       limit: 10,
       offset: 0,
     });
     expect(prisma.service.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { tenantId, status: TenantCatalogStatus.SUSPENDED },
+        where: { tenantId, status },
       }),
     );
+    expect(prisma.service.count).toHaveBeenCalledWith({ where: { tenantId, status } });
   });
 
   it('updates only supplied fields for the tenant-owned service', async () => {

@@ -538,6 +538,7 @@ model Service {
   @@unique([id, tenantId])
   @@unique([tenantId, name])
   @@unique([tenantId, code])
+  @@index([tenantId, createdAt])
   @@index([tenantId, status, createdAt])
 }
 
