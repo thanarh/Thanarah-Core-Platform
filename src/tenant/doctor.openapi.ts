@@ -8,6 +8,30 @@ export class CreateDoctorRequestDto {
   @ApiPropertyOptional({ type: String, minLength: 1, maxLength: 191 })
   professionalDisplayName?: string;
 
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 191,
+    description: 'Descriptive professional title, not a role or permission.',
+  })
+  professionalTitle?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 64,
+    description: 'Optional code unique within the tenant; never used for authentication.',
+  })
+  professionalCode?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 2000,
+    description: 'Plain-text professional biography. HTML markup is rejected.',
+  })
+  bio?: string;
+
   @ApiPropertyOptional({ type: [String], items: { type: 'string', format: 'uuid' }, maxItems: 100 })
   departmentIds?: string[];
 
@@ -24,6 +48,33 @@ export class UpdateDoctorRequestDto {
     description: 'Optional professional display name; null clears the override.',
   })
   professionalDisplayName?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 191,
+    nullable: true,
+    description: 'Descriptive title; null clears the value.',
+  })
+  professionalTitle?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 64,
+    nullable: true,
+    description: 'Tenant-unique professional code; null clears the value.',
+  })
+  professionalCode?: string | null;
+
+  @ApiPropertyOptional({
+    type: String,
+    minLength: 1,
+    maxLength: 2000,
+    nullable: true,
+    description: 'Plain-text biography; null clears the value and HTML markup is rejected.',
+  })
+  bio?: string | null;
 }
 
 export class DoctorDepartmentDto {
@@ -83,6 +134,15 @@ export class DoctorResponseDto {
 
   @ApiProperty({ type: String, maxLength: 191, nullable: true })
   professionalDisplayName!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 191, nullable: true })
+  professionalTitle!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 64, nullable: true })
+  professionalCode!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 2000, nullable: true })
+  bio!: string | null;
 
   @ApiProperty({ type: Boolean })
   operationallyActive!: boolean;

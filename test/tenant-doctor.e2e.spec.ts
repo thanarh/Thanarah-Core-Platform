@@ -21,6 +21,7 @@ import type { TenantMembershipValidatorService } from '../src/tenant/tenant-cont
 import { TrustedTenantContextFactoryService } from '../src/tenant/tenant-context.service';
 import { DoctorController } from '../src/tenant/doctor.controller';
 import { DoctorService } from '../src/tenant/doctor.service';
+import { DoctorProfessionalCodeConflictError } from '../src/tenant/doctor.errors';
 import type { FastifyRequest } from 'fastify';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -51,6 +52,9 @@ const doctorResponse = {
   staffId,
   staff: { id: staffId, displayName: 'Taylor Member', status: 'ACTIVE' },
   professionalDisplayName: 'Dr Taylor Member',
+  professionalTitle: 'Consultant',
+  professionalCode: 'MD-100',
+  bio: 'Professional biography',
   status: 'ACTIVE',
   operationallyActive: true,
   departments: [
@@ -265,15 +269,27 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
       method: 'PATCH',
       url: `${root}/${doctorId}`,
       headers,
-      payload: { professionalDisplayName: 'Dr Taylor Updated' },
+      payload: {
+        professionalTitle: ' Consultant ',
+        professionalCode: ' MD-200 ',
+        bio: ' About this professional ',
+      },
     });
     expect(update.statusCode).toBe(200);
     expect(doctorService.update).toHaveBeenCalledWith(
       expect.objectContaining({ tenantId }),
       doctorId,
-      { professionalDisplayName: 'Dr Taylor Updated' },
+      {
+        professionalTitle: 'Consultant',
+        professionalCode: 'MD-200',
+        bio: 'About this professional',
+      },
       authenticatedUser,
       expect.any(Object),
+    );
+    expect(tenantAuthorization.authorize).toHaveBeenLastCalledWith(
+      expect.objectContaining({ tenantId }),
+      'tenant.doctors.manage',
     );
 
     for (const action of ['activate', 'suspend', 'deactivate'] as const) {
@@ -294,6 +310,69 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
         'tenant.doctors.manage',
       );
     }
+  });
+
+  it('requires read/manage permissions and rejects protected profile fields', async () => {
+    tenantAuthorization.authorize.mockRejectedValueOnce(new ForbiddenException());
+    const deniedRead = await app.inject({
+      method: 'GET',
+      url: `${root}/${doctorId}`,
+      headers,
+    });
+    expect(deniedRead.statusCode).toBe(403);
+    expect(doctorService.findById).not.toHaveBeenCalled();
+
+    tenantAuthorization.authorize.mockRejectedValueOnce(new ForbiddenException());
+    const deniedUpdate = await app.inject({
+      method: 'PATCH',
+      url: `${root}/${doctorId}`,
+      headers,
+      payload: { professionalTitle: 'Consultant' },
+    });
+    expect(deniedUpdate.statusCode).toBe(403);
+    expect(doctorService.update).not.toHaveBeenCalled();
+
+    const protectedPayloads = [
+      { doctorId },
+      { tenantId: otherTenantId },
+      { staffId },
+      { userId: platformUserId },
+      { membershipId },
+      { roleIds: ['OWNER'] },
+      { permissionIds: ['tenant.doctors.manage'] },
+      { facilityId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      { branchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+      { subscriptionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
+      { entitlementId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' },
+      { quota: 1 },
+      { status: 'ACTIVE' },
+      { yearsOfExperience: 10 },
+      { departmentIds: [departmentId] },
+      { specialtyIds: [specialtyId] },
+    ];
+    for (const payload of protectedPayloads) {
+      const response = await app.inject({
+        method: 'PATCH',
+        url: `${root}/${doctorId}`,
+        headers,
+        payload,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+    expect(doctorService.update).not.toHaveBeenCalled();
+  });
+
+  it('returns a conflict when the tenant professional code is already used', async () => {
+    doctorService.update.mockRejectedValueOnce(new DoctorProfessionalCodeConflictError());
+
+    const response = await app.inject({
+      method: 'PATCH',
+      url: `${root}/${doctorId}`,
+      headers,
+      payload: { professionalCode: 'MD-100' },
+    });
+
+    expect(response.statusCode).toBe(409);
   });
 
   it('lists, assigns, and unassigns Department and Specialty relationships independently', async () => {
@@ -391,6 +470,15 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     expect(routeTenantMismatch.statusCode).toBe(403);
     expect(doctorService.list).not.toHaveBeenCalled();
 
+    const updateTenantMismatch = await app.inject({
+      method: 'PATCH',
+      url: `/api/v1/tenants/${otherTenantId}/doctors/${doctorId}`,
+      headers,
+      payload: { professionalTitle: 'Consultant' },
+    });
+    expect(updateTenantMismatch.statusCode).toBe(403);
+    expect(doctorService.update).not.toHaveBeenCalled();
+
     const queryInjection = await app.inject({
       method: 'GET',
       url: `${root}?tenantId=${otherTenantId}&permissionCodes=tenant.doctors.manage`,
@@ -435,6 +523,23 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     expect(document.paths[doctorPath]?.get?.security).toEqual([{ bearer: [] }]);
     expect(document.paths[doctorPath]?.post?.requestBody).toBeDefined();
     expect(document.paths[detailPath]?.patch?.responses?.['400']).toBeDefined();
+    expect(document.paths[detailPath]?.patch?.responses?.['409']).toBeDefined();
+    expect(document.components?.schemas?.UpdateDoctorRequestDto).toMatchObject({
+      properties: {
+        professionalDisplayName: expect.any(Object),
+        professionalTitle: expect.any(Object),
+        professionalCode: expect.any(Object),
+        bio: expect.any(Object),
+      },
+    });
+    expect(document.components?.schemas?.DoctorResponseDto).toMatchObject({
+      properties: {
+        professionalTitle: expect.any(Object),
+        professionalCode: expect.any(Object),
+        bio: expect.any(Object),
+      },
+    });
+    expect(document.paths[`${detailPath}/profile`]).toBeUndefined();
     for (const path of [
       `${detailPath}/activate`,
       `${detailPath}/suspend`,

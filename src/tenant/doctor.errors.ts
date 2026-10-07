@@ -45,6 +45,15 @@ export class DoctorAlreadyExistsError extends ConflictException {
   }
 }
 
+export class DoctorProfessionalCodeConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'DOCTOR_PROFESSIONAL_CODE_EXISTS',
+      message: 'This professional code is already in use in the tenant',
+    });
+  }
+}
+
 export class DoctorTenantUnavailableError extends ConflictException {
   constructor() {
     super({

@@ -79,14 +79,14 @@ export class DoctorController {
   @ApiOperation({
     summary: 'Create a Doctor profile for an active Staff profile',
     description:
-      'Doctor identity and tenant ownership are derived from the existing Staff profile and trusted tenant context. Optional department and specialty IDs must identify active catalog entries in the same tenant.',
+      'Doctor identity and tenant ownership are derived from the existing Staff profile and trusted tenant context. Professional display name, title, code, and plain-text biography are optional profile metadata. Any professional code must be unique within the tenant. Optional department and specialty IDs must identify active catalog entries in the same tenant.',
   })
   @ApiBody({ type: CreateDoctorRequestDto })
   @ApiCreatedResponse({ type: DoctorResponseDto, description: 'Doctor profile created' })
   @ApiBadRequestResponse({ description: 'Staff identifier or Doctor details are invalid' })
   @ApiConflictResponse({
     description:
-      'The tenant is inactive, Staff is ineligible, or Staff already has a Doctor profile',
+      'The tenant is inactive, Staff is ineligible, Staff already has a Doctor profile, or the professional code is already in use in the tenant',
   })
   @ApiNotFoundResponse({
     description: 'Staff or an active same-tenant Department/Specialty was not found',
@@ -152,13 +152,18 @@ export class DoctorController {
   @ApiParam({ name: 'tenantId', description: 'Tenant selector validated as trusted context' })
   @ApiParam({ name: 'doctorId', description: 'Doctor profile identifier', format: 'uuid' })
   @ApiOperation({
-    summary: 'Update the optional professional display name',
+    summary: 'Update professional profile metadata',
     description:
-      'Staff identity, tenant ownership, and lifecycle status are immutable in this route.',
+      'Only professionalDisplayName, professionalTitle, professionalCode, and plain-text bio may be changed. Protected tenant, Staff, membership, authorization, scope, subscription, entitlement, quota, and lifecycle fields are rejected. Access uses tenant.doctors.manage; editing is administrator-managed, not self-service.',
   })
   @ApiBody({ type: UpdateDoctorRequestDto })
   @ApiOkResponse({ type: DoctorResponseDto, description: 'Doctor profile updated' })
-  @ApiBadRequestResponse({ description: 'Doctor identifier or profile changes are invalid' })
+  @ApiBadRequestResponse({
+    description: 'Doctor identifier or professional profile changes are invalid',
+  })
+  @ApiConflictResponse({
+    description: 'The professional code is already in use in this tenant',
+  })
   @ApiNotFoundResponse({ description: 'Doctor profile was not found in this tenant' })
   @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
   @ApiForbiddenResponse({

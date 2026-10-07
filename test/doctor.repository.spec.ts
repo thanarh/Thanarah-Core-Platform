@@ -14,6 +14,9 @@ const doctorRecord = {
   tenantId,
   staffId,
   professionalDisplayName: null,
+  professionalTitle: null,
+  professionalCode: null,
+  bio: null,
   status: StaffStatus.ACTIVE,
   statusChangedAt: changedAt,
   suspendedAt: null,
@@ -31,10 +34,11 @@ const doctorRecord = {
   specialtyAssignments: [],
 } as DoctorRecord;
 
-function duplicateKeyError(): Prisma.PrismaClientKnownRequestError {
+function duplicateKeyError(target?: string[]): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
     clientVersion: '6.19.3',
+    ...(target ? { meta: { target } } : {}),
   });
 }
 
@@ -101,6 +105,9 @@ describe('DoctorRepository', () => {
           tenantId,
           staffId,
           professionalDisplayName: null,
+          professionalTitle: null,
+          professionalCode: null,
+          bio: null,
         }),
       }),
     );
@@ -109,6 +116,53 @@ describe('DoctorRepository', () => {
         data: expect.objectContaining({ user: expect.anything(), membership: expect.anything() }),
       }),
     );
+  });
+
+  it('persists professional fields and reports tenant-unique code conflicts on create', async () => {
+    transaction.$queryRaw.mockResolvedValueOnce([{ id: tenantId }]).mockResolvedValueOnce([
+      {
+        id: staffId,
+        userId: doctorRecord.staff.userId,
+        status: 'ACTIVE',
+        membershipStatus: 'ACTIVE',
+        userStatus: 'ACTIVE',
+      },
+    ]);
+    await repository.create(tenantId, {
+      staffId,
+      professionalDisplayName: 'Dr Taylor',
+      professionalTitle: 'Consultant',
+      professionalCode: 'MD-100',
+      bio: 'Professional biography',
+    });
+    expect(transaction.doctor.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          tenantId,
+          staffId,
+          professionalDisplayName: 'Dr Taylor',
+          professionalTitle: 'Consultant',
+          professionalCode: 'MD-100',
+          bio: 'Professional biography',
+        }),
+      }),
+    );
+
+    transaction.$queryRaw.mockResolvedValueOnce([{ id: tenantId }]).mockResolvedValueOnce([
+      {
+        id: staffId,
+        userId: doctorRecord.staff.userId,
+        status: 'ACTIVE',
+        membershipStatus: 'ACTIVE',
+        userStatus: 'ACTIVE',
+      },
+    ]);
+    transaction.doctor.create.mockRejectedValueOnce(
+      duplicateKeyError(['tenantId', 'professionalCode']),
+    );
+    await expect(
+      repository.create(tenantId, { staffId, professionalCode: 'MD-100' }),
+    ).resolves.toEqual({ kind: 'professional-code-conflict' });
   });
 
   it('does not create a Doctor when the tenant is inactive', async () => {
@@ -342,6 +396,32 @@ describe('DoctorRepository', () => {
         }),
       }),
     );
+  });
+
+  it('updates only supplied professional fields within the trusted tenant', async () => {
+    const result = await repository.updateForTenant(tenantId, doctorId, {
+      professionalTitle: 'Consultant',
+    });
+
+    expect(result).toEqual({ kind: 'changed', doctor: doctorRecord });
+    expect(transaction.doctor.updateMany).toHaveBeenCalledWith({
+      where: { tenantId, id: doctorId },
+      data: { professionalTitle: 'Consultant' },
+    });
+  });
+
+  it('maps a duplicate tenant-scoped professional code during profile update', async () => {
+    transaction.doctor.updateMany.mockRejectedValueOnce(
+      duplicateKeyError(['tenantId', 'professionalCode']),
+    );
+
+    await expect(
+      repository.updateForTenant(tenantId, doctorId, { professionalCode: 'MD-100' }),
+    ).resolves.toEqual({ kind: 'professional-code-conflict' });
+    expect(transaction.doctor.updateMany).toHaveBeenCalledWith({
+      where: { tenantId, id: doctorId },
+      data: { professionalCode: 'MD-100' },
+    });
   });
 
   it('rejects duplicate Department assignments and hides cross-tenant/inactive targets', async () => {

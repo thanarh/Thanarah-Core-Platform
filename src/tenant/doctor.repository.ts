@@ -8,6 +8,9 @@ const doctorSelect = {
   tenantId: true,
   staffId: true,
   professionalDisplayName: true,
+  professionalTitle: true,
+  professionalCode: true,
+  bio: true,
   status: true,
   statusChangedAt: true,
   suspendedAt: true,
@@ -53,6 +56,7 @@ export type CreateDoctorResult =
   | { kind: 'staff-not-found' }
   | { kind: 'staff-ineligible' }
   | { kind: 'assignment-target-not-found' }
+  | { kind: 'professional-code-conflict' }
   | { kind: 'already-exists' };
 
 export type DoctorMutationResult =
@@ -61,6 +65,7 @@ export type DoctorMutationResult =
   | { kind: 'not-found' }
   | { kind: 'not-changed' }
   | { kind: 'doctor-deactivated' }
+  | { kind: 'professional-code-conflict' }
   | { kind: 'assignment-target-not-found' }
   | { kind: 'assignment-conflict' }
   | { kind: 'assignment-not-found' };
@@ -68,8 +73,22 @@ export type DoctorMutationResult =
 type Transaction = Prisma.TransactionClient;
 type CatalogTable = 'Department' | 'Specialty';
 
-function isPrismaError(error: unknown, code: string): boolean {
+function isPrismaError(
+  error: unknown,
+  code: string,
+): error is Prisma.PrismaClientKnownRequestError {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
+}
+
+function isProfessionalCodeConflict(error: unknown): boolean {
+  if (!isPrismaError(error, 'P2002')) return false;
+  const target = error.meta?.target;
+  if (Array.isArray(target)) {
+    return target.some(
+      (field) => typeof field === 'string' && field.toLowerCase().includes('professionalcode'),
+    );
+  }
+  return typeof target === 'string' && target.toLowerCase().includes('professionalcode');
 }
 
 function activeTenantFilter(): Prisma.DoctorWhereInput['tenant'] {
@@ -149,6 +168,9 @@ export class DoctorRepository {
             tenantId,
             staffId: input.staffId,
             professionalDisplayName: input.professionalDisplayName ?? null,
+            professionalTitle: input.professionalTitle ?? null,
+            professionalCode: input.professionalCode ?? null,
+            bio: input.bio ?? null,
             ...(departmentIds.length
               ? {
                   departmentAssignments: {
@@ -173,6 +195,7 @@ export class DoctorRepository {
         return { kind: 'created', doctor };
       });
     } catch (error) {
+      if (isProfessionalCodeConflict(error)) return { kind: 'professional-code-conflict' };
       if (isPrismaError(error, 'P2002')) return { kind: 'already-exists' };
       throw error;
     }
@@ -204,16 +227,34 @@ export class DoctorRepository {
     id: string,
     input: UpdateDoctorInput,
   ): Promise<DoctorMutationResult> {
-    return this.prisma.$transaction(async (transaction) => {
-      if (!(await this.lockActiveTenant(transaction, tenantId))) return { kind: 'tenant-inactive' };
-      const result = await transaction.doctor.updateMany({
-        where: { tenantId, id },
-        data: { professionalDisplayName: input.professionalDisplayName },
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        if (!(await this.lockActiveTenant(transaction, tenantId))) {
+          return { kind: 'tenant-inactive' };
+        }
+        const result = await transaction.doctor.updateMany({
+          where: { tenantId, id },
+          data: {
+            ...(input.professionalDisplayName !== undefined
+              ? { professionalDisplayName: input.professionalDisplayName }
+              : {}),
+            ...(input.professionalTitle !== undefined
+              ? { professionalTitle: input.professionalTitle }
+              : {}),
+            ...(input.professionalCode !== undefined
+              ? { professionalCode: input.professionalCode }
+              : {}),
+            ...(input.bio !== undefined ? { bio: input.bio } : {}),
+          },
+        });
+        if (result.count !== 1) return { kind: 'not-found' };
+        const doctor = await this.findWithTransaction(transaction, tenantId, id);
+        return doctor ? { kind: 'changed', doctor } : { kind: 'not-found' };
       });
-      if (result.count !== 1) return { kind: 'not-found' };
-      const doctor = await this.findWithTransaction(transaction, tenantId, id);
-      return doctor ? { kind: 'changed', doctor } : { kind: 'not-found' };
-    });
+    } catch (error) {
+      if (isProfessionalCodeConflict(error)) return { kind: 'professional-code-conflict' };
+      throw error;
+    }
   }
 
   async changeStatusIfCurrent(

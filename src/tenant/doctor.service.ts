@@ -34,6 +34,7 @@ import {
   DoctorInputValidationError,
   DoctorLifecycleConflictError,
   DoctorNotFoundError,
+  DoctorProfessionalCodeConflictError,
   DoctorStaffIneligibleError,
   DoctorStaffNotFoundError,
   DoctorTenantUnavailableError,
@@ -70,6 +71,9 @@ export interface DoctorResponse {
   staffId: string;
   staff: { id: string; displayName: string; status: StaffStatus };
   professionalDisplayName: string | null;
+  professionalTitle: string | null;
+  professionalCode: string | null;
+  bio: string | null;
   status: StaffStatus;
   operationallyActive: boolean;
   departments: DoctorDepartmentResponse[];
@@ -119,6 +123,12 @@ export class DoctorService {
         doctorId: doctor.id,
         staffId: doctor.staffId,
         status: doctor.status,
+        professionalFields: [
+          'professionalDisplayName',
+          'professionalTitle',
+          'professionalCode',
+          'bio',
+        ].filter((field) => doctor[field as keyof DoctorRecord] !== null),
       },
     });
     for (const assignment of doctor.departmentAssignments) {
@@ -175,9 +185,10 @@ export class DoctorService {
     if (!parsed.success) throw new DoctorInputValidationError();
     const current = await this.doctors.findByIdForTenant(tenantId, id);
     if (!current) throw new DoctorNotFoundError();
-    if (current.professionalDisplayName === parsed.data.professionalDisplayName) {
-      return this.present(current);
-    }
+    const changedFields = (Object.keys(parsed.data) as Array<keyof UpdateDoctorInput>).filter(
+      (field) => current[field] !== parsed.data[field],
+    );
+    if (changedFields.length === 0) return this.present(current);
 
     const updated = this.changedRecord(
       await this.doctors.updateForTenant(tenantId, id, parsed.data),
@@ -192,7 +203,7 @@ export class DoctorService {
       metadata: {
         doctorId: updated.id,
         staffId: updated.staffId,
-        changedFields: 'professionalDisplayName',
+        changedFields: changedFields.join(','),
       },
     });
     return this.present(updated);
@@ -418,6 +429,9 @@ export class DoctorService {
     if (result.kind === 'tenant-inactive') throw new DoctorTenantUnavailableError();
     if (result.kind === 'staff-not-found') throw new DoctorStaffNotFoundError();
     if (result.kind === 'staff-ineligible') throw new DoctorStaffIneligibleError();
+    if (result.kind === 'professional-code-conflict') {
+      throw new DoctorProfessionalCodeConflictError();
+    }
     if (result.kind === 'already-exists') throw new DoctorAlreadyExistsError();
     throw new DoctorAssignmentTargetNotFoundError('catalog');
   }
@@ -430,6 +444,9 @@ export class DoctorService {
     if (result.kind === 'tenant-inactive') throw new DoctorTenantUnavailableError();
     if (result.kind === 'not-found') throw new DoctorNotFoundError();
     if (result.kind === 'doctor-deactivated') throw new DoctorLifecycleConflictError();
+    if (result.kind === 'professional-code-conflict') {
+      throw new DoctorProfessionalCodeConflictError();
+    }
     if (result.kind === 'assignment-target-not-found') {
       throw new DoctorAssignmentTargetNotFoundError(target ?? 'catalog');
     }
@@ -497,6 +514,9 @@ export class DoctorService {
         status: record.staff.status,
       },
       professionalDisplayName: record.professionalDisplayName,
+      professionalTitle: record.professionalTitle,
+      professionalCode: record.professionalCode,
+      bio: record.bio,
       status: record.status,
       operationallyActive:
         record.tenant.status === TenantStatus.ACTIVE &&

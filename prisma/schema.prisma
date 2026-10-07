@@ -522,6 +522,9 @@ model Doctor {
   tenantId                String                       @db.Char(36)
   staffId                 String                       @db.Char(36)
   professionalDisplayName String?                      @db.VarChar(191)
+  professionalTitle       String?                      @db.VarChar(191)
+  professionalCode        String?                      @db.VarChar(64)
+  bio                     String?                      @db.VarChar(2000)
   status                  StaffStatus                  @default(ACTIVE)
   statusChangedAt         DateTime                     @default(now())
   suspendedAt             DateTime?
@@ -535,6 +538,7 @@ model Doctor {
 
   @@unique([id, tenantId])
   @@unique([staffId, tenantId])
+  @@unique([tenantId, professionalCode])
   @@index([tenantId, status, createdAt])
 }
 

@@ -11,6 +11,24 @@ const professionalDisplayNameSchema = z
   .transform((value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' '))
   .pipe(z.string().min(1).max(191));
 
+const professionalTitleSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' '))
+  .pipe(z.string().min(1).max(191));
+
+const professionalCodeSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' '))
+  .pipe(z.string().min(1).max(64));
+
+const professionalBioSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').replace(/\r\n?/gu, '\n').trim())
+  .pipe(z.string().min(1).max(2000))
+  .refine((value) => !/<\/?[a-z][^>]*>/iu.test(value), {
+    message: 'Biography must contain plain text, not HTML markup',
+  });
+
 const uniqueUuidList = z
   .array(uuid)
   .max(100)
@@ -29,6 +47,9 @@ export const createDoctorSchema = z
   .object({
     staffId: uuid,
     professionalDisplayName: professionalDisplayNameSchema.optional(),
+    professionalTitle: professionalTitleSchema.optional(),
+    professionalCode: professionalCodeSchema.optional(),
+    bio: professionalBioSchema.optional(),
     departmentIds: uniqueUuidList.optional(),
     specialtyIds: uniqueUuidList.optional(),
   })
@@ -37,9 +58,12 @@ export const createDoctorSchema = z
 export const updateDoctorSchema = z
   .object({
     professionalDisplayName: professionalDisplayNameSchema.nullable().optional(),
+    professionalTitle: professionalTitleSchema.nullable().optional(),
+    professionalCode: professionalCodeSchema.nullable().optional(),
+    bio: professionalBioSchema.nullable().optional(),
   })
   .strict()
-  .refine(({ professionalDisplayName }) => professionalDisplayName !== undefined);
+  .refine((profile) => Object.values(profile).some((value) => value !== undefined));
 
 export const listDoctorsQuerySchema = z
   .object({

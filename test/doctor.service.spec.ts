@@ -10,7 +10,9 @@ import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract
 import {
   DoctorAlreadyExistsError,
   DoctorAssignmentConflictError,
+  DoctorInputValidationError,
   DoctorLifecycleConflictError,
+  DoctorProfessionalCodeConflictError,
   DoctorStaffIneligibleError,
   DoctorStaffNotFoundError,
 } from '../src/tenant/doctor.errors';
@@ -54,6 +56,9 @@ function doctorRecord(
     statusChangedAt: fixedTime,
     suspendedAt: null,
     deactivatedAt: null,
+    professionalTitle: null,
+    professionalCode: null,
+    bio: null,
     createdAt: fixedTime,
     updatedAt: fixedTime,
     tenant: { status: TenantStatus.ACTIVE },
@@ -122,11 +127,23 @@ describe('DoctorService', () => {
   });
 
   it('creates a Doctor on existing Staff with normalized profile and explicit assignments', async () => {
+    repository.create.mockResolvedValueOnce({
+      kind: 'created',
+      doctor: doctorRecord({
+        professionalDisplayName: 'Dr Taylor Member',
+        professionalTitle: 'Consultant',
+        professionalCode: 'MD 100',
+        bio: 'Professional biography',
+      }),
+    });
     const response = await service.create(
       context,
       {
         staffId: staffId.toUpperCase(),
         professionalDisplayName: '  Dr   Taylor Member ',
+        professionalTitle: ' Consultant ',
+        professionalCode: ' MD   100 ',
+        bio: '  Professional biography\r\n',
         departmentIds: [departmentId.toUpperCase()],
         specialtyIds: [specialtyId],
       },
@@ -136,6 +153,9 @@ describe('DoctorService', () => {
     expect(repository.create).toHaveBeenCalledWith(tenantId, {
       staffId,
       professionalDisplayName: 'Dr Taylor Member',
+      professionalTitle: 'Consultant',
+      professionalCode: 'MD 100',
+      bio: 'Professional biography',
       departmentIds: [departmentId],
       specialtyIds: [specialtyId],
     });
@@ -143,6 +163,10 @@ describe('DoctorService', () => {
       id: doctorId,
       staffId,
       staff: { id: staffId, displayName: 'Taylor Member' },
+      professionalDisplayName: 'Dr Taylor Member',
+      professionalTitle: 'Consultant',
+      professionalCode: 'MD 100',
+      bio: 'Professional biography',
       operationallyActive: true,
       departments: [{ id: departmentId, name: 'Cardiology' }],
       specialties: [{ id: specialtyId, name: 'Interventional Cardiology' }],
@@ -154,7 +178,16 @@ describe('DoctorService', () => {
         actorUserId,
         subjectUserId: doctorRecord().staff.userId,
         subjectTenantId: tenantId,
-        metadata: expect.objectContaining({ doctorId, staffId }),
+        metadata: expect.objectContaining({
+          doctorId,
+          staffId,
+          professionalFields: [
+            'professionalDisplayName',
+            'professionalTitle',
+            'professionalCode',
+            'bio',
+          ],
+        }),
       }),
     );
     expect(audit.recordAudit).toHaveBeenCalledWith(
@@ -211,6 +244,10 @@ describe('DoctorService', () => {
     await expect(service.create(context, { staffId }, actor)).rejects.toBeInstanceOf(
       DoctorAlreadyExistsError,
     );
+    repository.create.mockResolvedValueOnce({ kind: 'professional-code-conflict' });
+    await expect(
+      service.create(context, { staffId, professionalCode: 'MD-100' }, actor),
+    ).rejects.toBeInstanceOf(DoctorProfessionalCodeConflictError);
     expect(audit.recordAudit).not.toHaveBeenCalled();
   });
 
@@ -278,6 +315,215 @@ describe('DoctorService', () => {
         metadata: expect.objectContaining({ changedFields: 'professionalDisplayName' }),
       }),
     );
+  });
+
+  it('supports partial profile updates without changing Doctor or Staff lifecycle', async () => {
+    repository.findByIdForTenant.mockResolvedValueOnce(
+      doctorRecord({
+        professionalCode: 'MD 100',
+        status: StaffStatus.SUSPENDED,
+        staff: { status: StaffStatus.SUSPENDED },
+      }),
+    );
+    repository.updateForTenant.mockResolvedValueOnce({
+      kind: 'changed',
+      doctor: doctorRecord({
+        professionalCode: 'MD-200',
+        professionalTitle: 'Consultant',
+        bio: 'Updated biography',
+        status: StaffStatus.SUSPENDED,
+        staff: { status: StaffStatus.SUSPENDED },
+      }),
+    });
+
+    const response = await service.update(
+      context,
+      doctorId,
+      {
+        professionalTitle: ' Consultant ',
+        professionalCode: ' MD-200 ',
+        bio: ' Updated biography ',
+      },
+      actor,
+    );
+
+    expect(repository.updateForTenant).toHaveBeenCalledWith(tenantId, doctorId, {
+      professionalTitle: 'Consultant',
+      professionalCode: 'MD-200',
+      bio: 'Updated biography',
+    });
+    expect(response).toMatchObject({
+      professionalCode: 'MD-200',
+      professionalTitle: 'Consultant',
+      bio: 'Updated biography',
+      status: StaffStatus.SUSPENDED,
+      staff: { status: StaffStatus.SUSPENDED },
+      operationallyActive: false,
+    });
+    expect(audit.recordAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.DOCTOR_UPDATED,
+        metadata: expect.objectContaining({
+          changedFields: 'professionalTitle,professionalCode,bio',
+        }),
+      }),
+    );
+  });
+
+  it('keeps deactivated Staff non-operational when Doctor profile data changes', async () => {
+    const deactivatedStaff = {
+      ...doctorRecord().staff,
+      status: StaffStatus.DEACTIVATED,
+    };
+    repository.findByIdForTenant.mockResolvedValueOnce(doctorRecord({ staff: deactivatedStaff }));
+    repository.updateForTenant.mockResolvedValueOnce({
+      kind: 'changed',
+      doctor: doctorRecord({
+        professionalTitle: 'Consultant',
+        staff: deactivatedStaff,
+      }),
+    });
+
+    const response = await service.update(
+      context,
+      doctorId,
+      { professionalTitle: 'Consultant' },
+      actor,
+    );
+
+    expect(response.status).toBe(StaffStatus.ACTIVE);
+    expect(response.staff.status).toBe(StaffStatus.DEACTIVATED);
+    expect(response.operationallyActive).toBe(false);
+    expect(repository.updateForTenant).toHaveBeenCalledWith(tenantId, doctorId, {
+      professionalTitle: 'Consultant',
+    });
+  });
+
+  it('rejects empty, invalid, overlong, HTML, and protected-field profile updates', async () => {
+    const invalidInputs = [
+      {},
+      { professionalDisplayName: '  ' },
+      { professionalDisplayName: 'n'.repeat(192) },
+      { professionalTitle: 't'.repeat(192) },
+      { professionalCode: '   ' },
+      { professionalCode: 'c'.repeat(65) },
+      { bio: 'b'.repeat(2001) },
+      { bio: '<script>alert(1)</script>' },
+      { tenantId },
+      { staffId },
+      { membershipId: actorMembershipId },
+      { roleIds: ['OWNER'] },
+      { permissionIds: ['tenant.doctors.manage'] },
+      { facilityId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' },
+      { branchId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb' },
+      { subscriptionId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc' },
+      { entitlementId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd' },
+      { quota: 1 },
+      { status: StaffStatus.ACTIVE },
+      { yearsOfExperience: 10 },
+      { departmentIds: [departmentId] },
+      { specialtyIds: [specialtyId] },
+    ];
+
+    for (const input of invalidInputs) {
+      await expect(service.update(context, doctorId, input as never, actor)).rejects.toBeInstanceOf(
+        DoctorInputValidationError,
+      );
+    }
+    expect(repository.findByIdForTenant).not.toHaveBeenCalled();
+    expect(repository.updateForTenant).not.toHaveBeenCalled();
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('maps a duplicate professional code to a conflict without auditing failure', async () => {
+    repository.updateForTenant.mockResolvedValueOnce({ kind: 'professional-code-conflict' });
+
+    await expect(
+      service.update(context, doctorId, { professionalCode: 'MD-100' }, actor),
+    ).rejects.toBeInstanceOf(DoctorProfessionalCodeConflictError);
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('allows clearing optional profile fields with null', async () => {
+    repository.findByIdForTenant.mockResolvedValueOnce(
+      doctorRecord({
+        professionalDisplayName: 'Dr Taylor Member',
+        professionalTitle: 'Consultant',
+        professionalCode: 'MD-100',
+        bio: 'Professional biography',
+      }),
+    );
+    repository.updateForTenant.mockResolvedValueOnce({
+      kind: 'changed',
+      doctor: doctorRecord({
+        professionalDisplayName: null,
+        professionalTitle: null,
+        professionalCode: null,
+        bio: null,
+      }),
+    });
+
+    const response = await service.update(
+      context,
+      doctorId,
+      {
+        professionalDisplayName: null,
+        professionalTitle: null,
+        professionalCode: null,
+        bio: null,
+      },
+      actor,
+    );
+
+    expect(repository.updateForTenant).toHaveBeenCalledWith(tenantId, doctorId, {
+      professionalDisplayName: null,
+      professionalTitle: null,
+      professionalCode: null,
+      bio: null,
+    });
+    expect(response).toMatchObject({
+      professionalDisplayName: null,
+      professionalTitle: null,
+      professionalCode: null,
+      bio: null,
+    });
+  });
+
+  it('does not reactivate deactivated Doctors when updating administrative profile data', async () => {
+    repository.findByIdForTenant.mockResolvedValueOnce(
+      doctorRecord({ status: StaffStatus.DEACTIVATED }),
+    );
+    repository.updateForTenant.mockResolvedValueOnce({
+      kind: 'changed',
+      doctor: doctorRecord({
+        professionalTitle: 'Consultant',
+        status: StaffStatus.DEACTIVATED,
+      }),
+    });
+
+    const response = await service.update(
+      context,
+      doctorId,
+      { professionalTitle: 'Consultant' },
+      actor,
+    );
+
+    expect(response.status).toBe(StaffStatus.DEACTIVATED);
+    expect(response.operationallyActive).toBe(false);
+    expect(repository.updateForTenant).toHaveBeenCalledWith(tenantId, doctorId, {
+      professionalTitle: 'Consultant',
+    });
+  });
+
+  it('does not update a Doctor outside the trusted tenant', async () => {
+    repository.findByIdForTenant.mockResolvedValueOnce(null);
+
+    await expect(
+      service.update(context, doctorId, { professionalTitle: 'Consultant' }, actor),
+    ).rejects.toThrow();
+    expect(repository.findByIdForTenant).toHaveBeenCalledWith(tenantId, doctorId);
+    expect(repository.updateForTenant).not.toHaveBeenCalled();
+    expect(audit.recordAudit).not.toHaveBeenCalled();
   });
 
   it('does not audit a no-op profile update', async () => {
