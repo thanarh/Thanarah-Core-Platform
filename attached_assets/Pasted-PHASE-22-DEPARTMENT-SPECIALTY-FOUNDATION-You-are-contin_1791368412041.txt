@@ -1,0 +1,892 @@
+PHASE 22 — DEPARTMENT & SPECIALTY FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+
+Implement ONLY Phase 22.
+Do not start Phase 23.
+
+==================================================
+1. PHASE GOAL
+==================================================
+
+Create the foundational healthcare organizational catalog for:
+
+- Departments
+- Specialties
+
+This phase establishes the healthcare classification layer that future Doctors, Services, Appointments, and other healthcare modules can reference.
+
+IMPORTANT:
+
+Do NOT create:
+- Doctor
+- Patient
+- Appointment
+- Schedule
+- Availability
+- Medical Record
+- Prescription
+- Visit
+- Billing
+- Insurance
+- MongoDB healthcare collections
+
+This phase is ONLY the Department + Specialty foundation.
+
+==================================================
+2. ARCHITECTURAL POSITION
+==================================================
+
+Current hierarchy:
+
+Tenant
+ ├── Facility
+ │     └── Branch
+ │
+ ├── Staff
+ │     ├── Staff Roles
+ │     └── Facility/Branch Scope
+ │
+ └── Healthcare Catalog
+       ├── Departments
+       └── Specialties
+
+Important distinctions:
+
+Staff != Doctor
+
+Department != Role
+
+Specialty != Permission
+
+Facility/Branch Scope != Department
+
+Do not merge these concepts.
+
+A future doctor may reference:
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+
+But that relationship is NOT implemented in Phase 22.
+
+==================================================
+3. CENTRAL VS TENANT DATABASE
+==================================================
+
+Department and Specialty definitions in this phase belong to the CENTRAL Prisma database because they are tenant organizational metadata.
+
+Do NOT create MongoDB healthcare collections.
+
+Do NOT put patient or clinical data in Prisma.
+
+Do NOT introduce a tenant MongoDB resolver in this phase.
+
+==================================================
+4. FIRST INSPECT EXISTING ARCHITECTURE
+==================================================
+
+Before implementation inspect:
+
+- Tenant model
+- Facility model
+- Branch model
+- Staff model
+- TenantMembership
+- TenantRole
+- TenantPermission
+- StaffRoleAssignment
+- Staff scope assignments
+- TrustedTenantContext
+- TenantAuthorizationGuard
+- audit conventions
+- lifecycle conventions
+- API conventions
+- OpenAPI conventions
+- Prisma migration conventions
+
+Search for any existing:
+- Department
+- Specialty
+- Medical specialty
+- Healthcare catalog
+- Service category
+
+If an equivalent already exists, reuse it.
+
+DO NOT create duplicate models.
+
+==================================================
+5. DEPARTMENT MODEL
+==================================================
+
+If no existing equivalent exists, introduce a tenant-scoped Department model.
+
+Conceptually:
+
+Department
+- id
+- tenantId
+- name
+- code if justified
+- description if justified
+- status
+- createdAt
+- updatedAt
+
+Keep the model intentionally minimal.
+
+Do NOT add:
+
+- headStaffId
+- managerId
+- doctorIds
+- branchIds
+- specialtyIds as JSON
+- appointment settings
+- schedules
+- billing configuration
+- medical records
+
+Those belong to later phases.
+
+==================================================
+6. SPECIALTY MODEL
+==================================================
+
+If no existing equivalent exists, introduce a tenant-scoped Specialty model.
+
+Conceptually:
+
+Specialty
+- id
+- tenantId
+- name
+- code if justified
+- description if justified
+- status
+- createdAt
+- updatedAt
+
+Keep it minimal.
+
+Do NOT add:
+
+- doctorIds
+- departmentIds as JSON
+- appointments
+- services
+- licenses
+- clinical protocols
+- pricing
+- insurance configuration
+
+==================================================
+7. TENANT OWNERSHIP
+==================================================
+
+Both Department and Specialty are tenant-owned.
+
+Every record must belong to exactly one Tenant.
+
+Cross-tenant relationships/access must be impossible or rejected.
+
+Never trust:
+
+- body.tenantId
+- query.tenantId
+- custom headers
+- client-selected permissions
+
+TrustedTenantContext is authoritative.
+
+If routes contain tenantId because that is the established API convention, validate it against TrustedTenantContext.
+
+==================================================
+8. DEPARTMENT STATUS
+==================================================
+
+Use an explicit lifecycle consistent with existing organizational resources.
+
+Preferred:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+If the project already has a standardized catalog lifecycle, reuse it.
+
+Rules:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED is terminal.
+
+Do not delete departments.
+
+Do not silently reactivate DEACTIVATED departments.
+
+Follow existing idempotency conventions for same-state transitions.
+
+==================================================
+9. SPECIALTY STATUS
+==================================================
+
+Use the same lifecycle model as Department unless existing architecture requires another established lifecycle.
+
+Preferred:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Rules:
+
+ACTIVE → SUSPENDED
+ACTIVE → DEACTIVATED
+
+SUSPENDED → ACTIVE
+SUSPENDED → DEACTIVATED
+
+DEACTIVATED is terminal.
+
+Do not delete specialties.
+
+Do not silently reactivate DEACTIVATED specialties.
+
+==================================================
+10. NAMING / UNIQUENESS
+==================================================
+
+Determine the existing project's conventions for tenant-scoped names and codes.
+
+At minimum:
+
+Department names should not have accidental duplicate active definitions within the same tenant.
+
+Specialty names should not have accidental duplicate active definitions within the same tenant.
+
+If codes are implemented, codes must be tenant-scoped and unique.
+
+Do NOT use global uniqueness across all tenants.
+
+Case/whitespace normalization must follow existing validation conventions.
+
+Do not build a complex synonym/alias system.
+
+==================================================
+11. DEPARTMENT ↔ SPECIALTY RELATIONSHIP
+==================================================
+
+IMPORTANT:
+
+Do NOT permanently couple Department and Specialty in Phase 22 unless the existing architecture already requires that relationship.
+
+A specialty may conceptually be used across multiple departments in a real healthcare organization.
+
+A department may contain multiple specialties.
+
+Therefore, do NOT implement:
+
+departmentId directly on Specialty
+
+unless inspection proves the existing product architecture explicitly requires one-to-one ownership.
+
+Prefer independent tenant-scoped catalogs at this stage.
+
+If a many-to-many relationship is truly required by an existing specification or existing implementation, implement the smallest explicit relational assignment model.
+
+Do NOT use arrays or JSON for relationships.
+
+If no concrete requirement exists, keep them independent in Phase 22.
+
+Document the decision in the final report.
+
+==================================================
+12. FACILITY / BRANCH RELATIONSHIP
+==================================================
+
+Do NOT assign departments or specialties to facilities or branches yet.
+
+Do NOT create:
+
+DepartmentFacility
+DepartmentBranch
+SpecialtyFacility
+SpecialtyBranch
+
+unless inspection proves an existing required relationship.
+
+Phase 21 already established Staff → Facility/Branch scope.
+
+Phase 22 establishes healthcare catalogs.
+
+Their operational scope will be introduced deliberately in a later phase.
+
+==================================================
+13. STAFF RELATIONSHIP
+==================================================
+
+Do NOT assign Department or Specialty directly to Staff.
+
+This is critical.
+
+Staff is a general tenant employee identity.
+
+Future Doctor will be a specialized healthcare identity/profile built on Staff.
+
+Do NOT add:
+
+staff.departmentId
+staff.specialtyId
+
+Do NOT create:
+
+StaffDepartment
+StaffSpecialty
+
+in this phase.
+
+Future architecture should allow:
+
+Platform User
+→ Tenant Membership
+→ Staff
+→ Doctor Profile
+→ Department / Specialty
+
+But Doctor Profile is NOT Phase 22.
+
+==================================================
+14. AUTHORIZATION
+==================================================
+
+Use the existing tenant authorization system.
+
+Do NOT create new authentication or authorization guards.
+
+Inspect existing permission naming.
+
+Introduce minimal permissions if equivalent permissions do not already exist.
+
+Preferred conceptual permissions:
+
+department.read
+department.manage
+
+specialty.read
+specialty.manage
+
+But use the exact naming convention already established by the repository.
+
+Read permissions:
+
+- list departments
+- read department
+- list specialties
+- read specialty
+
+Manage permissions:
+
+- create
+- update
+- lifecycle transitions
+
+Do not allow client-selected permissions.
+
+Do not modify platform permissions.
+
+==================================================
+15. API — DEPARTMENTS
+==================================================
+
+Follow existing API conventions.
+
+Suggested:
+
+GET
+/api/v1/tenants/:tenantId/departments
+
+GET
+/api/v1/tenants/:tenantId/departments/:departmentId
+
+POST
+/api/v1/tenants/:tenantId/departments
+
+PATCH
+/api/v1/tenants/:tenantId/departments/:departmentId
+
+POST
+/api/v1/tenants/:tenantId/departments/:departmentId/activate
+
+POST
+/api/v1/tenants/:tenantId/departments/:departmentId/suspend
+
+POST
+/api/v1/tenants/:tenantId/departments/:departmentId/deactivate
+
+Use the project's existing route conventions if different.
+
+Do not create duplicate route styles.
+
+==================================================
+16. API — SPECIALTIES
+==================================================
+
+Suggested:
+
+GET
+/api/v1/tenants/:tenantId/specialties
+
+GET
+/api/v1/tenants/:tenantId/specialties/:specialtyId
+
+POST
+/api/v1/tenants/:tenantId/specialties
+
+PATCH
+/api/v1/tenants/:tenantId/specialties/:specialtyId
+
+POST
+/api/v1/tenants/:tenantId/specialties/:specialtyId/activate
+
+POST
+/api/v1/tenants/:tenantId/specialties/:specialtyId/suspend
+
+POST
+/api/v1/tenants/:tenantId/specialties/:specialtyId/deactivate
+
+Use existing project conventions if they differ.
+
+==================================================
+17. CREATE VALIDATION
+==================================================
+
+Department creation must validate:
+
+- authenticated actor
+- TrustedTenantContext
+- active tenant
+- required name
+- valid optional code
+- duplicate name/code rules
+- authorization
+
+Specialty creation must validate the same categories.
+
+Do not accept arbitrary tenant ownership from the client.
+
+==================================================
+18. UPDATE VALIDATION
+==================================================
+
+Allow only intentionally supported administrative fields.
+
+Do not allow:
+
+- tenantId changes
+- record ID changes
+- status changes through arbitrary PATCH if the project uses dedicated lifecycle endpoints
+- ownership changes
+
+Use dedicated lifecycle endpoints for lifecycle transitions.
+
+Do not allow clients to mutate audit fields.
+
+==================================================
+19. LIFECYCLE SEMANTICS
+==================================================
+
+Inactive catalogs must not be treated as available for future healthcare operations.
+
+Phase 22 does NOT implement those future operations.
+
+However, the catalog service must expose accurate status.
+
+Do not silently filter inactive records from every query unless that is already the established repository convention.
+
+Separate:
+
+- administrative listing
+- active-only future lookup
+
+if the existing architecture supports that distinction.
+
+Do not invent a second status system.
+
+==================================================
+20. AUDIT
+==================================================
+
+Use the existing durable central audit system.
+
+At minimum:
+
+DEPARTMENT_CREATED
+DEPARTMENT_UPDATED
+DEPARTMENT_ACTIVATED
+DEPARTMENT_SUSPENDED
+DEPARTMENT_DEACTIVATED
+
+SPECIALTY_CREATED
+SPECIALTY_UPDATED
+SPECIALTY_ACTIVATED
+SPECIALTY_SUSPENDED
+SPECIALTY_DEACTIVATED
+
+Use established naming conventions if they differ.
+
+Audit metadata should include:
+
+- actor
+- tenant
+- target
+- action
+- result where appropriate
+
+Never include:
+
+- passwords
+- access tokens
+- refresh tokens
+- secrets
+
+Do not create noisy audit events for normal reads.
+
+==================================================
+21. DELETE POLICY
+==================================================
+
+Do NOT implement hard delete.
+
+Do NOT expose DELETE endpoints.
+
+Lifecycle deactivation is the archival mechanism.
+
+This preserves future references from doctors, services, appointments, etc.
+
+==================================================
+22. EFFECTIVE HEALTHCARE CATALOG
+==================================================
+
+Do not create a global catalog.
+
+Two tenants may have:
+
+Tenant A:
+"Cardiology"
+
+Tenant B:
+"Cardiology"
+
+These are independent records.
+
+Do not expose one tenant's catalog to another tenant.
+
+==================================================
+23. FUTURE EXTENSIBILITY
+==================================================
+
+The schema should make it possible later to create:
+
+Doctor
+→ Staff
+→ Department(s)
+→ Specialty/ies
+
+without requiring a rewrite.
+
+Do not prematurely implement those relationships.
+
+Do not create placeholder Doctor models.
+
+==================================================
+24. SECURITY / TENANT ISOLATION TESTS
+==================================================
+
+Must test:
+
+- unauthenticated → 401
+- missing read permission → denied
+- missing manage permission → denied
+- cross-tenant department read blocked
+- cross-tenant department update blocked
+- cross-tenant specialty read blocked
+- cross-tenant specialty update blocked
+- client tenantId injection rejected
+- client permission injection rejected
+- client ownership manipulation rejected
+- inactive tenant cannot mutate catalog
+- invalid lifecycle transition rejected
+- deactivated record cannot be reactivated
+- duplicate tenant-scoped names rejected according to chosen semantics
+
+==================================================
+25. TEST REQUIREMENTS
+==================================================
+
+Add focused tests for:
+
+A. Department
+- create
+- read
+- list
+- update
+- activate
+- suspend
+- deactivate
+- duplicate handling
+- invalid input
+- lifecycle transitions
+
+B. Specialty
+- create
+- read
+- list
+- update
+- activate
+- suspend
+- deactivate
+- duplicate handling
+- invalid input
+- lifecycle transitions
+
+C. Tenant isolation
+- cross-tenant access
+- cross-tenant mutation
+- client tenant injection
+- tenant ownership validation
+
+D. Authorization
+- read permission
+- manage permission
+- client permission injection
+- platform role separation
+
+E. Audit
+- create
+- update
+- lifecycle transitions
+- no false success audit on failed mutation
+
+F. Regression
+All existing:
+- tenant tests
+- membership tests
+- role tests
+- staff tests
+- staff-role tests
+- staff-scope tests
+- subscription tests
+- entitlement tests
+- quota tests
+- platform authorization tests
+
+must remain passing.
+
+==================================================
+26. OPENAPI
+==================================================
+
+Add complete Swagger/OpenAPI documentation for Department and Specialty APIs.
+
+Document:
+
+- request DTOs
+- response DTOs
+- status values
+- authorization requirements
+- validation errors
+- conflict behavior
+- lifecycle operations
+
+Do not expose Prisma internals.
+
+==================================================
+27. DATABASE
+==================================================
+
+If new models are required:
+
+- modify Prisma schema
+- create migration
+- inspect generated SQL
+- verify migration matches generated schema
+- use tenant-scoped indexes/constraints
+- use restrictive foreign keys where appropriate
+- prevent accidental cascading deletion
+
+Do NOT apply the migration.
+
+Do NOT connect to production.
+
+Do NOT modify unrelated migrations.
+
+==================================================
+28. NO SUBSCRIPTION / ENTITLEMENT / QUOTA
+==================================================
+
+Do not add subscription checks.
+
+Do not add feature entitlements.
+
+Do not add quota counters.
+
+Do not create usage events.
+
+Do not modify Phase 18 quota foundation.
+
+Keep:
+
+Authorization
+separate from
+Entitlement
+separate from
+Quota.
+
+==================================================
+29. NO MONGODB
+==================================================
+
+Do not create:
+
+- Mongoose models
+- MongoDB collections
+- tenant DB resolvers
+- clinical schemas
+
+Phase 22 remains central Prisma metadata.
+
+==================================================
+30. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- Doctor
+- Doctor profile
+- Patient
+- Appointment
+- Schedule
+- Availability
+- Visit
+- Medical Record
+- Prescription
+- Medical Document
+- Service
+- Pricing
+- Billing
+- Insurance
+- Department staffing
+- Doctor assignment
+- Specialty assignment to doctors
+- Facility department scope
+- Branch department scope
+- Notifications
+- WhatsApp
+- Voice AI
+- Telephony
+- Redis
+- Workers
+- Usage metering
+
+Do not refactor unrelated code.
+
+Do not rename established models unnecessarily.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+31. VALIDATION
+==================================================
+
+Before completion run:
+
+1. Prisma validation
+2. Prisma client generation
+3. Generated schema / migration consistency
+4. TypeScript
+5. Lint
+6. Formatting
+7. Focused Phase 22 tests
+8. Full test suite
+9. Production build
+10. Restart application
+11. GET /health
+12. GET /docs
+13. Verify /ready remains truthful
+14. Verify no production test-only route exists
+15. Inspect git diff
+16. Confirm no secrets
+17. Confirm uploaded specification untouched
+18. Confirm only intended files changed
+
+Do not claim the migration was applied unless it actually was.
+
+==================================================
+32. COMMIT
+==================================================
+
+If and only if all validation passes:
+
+Create exactly ONE commit:
+
+feat(healthcare): add department and specialty foundation
+
+Use repository hooks.
+
+DO NOT use:
+
+--no-verify
+
+Do not commit unrelated files.
+
+==================================================
+33. FINAL REPORT
+==================================================
+
+STOP after Phase 22.
+
+Do not begin Phase 23.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Existing models reused
+5. Department model design
+6. Specialty model design
+7. Department/Specialty relationship decision and why
+8. Facility/Branch relationship decision
+9. Staff relationship decision
+10. Lifecycle semantics
+11. Permissions added/reused
+12. API endpoints
+13. Audit events
+14. Tenant isolation protections
+15. Focused test count
+16. Full test count
+17. TypeScript result
+18. Lint result
+19. Formatting result
+20. Build result
+21. Prisma validation result
+22. Migration/schema verification
+23. /health result
+24. /docs result
+25. /ready result
+26. Whether migration was applied
+27. Any architectural deviation and why
+28. Explicit list of everything NOT implemented
+
+Do not claim completion until all actual validation commands pass.
