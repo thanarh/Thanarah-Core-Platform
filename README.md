@@ -49,20 +49,20 @@ Thanarah uses two permanent, distinct persistence systems:
 - **Central platform:** Prisma 6 with MySQL/MariaDB stores global identities,
   authentication, sessions, platform roles and permissions, and other
   platform-level metadata.
-- **Tenant data:** isolated MongoDB database(s) will store each tenant's
-  healthcare and operational data. This remains the permanent target and is
-  **not yet implemented**. A tenant may eventually span multiple physical
-  MongoDB databases while remaining one logical tenant data space.
-- **Phase 27 exception:** the tenant-scoped Patient demographic foundation uses
-  the existing Prisma/MySQL healthcare persistence for this phase, as specified.
-  This does not implement tenant MongoDB storage or change the permanent target;
-  do not treat it as approval to add other operational healthcare data centrally.
+- **Tenant data:** the future target is isolated tenant-owned storage, with one
+  logical tenant allowed to span multiple physical placements. No persistent
+  tenant database driver or production registry is implemented.
+- **Patient boundary:** Patient operations now require trusted tenant context
+  and resolve through the tenant-storage contracts. Development uses a
+  process-local memory adapter only; non-development environments fail closed
+  until persistent tenant storage is configured. Patient data is not persisted
+  in central MySQL by the application.
 
-Future tenant storage will be resolved only on the server through trusted
-tenant context and a central tenant database registry. Clients must never
-select a database name or provide a connection string. MongoDB must not be
-introduced into the current platform foundation before that design is
-explicitly implemented.
+The central Patient Prisma model/table is retained as legacy schema to protect
+existing records, but the Patient application repository no longer queries it.
+This phase adds no drop or data-movement migration. Any future removal requires
+a persistent tenant backend and an approved data disposition. Clients must
+never select a database name or provide a connection string.
 
 ## Authorization Model and Runtime
 

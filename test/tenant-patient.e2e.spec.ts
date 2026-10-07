@@ -8,7 +8,7 @@ import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import { AuthenticationError } from '../src/auth/errors/auth.errors';
 import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { APP_CONSTANTS } from '../src/common/constants/app.constants';
-import { PatientStatus } from '@prisma/client';
+import { PatientStatus } from '../src/tenant/patient.model';
 import { TenantAuthorizationGuard } from '../src/tenant/tenant-authorization.guard';
 import type { TenantAuthorizationService } from '../src/tenant/tenant-authorization.service';
 import {

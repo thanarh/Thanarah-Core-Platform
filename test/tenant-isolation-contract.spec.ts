@@ -3,6 +3,8 @@ import { BranchStatus } from '@prisma/client';
 import { describe, expect, expectTypeOf, it } from 'vitest';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import type { BranchRecord, BranchRepository } from '../src/tenant/branch.repository';
+import type { PatientRecord } from '../src/tenant/patient.model';
+import type { PatientRepository } from '../src/tenant/patient.repository';
 import {
   BranchFacilityNotFoundError,
   BranchNotFoundError,
@@ -25,6 +27,10 @@ import type {
   TenantStorageResolver,
   TenantStorageRoute,
 } from '../src/tenant/tenant-storage.contract';
+import {
+  TenantStorageNotConfiguredError,
+  TenantStorageUnavailableError,
+} from '../src/tenant/tenant-storage.errors';
 
 type AssertTrue<T extends true> = T;
 type AssertFalse<T extends false> = T;
@@ -49,6 +55,9 @@ type _StorageRouteSupportsMultiplePlacements = AssertTrue<
 type _BranchRecordHasNoDuplicatedTenantId = AssertFalse<
   'tenantId' extends keyof BranchRecord ? true : false
 >;
+type _PatientRecordHasNoDuplicatedTenantId = AssertFalse<
+  'tenantId' extends keyof PatientRecord ? true : false
+>;
 const tenantContractTypeAssertions: [
   _TenantStorageHasNoPhysicalDatabaseName,
   _TenantStorageHasNoConnectionString,
@@ -56,7 +65,8 @@ const tenantContractTypeAssertions: [
   _TenantStorageHasNoGlobalDatabaseFallback,
   _StorageRouteSupportsMultiplePlacements,
   _BranchRecordHasNoDuplicatedTenantId,
-] = [false, false, false, false, true, false];
+  _PatientRecordHasNoDuplicatedTenantId,
+] = [false, false, false, false, true, false, false];
 void tenantContractTypeAssertions;
 
 /**
@@ -75,6 +85,7 @@ export function verifyTenantIsolationTypes(
   membership: ValidatedTenantMembership,
   tenantAuthorization: TenantAuthorizationService,
   repository: TenantScopedRepository<{ id: string }>,
+  patientRepository: PatientRepository,
   storageResolver: TenantStorageResolver,
   databaseRegistry: TenantDatabaseRegistry,
 ): void {
@@ -84,6 +95,7 @@ export function verifyTenantIsolationTypes(
   });
   const trustedContext = contextFactory.fromValidatedMembership(membership);
   void repository.findById(trustedContext, 'resource-id');
+  void patientRepository.findByIdForTenant(trustedContext, 'patient-id');
   void storageResolver.resolve(trustedContext);
   void databaseRegistry.getPlacements(trustedContext);
   void tenantAuthorization.authorize(trustedContext, 'tenant.resource.read');
@@ -122,6 +134,12 @@ export function verifyTenantIsolationTypes(
 
   // @ts-expect-error Context is the sole tenant scope; callers cannot override it.
   void repository.findById(context, 'resource-id', otherTenantIdCandidate);
+
+  // @ts-expect-error Patient repository operations require trusted tenant scope.
+  void patientRepository.findByIdForTenant('patient-id');
+
+  // @ts-expect-error A client tenant selector cannot stand in for trusted patient scope.
+  void patientRepository.findByIdForTenant(tenantIdCandidate, 'patient-id');
 
   // @ts-expect-error Storage resolution requires trusted context, not a selector.
   void storageResolver.resolve(tenantIdCandidate);
@@ -186,6 +204,23 @@ describe('tenant isolation contract', () => {
     ],
   ])('fails closed with a stable, sanitized error', (error, code, message) => {
     expect(error.getStatus()).toBe(HttpStatus.FORBIDDEN);
+    expect(error.getResponse()).toEqual({ code, message });
+    expect(JSON.stringify(error.getResponse())).not.toMatch(/database|connection|mongodb/i);
+  });
+
+  it.each([
+    [
+      new TenantStorageNotConfiguredError(),
+      'TENANT_STORAGE_NOT_CONFIGURED',
+      'Tenant storage is not configured',
+    ],
+    [
+      new TenantStorageUnavailableError(),
+      'TENANT_STORAGE_UNAVAILABLE',
+      'Tenant storage is currently unavailable',
+    ],
+  ])('fails closed with a stable, sanitized storage error', (error, code, message) => {
+    expect(error.getStatus()).toBe(HttpStatus.SERVICE_UNAVAILABLE);
     expect(error.getResponse()).toEqual({ code, message });
     expect(JSON.stringify(error.getResponse())).not.toMatch(/database|connection|mongodb/i);
   });

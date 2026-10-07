@@ -1,5 +1,5 @@
-import { PatientStatus } from '@prisma/client';
 import { z } from 'zod';
+import { PatientStatus } from './patient.model';
 
 export const MAX_PATIENT_LIST_OFFSET = 100_000;
 

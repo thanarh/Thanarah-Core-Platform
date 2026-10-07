@@ -1,240 +1,201 @@
-import { PatientStatus, Prisma } from '@prisma/client';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { PrismaService } from '../src/database/prisma.service';
-import { PatientRepository } from '../src/tenant/patient.repository';
+import { describe, expect, it, vi } from 'vitest';
+import type { CreatePatientInput } from '../src/tenant/patient.dto';
+import {
+  TenantContextInvalidError,
+  TenantContextRequiredError,
+  type TrustedTenantContext,
+} from '../src/tenant/tenant-context.contract';
+import type {
+  TenantDatabaseRegistry,
+  TenantStoragePlacement,
+  TenantStoragePlacementId,
+} from '../src/tenant/tenant-storage.contract';
+import {
+  TenantStorageNotConfiguredError,
+  TenantStorageUnavailableError,
+} from '../src/tenant/tenant-storage.errors';
+import { PatientStatus } from '../src/tenant/patient.model';
+import { TenantStoragePatientRepository } from '../src/tenant/patient.repository';
+import { InMemoryTenantPatientStorage } from '../src/tenant/tenant-patient.storage';
+import {
+  DevelopmentTenantDatabaseRegistry,
+  TenantStorageResolverService,
+  UnconfiguredTenantDatabaseRegistry,
+} from '../src/tenant/tenant-storage.resolver';
 
-const tenantId = '11111111-1111-4111-8111-111111111111';
-const otherTenantId = '99999999-9999-4999-8999-999999999999';
-const patientId = '22222222-2222-4222-8222-222222222222';
-const createdAt = new Date('2026-10-07T10:00:00.000Z');
-
-const patientRecord = {
-  id: patientId,
+const tenantA = '11111111-1111-4111-8111-111111111111';
+const tenantB = '99999999-9999-4999-8999-999999999999';
+const contextA = {
+  tenantId: tenantA,
+  membershipId: '22222222-2222-4222-8222-222222222222',
+  platformUserId: '33333333-3333-4333-8333-333333333333',
+} as TrustedTenantContext;
+const contextB = {
+  tenantId: tenantB,
+  membershipId: '88888888-8888-4888-8888-888888888888',
+  platformUserId: '77777777-7777-4777-8777-777777777777',
+} as TrustedTenantContext;
+const createInput: CreatePatientInput = {
   patientNumber: 'PAT-000001',
   firstName: 'Amina',
-  middleName: null,
   lastName: 'Hassan',
-  preferredName: null,
-  dateOfBirth: null,
-  gender: null,
-  phone: null,
-  email: null,
-  nationalId: null,
-  address: null,
-  status: PatientStatus.ACTIVE,
-  createdAt,
-  updatedAt: createdAt,
+};
+const localPlacement: TenantStoragePlacement = {
+  placementId: 'dev-memory' as TenantStoragePlacementId,
 };
 
-const duplicateError = (target: string[]): Prisma.PrismaClientKnownRequestError =>
-  new Prisma.PrismaClientKnownRequestError('Duplicate tenant patient field', {
-    code: 'P2002',
-    clientVersion: 'test',
-    meta: { target },
-  });
-
-function makePrisma(): {
-  tenant: { findFirst: ReturnType<typeof vi.fn> };
-  patient: {
-    create: ReturnType<typeof vi.fn>;
-    count: ReturnType<typeof vi.fn>;
-    findFirst: ReturnType<typeof vi.fn>;
-    findMany: ReturnType<typeof vi.fn>;
-    updateMany: ReturnType<typeof vi.fn>;
-  };
+function setup(placements: readonly TenantStoragePlacement[] = [localPlacement]): {
+  registry: TenantDatabaseRegistry;
+  resolver: TenantStorageResolverService;
+  storage: InMemoryTenantPatientStorage;
+  repository: TenantStoragePatientRepository;
 } {
-  return {
-    tenant: { findFirst: vi.fn() },
-    patient: {
-      create: vi.fn(),
-      count: vi.fn(),
-      findFirst: vi.fn(),
-      findMany: vi.fn(),
-      updateMany: vi.fn(),
-    },
+  const registry: TenantDatabaseRegistry = {
+    getPlacements: vi.fn().mockResolvedValue(placements),
   };
+  const resolver = new TenantStorageResolverService(registry);
+  const storage = new InMemoryTenantPatientStorage();
+  const repository = new TenantStoragePatientRepository(resolver, storage);
+  return { registry, resolver, storage, repository };
 }
 
-describe('PatientRepository', () => {
-  let prisma: ReturnType<typeof makePrisma>;
-  let repository: PatientRepository;
+describe('TenantStoragePatientRepository', () => {
+  it('resolves development placement from trusted context without exposing physical details', async () => {
+    const resolver = new TenantStorageResolverService(new DevelopmentTenantDatabaseRegistry());
+    const route = await resolver.resolve(contextA);
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    prisma = makePrisma();
-    prisma.tenant.findFirst.mockResolvedValue({ id: tenantId });
-    repository = new PatientRepository(prisma as unknown as PrismaService);
+    expect(route.placements).toEqual([{ placementId: 'development-memory' }]);
+    expect(JSON.stringify(route)).not.toMatch(/databaseName|connectionString|mongodb/i);
   });
 
-  it('creates a tenant-owned patient with the server-owned ACTIVE status', async () => {
-    prisma.patient.create.mockResolvedValue(patientRecord);
+  it('rejects absent or malformed context before registry access', async () => {
+    const registry = {
+      getPlacements: vi.fn().mockResolvedValue([localPlacement]),
+    } satisfies TenantDatabaseRegistry;
+    const resolver = new TenantStorageResolverService(registry);
 
-    await expect(
-      repository.create(tenantId, {
-        patientNumber: 'PAT-000001',
-        firstName: 'Amina',
-        lastName: 'Hassan',
-      }),
-    ).resolves.toEqual({ kind: 'changed', record: patientRecord });
-    expect(prisma.patient.create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        data: expect.objectContaining({
-          tenantId,
-          patientNumber: 'PAT-000001',
-          firstName: 'Amina',
-          lastName: 'Hassan',
-        }),
-        select: expect.objectContaining({
-          id: true,
-          patientNumber: true,
-          nationalId: true,
-          address: true,
-          status: true,
-        }),
-      }),
-    );
-    expect(prisma.patient.create.mock.calls[0][0].data).not.toHaveProperty('status');
-  });
-
-  it('allows the same patient number to be attempted independently in another tenant', async () => {
-    prisma.patient.create.mockResolvedValue(patientRecord);
-    const input = { patientNumber: 'PAT-000001', firstName: 'Amina', lastName: 'Hassan' };
-
-    await expect(repository.create(tenantId, input)).resolves.toMatchObject({ kind: 'changed' });
-    await expect(repository.create(otherTenantId, input)).resolves.toMatchObject({
-      kind: 'changed',
-    });
-    expect(prisma.patient.create).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({ data: expect.objectContaining({ tenantId }) }),
-    );
-    expect(prisma.patient.create).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({ data: expect.objectContaining({ tenantId: otherTenantId }) }),
-    );
-  });
-
-  it('scopes ID reads, lists, exact-number filters, and totals to the trusted tenant', async () => {
-    prisma.patient.findFirst.mockResolvedValue(null);
-    prisma.patient.findMany.mockResolvedValue([patientRecord]);
-    prisma.patient.count.mockResolvedValue(1);
-
-    await expect(repository.findByIdForTenant(tenantId, patientId)).resolves.toBeNull();
-    expect(prisma.patient.findFirst).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { id: patientId, tenantId } }),
+    await expect(resolver.resolve(undefined as never)).rejects.toBeInstanceOf(
+      TenantContextRequiredError,
     );
     await expect(
-      repository.list(tenantId, {
-        status: PatientStatus.INACTIVE,
-        patientNumber: 'PAT-000001',
-        limit: 20,
-        offset: 5,
-      }),
-    ).resolves.toEqual({ items: [patientRecord], total: 1 });
-    const expectedWhere = {
-      tenantId,
-      status: PatientStatus.INACTIVE,
-      patientNumber: 'PAT-000001',
+      resolver.resolve({ tenantId: 'client-value' } as TrustedTenantContext),
+    ).rejects.toBeInstanceOf(TenantContextInvalidError);
+    expect(registry.getPlacements).not.toHaveBeenCalled();
+  });
+
+  it('resolves every operation using trusted context and allows multiple opaque placements', async () => {
+    const secondPlacement: TenantStoragePlacement = {
+      placementId: 'dev-memory-secondary' as TenantStoragePlacementId,
     };
-    expect(prisma.patient.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: expectedWhere,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: 5,
-        take: 20,
-      }),
+    const { registry, repository } = setup([localPlacement, secondPlacement]);
+
+    const created = await repository.create(contextA, createInput);
+    expect(created.kind).toBe('changed');
+    if (created.kind !== 'changed') throw new Error('Expected a created record');
+    expect(created.record).not.toHaveProperty('tenantId');
+
+    await expect(repository.findByIdForTenant(contextA, created.record.id)).resolves.toMatchObject({
+      id: created.record.id,
+      patientNumber: createInput.patientNumber,
+    });
+    expect(registry.getPlacements).toHaveBeenCalledWith(contextA);
+    expect(registry.getPlacements).toHaveBeenCalledTimes(2);
+  });
+
+  it('isolates records and patient-number uniqueness by logical tenant', async () => {
+    const { repository } = setup();
+    const createdA = await repository.create(contextA, createInput);
+    const createdB = await repository.create(contextB, createInput);
+    expect(createdA.kind).toBe('changed');
+    expect(createdB.kind).toBe('changed');
+    if (createdA.kind !== 'changed' || createdB.kind !== 'changed') {
+      throw new Error('Expected both tenant records to be created');
+    }
+
+    await expect(repository.findByIdForTenant(contextB, createdA.record.id)).resolves.toBeNull();
+    await expect(repository.findByIdForTenant(contextA, createdA.record.id)).resolves.toMatchObject(
+      {
+        id: createdA.record.id,
+        firstName: 'Amina',
+      },
     );
-    expect(prisma.patient.count).toHaveBeenCalledWith({ where: expectedWhere });
-  });
-
-  it('updates only supplied values with both patient and tenant identifiers', async () => {
-    prisma.patient.updateMany.mockResolvedValue({ count: 1 });
-    prisma.patient.findFirst.mockResolvedValue({ ...patientRecord, address: null });
-
     await expect(
-      repository.update(tenantId, patientId, { address: null, email: 'new@example.com' }),
-    ).resolves.toMatchObject({ kind: 'changed' });
-    expect(prisma.patient.updateMany).toHaveBeenCalledWith({
-      where: { id: patientId, tenantId },
-      data: { address: null, email: 'new@example.com' },
+      repository.create(contextA, { ...createInput, firstName: 'Different' }),
+    ).resolves.toEqual({ kind: 'patient-number-conflict' });
+    await expect(repository.list(contextA, { limit: 50, offset: 0 })).resolves.toMatchObject({
+      total: 1,
+    });
+    await expect(repository.list(contextB, { limit: 50, offset: 0 })).resolves.toMatchObject({
+      total: 1,
     });
   });
 
-  it('uses tenant-qualified compare-and-set lifecycle updates', async () => {
-    const inactive = { ...patientRecord, status: PatientStatus.INACTIVE };
-    prisma.patient.updateMany.mockResolvedValue({ count: 1 });
-    prisma.patient.findFirst.mockResolvedValue(inactive);
-    const changedAt = new Date('2026-10-07T12:00:00.000Z');
+  it('updates and transitions a record only within its tenant partition', async () => {
+    const { repository } = setup();
+    const created = await repository.create(contextA, createInput);
+    if (created.kind !== 'changed') throw new Error('Expected a created record');
 
-    await expect(
-      repository.changeStatusIfCurrent(
-        tenantId,
-        patientId,
-        PatientStatus.ACTIVE,
-        PatientStatus.INACTIVE,
-        changedAt,
-      ),
-    ).resolves.toEqual({ kind: 'changed', record: inactive });
-    expect(prisma.patient.updateMany).toHaveBeenCalledWith({
-      where: { id: patientId, tenantId, status: PatientStatus.ACTIVE },
-      data: { status: PatientStatus.INACTIVE, updatedAt: changedAt },
+    const changed = await repository.update(contextA, created.record.id, { phone: null });
+    expect(changed.kind).toBe('changed');
+    if (changed.kind !== 'changed') throw new Error('Expected an updated record');
+    expect(changed.record.phone).toBeNull();
+
+    const transition = await repository.changeStatusIfCurrent(
+      contextA,
+      created.record.id,
+      PatientStatus.ACTIVE,
+      PatientStatus.INACTIVE,
+      new Date('2026-10-08T10:00:00.000Z'),
+    );
+    expect(transition).toMatchObject({
+      kind: 'changed',
+      record: { status: PatientStatus.INACTIVE },
     });
-  });
-
-  it('reports a concurrent lifecycle change without overwriting it', async () => {
-    prisma.patient.updateMany.mockResolvedValue({ count: 0 });
-
     await expect(
       repository.changeStatusIfCurrent(
-        tenantId,
-        patientId,
+        contextB,
+        created.record.id,
         PatientStatus.ACTIVE,
         PatientStatus.INACTIVE,
-        createdAt,
+        new Date(),
       ),
     ).resolves.toEqual({ kind: 'not-changed' });
-    expect(prisma.patient.findFirst).not.toHaveBeenCalled();
   });
 
-  it('maps database patient-number uniqueness conflicts for creates and updates', async () => {
-    prisma.patient.create.mockRejectedValueOnce(duplicateError(['tenantId', 'patientNumber']));
-    prisma.patient.updateMany.mockRejectedValueOnce(duplicateError(['tenantId', 'patientNumber']));
+  it('fails closed for an empty registry route without calling patient storage', async () => {
+    const storage = new InMemoryTenantPatientStorage();
+    const create = vi.spyOn(storage, 'create');
+    const repository = new TenantStoragePatientRepository(
+      new TenantStorageResolverService(new UnconfiguredTenantDatabaseRegistry()),
+      storage,
+    );
 
-    await expect(
-      repository.create(tenantId, {
-        patientNumber: 'PAT-000001',
-        firstName: 'Amina',
-        lastName: 'Hassan',
-      }),
-    ).resolves.toEqual({ kind: 'patient-number-conflict' });
-    await expect(
-      repository.update(tenantId, patientId, { patientNumber: 'PAT-000001' }),
-    ).resolves.toEqual({ kind: 'patient-number-conflict' });
+    await expect(repository.create(contextA, createInput)).rejects.toBeInstanceOf(
+      TenantStorageNotConfiguredError,
+    );
+    expect(create).not.toHaveBeenCalled();
   });
 
-  it('does not write when the tenant is inactive', async () => {
-    prisma.tenant.findFirst.mockResolvedValue(null);
+  it('sanitizes registry failures rather than exposing physical storage details', async () => {
+    const registry: TenantDatabaseRegistry = {
+      getPlacements: vi.fn().mockRejectedValue(new Error('mongodb://private-host/database')),
+    };
+    const repository = new TenantStoragePatientRepository(
+      new TenantStorageResolverService(registry),
+      new InMemoryTenantPatientStorage(),
+    );
 
-    await expect(
-      repository.create(tenantId, {
-        patientNumber: 'PAT-000001',
-        firstName: 'Amina',
-        lastName: 'Hassan',
-      }),
-    ).resolves.toEqual({ kind: 'tenant-inactive' });
-    await expect(repository.update(tenantId, patientId, { firstName: 'Amal' })).resolves.toEqual({
-      kind: 'tenant-inactive',
+    let response: unknown;
+    try {
+      await repository.create(contextA, createInput);
+    } catch (error) {
+      response = error instanceof TenantStorageUnavailableError ? error.getResponse() : error;
+    }
+
+    expect(response).toEqual({
+      code: 'TENANT_STORAGE_UNAVAILABLE',
+      message: 'Tenant storage is currently unavailable',
     });
-    await expect(
-      repository.changeStatusIfCurrent(
-        tenantId,
-        patientId,
-        PatientStatus.ACTIVE,
-        PatientStatus.INACTIVE,
-        createdAt,
-      ),
-    ).resolves.toEqual({ kind: 'tenant-inactive' });
-    expect(prisma.patient.create).not.toHaveBeenCalled();
-    expect(prisma.patient.updateMany).not.toHaveBeenCalled();
+    expect(JSON.stringify(response)).not.toMatch(/mongodb|private-host|database/i);
   });
 });

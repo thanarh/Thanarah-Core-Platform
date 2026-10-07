@@ -47,8 +47,8 @@ import { DoctorController } from './doctor.controller';
 import { DoctorRepository } from './doctor.repository';
 import { DoctorService } from './doctor.service';
 import { TenantPatientController } from './tenant-patient.controller';
-import { PatientRepository } from './patient.repository';
 import { PatientService } from './patient.service';
+import { TenantStorageModule } from './tenant-storage.module';
 
 @Module({
   imports: [
@@ -57,6 +57,7 @@ import { PatientService } from './patient.service';
     PlatformSecurityModule,
     TenantEntitlementModule,
     TenantQuotaModule,
+    TenantStorageModule,
   ],
   controllers: [
     TenantController,
@@ -97,7 +98,6 @@ import { PatientService } from './patient.service';
     ServiceCatalogService,
     DoctorRepository,
     DoctorService,
-    PatientRepository,
     PatientService,
     TenantRepository,
     TenantRoleRepository,

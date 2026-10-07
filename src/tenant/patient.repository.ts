@@ -1,153 +1,96 @@
-import { Injectable } from '@nestjs/common';
-import { PatientStatus, Prisma, TenantStatus } from '@prisma/client';
-import { PrismaService } from '../database/prisma.service';
+import { Inject, Injectable } from '@nestjs/common';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
+import type { PatientMutationResult, PatientRecord, PatientStatus } from './patient.model';
+import { TenantContextInvalidError, TenantContextRequiredError } from './tenant-context.contract';
+import type { TrustedTenantContext } from './tenant-context.contract';
+import {
+  TenantStorageNotConfiguredError,
+  TenantStorageUnavailableError,
+} from './tenant-storage.errors';
+import { TENANT_PATIENT_STORAGE } from './tenant-patient.storage';
+import type { TenantPatientList, TenantPatientStorage } from './tenant-patient.storage';
+import { TENANT_STORAGE_RESOLVER } from './tenant-storage.resolver';
+import type { TenantStorageResolver, TenantStorageRoute } from './tenant-storage.contract';
 
-const patientSelect = {
-  id: true,
-  patientNumber: true,
-  firstName: true,
-  middleName: true,
-  lastName: true,
-  preferredName: true,
-  dateOfBirth: true,
-  gender: true,
-  phone: true,
-  email: true,
-  nationalId: true,
-  address: true,
-  status: true,
-  createdAt: true,
-  updatedAt: true,
-} satisfies Prisma.PatientSelect;
+export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');
 
-export type PatientRecord = Prisma.PatientGetPayload<{ select: typeof patientSelect }>;
-
-export type PatientMutationResult =
-  | { kind: 'changed'; record: PatientRecord }
-  | { kind: 'tenant-inactive' }
-  | { kind: 'not-found' }
-  | { kind: 'patient-number-conflict' }
-  | { kind: 'not-changed' };
-
-function isPatientNumberConflict(error: unknown): boolean {
-  if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
-    return false;
-  }
-  const target = error.meta?.target;
-  const fields = Array.isArray(target)
-    ? target.join(' ').toLowerCase()
-    : typeof target === 'string'
-      ? target.toLowerCase()
-      : '';
-  return fields.includes('patientnumber');
+export interface PatientRepository {
+  create(context: TrustedTenantContext, input: CreatePatientInput): Promise<PatientMutationResult>;
+  list(context: TrustedTenantContext, query: ListPatientsQuery): Promise<TenantPatientList>;
+  findByIdForTenant(context: TrustedTenantContext, id: string): Promise<PatientRecord | null>;
+  update(
+    context: TrustedTenantContext,
+    id: string,
+    input: UpdatePatientInput,
+  ): Promise<PatientMutationResult>;
+  changeStatusIfCurrent(
+    context: TrustedTenantContext,
+    id: string,
+    expectedStatus: PatientStatus,
+    nextStatus: PatientStatus,
+    changedAt: Date,
+  ): Promise<PatientMutationResult>;
 }
 
+/** Patient persistence is resolved from trusted scope before every operation. */
 @Injectable()
-export class PatientRepository {
-  constructor(private readonly prisma: PrismaService) {}
+export class TenantStoragePatientRepository implements PatientRepository {
+  constructor(
+    @Inject(TENANT_STORAGE_RESOLVER)
+    private readonly resolver: TenantStorageResolver,
+    @Inject(TENANT_PATIENT_STORAGE)
+    private readonly storage: TenantPatientStorage,
+  ) {}
 
-  async create(tenantId: string, input: CreatePatientInput): Promise<PatientMutationResult> {
-    if (!(await this.isTenantActive(tenantId))) return { kind: 'tenant-inactive' };
-
-    try {
-      const record = await this.prisma.patient.create({
-        data: {
-          tenantId,
-          patientNumber: input.patientNumber,
-          firstName: input.firstName,
-          middleName: input.middleName ?? null,
-          lastName: input.lastName,
-          preferredName: input.preferredName ?? null,
-          dateOfBirth: input.dateOfBirth ?? null,
-          gender: input.gender ?? null,
-          phone: input.phone ?? null,
-          email: input.email ?? null,
-          nationalId: input.nationalId ?? null,
-          address: input.address ?? null,
-        },
-        select: patientSelect,
-      });
-      return { kind: 'changed', record };
-    } catch (error) {
-      if (isPatientNumberConflict(error)) return { kind: 'patient-number-conflict' };
-      throw error;
-    }
+  create(context: TrustedTenantContext, input: CreatePatientInput): Promise<PatientMutationResult> {
+    return this.withRoute(context, (route) => this.storage.create(context, route, input));
   }
 
-  async list(
-    tenantId: string,
-    query: ListPatientsQuery,
-  ): Promise<{ items: PatientRecord[]; total: number }> {
-    const where: Prisma.PatientWhereInput = {
-      tenantId,
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.patientNumber ? { patientNumber: query.patientNumber } : {}),
-    };
-    const [items, total] = await Promise.all([
-      this.prisma.patient.findMany({
-        where,
-        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-        skip: query.offset,
-        take: query.limit,
-        select: patientSelect,
-      }),
-      this.prisma.patient.count({ where }),
-    ]);
-    return { items, total };
+  list(context: TrustedTenantContext, query: ListPatientsQuery): Promise<TenantPatientList> {
+    return this.withRoute(context, (route) => this.storage.list(context, route, query));
   }
 
-  findByIdForTenant(tenantId: string, id: string): Promise<PatientRecord | null> {
-    return this.prisma.patient.findFirst({
-      where: { id, tenantId },
-      select: patientSelect,
-    });
+  findByIdForTenant(context: TrustedTenantContext, id: string): Promise<PatientRecord | null> {
+    return this.withRoute(context, (route) => this.storage.findById(context, route, id));
   }
 
-  async update(
-    tenantId: string,
+  update(
+    context: TrustedTenantContext,
     id: string,
     input: UpdatePatientInput,
   ): Promise<PatientMutationResult> {
-    if (!(await this.isTenantActive(tenantId))) return { kind: 'tenant-inactive' };
-
-    try {
-      const result = await this.prisma.patient.updateMany({
-        where: { id, tenantId },
-        data: input,
-      });
-      if (result.count !== 1) return { kind: 'not-found' };
-      const record = await this.findByIdForTenant(tenantId, id);
-      return record ? { kind: 'changed', record } : { kind: 'not-found' };
-    } catch (error) {
-      if (isPatientNumberConflict(error)) return { kind: 'patient-number-conflict' };
-      throw error;
-    }
+    return this.withRoute(context, (route) => this.storage.update(context, route, id, input));
   }
 
-  async changeStatusIfCurrent(
-    tenantId: string,
+  changeStatusIfCurrent(
+    context: TrustedTenantContext,
     id: string,
     expectedStatus: PatientStatus,
     nextStatus: PatientStatus,
     changedAt: Date,
   ): Promise<PatientMutationResult> {
-    if (!(await this.isTenantActive(tenantId))) return { kind: 'tenant-inactive' };
-
-    const result = await this.prisma.patient.updateMany({
-      where: { id, tenantId, status: expectedStatus },
-      data: { status: nextStatus, updatedAt: changedAt },
-    });
-    if (result.count !== 1) return { kind: 'not-changed' };
-    const record = await this.findByIdForTenant(tenantId, id);
-    return record ? { kind: 'changed', record } : { kind: 'not-found' };
+    return this.withRoute(context, (route) =>
+      this.storage.changeStatusIfCurrent(context, route, id, expectedStatus, nextStatus, changedAt),
+    );
   }
 
-  private async isTenantActive(tenantId: string): Promise<boolean> {
-    const tenant = await this.prisma.tenant.findFirst({
-      where: { id: tenantId, status: TenantStatus.ACTIVE },
-      select: { id: true },
-    });
-    return tenant !== null;
+  private async withRoute<T>(
+    context: TrustedTenantContext,
+    operation: (route: TenantStorageRoute) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const route = await this.resolver.resolve(context);
+      return await operation(route);
+    } catch (error) {
+      if (
+        error instanceof TenantContextRequiredError ||
+        error instanceof TenantContextInvalidError ||
+        error instanceof TenantStorageNotConfiguredError ||
+        error instanceof TenantStorageUnavailableError
+      ) {
+        throw error;
+      }
+      throw new TenantStorageUnavailableError();
+    }
   }
 }

@@ -27,7 +27,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { PatientStatus } from '@prisma/client';
+import { PatientStatus } from './patient.model';
 import type { FastifyRequest } from 'fastify';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { CurrentPlatformUser } from '../auth/decorators/current-platform-user.decorator';

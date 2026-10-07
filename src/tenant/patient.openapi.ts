@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { PatientStatus } from '@prisma/client';
+import { PatientStatus } from './patient.model';
 
 export class CreatePatientRequestDto {
   @ApiProperty({ type: String, minLength: 1, maxLength: 64 })

@@ -1,5 +1,5 @@
-import { Injectable } from '@nestjs/common';
-import { PatientStatus, PlatformAuditEventType } from '@prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
+import { PlatformAuditEventType } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
@@ -24,7 +24,8 @@ import {
   PatientNotFoundError,
   PatientNumberConflictError,
 } from './patient.errors';
-import { PatientRepository, type PatientRecord } from './patient.repository';
+import { type PatientRepository, PATIENT_REPOSITORY } from './patient.repository';
+import { PatientStatus, type PatientRecord } from './patient.model';
 
 export type PatientAuditContext = Pick<
   TrustedSecurityContext,
@@ -60,6 +61,7 @@ const PATIENT_MUTABLE_FIELDS = [
 @Injectable()
 export class PatientService {
   constructor(
+    @Inject(PATIENT_REPOSITORY)
     private readonly patients: PatientRepository,
     private readonly audit: PlatformAuditService,
   ) {}
@@ -75,7 +77,7 @@ export class PatientService {
     const parsed = createPatientSchema.safeParse(input);
     if (!parsed.success) throw new PatientInputValidationError();
 
-    const record = this.changedRecord(await this.patients.create(tenantId, parsed.data));
+    const record = this.changedRecord(await this.patients.create(context, parsed.data));
     await this.audit.recordAudit({
       eventType: PlatformAuditEventType.PATIENT_CREATED,
       actorUserId: actor.userId,
@@ -96,11 +98,11 @@ export class PatientService {
     context: TrustedTenantContext,
     query: ListPatientsQuery,
   ): Promise<PatientListResponse> {
-    const tenantId = this.trustedTenantId(context);
+    this.trustedTenantId(context);
     const parsed = listPatientsQuerySchema.safeParse(query);
     if (!parsed.success) throw new PatientInputValidationError();
     const { limit, offset } = parsed.data;
-    const { items, total } = await this.patients.list(tenantId, parsed.data);
+    const { items, total } = await this.patients.list(context, parsed.data);
     const nextOffset = offset + limit;
     return {
       items: items.map((record) => this.present(record)),
@@ -112,9 +114,9 @@ export class PatientService {
   }
 
   async findById(context: TrustedTenantContext, patientId: string): Promise<PatientResponse> {
-    const tenantId = this.trustedTenantId(context);
+    this.trustedTenantId(context);
     const id = this.patientId(patientId);
-    const record = await this.patients.findByIdForTenant(tenantId, id);
+    const record = await this.patients.findByIdForTenant(context, id);
     if (!record) throw new PatientNotFoundError();
     return this.present(record);
   }
@@ -132,7 +134,7 @@ export class PatientService {
     const parsed = updatePatientSchema.safeParse(input);
     if (!parsed.success) throw new PatientInputValidationError();
 
-    const record = this.changedRecord(await this.patients.update(tenantId, id, parsed.data));
+    const record = this.changedRecord(await this.patients.update(context, id, parsed.data));
     const changedFields = PATIENT_MUTABLE_FIELDS.filter(
       (field) => parsed.data[field] !== undefined,
     ).join(',');
@@ -180,7 +182,7 @@ export class PatientService {
     const tenantId = this.trustedTenantId(context);
     this.assertActor(context, actor);
     const id = this.patientId(patientId);
-    const current = await this.patients.findByIdForTenant(tenantId, id);
+    const current = await this.patients.findByIdForTenant(context, id);
     if (!current) throw new PatientNotFoundError();
     if (current.status === nextStatus) return this.present(current);
     if (!this.canTransition(current.status, nextStatus)) {
@@ -189,17 +191,16 @@ export class PatientService {
 
     const changedAt = new Date();
     const result = await this.patients.changeStatusIfCurrent(
-      tenantId,
+      context,
       id,
       current.status,
       nextStatus,
       changedAt,
     );
-    if (result.kind === 'tenant-inactive') throw new TenantContextInvalidError();
     if (result.kind === 'patient-number-conflict') throw new PatientNumberConflictError();
     if (result.kind === 'not-found') throw new PatientNotFoundError();
     if (result.kind === 'not-changed') {
-      const latest = await this.patients.findByIdForTenant(tenantId, id);
+      const latest = await this.patients.findByIdForTenant(context, id);
       if (!latest) throw new PatientNotFoundError();
       if (latest.status === nextStatus) return this.present(latest);
       throw new PatientLifecycleConflictError();
@@ -224,7 +225,6 @@ export class PatientService {
 
   private changedRecord(result: Awaited<ReturnType<PatientRepository['create']>>): PatientRecord {
     if (result.kind === 'changed') return result.record;
-    if (result.kind === 'tenant-inactive') throw new TenantContextInvalidError();
     if (result.kind === 'not-found') throw new PatientNotFoundError();
     if (result.kind === 'patient-number-conflict') throw new PatientNumberConflictError();
     throw new PatientLifecycleConflictError();

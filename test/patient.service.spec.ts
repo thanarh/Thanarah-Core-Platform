@@ -1,4 +1,4 @@
-import { PatientStatus, PlatformAuditEventType } from '@prisma/client';
+import { PlatformAuditEventType } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import type { PlatformAuditService } from '../src/platform-security/platform-audit.service';
@@ -10,7 +10,7 @@ import {
   PatientNotFoundError,
   PatientNumberConflictError,
 } from '../src/tenant/patient.errors';
-import type { PatientRecord } from '../src/tenant/patient.repository';
+import { PatientStatus, type PatientRecord } from '../src/tenant/patient.model';
 import { PatientService } from '../src/tenant/patient.service';
 import { TenantContextInvalidError } from '../src/tenant/tenant-context.contract';
 
@@ -92,7 +92,7 @@ describe('PatientService', () => {
       dateOfBirth: '1990-06-15',
       patientNumber: 'PAT-000001',
     });
-    expect(patients.create).toHaveBeenCalledWith(tenantId, {
+    expect(patients.create).toHaveBeenCalledWith(context, {
       patientNumber: 'PAT-000001',
       firstName: 'Amina Noor',
       lastName: 'Hassan',
@@ -143,7 +143,7 @@ describe('PatientService', () => {
       total: 26,
       hasNext: true,
     });
-    expect(patients.list).toHaveBeenCalledWith(tenantId, {
+    expect(patients.list).toHaveBeenCalledWith(context, {
       status: PatientStatus.INACTIVE,
       patientNumber: 'PAT-000001',
       limit: 20,
@@ -179,8 +179,8 @@ describe('PatientService', () => {
       dateOfBirth: '1990-06-15',
     });
     await expect(service.findById(context, patientId)).rejects.toBeInstanceOf(PatientNotFoundError);
-    expect(patients.findByIdForTenant).toHaveBeenNthCalledWith(1, tenantId, patientId);
-    expect(patients.findByIdForTenant).toHaveBeenNthCalledWith(2, tenantId, patientId);
+    expect(patients.findByIdForTenant).toHaveBeenNthCalledWith(1, context, patientId);
+    expect(patients.findByIdForTenant).toHaveBeenNthCalledWith(2, context, patientId);
   });
 
   it('updates partial values and clears nullable fields while auditing field names only', async () => {
@@ -195,7 +195,7 @@ describe('PatientService', () => {
         requestContext,
       ),
     ).resolves.toMatchObject({ phone: null });
-    expect(patients.update).toHaveBeenCalledWith(tenantId, patientId, {
+    expect(patients.update).toHaveBeenCalledWith(context, patientId, {
       phone: null,
       nationalId: null,
     });
@@ -292,7 +292,7 @@ describe('PatientService', () => {
       status: PatientStatus.INACTIVE,
     });
     expect(patients.changeStatusIfCurrent).toHaveBeenCalledWith(
-      tenantId,
+      context,
       patientId,
       PatientStatus.ACTIVE,
       PatientStatus.INACTIVE,
