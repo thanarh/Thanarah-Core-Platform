@@ -1,0 +1,807 @@
+PHASE 20 — STAFF ROLE ASSIGNMENT FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+Do NOT invent AI-looking abstractions, placeholder architecture, unnecessary abstractions, fake production behavior, or speculative future implementations.
+
+IMPORTANT:
+Implement ONLY Phase 20.
+Do not start Phase 21.
+Do not implement doctors, patients, departments, specialties, appointments, scheduling, medical records, prescriptions, billing, insurance, MongoDB healthcare data, notifications, or Voice AI.
+
+==================================================
+1. CURRENT ARCHITECTURE
+==================================================
+
+Thanarah uses:
+
+CENTRAL DATABASE
+- Prisma 6
+- MySQL/MariaDB
+
+TENANT DATABASES
+- MongoDB
+- Future healthcare/operational data only
+
+Existing identity hierarchy:
+
+Platform User
+    ↓
+Tenant Membership
+    ↓
+Tenant Staff
+    ↓
+Tenant Role Assignment
+    ↓
+Tenant Permissions
+    ↓
+Future Facility / Branch scope
+    ↓
+Business operations
+
+Important distinctions:
+
+Platform User != Tenant Membership
+Tenant Membership != Staff
+Staff != Role
+Role != Permission
+Permission != Entitlement
+Entitlement != Quota
+
+Preserve these distinctions.
+
+==================================================
+2. PHASE 20 GOAL
+==================================================
+
+Build the foundation for assigning existing tenant roles to existing staff members.
+
+The purpose of this phase is:
+
+Staff
+    ↓
+Staff Role Assignment
+    ↓
+Existing Tenant Role
+    ↓
+Existing Tenant Permissions
+
+The role assignment is an authorization relationship.
+
+Do NOT copy permissions into Staff.
+
+Do NOT store role names directly on Staff.
+
+Do NOT create a new role system.
+
+Do NOT modify the platform role system.
+
+Reuse the existing TenantRole / TenantPermission architecture already implemented in previous phases.
+
+==================================================
+3. FIRST INSPECT EXISTING IMPLEMENTATION
+==================================================
+
+Before coding:
+
+Inspect the existing:
+- TenantMembership
+- TenantRole
+- TenantPermission
+- Staff
+- tenant authorization guard
+- TrustedTenantContext
+- tenant permission resolution
+- existing role assignment models/services if any
+- existing migrations
+- existing audit system
+
+If the current architecture already has a reusable role-assignment relationship that can safely represent Staff → TenantRole, reuse it.
+
+Do NOT create duplicate role assignment tables.
+
+If the existing membership-role model is specifically designed for Membership authorization and cannot safely represent Staff authorization, create the smallest explicit StaffRoleAssignment model required.
+
+Do not assume a model is missing until you inspect the current schema.
+
+==================================================
+4. CORE RELATIONSHIP
+==================================================
+
+The intended conceptual model is:
+
+Tenant
+ ├── TenantMembership
+ │     └── PlatformUser
+ │
+ ├── Staff
+ │     └── TenantMembership
+ │
+ └── TenantRole
+       └── TenantPermission
+
+StaffRoleAssignment connects:
+
+Staff
+    +
+TenantRole
+
+Both must belong to the SAME tenant.
+
+This relationship must be enforced by application logic AND database constraints where practical.
+
+Never rely only on a client-supplied tenantId.
+
+TrustedTenantContext is authoritative.
+
+==================================================
+5. ROLE ASSIGNMENT MODEL
+==================================================
+
+If a new StaffRoleAssignment model is necessary, use the project's established ID/timestamp conventions.
+
+Conceptually:
+
+StaffRoleAssignment
+- id
+- tenantId only if required for safe relational integrity / established architecture
+- staffId
+- roleId
+- createdAt
+- updatedAt if appropriate
+
+Do not duplicate tenant ownership unnecessarily.
+
+If tenantId is included, enforce:
+
+Staff.tenantId == StaffRoleAssignment.tenantId
+Role.tenantId == StaffRoleAssignment.tenantId
+
+Do not allow drift.
+
+Recommended uniqueness:
+
+(staffId, roleId)
+
+A staff member should not receive the exact same role twice.
+
+Do NOT implement role priority or inheritance in this phase.
+
+==================================================
+6. ROLE ASSIGNMENT SEMANTICS
+==================================================
+
+Role assignment means:
+
+"This staff member has this tenant role."
+
+It does NOT mean:
+
+- creating a new role
+- changing the role definition
+- copying permissions
+- creating platform permissions
+- granting subscription entitlement
+- bypassing tenant membership
+- granting facility/branch access
+- granting healthcare privileges
+
+The role's permissions remain authoritative in the existing TenantRole → TenantPermission system.
+
+==================================================
+7. MEMBERSHIP INTEGRITY
+==================================================
+
+A Staff record already belongs to an existing TenantMembership.
+
+Role assignment must remain consistent with that relationship.
+
+Before assignment verify:
+
+1. TrustedTenantContext is valid
+2. staff exists
+3. staff belongs to current tenant
+4. staff's membership belongs to current tenant
+5. staff's membership is the expected membership for that staff record
+6. membership is still eligible according to existing lifecycle rules
+7. role exists
+8. role belongs to current tenant
+9. role is eligible for assignment according to existing role lifecycle rules
+10. no duplicate assignment exists
+
+Do not allow a StaffRoleAssignment to become a bypass around TenantMembership.
+
+==================================================
+8. STAFF / ROLE LIFECYCLE BEHAVIOR
+==================================================
+
+Follow the existing lifecycle conventions.
+
+Important:
+
+If Staff is:
+- SUSPENDED
+- DEACTIVATED
+
+do not silently treat the staff member as fully authorized.
+
+The existing authorization resolution must remain authoritative.
+
+Do not invent a second authorization engine.
+
+If the current tenant authorization architecture resolves permissions from TenantMembership rather than Staff role assignments, extend it carefully so the new Staff role relationship is incorporated without breaking existing membership authorization.
+
+The final effective authorization must remain server-side.
+
+==================================================
+9. EXISTING TENANT ROLES
+==================================================
+
+Do NOT create new role categories in this phase.
+
+Reuse existing TenantRole records.
+
+Do not hardcode:
+
+OWNER
+ADMIN
+DOCTOR
+NURSE
+RECEPTIONIST
+ACCOUNTANT
+
+unless those roles already exist in the current implementation.
+
+If they already exist, preserve them.
+
+Do not create clinical roles just because the future product will need them.
+
+==================================================
+10. AUTHORIZATION
+==================================================
+
+Use the existing tenant authorization architecture.
+
+Introduce only the minimum permissions required if they do not already exist.
+
+Suggested:
+
+tenant.staff.roles.read
+tenant.staff.roles.manage
+
+BUT:
+
+First inspect the existing permission naming convention.
+
+If the project already uses:
+
+staff.read
+staff.manage
+
+or another established convention, extend that convention rather than introducing inconsistent names.
+
+Recommended semantics:
+
+READ:
+- view staff role assignments
+
+MANAGE:
+- assign role
+- remove role
+
+Do not allow role definition editing from staff role endpoints.
+
+Role management remains a separate concern.
+
+==================================================
+11. API DESIGN
+==================================================
+
+Follow existing API conventions.
+
+Suggested:
+
+GET
+/api/v1/tenant/staff/:staffId/roles
+
+POST
+/api/v1/tenant/staff/:staffId/roles
+
+DELETE
+/api/v1/tenant/staff/:staffId/roles/:roleId
+
+If the project's existing routing structure differs, use the established structure.
+
+POST should accept only the minimum required role identifier.
+
+Example conceptual request:
+
+{
+  "roleId": "..."
+}
+
+Do NOT accept:
+
+tenantId
+permissionIds
+platformRoleIds
+entitlementIds
+quota values
+facilityId
+branchId
+
+from the client as authoritative values.
+
+The server resolves tenant scope through TrustedTenantContext.
+
+==================================================
+12. ROLE ASSIGNMENT
+==================================================
+
+When assigning:
+
+Validate:
+
+- authenticated actor
+- TrustedTenantContext
+- staff tenant ownership
+- staff membership integrity
+- role tenant ownership
+- role eligibility
+- actor has staff-role management permission
+- no duplicate assignment
+
+Then persist.
+
+Return a safe representation.
+
+Do not expose internal Prisma structures directly.
+
+==================================================
+13. ROLE REMOVAL
+==================================================
+
+Role removal must:
+
+- verify staff belongs to current tenant
+- verify role belongs to current tenant
+- verify assignment exists
+- verify actor has management permission
+- remove only that assignment
+
+Do not delete the Staff record.
+
+Do not deactivate the membership.
+
+Do not modify the TenantRole itself.
+
+Do not modify TenantPermission records.
+
+Do not modify subscription or entitlement state.
+
+==================================================
+14. AUTHORIZATION RESOLUTION
+==================================================
+
+This is the most important architectural requirement.
+
+Inspect how TenantAuthorizationGuard currently determines permissions.
+
+Extend it only if necessary so that:
+
+Staff
+→ assigned TenantRole(s)
+→ TenantPermission(s)
+
+can participate correctly in authorization.
+
+Do NOT create:
+
+StaffAuthorizationGuard
+StaffPermissionService
+StaffAuthEngine
+
+if the existing tenant authorization infrastructure can be extended cleanly.
+
+The system should have ONE tenant authorization model.
+
+Avoid duplicate permission-resolution paths.
+
+The server must remain authoritative.
+
+Never trust:
+- role IDs from JWT
+- permissions from JWT
+- request body roles
+- query-string permissions
+- custom headers
+- cookies
+
+==================================================
+15. IMPORTANT AUTHORIZATION QUESTION
+==================================================
+
+Determine how current TenantMembership roles and Staff roles interact.
+
+Do NOT silently replace existing membership authorization.
+
+Choose the smallest architecture-consistent behavior.
+
+If the existing system already treats TenantMembership as the authorization subject, determine whether Staff role assignments should:
+
+A) become the authorization roles for the membership, or
+B) be an additional server-resolved role source.
+
+Do not guess.
+
+Inspect the current implementation and document the decision.
+
+The resulting authorization behavior must be deterministic.
+
+Avoid accidental privilege multiplication.
+
+Do NOT implement role inheritance or automatic privilege escalation.
+
+==================================================
+16. AUDIT
+==================================================
+
+Add durable audit events for role assignment mutations.
+
+At minimum:
+
+STAFF_ROLE_ASSIGNED
+STAFF_ROLE_REMOVED
+
+Use the project's existing naming convention if an equivalent convention exists.
+
+Audit should identify:
+
+- actor
+- tenant
+- staff
+- role
+- action
+- result where appropriate
+
+Never store:
+- passwords
+- access tokens
+- refresh tokens
+- secrets
+- sensitive authentication material
+
+Do not create noisy audit events for ordinary reads.
+
+==================================================
+17. SECURITY TESTS
+==================================================
+
+Must test:
+
+Authentication:
+- unauthenticated request → 401
+
+Authorization:
+- missing staff-role read permission → denied
+- missing staff-role manage permission → denied
+- client-supplied permissions ignored
+- client-supplied tenantId ignored
+
+Tenant isolation:
+- staff from tenant A cannot receive role from tenant B
+- role from tenant B cannot be assigned to staff from tenant A
+- staff role listing cannot cross tenants
+- role removal cannot cross tenants
+
+Integrity:
+- duplicate assignment rejected or idempotently handled according to project conventions
+- invalid staff rejected
+- invalid role rejected
+- mismatched membership rejected
+- invalid/deactivated staff handled correctly
+- invalid role lifecycle handled correctly
+
+Privilege:
+- assigning a role must produce exactly the permissions defined by that role
+- role assignment must not modify role definition
+- role assignment must not modify permission definitions
+- staff cannot escalate to platform roles
+- staff role assignment cannot bypass TenantMembership
+
+==================================================
+18. EFFECTIVE PERMISSIONS TEST
+==================================================
+
+Add at least one integration-level test proving:
+
+Staff
+→ Role Assignment
+→ Role Permissions
+→ Tenant Authorization
+
+works through the existing authorization system.
+
+Example conceptual test:
+
+1. Create Tenant
+2. Create Membership
+3. Create Staff
+4. Create Role
+5. Attach Permission to Role
+6. Assign Role to Staff
+7. Resolve tenant authorization
+8. Verify expected permission is available
+9. Verify unrelated permission is unavailable
+
+This test must use the actual authorization path.
+
+Do not test only the database relationship.
+
+==================================================
+19. ROLE REMOVAL AUTHORIZATION TEST
+==================================================
+
+Also prove:
+
+1. Staff has Role A
+2. Role A grants Permission X
+3. Staff can satisfy Permission X
+4. Remove Role A
+5. Authorization no longer grants Permission X
+
+Do not use stale cached permissions.
+
+If the system has no cache, verify the database-backed resolution directly.
+
+If there is a cache already, invalidate it according to the existing architecture.
+
+Do NOT introduce Redis/cache in this phase.
+
+==================================================
+20. FACILITY / BRANCH
+==================================================
+
+Do NOT implement facility or branch role scopes yet.
+
+A staff role is tenant-wide in this phase.
+
+Do not add:
+- facilityRole
+- branchRole
+- facility permissions
+- branch permissions
+
+Those are later organizational-scope capabilities.
+
+==================================================
+21. ENTITLEMENT / QUOTA
+==================================================
+
+Do NOT add subscription checks to role assignment unless the existing architecture explicitly requires it.
+
+Do not mix:
+
+Authorization
+Entitlement
+Quota
+
+Role assignment is authorization configuration.
+
+Do not create usage events.
+
+Do not consume quota merely by assigning a role.
+
+==================================================
+22. DATABASE MIGRATION
+==================================================
+
+If schema changes are required:
+
+- update Prisma schema
+- create migration
+- inspect generated SQL
+- verify migration/schema consistency
+- do not apply to production
+- do not connect to production
+- do not modify unrelated migrations
+
+Use restrictive foreign keys where appropriate.
+
+Prevent orphaned assignments.
+
+Prevent cross-tenant role relationships.
+
+==================================================
+23. OPENAPI
+==================================================
+
+Document the role assignment APIs.
+
+Document:
+
+- request DTO
+- response DTO
+- required permissions
+- error responses
+- role assignment behavior
+
+Do not expose internal Prisma models.
+
+==================================================
+24. TEST REQUIREMENTS
+==================================================
+
+Add focused tests covering at least:
+
+A. Assignment
+- valid assignment
+- duplicate assignment
+- invalid staff
+- invalid role
+- tenant mismatch
+
+B. Listing
+- list assigned roles
+- empty assignments
+- cross-tenant isolation
+
+C. Removal
+- valid removal
+- missing assignment
+- cross-tenant removal
+- authorization failure
+
+D. Authorization
+- assigned role grants its permissions
+- unrelated permissions remain unavailable
+- removal removes effective permission
+- client role injection ignored
+- client permission injection ignored
+
+E. Membership
+- staff/membership mismatch rejected
+- removed membership cannot become an authorization bypass
+
+F. Lifecycle
+- suspended staff cannot unexpectedly gain authorization
+- deactivated staff cannot unexpectedly gain authorization
+
+G. Audit
+- assignment audited
+- removal audited
+- failed mutation does not create a false success audit
+
+H. Regression
+- existing tenant authorization tests
+- tenant staff tests
+- subscription tests
+- entitlement tests
+- quota tests
+- platform authorization tests
+
+Do not artificially inflate test count.
+Focus on meaningful behavior.
+
+==================================================
+25. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- Doctors
+- Patients
+- Departments
+- Specialties
+- Appointments
+- Scheduling
+- Availability
+- Visits
+- Medical records
+- Prescriptions
+- Medical documents
+- Billing
+- Insurance
+- Notifications
+- MongoDB healthcare models
+- Staff attendance
+- Payroll
+- HR
+- Recruitment
+- Contracts
+- Voice AI
+- Telephony
+- Usage metering
+- Redis
+- Background workers
+- Billing integrations
+- New subscription logic
+- New quota logic
+
+Do not refactor unrelated code.
+
+Do not modify the architecture specification.
+
+Do not rename established models merely for style.
+
+==================================================
+26. VALIDATION
+==================================================
+
+Before completion run:
+
+1. Prisma validation
+2. Prisma generated schema check
+3. Migration diff/schema consistency
+4. TypeScript checks
+5. Lint
+6. Formatting
+7. Focused role-assignment tests
+8. Full test suite
+9. Production build
+10. Restart application
+11. GET /health
+12. GET /docs
+13. Verify /ready remains truthful
+14. Verify no test-only production route exists
+15. Inspect git diff
+16. Confirm no secrets were introduced
+17. Confirm uploaded architecture specification was not changed
+
+Do not claim a migration was applied unless it actually was.
+
+==================================================
+27. COMMIT
+==================================================
+
+If and only if all validation passes:
+
+Create exactly ONE commit:
+
+feat(tenant): add staff role assignment foundation
+
+Use the existing repository hooks.
+
+Do NOT use:
+
+--no-verify
+
+Do not commit unrelated files.
+
+==================================================
+28. FINAL REPORT
+==================================================
+
+STOP after Phase 20.
+
+Do not begin Phase 21.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Whether a new model was required or existing assignment infrastructure was reused
+5. Prisma schema changes
+6. Migration name
+7. Staff → Role relationship
+8. Membership integrity rules
+9. Authorization behavior
+10. Permissions added/reused
+11. API endpoints
+12. Audit events
+13. Cross-tenant protections
+14. Effective-permission integration test
+15. Role-removal authorization test
+16. Test count + focused tests
+17. TypeScript/build/lint/format results
+18. Prisma validation/migration verification
+19. /health and /docs results
+20. /ready result
+21. Whether migration was applied
+22. Any architectural decision that required deviation
+23. Explicit list of everything NOT implemented
+
+Do not claim success until the actual validation commands pass.
