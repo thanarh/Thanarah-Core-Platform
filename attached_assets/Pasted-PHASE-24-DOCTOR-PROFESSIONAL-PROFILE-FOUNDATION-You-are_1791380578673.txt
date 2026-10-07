@@ -1,0 +1,885 @@
+PHASE 24 — DOCTOR PROFESSIONAL PROFILE FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+This is a REAL commercial multi-tenant healthcare SaaS system.
+Do NOT treat this as a prototype.
+
+Implement ONLY Phase 24.
+Do not start Phase 25.
+
+==================================================
+1. PHASE GOAL
+==================================================
+
+Build the minimal professional profile foundation for the existing Doctor entity.
+
+Phase 23 established:
+
+Platform User
+    ↓
+Tenant Membership
+    ↓
+Staff
+    ↓
+Doctor
+    ├── Department assignments
+    └── Specialty assignments
+
+Phase 24 adds professional profile metadata to Doctor.
+
+The goal is to represent professional information that is useful for administration and future healthcare workflows.
+
+This phase is NOT a licensing/verification system.
+
+==================================================
+2. IMPORTANT ARCHITECTURAL BOUNDARY
+==================================================
+
+Doctor already exists.
+
+DO NOT create another Doctor model.
+
+Do NOT create another Staff model.
+
+Do NOT create another User model.
+
+Do NOT create another authentication identity.
+
+The professional profile belongs to the existing Doctor.
+
+Preferred conceptual structure:
+
+Doctor
+    └── Professional Profile
+
+If the current architecture can safely keep these fields directly on Doctor without creating an excessive separate table, prefer the simpler design.
+
+Only create a separate DoctorProfessionalProfile model if the existing architecture or data lifecycle genuinely benefits from separation.
+
+Do not create abstractions merely for theoretical future use.
+
+==================================================
+3. FIRST INSPECT EXISTING IMPLEMENTATION
+==================================================
+
+Before coding inspect:
+
+- Doctor model
+- Staff model
+- TenantMembership
+- PlatformUser
+- Department
+- Specialty
+- DoctorDepartmentAssignment
+- DoctorSpecialtyAssignment
+- Doctor lifecycle
+- Staff lifecycle
+- TrustedTenantContext
+- TenantAuthorizationGuard
+- doctor repository/service/controller
+- existing DTO conventions
+- validation conventions
+- audit conventions
+- OpenAPI conventions
+- Prisma migration conventions
+- existing healthcare naming conventions
+
+Determine whether Doctor already contains any professional fields.
+
+Do NOT duplicate existing fields.
+
+==================================================
+4. PROFESSIONAL PROFILE SCOPE
+==================================================
+
+Phase 24 should contain only professional administrative/profile information.
+
+Potential fields, ONLY if justified by the existing architecture:
+
+- professional display name
+- professional title
+- professional identifier/code
+- biography/about
+- years of experience
+- professional profile visibility/status if already required
+
+Use the smallest set that is actually justified.
+
+Do NOT add speculative fields.
+
+==================================================
+5. DO NOT IMPLEMENT LICENSING SYSTEM
+==================================================
+
+Do NOT build:
+
+- license verification
+- licensing authority integration
+- license status workflow
+- license expiration workers
+- certificate verification
+- document verification
+- professional credential approval
+- external registry integration
+
+If a professional license number is explicitly required by the existing product architecture, it may be represented as a simple field.
+
+But:
+
+A license identifier field != licensing subsystem.
+
+Do not create a workflow around it.
+
+==================================================
+6. RECOMMENDED PROFILE FIELDS
+==================================================
+
+Before implementation, determine the minimum useful profile.
+
+A reasonable foundation may contain:
+
+displayName
+professionalTitle
+professionalCode
+bio
+
+Optionally:
+
+yearsOfExperience
+
+But do not add fields merely because they are common in healthcare systems.
+
+Every field must have:
+
+- clear purpose
+- validation
+- API behavior
+- OpenAPI representation
+- test coverage
+
+If the existing specification does not justify a field, leave it out.
+
+==================================================
+7. TENANT OWNERSHIP
+==================================================
+
+Professional profile belongs to Doctor.
+
+Doctor already belongs to Staff and Tenant.
+
+Do not allow changing:
+
+- tenantId
+- staffId
+- membershipId
+
+through professional profile updates.
+
+TrustedTenantContext remains authoritative.
+
+Cross-tenant profile access must fail.
+
+==================================================
+8. DOCTOR STATUS
+==================================================
+
+Professional profile does not replace Doctor lifecycle.
+
+Existing Doctor lifecycle remains:
+
+ACTIVE
+SUSPENDED
+DEACTIVATED
+
+Professional profile updates must not automatically activate/deactivate Doctor.
+
+Do not create a second profile lifecycle.
+
+If Doctor is DEACTIVATED, profile data remains available for administrative/history purposes according to existing read conventions.
+
+==================================================
+9. STAFF STATUS
+==================================================
+
+Do not bypass Staff lifecycle.
+
+Doctor professional profile updates require the existing Doctor/Staff authorization path.
+
+A SUSPENDED or DEACTIVATED Staff member must not become operational merely because profile data is updated.
+
+Do not modify Staff status from the Doctor profile API.
+
+==================================================
+10. PROFESSIONAL TITLE
+==================================================
+
+If implemented, professionalTitle is descriptive metadata.
+
+Examples:
+
+- Consultant
+- Specialist
+- General Practitioner
+
+Do NOT turn professionalTitle into:
+
+- Role
+- Permission
+- Specialty
+- Department
+
+It is display/profile metadata only.
+
+Do not infer authorization from it.
+
+==================================================
+11. PROFESSIONAL CODE
+==================================================
+
+If implemented, professionalCode must have clear tenant scope.
+
+Do not make it globally unique unless existing architecture explicitly requires global uniqueness.
+
+Preferred:
+
+unique within tenant
+
+If uniqueness requires Doctor + Tenant composite constraints, implement them at database level where practical.
+
+Do not use the professional code as authentication.
+
+Do not use it as a permission identifier.
+
+==================================================
+12. BIO
+==================================================
+
+If a biography/about field is implemented:
+
+- validate maximum length
+- normalize safely
+- do not execute/render HTML
+- do not accept arbitrary unsafe markup
+- preserve plain text semantics
+
+Do not create a rich-text editor backend.
+
+Do not add HTML sanitization infrastructure unless required by the existing project.
+
+==================================================
+13. YEARS OF EXPERIENCE
+==================================================
+
+If implemented:
+
+- integer only
+- non-negative
+- reasonable maximum
+- reject decimals
+- reject negative values
+- reject unsafe numeric values
+
+Do not calculate experience automatically from employment records.
+
+This is a declared profile value.
+
+Do not create an employment-history subsystem.
+
+==================================================
+14. API DESIGN
+==================================================
+
+Use the existing Doctor API conventions.
+
+Possible:
+
+GET
+/api/v1/tenants/:tenantId/doctors/:doctorId/profile
+
+PATCH
+/api/v1/tenants/:tenantId/doctors/:doctorId/profile
+
+If the existing Doctor GET/PATCH already returns and updates profile metadata cleanly, DO NOT create duplicate endpoints.
+
+Prefer extending existing Doctor DTOs when that is architecturally cleaner.
+
+The goal is one coherent Doctor API, not multiple competing representations.
+
+Inspect the existing implementation first.
+
+==================================================
+15. UPDATE RULES
+==================================================
+
+Only profile fields may be changed.
+
+Never allow profile update to change:
+
+- doctorId
+- tenantId
+- staffId
+- membershipId
+- roles
+- permissions
+- departments
+- specialties
+- facilities
+- branches
+- subscription
+- entitlement
+- quota
+
+Department and Specialty assignment remain their existing dedicated relationships.
+
+Facility and Branch scope remains inherited from Staff.
+
+==================================================
+16. AUTHORIZATION
+==================================================
+
+Use existing doctor authorization.
+
+Do NOT create:
+
+DoctorProfileGuard
+DoctorProfileAuthorizationGuard
+
+unless a very narrow reusable policy is genuinely necessary.
+
+Existing permission convention should remain authoritative.
+
+If:
+
+doctor.read
+doctor.manage
+
+already exist, reuse them.
+
+Profile reads require the appropriate read permission.
+
+Profile mutations require the appropriate manage permission.
+
+Do not automatically grant doctor.manage to doctors themselves.
+
+A Doctor profile does NOT imply permission to edit itself.
+
+Authorization remains role-based.
+
+==================================================
+17. SELF-SERVICE
+==================================================
+
+Do NOT introduce self-service editing in this phase unless the existing architecture already explicitly supports it.
+
+Do not assume:
+
+"Doctor can edit own profile"
+
+is automatically valid.
+
+If the existing authorization model has no self-service permission, administrators remain responsible for profile management.
+
+Document this decision.
+
+==================================================
+18. VALIDATION
+==================================================
+
+All input must use the existing validation framework.
+
+Validate:
+
+- strings
+- lengths
+- optional fields
+- numeric fields
+- normalization
+- uniqueness where applicable
+
+Reject:
+
+- unknown protected fields
+- tenantId
+- staffId
+- membershipId
+- role IDs
+- permission IDs
+- facility IDs
+- branch IDs
+- subscription IDs
+- entitlement IDs
+
+Do not allow mass-assignment.
+
+==================================================
+19. RESPONSE DESIGN
+==================================================
+
+Return stable DTOs.
+
+Do not expose raw Prisma models.
+
+Do not expose:
+
+- password hashes
+- token hashes
+- internal auth state
+- secrets
+- database identifiers
+- MongoDB physical identifiers
+
+Return only professional profile information appropriate for the API.
+
+==================================================
+20. AUDIT
+==================================================
+
+Professional profile mutations must use the existing audit system.
+
+At minimum:
+
+DOCTOR_PROFILE_UPDATED
+
+If the existing architecture already audits Doctor updates generically, reuse that convention instead of creating duplicate events.
+
+Audit should identify:
+
+- actor
+- tenant
+- doctor
+- staff
+- changed professional fields where appropriate
+
+Do not store sensitive authentication material.
+
+Do not create audit events for ordinary reads unless existing policy requires it.
+
+==================================================
+21. SECURITY
+==================================================
+
+Must test:
+
+- unauthenticated → 401
+- missing doctor.read → denied
+- missing doctor.manage → denied
+- cross-tenant doctor read blocked
+- cross-tenant doctor update blocked
+- client tenant injection rejected
+- client staffId injection rejected
+- client role injection rejected
+- client permission injection rejected
+- protected-field mutation rejected
+- doctor profile update cannot change Staff
+- doctor profile update cannot change TenantMembership
+- doctor profile update cannot grant permissions
+
+==================================================
+22. TENANT ISOLATION
+==================================================
+
+Test:
+
+Tenant A Doctor
++
+Tenant B profile update
+
+must fail.
+
+Tenant A Doctor
++
+Tenant B Staff
+
+must fail.
+
+Do not permit reassociation of Doctor to another Staff through profile APIs.
+
+Doctor ownership is immutable through this API.
+
+==================================================
+23. LIFECYCLE TESTS
+==================================================
+
+Test:
+
+ACTIVE Doctor
+→ profile update works
+
+SUSPENDED Doctor
+→ behavior follows existing Doctor update convention
+
+DEACTIVATED Doctor
+→ behavior follows existing lifecycle policy
+
+Most importantly:
+
+profile update must NEVER change Doctor status automatically.
+
+Profile metadata must not reactivate a Doctor.
+
+==================================================
+24. PROFESSIONAL DATA SEMANTICS
+==================================================
+
+Do not confuse:
+
+professionalTitle
+with
+TenantRole
+
+Do not confuse:
+
+professionalCode
+with
+PlatformUser ID
+
+Do not confuse:
+
+bio
+with
+clinical notes
+
+Do not confuse:
+
+yearsOfExperience
+with
+employment history
+
+Do not create hidden semantics around these fields.
+
+==================================================
+25. DEPARTMENT / SPECIALTY
+==================================================
+
+Do NOT change DoctorDepartmentAssignment or DoctorSpecialtyAssignment architecture unless the current profile implementation requires a very small compatibility fix.
+
+Profile update must not silently modify department or specialty relationships.
+
+Those remain separate APIs and services.
+
+==================================================
+26. FACILITY / BRANCH
+==================================================
+
+Do NOT change Staff Facility/Branch scope.
+
+Doctor profile is not a scope mechanism.
+
+Do not create:
+
+DoctorFacilityAssignment
+DoctorBranchAssignment
+
+Do not add facilityId or branchId to the professional profile.
+
+==================================================
+27. SUBSCRIPTION / ENTITLEMENT / QUOTA
+==================================================
+
+Do not add:
+
+- subscription checks
+- entitlement checks
+- quota consumption
+- usage events
+- billing logic
+
+Keep:
+
+Authorization
+separate from
+Entitlement
+separate from
+Quota.
+
+==================================================
+28. DATABASE DESIGN
+==================================================
+
+Prefer the smallest schema change.
+
+If professional fields can safely live directly on Doctor:
+
+prefer that.
+
+If a separate DoctorProfessionalProfile model is truly justified:
+
+- make it one-to-one with Doctor
+- enforce uniqueness
+- tenant integrity must remain safe
+- use restrictive relationships
+- avoid orphan records
+
+Do NOT create a separate table merely to make the architecture look more elaborate.
+
+==================================================
+29. MIGRATION
+==================================================
+
+If schema changes are required:
+
+- update Prisma schema
+- create migration
+- inspect generated SQL
+- verify migration matches generated DDL
+- do not apply migration
+- do not connect to production
+- do not modify unrelated migrations
+
+==================================================
+30. OPENAPI
+==================================================
+
+Update Swagger/OpenAPI.
+
+Document:
+
+- professional profile DTO
+- allowed fields
+- validation rules
+- authorization
+- protected fields
+- response shape
+- error behavior
+
+Do not expose internal Prisma models.
+
+==================================================
+31. TEST REQUIREMENTS
+==================================================
+
+Focused tests must include:
+
+A. Profile creation/availability
+- doctor profile can be read
+- initial profile behavior is deterministic
+- missing profile behavior is deterministic if a separate table is used
+
+B. Update
+- valid update
+- partial update
+- empty update behavior
+- invalid strings
+- overlong strings
+- invalid numbers
+- negative years
+- decimal years
+- duplicate professional code if implemented
+
+C. Protected fields
+- tenantId rejected
+- staffId rejected
+- membershipId rejected
+- role IDs rejected
+- permission IDs rejected
+- facilityId rejected
+- branchId rejected
+- subscription fields rejected
+
+D. Tenant isolation
+- cross-tenant read denied
+- cross-tenant update denied
+- tenant injection denied
+
+E. Authorization
+- read permission required
+- manage permission required
+- client permission injection ignored
+
+F. Lifecycle
+- suspended/deactivated behavior
+- profile update never changes Doctor status
+- profile update never changes Staff status
+
+G. Audit
+- profile mutation audited
+- failed mutation does not create false success audit
+
+H. Regression
+All existing:
+- auth
+- tenant
+- membership
+- role
+- staff
+- staff role
+- staff scope
+- department
+- specialty
+- doctor
+- subscription
+- entitlement
+- quota
+
+tests must remain passing.
+
+==================================================
+32. OPTIONAL TYPE-CHECK NOTE
+==================================================
+
+There is an existing optional:
+
+npm run type-check:tenant-contracts
+
+which currently reports 10 unrelated test-only errors in three existing Staff/healthcare-catalog test files.
+
+Do NOT mix unrelated cleanup into Phase 24.
+
+If those same errors remain:
+
+- do not claim they were caused by Phase 24
+- report them separately
+- do not modify unrelated files merely to make the Phase 24 commit look cleaner
+
+The standard project type-check remains mandatory.
+
+==================================================
+33. SAFE RUNTIME VALIDATION
+==================================================
+
+If DATABASE_URL is potentially configured for production:
+
+DO NOT start or restart the configured application workflow merely for validation.
+
+Use:
+
+- Prisma validation
+- client generation
+- migration/schema comparison
+- unit/integration tests
+- isolated HTTP tests
+- build
+
+If safe isolated HTTP testing is available, verify Swagger/OpenAPI.
+
+Do NOT contact production.
+
+Do NOT apply migrations.
+
+==================================================
+34. NO EXTRA WORK
+==================================================
+
+DO NOT implement:
+
+- license verification
+- licensing authority integration
+- certificates
+- credential verification
+- doctor schedules
+- availability
+- working hours
+- appointments
+- patients
+- services
+- pricing
+- visits
+- medical records
+- clinical notes
+- diagnoses
+- prescriptions
+- medical documents
+- billing
+- insurance
+- reviews
+- ratings
+- notifications
+- WhatsApp
+- Voice AI
+- telephony
+- Redis
+- workers
+- MongoDB clinical data
+
+Do not refactor unrelated code.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+35. VALIDATION
+==================================================
+
+Before completion run:
+
+1. Prisma validation
+2. Prisma client generation
+3. Migration/schema consistency if migration exists
+4. Standard TypeScript check
+5. Lint
+6. Formatting
+7. Focused Phase 24 tests
+8. Full test suite
+9. Production build
+10. Safe isolated HTTP/OpenAPI validation where possible
+11. Inspect git diff
+12. Confirm no secrets
+13. Confirm uploaded specification untouched
+14. Confirm only intended files changed
+
+Do NOT contact production.
+
+Do NOT apply migration.
+
+==================================================
+36. COMMIT
+==================================================
+
+If and only if all required validation passes:
+
+Create exactly ONE commit:
+
+feat(healthcare): add doctor professional profile foundation
+
+Use repository hooks.
+
+DO NOT use:
+
+--no-verify
+
+Do not commit unrelated files.
+
+Do not commit the uploaded architecture specification.
+
+==================================================
+37. FINAL REPORT
+==================================================
+
+STOP after Phase 24.
+
+Do not begin Phase 25.
+
+Report:
+
+1. Phase status
+2. Commit hash
+3. Files created/changed
+4. Whether profile fields were added to Doctor or a separate profile model was required
+5. Exact professional fields implemented
+6. Validation rules
+7. Doctor/Profile relationship
+8. Staff lifecycle interaction
+9. Doctor lifecycle interaction
+10. Department/Specialty separation preserved
+11. Facility/Branch scope separation preserved
+12. Permissions reused/added
+13. API endpoints
+14. Audit events
+15. Protected-field behavior
+16. Tenant-isolation tests
+17. Focused test count
+18. Full test count
+19. TypeScript result
+20. Lint result
+21. Formatting result
+22. Build result
+23. Prisma validation result
+24. Migration/schema verification
+25. Runtime/OpenAPI validation
+26. Whether migration was applied
+27. Whether production was contacted
+28. Existing type-check:tenant-contracts errors, if still present
+29. Any architectural deviation and why
+30. Explicit list of everything NOT implemented
+
+Do not claim Phase 24 is complete until all required validation commands actually pass.
