@@ -109,6 +109,10 @@ enum PlatformAuditEventType {
   STAFF_DEACTIVATED
   STAFF_ROLE_ASSIGNED
   STAFF_ROLE_REMOVED
+  STAFF_FACILITY_ASSIGNED
+  STAFF_FACILITY_UNASSIGNED
+  STAFF_BRANCH_ASSIGNED
+  STAFF_BRANCH_UNASSIGNED
   PLAN_CREATED
   PLAN_UPDATED
   PLAN_ACTIVATED
@@ -276,9 +280,12 @@ model Facility {
   deactivatedAt   DateTime?
   createdAt       DateTime       @default(now())
   updatedAt       DateTime       @updatedAt
-  tenant          Tenant         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  branches        Branch[]
+  tenant                Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  branches              Branch[]
+  staffAssignments      StaffFacilityAssignment[]
+  staffBranchAssignments StaffBranchAssignment[]     @relation("StaffBranchAssignmentFacility")
 
+  @@unique([id, tenantId])
   @@index([tenantId, status, createdAt])
 }
 
@@ -292,8 +299,10 @@ model Branch {
   deactivatedAt   DateTime?
   createdAt       DateTime     @default(now())
   updatedAt       DateTime     @updatedAt
-  facility        Facility     @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  facility        Facility                  @relation(fields: [facilityId], references: [id], onDelete: Restrict)
+  staffAssignments StaffBranchAssignment[]
 
+  @@unique([id, facilityId])
   @@index([facilityId, status, createdAt])
 }
 
@@ -313,7 +322,9 @@ model Staff {
   tenant          Tenant              @relation("TenantStaffTenant", fields: [tenantId], references: [id], onDelete: Restrict)
   platformUser    User                @relation("StaffPlatformUser", fields: [userId], references: [id], onDelete: Restrict)
   membership      TenantMembership    @relation("TenantStaffMembership", fields: [membershipId, tenantId, userId], references: [id, tenantId, platformUserId], onDelete: Restrict)
-  roleAssignments StaffRoleAssignment[]
+  roleAssignments     StaffRoleAssignment[]
+  facilityAssignments StaffFacilityAssignment[]
+  branchAssignments   StaffBranchAssignment[]
 
   @@unique([id, tenantId])
   @@unique([tenantId, userId])
@@ -407,6 +418,36 @@ model StaffRoleAssignment {
   @@id([staffId, tenantRoleId])
   @@index([tenantId, staffId])
   @@index([tenantId, tenantRoleId])
+}
+
+model StaffFacilityAssignment {
+  tenantId   String   @db.Char(36)
+  staffId    String   @db.Char(36)
+  facilityId String   @db.Char(36)
+  assignedAt DateTime @default(now())
+  staff      Staff    @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  facility   Facility @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@id([staffId, facilityId])
+  @@index([staffId, tenantId])
+  @@index([facilityId, tenantId])
+}
+
+model StaffBranchAssignment {
+  tenantId String @db.Char(36)
+  staffId  String @db.Char(36)
+  /// Derived from Branch.facilityId; retained to enforce tenant and parent-facility integrity.
+  facilityId String   @db.Char(36)
+  branchId   String   @db.Char(36)
+  assignedAt DateTime @default(now())
+  staff      Staff    @relation(fields: [staffId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  facility   Facility @relation("StaffBranchAssignmentFacility", fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  branch     Branch   @relation(fields: [branchId, facilityId], references: [id, facilityId], onDelete: Restrict)
+
+  @@id([staffId, branchId])
+  @@index([staffId, tenantId])
+  @@index([facilityId, tenantId])
+  @@index([branchId, facilityId])
 }
 
 model Plan {

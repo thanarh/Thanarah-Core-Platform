@@ -34,6 +34,9 @@ import { TenantStaffService } from './tenant-staff.service';
 import { TenantStaffRoleController } from './tenant-staff-role.controller';
 import { TenantStaffRoleRepository } from './tenant-staff-role.repository';
 import { TenantStaffRoleService } from './tenant-staff-role.service';
+import { TenantStaffScopeController } from './tenant-staff-scope.controller';
+import { TenantStaffScopeRepository } from './tenant-staff-scope.repository';
+import { TenantStaffScopeService } from './tenant-staff-scope.service';
 
 @Module({
   imports: [
@@ -52,6 +55,7 @@ import { TenantStaffRoleService } from './tenant-staff-role.service';
     BranchController,
     TenantStaffController,
     TenantStaffRoleController,
+    TenantStaffScopeController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -69,6 +73,8 @@ import { TenantStaffRoleService } from './tenant-staff-role.service';
     TenantStaffService,
     TenantStaffRoleRepository,
     TenantStaffRoleService,
+    TenantStaffScopeRepository,
+    TenantStaffScopeService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,
