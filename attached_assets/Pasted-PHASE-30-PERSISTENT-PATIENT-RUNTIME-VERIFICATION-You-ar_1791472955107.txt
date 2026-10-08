@@ -1,0 +1,821 @@
+PHASE 30 — PERSISTENT PATIENT RUNTIME VERIFICATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+The sole objective of this phase is to prove the Patient runtime against the persistent tenant-storage implementation created in Phase 29.
+
+This phase is a VERIFICATION + HARDENING phase.
+
+Do NOT add new Patient features.
+
+Do NOT implement:
+- Appointments
+- Scheduling
+- Availability
+- Visits
+- Encounters
+- Medical Records
+- Prescriptions
+- Billing
+- Insurance
+- Payments
+- Patient Authentication
+- Patient Portal
+- Notifications
+- Service Booking
+- Doctor-Patient relationships
+- Branch-Patient relationships
+- Facility-Patient relationships
+
+Do not redesign unrelated architecture.
+
+Do not contact production.
+
+Do not connect to cPanel.
+
+Do not connect to any production MongoDB.
+
+Do not use production secrets.
+
+Do not move production data.
+
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest commits:
+
+972ceca05cdc80a5f7aaa16e6703b9315cad9393
+feat(healthcare): add tenant service catalog foundation
+
+d856728
+feat(healthcare): harden tenant service catalog reads
+
+93c4edc
+feat(healthcare): add tenant patient foundation
+
+45ac599
+refactor(healthcare): establish patient tenant storage boundary
+
+1b6e361
+feat(infrastructure): add persistent tenant storage foundation
+
+Phase 29 verified state:
+
+- 790 tests passed
+- 88 test files passed
+- type-check passed
+- lint passed
+- formatting passed
+- build passed
+- Prisma validation passed
+- migration/schema comparison passed
+- /health returned {"status":"ok"}
+- production was NOT contacted
+- no production secrets were accessed
+- no Patient data was migrated
+- uploaded specification was not committed
+
+Phase 29 introduced:
+
+- central tenant-storage registry metadata
+- bounded reusable MongoDB client manager
+- MongoDB Patient adapter
+- explicit storage mode
+- persistent storage configuration
+- fail-closed behavior
+- explicit development memory mode
+- no automatic provisioning
+- no automatic routing
+- no central MySQL fallback for Patient runtime
+
+Important:
+
+Phase 29 MongoDB behavior was tested using mocks because no real test MongoDB instance was available.
+
+Phase 30 exists to close that verification gap safely.
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Establish a SAFE, ISOLATED, NON-PRODUCTION MongoDB verification environment and prove that:
+
+Patient API
+  ↓
+Patient Service
+  ↓
+Patient Repository
+  ↓
+Tenant Storage Boundary
+  ↓
+Tenant Storage Resolver
+  ↓
+Mongo Client Manager
+  ↓
+MongoDB Patient Adapter
+  ↓
+real MongoDB
+
+works correctly end-to-end.
+
+The verification environment must be disposable and must never point to production.
+
+==================================================
+1. FIRST: INSPECT EXISTING IMPLEMENTATION
+==================================================
+
+Before changing code, inspect:
+
+- Phase 28 Patient storage boundary
+- Phase 29 Tenant Storage Registry
+- Tenant Storage Resolver
+- Mongo client manager
+- Mongo Patient adapter
+- Patient repository
+- Patient service
+- Patient controller
+- environment configuration
+- test infrastructure
+- application startup/shutdown
+- existing Docker/container conventions
+- existing CI/test conventions
+
+Do not create duplicate infrastructure.
+
+Do not replace the current architecture.
+
+Extend only where verification exposes a real defect.
+
+==================================================
+2. SAFE TEST DATABASE
+==================================================
+
+Use a disposable NON-PRODUCTION MongoDB instance.
+
+Preferred order:
+
+1. Existing repository-supported test MongoDB infrastructure
+2. Existing local MongoDB test environment
+3. Testcontainers or equivalent isolated ephemeral MongoDB environment if already supported
+4. Another repository-compatible disposable test mechanism
+
+Do NOT require the developer to provide production credentials.
+
+Do NOT use the production Mongo URI.
+
+Do NOT use the cPanel Mongo URI.
+
+Do NOT use any existing production database name.
+
+Do NOT inspect or reuse production connection strings.
+
+If no safe real MongoDB test environment can be created in the current repository/CI environment:
+
+STOP before pretending runtime verification passed.
+
+In that case:
+- keep existing mock tests
+- report the exact infrastructure blocker
+- do not claim persistent runtime verification is complete
+
+Do not silently substitute mocks and call them end-to-end verification.
+
+==================================================
+3. TEST DATABASE NAMING
+==================================================
+
+The test Mongo database must be clearly isolated.
+
+Use a deterministic test-only naming convention.
+
+Example:
+
+thanarah_test_<run-id>
+
+or another repository-approved isolated naming scheme.
+
+Do not use:
+- thanarah
+- production
+- live
+- tenant production database names
+- real customer identifiers
+
+The database must be disposable.
+
+==================================================
+4. TEST TENANTS
+==================================================
+
+Create at least two isolated test tenants:
+
+Tenant A
+Tenant B
+
+They must have:
+
+- distinct logical tenant identities
+- distinct storage registry targets where possible
+- isolated Patient data
+
+Use deterministic fixtures.
+
+Example:
+
+Tenant A:
+patientNumber = PAT-000001
+
+Tenant B:
+patientNumber = PAT-000001
+
+Both MUST be valid.
+
+This proves patientNumber remains tenant-scoped.
+
+==================================================
+5. REAL MONGODB VERIFICATION
+==================================================
+
+When the disposable Mongo instance is available, verify actual Mongo behavior.
+
+Do NOT mock:
+
+- MongoClient
+- Mongo database selection
+- collection operations
+- indexes
+- Patient CRUD
+- connection reuse
+
+Mocks may still be used for isolated unit tests.
+
+But Phase 30 must include real integration tests against the disposable MongoDB instance.
+
+==================================================
+6. CONNECTION MANAGER
+==================================================
+
+Verify the Phase 29 Mongo client manager.
+
+Test:
+
+- first operation creates/reuses a client appropriately
+- subsequent operations reuse the connection/client
+- different physical targets do not accidentally share the wrong database
+- shutdown closes clients
+- failed connection is surfaced safely
+- reconnect behavior follows the existing architecture
+- no connection is created per Patient request
+
+Do not introduce unlimited connection caching.
+
+Do not weaken existing bounded-cache behavior.
+
+==================================================
+7. STORAGE REGISTRY
+==================================================
+
+Verify the actual central registry → storage resolution flow.
+
+For Tenant A:
+
+Central registry
+  ↓
+Tenant A logical storage
+  ↓
+Mongo Test DB A
+
+For Tenant B:
+
+Central registry
+  ↓
+Tenant B logical storage
+  ↓
+Mongo Test DB B
+
+Verify:
+
+- correct target selected
+- inactive target rejected
+- missing target rejected
+- malformed target rejected
+- tenant mismatch rejected
+- physical storage metadata is not returned through HTTP
+
+Do not expose:
+- Mongo URI
+- database name
+- credentials
+- internal target metadata
+
+==================================================
+8. PATIENT CRUD AGAINST REAL MONGO
+==================================================
+
+Run real integration tests for:
+
+CREATE
+READ
+LIST
+UPDATE
+ACTIVATE
+DEACTIVATE
+
+All operations must hit the real Mongo test database.
+
+Verify persistence across separate application/repository instances where practical.
+
+This is important:
+
+Create Patient
+↓
+destroy/recreate repository/service context
+↓
+read Patient
+↓
+Patient still exists
+
+This proves the implementation is actually persistent.
+
+Do not accept process-memory behavior as persistence.
+
+==================================================
+9. TENANT ISOLATION
+==================================================
+
+This is the most important security test.
+
+Create:
+
+Tenant A:
+PAT-000001
+
+Tenant B:
+PAT-000001
+
+Verify:
+
+Tenant A can read only A's patient.
+
+Tenant B can read only B's patient.
+
+Tenant A cannot retrieve B's patient by:
+- patient ID
+- patientNumber
+- direct repository call
+- HTTP request
+
+Tenant B cannot retrieve A's patient.
+
+Do not rely only on the fact that the databases are different.
+
+The TrustedTenantContext and storage boundary must still control access.
+
+==================================================
+10. IDENTICAL PATIENT NUMBERS
+==================================================
+
+Verify real Mongo uniqueness behavior.
+
+Tenant A:
+PAT-000001
+
+Tenant B:
+PAT-000001
+
+Both must succeed.
+
+Within Tenant A:
+
+PAT-000001
+PAT-000001
+
+The second must fail according to the existing domain error contract.
+
+This proves uniqueness is tenant-scoped.
+
+==================================================
+11. INDEX VERIFICATION
+==================================================
+
+Inspect actual Mongo indexes created by the Patient adapter.
+
+Verify required indexes actually exist.
+
+At minimum verify the index required for patientNumber uniqueness.
+
+Verify no global uniqueness constraint incorrectly prevents:
+
+Tenant A:
+PAT-000001
+
+and:
+
+Tenant B:
+PAT-000001
+
+from coexisting.
+
+Do not add speculative indexes.
+
+==================================================
+12. PERSISTENCE VERIFICATION
+==================================================
+
+Verify that Patient records survive:
+
+- repository recreation
+- service recreation
+- application restart where the test harness allows it
+
+Do not rely solely on an in-process test.
+
+At minimum:
+
+Process A:
+create Patient
+
+Process A ends
+
+Process B:
+read Patient
+
+The record must still exist.
+
+If full process restart is not practical inside the test environment, implement the closest safe equivalent and explicitly report the limitation.
+
+==================================================
+13. API END-TO-END TEST
+==================================================
+
+Run actual HTTP requests through the application against the real Mongo test storage.
+
+Verify:
+
+POST
+/api/v1/tenants/:tenantId/patients
+
+GET
+/api/v1/tenants/:tenantId/patients
+
+GET
+/api/v1/tenants/:tenantId/patients/:patientId
+
+PATCH
+/api/v1/tenants/:tenantId/patients/:patientId
+
+Lifecycle endpoints.
+
+These requests must pass through:
+
+authentication
+→ tenant authorization
+→ TrustedTenantContext
+→ storage resolver
+→ Mongo adapter
+
+Do not bypass the application layer for the main E2E verification.
+
+==================================================
+14. FAIL-CLOSED TESTS
+==================================================
+
+Verify real runtime behavior when:
+
+- registry is missing
+- storage target inactive
+- Mongo server unavailable
+- invalid Mongo configuration
+- connection timeout
+- database authentication failure
+- logical tenant storage cannot resolve
+
+Expected behavior:
+
+safe failure.
+
+Never:
+
+- fall back to central MySQL
+- fall back to another tenant
+- silently switch to memory
+- create a database automatically
+- expose Mongo error details
+
+==================================================
+15. DEVELOPMENT MEMORY MODE
+==================================================
+
+Verify the Phase 29 rule:
+
+Memory storage is available ONLY when explicitly configured for development/testing.
+
+It must NOT activate automatically because Mongo is unavailable.
+
+Test:
+
+Persistent mode + Mongo unavailable
+→ fail closed
+
+NOT:
+
+Persistent mode + Mongo unavailable
+→ memory fallback
+
+This distinction is mandatory.
+
+==================================================
+16. PRODUCTION ENVIRONMENT SAFETY
+==================================================
+
+Add explicit protection against accidental production configuration in test mode.
+
+If practical, test that:
+
+test environment rejects obvious production storage configuration.
+
+Do not build a sophisticated secret scanner.
+
+At minimum ensure the integration test harness cannot accidentally inherit a production Mongo URI.
+
+Use explicit test environment variables.
+
+==================================================
+17. CLEANUP
+==================================================
+
+After integration tests:
+
+- remove test databases
+- close Mongo clients
+- close application resources
+- remove temporary containers if used
+- leave no persistent test data behind
+
+Cleanup must run even when tests fail.
+
+Do not delete anything outside the disposable test environment.
+
+==================================================
+18. PERFORMANCE SANITY
+==================================================
+
+Do not perform a benchmark campaign.
+
+Only verify obvious architectural mistakes:
+
+- no new Mongo connection per request
+- no repeated database initialization for every Patient operation
+- no unbounded client creation
+- no N+1 storage resolution for one request
+
+Do not optimize prematurely.
+
+==================================================
+19. HEALTH / READINESS
+==================================================
+
+Verify:
+
+GET /health
+
+still returns liveness successfully.
+
+Do not make global `/health` depend on all tenant databases.
+
+Do not make `/ready` scan every tenant storage target.
+
+If a tenant storage is unavailable, that should affect tenant operations requiring it, not platform-wide liveness.
+
+==================================================
+20. NO SCHEMA CHANGES UNLESS REQUIRED
+==================================================
+
+Do not change the central Prisma schema unless real verification exposes a necessary defect in the Phase 29 registry implementation.
+
+Do not remove the legacy central Patient model in Phase 30.
+
+Do not create dual writes.
+
+Do not migrate Patient records.
+
+If a schema change is genuinely required:
+
+- stop and explain why before expanding scope
+- keep the change minimal
+- generate migration
+- validate offline
+- never apply to production
+
+==================================================
+21. NO NEW FEATURES
+==================================================
+
+Do not add:
+
+- patient search
+- patient portal
+- patient login
+- appointments
+- medical records
+- clinical data
+- doctor relationships
+- service relationships
+- facility relationships
+- branch relationships
+- billing
+- insurance
+
+This phase is verification and hardening only.
+
+==================================================
+22. TESTING MATRIX
+==================================================
+
+The final test suite should cover:
+
+UNIT TESTS
+
+- resolver
+- registry
+- connection manager
+- Mongo adapter
+- Patient repository
+
+INTEGRATION TESTS
+
+- real Mongo connection
+- real indexes
+- real Patient CRUD
+- real persistence
+- real tenant isolation
+- real storage resolution
+
+HTTP/E2E
+
+- authenticated Patient API
+- tenant authorization
+- real Mongo persistence
+
+FAILURE TESTS
+
+- no registry
+- inactive registry
+- unavailable Mongo
+- invalid configuration
+- no fallback
+- no cross-tenant access
+
+REGRESSION
+
+- Service
+- Doctor
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+- Patient
+- tenant authorization
+- SaaS foundation
+
+FULL SUITE
+
+Run the entire project test suite.
+
+==================================================
+23. STATIC CHECKS
+==================================================
+
+Run:
+
+- full tests
+- build
+- root type-check
+- lint
+- format
+- Prisma validation
+- application restart
+- /health
+
+Also inspect the final import graph.
+
+Patient runtime must not import Prisma for persistence.
+
+==================================================
+24. PRODUCTION SAFETY
+==================================================
+
+Before finishing confirm:
+
+- production was NOT contacted
+- cPanel was NOT contacted
+- production Mongo was NOT contacted
+- no production database was read
+- no production data was written
+- no production secrets were used
+- no production migration was applied
+- no production data was migrated
+- uploaded specification was untouched
+
+==================================================
+25. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Stage only Phase 30 files.
+
+Do not stage the uploaded architecture specification.
+
+Create ONE focused commit after all checks pass.
+
+Commit message:
+
+test(infrastructure): verify persistent patient tenant storage
+
+==================================================
+26. ACCEPTANCE CRITERIA
+==================================================
+
+Phase 30 is accepted only if:
+
+1. A real disposable MongoDB instance is used for integration verification.
+
+2. Patient CREATE/READ/LIST/UPDATE/LIFECYCLE operations work against real MongoDB.
+
+3. Patient data survives repository/service recreation.
+
+4. Tenant A and Tenant B are physically and logically isolated.
+
+5. Identical patientNumbers across different tenants are allowed.
+
+6. Duplicate patientNumber within the same tenant is rejected.
+
+7. Required Mongo indexes are actually present.
+
+8. Mongo client reuse is verified.
+
+9. Mongo shutdown/cleanup is verified.
+
+10. Missing/unavailable storage fails closed.
+
+11. No central MySQL fallback occurs.
+
+12. Memory mode does not silently activate in persistent mode.
+
+13. HTTP APIs work through the real storage path.
+
+14. No production system was contacted.
+
+15. No production data was touched.
+
+16. No new healthcare feature was implemented.
+
+17. Full project verification passes.
+
+CRITICAL:
+
+If a real disposable MongoDB environment cannot be established, DO NOT claim Phase 30 complete.
+
+Report:
+
+"Phase 30 BLOCKED — no safe real MongoDB test environment available"
+
+and do not create the completion commit.
+
+==================================================
+FINAL REPORT
+==================================================
+
+If successful, report only:
+
+1. exact commit hash
+2. real MongoDB test environment used
+3. number of integration tests
+4. Patient CRUD verification
+5. persistence verification
+6. tenant isolation verification
+7. index verification
+8. connection reuse verification
+9. fail-closed verification
+10. full test count
+11. build/type-check/lint/format status
+12. /health result
+13. confirmation production was NOT contacted
+14. confirmation no production data was touched
+15. confirmation no later healthcare features were implemented
+16. any remaining limitation
+
+If real MongoDB verification was impossible, do NOT commit Phase 30 as complete.
