@@ -1,0 +1,818 @@
+PHASE 32 — PATIENT DATA QUALITY & DUPLICATE DETECTION
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+The objective is to improve Patient data integrity and prevent accidental duplicate patient creation.
+
+Do NOT implement:
+- Appointments
+- Scheduling
+- Visits
+- Encounters
+- Medical Records
+- Prescriptions
+- Billing
+- Insurance
+- Payments
+- Patient Authentication
+- Patient Portal
+- Doctor-Patient relationships
+- Facility-Patient relationships
+- Branch-Patient relationships
+- Service-Patient relationships
+- Clinical workflows
+
+Do not redesign the storage architecture.
+Do not contact production.
+Do not use production data.
+Do not apply production migrations.
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest relevant commits:
+
+45ac599
+refactor(healthcare): establish patient tenant storage boundary
+
+1b6e361
+feat(infrastructure): add persistent tenant storage foundation
+
+25772dc6b04cdef486df20b2122644b860f76d0d
+test(infrastructure): verify persistent patient tenant storage
+
+a6ab0be90821bc857000b550ec1d84aeddfc7be7
+feat(healthcare): add patient directory search
+
+Phase 31 verified:
+
+- 796 tests passed across 88 files
+- 6/6 disposable Mongo integration tests passed
+- real Mongo directory search verified
+- Patient-number lookup verified
+- tenant isolation verified
+- Mongo injection protection verified
+- Build passed
+- Type-check passed
+- Lint passed
+- Format passed
+- Prisma validation passed
+- /health returned HTTP 200
+- Production was NOT contacted
+- Production data was NOT touched
+
+Current Patient capabilities:
+
+- tenant-scoped Patient
+- persistent tenant storage
+- Patient CRUD
+- activate/deactivate
+- tenant-scoped patientNumber
+- Patient directory
+- search
+- status filter
+- pagination
+- patientNumber lookup
+- tenant isolation
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Improve Patient data quality by introducing a safe duplicate-detection mechanism during Patient creation and, where justified, update.
+
+The purpose is NOT to automatically merge patients.
+
+The purpose is to detect likely duplicate records and prevent accidental creation when there is strong evidence that the same person may already exist.
+
+IMPORTANT:
+
+Do NOT make duplicate detection a medical identity engine.
+
+Do NOT use AI.
+
+Do NOT use fuzzy matching libraries.
+
+Do NOT introduce external search infrastructure.
+
+Do NOT make probabilistic guesses.
+
+Use deterministic, explainable matching rules only.
+
+==================================================
+1. FIRST INSPECT EXISTING PATIENT MODEL
+==================================================
+
+Inspect:
+
+- Patient model/domain
+- Patient DTOs
+- Patient repository
+- Patient service
+- Patient controller
+- Patient storage adapter
+- Mongo indexes
+- Patient validation
+- Patient directory search
+- audit implementation
+- existing error conventions
+- existing API response conventions
+
+Do not duplicate existing normalization utilities.
+
+Reuse established project conventions.
+
+==================================================
+2. NORMALIZATION
+==================================================
+
+Create or reuse deterministic normalization for duplicate comparison.
+
+Only normalize values for comparison.
+
+Do NOT modify the stored patient data unless the existing domain contract explicitly requires normalization.
+
+Potential comparison fields:
+
+- phone
+- email
+- firstName
+- middleName
+- lastName
+- dateOfBirth
+
+Do NOT use:
+- nationalId as a default duplicate detector
+- address
+- clinical information
+- medical history
+
+Do not assume national ID is safe or universally available.
+
+==================================================
+3. DUPLICATE DETECTION RULE
+==================================================
+
+Implement deterministic duplicate detection.
+
+Do NOT create a vague "similarity score".
+
+Do NOT use fuzzy matching.
+
+Use explicit matching rules.
+
+A patient should be considered a likely duplicate only when a strong combination of identity fields matches.
+
+Example deterministic combinations may include:
+
+A.
+normalized phone + normalized name
+
+OR
+
+B.
+normalized email + normalized name
+
+OR
+
+C.
+normalized firstName + normalized lastName + dateOfBirth
+
+The exact combinations must be chosen based on the existing Patient fields and validation conventions.
+
+Document the exact rule.
+
+Do NOT use a single weak field such as:
+
+firstName alone
+lastName alone
+phone alone
+email alone
+
+as sufficient proof of duplication.
+
+==================================================
+4. TENANT SCOPE
+==================================================
+
+Duplicate detection is strictly TENANT-SCOPED.
+
+Tenant A:
+John Doe
+phone X
+
+Tenant B:
+John Doe
+phone X
+
+must NOT be considered a duplicate across tenants.
+
+Never perform global Patient searches.
+
+All duplicate detection queries must operate through:
+
+TrustedTenantContext
+→ Tenant Storage
+→ Patient Repository
+
+==================================================
+5. CREATE BEHAVIOR
+==================================================
+
+Before creating a Patient:
+
+1. Validate payload.
+2. Normalize comparison fields.
+3. Perform deterministic duplicate check.
+4. If no likely duplicate:
+   create normally.
+5. If likely duplicate:
+   return a safe duplicate response.
+
+Do NOT automatically create the patient anyway.
+
+Do NOT silently merge.
+
+Do NOT modify the existing Patient.
+
+Do NOT delete anything.
+
+==================================================
+6. DUPLICATE ERROR CONTRACT
+==================================================
+
+Create a dedicated domain/application error if one does not already exist.
+
+Conceptually:
+
+PATIENT_DUPLICATE_POSSIBLE
+
+The HTTP response must be safe.
+
+It may include enough information for the authorized staff user to understand that a possible duplicate exists.
+
+Do NOT expose:
+- internal Mongo IDs
+- storage metadata
+- another tenant's information
+- sensitive patient data unnecessarily
+
+If an existing Patient ID must be returned to allow staff to review the record, ensure it is:
+- within the same tenant
+- authorized
+- intentionally exposed by the API contract
+
+Do not expose a global search result.
+
+==================================================
+7. DUPLICATE REVIEW FLOW
+==================================================
+
+Do NOT implement a full duplicate-management workflow.
+
+For this phase, the minimum behavior is:
+
+Create Patient
+      ↓
+Duplicate check
+      ↓
+No duplicate → create
+Possible duplicate → safe rejection
+
+Do NOT add:
+
+- merge
+- unlink
+- duplicate resolution dashboard
+- duplicate status
+- duplicate records table
+- manual merge
+- audit workflow for resolving duplicates
+
+Those are separate future capabilities.
+
+==================================================
+8. UPDATE BEHAVIOR
+==================================================
+
+Duplicate detection on update must avoid comparing the patient against itself.
+
+If a Patient updates:
+
+phone
+email
+name
+dateOfBirth
+
+the duplicate detector must exclude the current Patient ID.
+
+Example:
+
+Patient A updates their own phone.
+
+The duplicate check must not detect Patient A as a duplicate of itself.
+
+If another Patient matches the deterministic rule:
+
+return the same safe duplicate response.
+
+Do not modify the other patient.
+
+==================================================
+9. READ-ONLY DUPLICATE CHECK
+==================================================
+
+If useful for the frontend, you MAY expose a dedicated read-only duplicate-check endpoint.
+
+Only if it fits the existing API conventions.
+
+Preferred conceptual shape:
+
+POST
+/api/v1/tenants/:tenantId/patients/check-duplicate
+
+This endpoint:
+
+- requires tenant.patients.read
+- does NOT create or modify data
+- returns only same-tenant possible matches
+- uses the exact same duplicate detection service used by create/update
+- does not expose sensitive information unnecessarily
+
+Do NOT create this endpoint if the architecture already has a suitable validation/preflight convention.
+
+Do not duplicate duplicate-detection logic between controller and service.
+
+==================================================
+10. PERMISSIONS
+==================================================
+
+Do NOT create a new permission.
+
+Use:
+
+tenant.patients.read
+
+for read-only duplicate checking.
+
+Use:
+
+tenant.patients.manage
+
+when duplicate detection is part of create/update enforcement.
+
+Do not change existing role permission defaults.
+
+==================================================
+11. STORAGE BOUNDARY
+==================================================
+
+Duplicate detection MUST use the existing persistent tenant storage.
+
+Do NOT:
+
+- query central Prisma
+- query the legacy central Patient table
+- query Mongo directly from the controller
+- create a new storage path
+
+Use the existing Patient Repository.
+
+If a new repository method is needed, add a focused method such as:
+
+findPotentialDuplicates(...)
+
+or an equivalent project-standard abstraction.
+
+Do not expose raw Mongo queries to the service.
+
+==================================================
+12. MONGO QUERY SAFETY
+==================================================
+
+All duplicate detection inputs must be normalized and validated.
+
+Do not allow client-controlled:
+
+- Mongo operators
+- regex
+- arbitrary filters
+- arbitrary projections
+- arbitrary sorting
+
+The repository constructs all queries internally.
+
+Do not accept arbitrary objects from request bodies as query definitions.
+
+==================================================
+13. PERFORMANCE
+==================================================
+
+Duplicate detection runs during Patient creation/update.
+
+Avoid scanning the entire patient collection.
+
+Review the actual deterministic matching rules and determine which indexes are genuinely required.
+
+Potentially useful indexes may include normalized comparison fields.
+
+However:
+
+DO NOT create indexes blindly.
+
+Before adding any index, verify:
+- query pattern
+- selectivity
+- tenant scope
+- storage size implications
+
+If new indexes are needed, add only those required by the implemented deterministic rules.
+
+Do not introduce speculative indexes.
+
+==================================================
+14. NORMALIZED FIELDS
+==================================================
+
+If efficient deterministic duplicate queries require persisted normalized fields:
+
+do it carefully.
+
+Possible internal fields:
+
+normalizedPhone
+normalizedEmail
+normalizedFirstName
+normalizedLastName
+
+These are implementation fields.
+
+They must NOT automatically become public API fields.
+
+If persisted:
+
+- document the purpose
+- validate their format
+- keep them server-generated
+- prevent client modification
+- include appropriate tenant-scoped indexes
+
+Do NOT store normalized values if they are not actually required for safe efficient queries.
+
+Do NOT create a generic normalization framework for all future healthcare data.
+
+==================================================
+15. PRIVACY
+==================================================
+
+Duplicate detection deals with sensitive personal information.
+
+Do not log:
+- phone numbers
+- emails
+- dates of birth
+- full names combined with sensitive identifiers
+
+Audit metadata must remain safe.
+
+Do not expose duplicate information across tenants.
+
+Do not expose a broad list of all matching patients.
+
+Return only the minimum same-tenant information required by the UI.
+
+==================================================
+16. AUDIT
+==================================================
+
+Do NOT create an audit event for every duplicate check.
+
+For create/update:
+
+Existing:
+PATIENT_CREATED
+PATIENT_UPDATED
+PATIENT_STATUS_CHANGED
+
+remain unchanged.
+
+If creation is blocked due to a possible duplicate, consider whether the existing security/audit architecture requires a safe security event.
+
+Do not create unnecessary audit noise.
+
+If an audit event is needed, use a dedicated safe event such as:
+
+PATIENT_DUPLICATE_DETECTED
+
+only if the existing audit taxonomy supports it naturally.
+
+Do not store sensitive matching data in the audit event.
+
+==================================================
+17. API RESPONSE
+==================================================
+
+The normal successful create/update response remains unchanged.
+
+Duplicate response must be structured and predictable.
+
+Example conceptual structure:
+
+{
+  success: false,
+  error: {
+    code: "PATIENT_DUPLICATE_POSSIBLE",
+    message: "A possible matching patient already exists."
+  }
+}
+
+If match references are returned, keep them minimal and same-tenant.
+
+Do not return:
+- full duplicate Patient objects
+- national ID
+- full address
+- storage metadata
+
+==================================================
+18. OPENAPI
+==================================================
+
+Document:
+
+- duplicate detection behavior
+- duplicate error code
+- optional duplicate-check endpoint if implemented
+- request validation
+- permissions
+
+Do not document fuzzy matching.
+
+Do not claim medical identity verification.
+
+Use precise terminology such as:
+
+"possible duplicate"
+
+not:
+
+"same person"
+
+==================================================
+19. TESTING
+==================================================
+
+Create comprehensive tests.
+
+CREATE:
+
+1. unique patient creates successfully
+2. strong deterministic duplicate is rejected
+3. weak single-field match does NOT reject
+4. duplicate response is safe
+5. same duplicate in another tenant is allowed
+
+UPDATE:
+
+6. updating a patient does not match itself
+7. update matching another patient is rejected
+8. unrelated update succeeds
+
+NORMALIZATION:
+
+9. expected normalization matches equivalent values
+10. stored original values remain unchanged
+11. invalid values do not produce unsafe queries
+
+TENANT ISOLATION:
+
+12. duplicate detection is tenant-scoped
+13. Tenant A cannot detect Tenant B patient
+14. identical patient identities across tenants are allowed
+
+SECURITY:
+
+15. Mongo operators rejected
+16. arbitrary filters rejected
+17. arbitrary regex rejected
+18. arbitrary projections rejected
+
+PERFORMANCE:
+
+19. duplicate query uses intended indexes
+20. no full collection load into application memory
+
+API:
+
+21. duplicate error has correct HTTP status
+22. duplicate-check endpoint, if implemented, has correct authorization
+23. safe response contains no infrastructure metadata
+
+REAL MONGO:
+
+Critical duplicate tests MUST run against the disposable MongoDB environment established in Phase 30.
+
+Do not rely only on mocks.
+
+==================================================
+20. CONCURRENCY
+==================================================
+
+This is important.
+
+Two simultaneous requests may attempt to create the same Patient.
+
+Application-level duplicate detection alone is NOT sufficient to guarantee uniqueness.
+
+Do not claim strong uniqueness unless backed by database constraints.
+
+For this phase:
+
+- deterministic duplicate detection is the user-facing safety mechanism
+- existing patientNumber uniqueness remains database-enforced
+- do not invent a global identity uniqueness constraint
+
+If the chosen duplicate rules require a database uniqueness guarantee, explain the limitation instead of creating an unsafe constraint.
+
+Do not create a uniqueness constraint that could incorrectly prevent legitimate patients.
+
+==================================================
+21. NO AUTOMATIC MERGE
+==================================================
+
+Absolutely do NOT:
+
+- merge patients
+- overwrite patient data
+- delete a patient
+- transfer records
+- combine histories
+- combine documents
+
+Duplicate detection only blocks/flags a possible duplicate.
+
+==================================================
+22. REGRESSION
+==================================================
+
+Run all relevant tests:
+
+- Patient foundation
+- Patient storage
+- Patient directory
+- Patient search
+- Patient Mongo integration
+- tenant authorization
+- Service
+- Doctor
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+- SaaS foundation
+- storage registry
+- Mongo infrastructure
+
+Then run the complete suite.
+
+==================================================
+23. NO CENTRAL DATABASE CHANGES UNLESS REQUIRED
+==================================================
+
+Do not modify the central Patient schema.
+
+Do not create Patient MySQL queries.
+
+Do not reintroduce central Patient persistence.
+
+If new Mongo indexes are required:
+
+implement them through the tenant-storage schema/index mechanism.
+
+Do not create Prisma migrations for Patient data.
+
+==================================================
+24. PRODUCTION SAFETY
+==================================================
+
+Before completion confirm:
+
+- production was NOT contacted
+- cPanel was NOT contacted
+- production MongoDB was NOT contacted
+- production data was NOT read
+- production data was NOT written
+- no production secrets were used
+- no production migration was applied
+- uploaded specification was not modified
+
+==================================================
+25. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Stage ONLY Phase 32 files.
+
+Do not stage the uploaded architecture specification.
+
+Create ONE focused commit:
+
+feat(healthcare): add patient duplicate detection
+
+==================================================
+26. ACCEPTANCE CRITERIA
+==================================================
+
+Phase 32 is accepted only if:
+
+1. Duplicate detection is deterministic.
+
+2. Duplicate detection is tenant-scoped.
+
+3. Strong matches are blocked safely.
+
+4. Weak matches are not incorrectly blocked.
+
+5. Update excludes the current Patient.
+
+6. No automatic merge exists.
+
+7. No cross-tenant information leaks.
+
+8. No Mongo operator injection is possible.
+
+9. Persistent tenant storage is used.
+
+10. Critical tests run against real disposable MongoDB.
+
+11. Existing patientNumber uniqueness remains intact.
+
+12. Existing Patient directory remains functional.
+
+13. Existing Patient APIs remain functional.
+
+14. Full suite passes.
+
+15. Production is untouched.
+
+16. No later healthcare modules are implemented.
+
+==================================================
+27. FINAL VERIFICATION
+==================================================
+
+Run:
+
+- focused duplicate detection tests
+- real Mongo integration tests
+- Patient regression tests
+- tenant isolation tests
+- authorization tests
+- full suite
+- build
+- root type-check
+- lint
+- format
+- Prisma validation
+- application restart
+- /health
+
+Do not modify unrelated pre-existing test debt.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report only:
+
+1. exact commit hash
+2. deterministic duplicate rules
+3. fields used
+4. normalization behavior
+5. whether normalized fields were persisted
+6. indexes added/used
+7. duplicate API/error behavior
+8. update behavior
+9. real Mongo integration results
+10. tenant isolation result
+11. full test count
+12. build/type-check/lint/format result
+13. /health result
+14. confirmation production was NOT contacted
+15. confirmation no production data was touched
+16. confirmation no automatic merge was implemented
+17. any remaining limitation
+
+Do NOT claim Phase 32 complete unless all required checks pass.
