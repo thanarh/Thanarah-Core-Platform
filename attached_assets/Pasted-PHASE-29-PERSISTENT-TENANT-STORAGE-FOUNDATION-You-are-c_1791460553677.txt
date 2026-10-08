@@ -1,0 +1,925 @@
+PHASE 29 — PERSISTENT TENANT STORAGE FOUNDATION
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+The sole objective of this phase is to replace the Phase 28 development-only volatile Patient storage with a real persistent tenant-storage foundation.
+
+Do NOT add new Patient features.
+Do NOT add appointments.
+Do NOT add scheduling.
+Do NOT add visits.
+Do NOT add encounters.
+Do NOT add medical records.
+Do NOT add prescriptions.
+Do NOT add billing.
+Do NOT add insurance.
+Do NOT add payments.
+Do NOT add patient authentication.
+Do NOT add a patient portal.
+
+Do not redesign unrelated modules.
+Do not contact production.
+Do not apply migrations to production.
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest commits:
+
+972ceca05cdc80a5f7aaa16e6703b9315cad9393
+feat(healthcare): add tenant service catalog foundation
+
+d856728
+feat(healthcare): harden tenant service catalog reads
+
+93c4edc
+feat(healthcare): add tenant patient foundation
+
+45ac599
+refactor(healthcare): establish patient tenant storage boundary
+
+Phase 28 verified state:
+
+- 767 tests passed
+- Project type-check passed
+- Lint passed
+- Formatting passed
+- Prisma validation passed
+- Application restarted successfully
+- /health returned OK
+- Production was NOT contacted
+- No production migration was applied
+- Uploaded architecture specification remains untouched/uncommitted
+
+Phase 28 established:
+
+Patient API
+    ↓
+Patient Service
+    ↓
+Patient Repository / Storage Boundary
+    ↓
+Trusted Tenant Context
+    ↓
+Tenant Storage Resolver
+
+Current behavior:
+
+Development:
+- Patient persistence uses volatile process-local memory.
+
+Staging / Production:
+- Patient persistence fails closed until persistent tenant storage is configured.
+
+Central Prisma Patient model:
+- remains as legacy schema
+- is NOT used by Patient runtime
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Build the persistent Tenant Storage Foundation required by the Phase 28 Patient storage boundary.
+
+The end state must be:
+
+Patient
+  ↓
+Tenant-scoped repository
+  ↓
+Logical Tenant Storage
+  ↓
+Persistent MongoDB storage
+  ↓
+Tenant-isolated physical database
+
+The infrastructure must be designed so that one logical Tenant can eventually use multiple physical databases.
+
+This phase establishes the storage infrastructure.
+
+It does NOT implement database sharding, automatic provisioning, migration, rebalancing, or capacity management.
+
+==================================================
+1. INSPECT EXISTING ARCHITECTURE FIRST
+==================================================
+
+Before coding, inspect the current implementation for:
+
+- TrustedTenantContext
+- Tenant Storage Resolver
+- Tenant Storage Registry
+- Patient repository
+- Phase 28 volatile storage adapter
+- existing MongoDB dependencies
+- Mongoose dependencies
+- Prisma configuration
+- environment/configuration modules
+- application lifecycle hooks
+- health/readiness checks
+- test infrastructure
+- tenant isolation tests
+
+Do not create duplicate infrastructure if an existing abstraction already exists.
+
+Extend the current Phase 28 architecture rather than replacing it with a parallel system.
+
+==================================================
+2. STORAGE ARCHITECTURE
+==================================================
+
+The architecture must distinguish:
+
+LOGICAL TENANT STORAGE
+
+from
+
+PHYSICAL DATABASE STORAGE.
+
+Conceptually:
+
+Tenant
+  ↓
+TenantStorageRegistry
+  ↓
+LogicalStorageContext
+  ↓
+PhysicalStorageTarget(s)
+  ↓
+MongoDB database
+
+The Patient domain must only know the logical tenant storage context.
+
+It must never know:
+
+- Mongo URI
+- database name
+- Mongo credentials
+- physical database ID
+- connection pool
+- Mongo client
+
+Those belong exclusively to infrastructure.
+
+==================================================
+3. TENANT STORAGE REGISTRY
+==================================================
+
+If an existing Tenant DB Registry contract exists, extend it.
+
+If no registry exists, create the minimum production-oriented registry contract required for this phase.
+
+The registry must conceptually support:
+
+Tenant
+  ↓
+one or more physical storage targets
+
+A registry entry should be capable of representing:
+
+- tenant ownership
+- storage target identity
+- storage provider/type
+- connection reference or secret reference
+- database identifier/reference
+- lifecycle/status
+- primary/active target designation
+- createdAt
+- updatedAt
+
+IMPORTANT:
+
+Do NOT store raw MongoDB passwords or connection strings in normal domain records.
+
+Do not expose secrets through APIs.
+
+Use secret references/configuration indirection according to existing project conventions.
+
+==================================================
+4. CENTRAL MYSQL ROLE
+==================================================
+
+The central Prisma/MySQL database may store the STORAGE REGISTRY METADATA.
+
+It must NOT store the Patient records themselves.
+
+This is acceptable:
+
+Central MySQL:
+TenantStorageRegistry metadata
+
+Tenant MongoDB:
+Patient documents
+
+This is NOT acceptable:
+
+Central MySQL:
+TenantStorageRegistry + Patient operational records
+
+The central DB is control-plane metadata.
+
+Tenant storage is data-plane healthcare storage.
+
+==================================================
+5. PHYSICAL STORAGE TARGET
+==================================================
+
+Do not hard-code:
+
+tenantId → one Mongo database
+
+The abstraction must support:
+
+tenantId
+  → logical storage
+      → physical target A
+      → physical target B
+      → future target C
+
+For this phase:
+
+- one active physical target is sufficient for actual runtime
+- multiple target representation must remain possible
+- no sharding logic is required
+- no automatic routing across multiple targets is required
+
+Do not implement fake multi-database functionality.
+
+The contract should be future-compatible without pretending that sharding already exists.
+
+==================================================
+6. MONGODB CONNECTION MANAGEMENT
+==================================================
+
+Implement a persistent MongoDB infrastructure adapter.
+
+Requirements:
+
+- connection reuse/pooling
+- no new connection per request
+- controlled lifecycle
+- safe startup/shutdown
+- connection failure handling
+- timeout configuration
+- no credential logging
+- no URI logging
+
+Use the MongoDB driver or existing project-standard Mongo integration.
+
+Do NOT add Mongoose if it is not already part of the architecture.
+
+Prefer the official MongoDB driver for infrastructure unless an existing project abstraction explicitly requires otherwise.
+
+==================================================
+7. CONNECTION CACHE
+==================================================
+
+If multiple tenants use different physical Mongo databases, infrastructure must not create a new Mongo connection for every request.
+
+Use a controlled connection/client cache where appropriate.
+
+The cache key must represent the physical storage target, not arbitrary client input.
+
+The cache must not leak credentials.
+
+Do not create an unbounded cache.
+
+If the current project architecture cannot safely support a connection cache yet, implement the smallest bounded infrastructure needed and document the limitation.
+
+Do not create a memory leak disguised as a connection manager.
+
+==================================================
+8. STORAGE RESOLUTION FLOW
+==================================================
+
+The runtime flow must be:
+
+1. Request authenticated.
+2. TenantAuthorization establishes TrustedTenantContext.
+3. Patient repository requests logical tenant storage.
+4. Tenant Storage Resolver looks up registry metadata.
+5. Infrastructure resolves the active physical storage target.
+6. Mongo infrastructure obtains/reuses the appropriate connection.
+7. Patient repository performs the operation inside that tenant's storage.
+8. Response returns only domain data.
+
+The client must NEVER participate in steps 4–6.
+
+No client parameter may select:
+
+- database
+- collection
+- Mongo URI
+- storage target
+- connection
+
+==================================================
+9. FAIL-CLOSED BEHAVIOR
+==================================================
+
+The following must fail safely:
+
+- tenant has no storage registry
+- registry entry inactive
+- no active physical target
+- storage target invalid
+- Mongo connection failure
+- Mongo authentication failure
+- database unavailable
+- storage resolution failure
+- unknown tenant storage
+
+Never fall back to:
+
+- central Prisma Patient
+- another tenant's database
+- default database
+- localhost database
+- arbitrary Mongo database
+- development memory in staging/production
+
+Development memory may remain only as an explicitly configured development adapter if the project architecture still requires it.
+
+It must NEVER activate automatically in staging or production.
+
+==================================================
+10. ENVIRONMENT CONFIGURATION
+==================================================
+
+Implement environment/configuration requirements cleanly.
+
+Development may use an explicit local/dev configuration.
+
+Production/staging must require persistent storage configuration.
+
+Do not silently accept missing production storage configuration.
+
+Do not hard-code credentials.
+
+Do not commit:
+
+- passwords
+- Mongo URIs
+- API keys
+- connection strings containing credentials
+- secrets
+
+If secret references are needed, use the project's existing configuration/secret conventions.
+
+==================================================
+11. PATIENT STORAGE ADAPTER
+==================================================
+
+Replace the Phase 28 development-only volatile adapter for normal configured runtime.
+
+The Patient repository must transparently use:
+
+PersistentTenantStorageAdapter
+
+when persistent tenant storage is configured.
+
+The domain/service code must remain unchanged.
+
+The Patient API must not know whether the underlying storage is MongoDB or another future tenant-storage implementation.
+
+Do not duplicate Patient business logic in the Mongo adapter.
+
+==================================================
+12. PATIENT DOCUMENT MODEL
+==================================================
+
+Create the tenant-storage Patient persistence representation.
+
+Preserve the Phase 27 domain contract.
+
+Do not add new business fields.
+
+At minimum preserve existing Patient data:
+
+- patientNumber
+- firstName
+- middleName
+- lastName
+- preferredName
+- dateOfBirth
+- gender
+- phone
+- email
+- nationalId
+- address
+- status
+- createdAt
+- updatedAt
+
+Only include fields that actually exist in the current Phase 27 implementation.
+
+Do not invent additional clinical fields.
+
+==================================================
+13. DOCUMENT IDENTIFIER
+==================================================
+
+Patient IDs must remain stable from the application perspective.
+
+Do not expose Mongo-specific identifiers as the public Patient ID unless the existing domain contract explicitly requires it.
+
+The persistence adapter may use:
+
+- Mongo ObjectId
+- UUID
+- another internal identifier
+
+but the domain/application contract must remain consistent.
+
+Do not change existing API IDs unnecessarily.
+
+==================================================
+14. TENANT ISOLATION
+==================================================
+
+Tenant isolation must be enforced at multiple layers:
+
+APPLICATION:
+TrustedTenantContext
+
+RESOLUTION:
+tenant → logical storage
+
+INFRASTRUCTURE:
+logical storage → physical target
+
+DATA:
+tenant-scoped Patient records
+
+Do not rely on a single layer.
+
+Tests must prove:
+
+Tenant A
+cannot access
+Tenant B
+
+even when:
+
+- Patient IDs are known
+- patientNumbers are identical
+- request parameters are manipulated
+- storage identifiers are guessed
+- registry metadata is manipulated through unauthorized application input
+
+==================================================
+15. COLLECTION DESIGN
+==================================================
+
+Use a stable tenant-storage collection name for Patient.
+
+Do not create:
+
+patients_tenant_123
+patients_tenant_456
+etc.
+
+The physical database provides tenant isolation.
+
+Use a normal collection name such as:
+
+patients
+
+unless an existing naming convention requires another name.
+
+Do not dynamically create collection names from user input.
+
+==================================================
+16. INDEXES
+==================================================
+
+Create only the indexes actually required by current Patient operations.
+
+At minimum evaluate:
+
+- patientNumber uniqueness
+- status
+- createdAt
+
+The tenant database itself provides physical tenant separation, but patientNumber uniqueness must remain scoped correctly.
+
+If one physical database could eventually contain data for multiple logical partitions, the index strategy must remain compatible with the logical tenant key.
+
+Do not add speculative indexes.
+
+==================================================
+17. REGISTRY LIFECYCLE
+==================================================
+
+Storage targets must have an explicit lifecycle.
+
+Reuse an existing platform lifecycle convention if available.
+
+At minimum distinguish:
+
+ACTIVE
+INACTIVE
+
+Do not implement:
+
+- automatic provisioning
+- automatic deletion
+- rebalancing
+- migration
+- failover orchestration
+
+in this phase.
+
+==================================================
+18. STORAGE REGISTRY API
+==================================================
+
+Do NOT expose public tenant storage registry endpoints.
+
+Storage registry is infrastructure/platform administration.
+
+If existing platform-admin infrastructure requires internal management APIs, inspect the architecture first.
+
+Do not automatically add CRUD endpoints unless there is an established requirement.
+
+Prefer internal service/repository operations in this phase.
+
+==================================================
+19. SECURITY
+==================================================
+
+Storage metadata is sensitive infrastructure information.
+
+Never expose through public APIs:
+
+- Mongo URI
+- database name
+- database credentials
+- secret references
+- physical host
+- connection details
+- internal storage target identifiers
+
+Do not log connection strings.
+
+Do not log authentication errors containing credentials.
+
+Sanitize infrastructure errors before they reach HTTP responses.
+
+==================================================
+20. HEALTH / READINESS
+==================================================
+
+Do not make `/health` fail simply because a tenant database is not configured.
+
+`/health` remains application liveness.
+
+Do not make the entire platform `/ready` depend on every tenant MongoDB being reachable.
+
+Tenant storage is dynamic and tenant-scoped.
+
+If the project has a suitable infrastructure diagnostic mechanism, add a safe internal storage readiness check without exposing tenant storage details.
+
+Do not create a global readiness check that scans every tenant database.
+
+==================================================
+21. OBSERVABILITY
+==================================================
+
+Add safe structured logging where appropriate.
+
+Logs may include:
+
+- logical tenant ID
+- storage resolution outcome
+- storage operation category
+- safe error code
+
+Logs must NOT include:
+
+- credentials
+- URI
+- database password
+- raw connection strings
+- sensitive Patient payloads
+
+Do not log full Patient records.
+
+==================================================
+22. BACKUP ARCHITECTURE
+==================================================
+
+Do NOT implement backup functionality.
+
+Do NOT implement:
+
+- backup scheduler
+- restore
+- retention
+- encryption
+- backup storage
+
+However, the registry/storage model must not prevent future backup metadata from identifying physical storage targets.
+
+==================================================
+23. MULTI-PHYSICAL-DATABASE COMPATIBILITY
+==================================================
+
+The architecture must allow:
+
+Tenant A
+  ├── Physical DB 1
+  └── Physical DB 2
+
+without changing Patient domain code.
+
+Do not implement automatic routing yet.
+
+Define a logical storage target abstraction such as:
+
+LogicalTenantStorage
+    activeTargets[]
+
+or an equivalent architecture consistent with the repository.
+
+Do not expose this abstraction to controllers.
+
+==================================================
+24. CENTRAL PATIENT MODEL
+==================================================
+
+The central Prisma Patient model currently remains as legacy/unused runtime state.
+
+Do NOT delete it automatically in Phase 29.
+
+Why:
+
+The purpose of this phase is to establish persistent tenant storage safely.
+
+Removing the central model while persistent storage is not fully verified could create an irreversible architectural gap.
+
+Keep it clearly marked/documented as legacy if the project already uses such documentation.
+
+Do not add any new code that reads/writes the central Patient model.
+
+Do not create dual writes.
+
+Do not create MySQL fallback.
+
+==================================================
+25. MIGRATION
+==================================================
+
+A central Prisma migration is NOT required unless the storage registry metadata genuinely requires a new central model/table.
+
+If a TenantStorageRegistry central model is required:
+
+- add only the minimum schema
+- create a migration
+- validate it offline
+- inspect it carefully
+- do not apply it to production
+
+If an existing registry model already exists:
+
+reuse it.
+
+Do not modify unrelated Prisma schema.
+
+==================================================
+26. DEVELOPMENT TEST STORAGE
+==================================================
+
+Tests must NOT depend on an external production MongoDB.
+
+Prefer one of:
+
+- isolated local Mongo test instance if the repository already supports it
+- deterministic in-memory test adapter
+- repository-level test double
+
+However:
+
+The production architecture must use persistent Mongo storage.
+
+Do not mistake a test adapter for production storage.
+
+Explicitly test both:
+
+A. storage abstraction behavior
+B. persistent adapter behavior where the test environment supports it
+
+==================================================
+27. NO PRODUCTION DATA
+==================================================
+
+Do NOT:
+
+- migrate existing production Patient records
+- inspect production data
+- connect to production Mongo
+- connect to cPanel MySQL
+- copy Patient records
+- delete legacy Patient records
+
+Data migration is a future controlled phase.
+
+==================================================
+28. TESTING REQUIREMENTS
+==================================================
+
+Add comprehensive tests.
+
+STORAGE REGISTRY
+
+- valid registry lookup
+- inactive target rejected
+- missing target rejected
+- tenant mismatch rejected
+- multiple targets represented correctly
+- no physical identifiers exposed
+
+STORAGE RESOLUTION
+
+- TrustedTenantContext resolves correct tenant
+- correct storage target selected
+- missing configuration fails
+- invalid configuration fails
+- connection failure fails
+- no cross-tenant resolution
+- no central MySQL fallback
+
+CONNECTION MANAGEMENT
+
+- connection/client reused
+- shutdown closes resources
+- invalid connection handled safely
+- credentials never appear in errors/log assertions
+- cache behavior is bounded/safe
+
+PATIENT REPOSITORY
+
+- create
+- read
+- list
+- update
+- activate
+- deactivate
+- patientNumber uniqueness
+- deterministic reads
+
+TENANT ISOLATION
+
+- Tenant A cannot access Tenant B
+- identical patientNumber across tenants allowed
+- known Patient ID cannot cross storage boundary
+
+API REGRESSION
+
+All existing Phase 27 Patient HTTP tests continue to pass.
+
+AUTHORIZATION REGRESSION
+
+All existing tenant authorization tests continue to pass.
+
+HEALTHCARE REGRESSION
+
+Run relevant tests for:
+
+- Service
+- Doctor
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+- Patient
+
+FULL SUITE
+
+Run the entire test suite.
+
+==================================================
+29. STATIC VERIFICATION
+==================================================
+
+Run:
+
+- full tests
+- build
+- root type-check
+- lint
+- format
+- Prisma validation
+- migration validation if schema changed
+- application restart
+- /health
+
+Also inspect imports to ensure:
+
+Patient Service
+does NOT import PrismaClient.
+
+Patient Repository
+must NOT accept arbitrary database information from controllers.
+
+==================================================
+30. PRODUCTION SAFETY CHECK
+==================================================
+
+Before commit confirm:
+
+- production was NOT contacted
+- cPanel was NOT contacted
+- production Mongo was NOT contacted
+- no production migration was applied
+- no production data was read
+- no production data was written
+- no secrets were changed
+- uploaded architecture specification was not modified
+
+==================================================
+31. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Stage ONLY Phase 29 files.
+
+Do not stage the uploaded architecture specification.
+
+Create ONE focused commit:
+
+feat(infrastructure): add persistent tenant storage foundation
+
+==================================================
+32. ACCEPTANCE CRITERIA
+==================================================
+
+Phase 29 is accepted only if:
+
+1. Persistent tenant storage infrastructure exists.
+
+2. Patient can use the persistent tenant-storage adapter when configured.
+
+3. Patient domain code remains storage-provider agnostic.
+
+4. Tenant storage resolution uses TrustedTenantContext.
+
+5. Physical storage details remain inside infrastructure.
+
+6. No client-controlled physical storage selection exists.
+
+7. Missing/unavailable storage fails closed.
+
+8. No central MySQL Patient fallback exists.
+
+9. Connection lifecycle is controlled and reusable.
+
+10. Architecture supports multiple physical storage targets per logical tenant.
+
+11. No automatic sharding/provisioning/rebalancing is falsely implemented.
+
+12. Existing Patient APIs remain functional.
+
+13. Existing authorization remains functional.
+
+14. Existing audit behavior remains functional.
+
+15. Full test suite passes.
+
+16. Production is untouched.
+
+17. No Patient feature beyond storage infrastructure is added.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report only:
+
+1. exact commit hash
+2. persistent storage architecture
+3. Tenant Storage Registry status
+4. Mongo adapter status
+5. connection-management status
+6. Patient runtime storage behavior
+7. whether central Patient remains legacy
+8. Prisma migration status
+9. storage isolation test results
+10. full test count
+11. build/type-check/lint/format results
+12. /health result
+13. production safety confirmation
+14. remaining limitation, if any
+
+Do NOT claim completion unless the persistent storage foundation is actually implemented and verified.
