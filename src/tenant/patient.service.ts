@@ -24,9 +24,15 @@ import {
   PatientLifecycleConflictError,
   PatientNotFoundError,
   PatientNumberConflictError,
+  PatientPossibleDuplicateError,
 } from './patient.errors';
 import { type PatientRepository, PATIENT_REPOSITORY } from './patient.repository';
-import { PatientStatus, type PatientDirectoryRecord, type PatientRecord } from './patient.model';
+import {
+  PatientStatus,
+  type PatientDirectoryRecord,
+  type PatientDuplicateIdentity,
+  type PatientRecord,
+} from './patient.model';
 
 export type PatientAuditContext = Pick<
   TrustedSecurityContext,
@@ -59,6 +65,15 @@ const PATIENT_MUTABLE_FIELDS = [
   'address',
 ] as const;
 
+const PATIENT_DUPLICATE_FIELDS = [
+  'firstName',
+  'middleName',
+  'lastName',
+  'dateOfBirth',
+  'phone',
+  'email',
+] as const;
+
 @Injectable()
 export class PatientService {
   constructor(
@@ -77,6 +92,17 @@ export class PatientService {
     this.assertActor(context, actor);
     const parsed = createPatientSchema.safeParse(input);
     if (!parsed.success) throw new PatientInputValidationError();
+
+    const existingNumber = await this.patients.findByPatientNumber(
+      context,
+      parsed.data.patientNumber,
+    );
+    if (existingNumber) throw new PatientNumberConflictError();
+    if (
+      await this.patients.findPotentialDuplicates(context, toPatientDuplicateIdentity(parsed.data))
+    ) {
+      throw new PatientPossibleDuplicateError();
+    }
 
     const record = this.changedRecord(await this.patients.create(context, parsed.data));
     await this.audit.recordAudit({
@@ -146,6 +172,21 @@ export class PatientService {
     const id = this.patientId(patientId);
     const parsed = updatePatientSchema.safeParse(input);
     if (!parsed.success) throw new PatientInputValidationError();
+
+    if (PATIENT_DUPLICATE_FIELDS.some((field) => parsed.data[field] !== undefined)) {
+      const current = await this.patients.findByIdForTenant(context, id);
+      if (!current) throw new PatientNotFoundError();
+      const candidate = { ...current, ...parsed.data };
+      if (
+        await this.patients.findPotentialDuplicates(
+          context,
+          toPatientDuplicateIdentity(candidate),
+          id,
+        )
+      ) {
+        throw new PatientPossibleDuplicateError();
+      }
+    }
 
     const record = this.changedRecord(await this.patients.update(context, id, parsed.data));
     const changedFields = PATIENT_MUTABLE_FIELDS.filter(
@@ -298,4 +339,18 @@ export class PatientService {
       status: record.status,
     };
   }
+}
+
+function toPatientDuplicateIdentity(
+  patient: Pick<PatientRecord, 'firstName' | 'lastName'> &
+    Partial<Pick<PatientRecord, 'middleName' | 'dateOfBirth' | 'phone' | 'email'>>,
+): PatientDuplicateIdentity {
+  return {
+    firstName: patient.firstName,
+    middleName: patient.middleName ?? null,
+    lastName: patient.lastName,
+    dateOfBirth: patient.dateOfBirth ?? null,
+    phone: patient.phone ?? null,
+    email: patient.email ?? null,
+  };
 }

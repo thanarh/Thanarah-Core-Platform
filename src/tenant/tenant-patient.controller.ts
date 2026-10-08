@@ -53,6 +53,7 @@ import {
 } from './patient.dto';
 import {
   CreatePatientRequestDto,
+  PatientConflictResponseDto,
   PatientListResponseDto,
   PatientResponseDto,
   UpdatePatientRequestDto,
@@ -72,12 +73,16 @@ export class TenantPatientController {
   @ApiOperation({
     summary: 'Create a patient in the trusted tenant',
     description:
-      'Patient number is supplied by the client and unique within the tenant. Tenant ownership and ACTIVE status are server-derived.',
+      'Patient number is supplied by the client and unique within the tenant. Tenant ownership and ACTIVE status are server-derived. Creation is rejected as PATIENT_DUPLICATE_POSSIBLE when the same tenant has a case-insensitive first/middle/last name match plus the same normalized phone or email, or a first/last name match plus the same UTC date of birth. Phone comparison normalizes NFKC, surrounding/repeated whitespace only; punctuation and the leading plus sign remain significant. Email comparison is NFKC-normalized, trimmed, and lowercased.',
   })
   @ApiBody({ type: CreatePatientRequestDto })
   @ApiCreatedResponse({ type: PatientResponseDto, description: 'Patient created' })
   @ApiBadRequestResponse({ description: 'Patient details are invalid' })
-  @ApiConflictResponse({ description: 'The patient number already exists in the tenant' })
+  @ApiConflictResponse({
+    type: PatientConflictResponseDto,
+    description:
+      'PATIENT_NUMBER_CONFLICT or PATIENT_DUPLICATE_POSSIBLE. Possible duplicate responses include no matching patient details.',
+  })
   @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
   @ApiForbiddenResponse({ description: 'tenant.patients.manage is required' })
   create(
@@ -189,13 +194,17 @@ export class TenantPatientController {
   @ApiOperation({
     summary: 'Update patient demographic and contact details',
     description:
-      'Only supplied mutable fields are changed. Send null to clear nullable values. Tenant ownership, ID, status, and timestamps cannot be changed here.',
+      'Only supplied mutable fields are changed. Send null to clear nullable values. Tenant ownership, ID, status, and timestamps cannot be changed here. Changes to first/middle/last name, phone, email, or date of birth are rejected as PATIENT_DUPLICATE_POSSIBLE when another patient in the same tenant matches the deterministic duplicate rules. The current patient is excluded.',
   })
   @ApiParam({ name: 'patientId', format: 'uuid' })
   @ApiBody({ type: UpdatePatientRequestDto })
   @ApiOkResponse({ type: PatientResponseDto })
   @ApiBadRequestResponse({ description: 'Patient details or identifier are invalid' })
-  @ApiConflictResponse({ description: 'The patient number already exists in the tenant' })
+  @ApiConflictResponse({
+    type: PatientConflictResponseDto,
+    description:
+      'PATIENT_NUMBER_CONFLICT or PATIENT_DUPLICATE_POSSIBLE. Possible duplicate responses include no matching patient details.',
+  })
   @ApiNotFoundResponse({ description: 'Patient was not found in the trusted tenant' })
   @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
   @ApiForbiddenResponse({ description: 'tenant.patients.manage is required' })

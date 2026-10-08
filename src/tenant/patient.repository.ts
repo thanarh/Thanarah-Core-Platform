@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
 import type {
   PatientDirectoryRecord,
+  PatientDuplicateIdentity,
   PatientMutationResult,
   PatientRecord,
   PatientStatus,
@@ -21,6 +22,11 @@ export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');
 
 export interface PatientRepository {
   create(context: TrustedTenantContext, input: CreatePatientInput): Promise<PatientMutationResult>;
+  findPotentialDuplicates(
+    context: TrustedTenantContext,
+    identity: PatientDuplicateIdentity,
+    exceptPatientId?: string,
+  ): Promise<boolean>;
   list(
     context: TrustedTenantContext,
     query: ListPatientsQuery,
@@ -56,6 +62,16 @@ export class TenantStoragePatientRepository implements PatientRepository {
 
   create(context: TrustedTenantContext, input: CreatePatientInput): Promise<PatientMutationResult> {
     return this.withRoute(context, (route) => this.storage.create(context, route, input));
+  }
+
+  findPotentialDuplicates(
+    context: TrustedTenantContext,
+    identity: PatientDuplicateIdentity,
+    exceptPatientId?: string,
+  ): Promise<boolean> {
+    return this.withRoute(context, (route) =>
+      this.storage.findPotentialDuplicates(context, route, identity, exceptPatientId),
+    );
   }
 
   list(context: TrustedTenantContext, query: ListPatientsQuery): Promise<TenantPatientList> {

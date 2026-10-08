@@ -8,6 +8,7 @@ import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import { AuthenticationError } from '../src/auth/errors/auth.errors';
 import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { APP_CONSTANTS } from '../src/common/constants/app.constants';
+import { PatientPossibleDuplicateError } from '../src/tenant/patient.errors';
 import { PatientStatus } from '../src/tenant/patient.model';
 import { TenantAuthorizationGuard } from '../src/tenant/tenant-authorization.guard';
 import type { TenantAuthorizationService } from '../src/tenant/tenant-authorization.service';
@@ -366,11 +367,44 @@ describe('Tenant patient HTTP authorization and routing', () => {
     );
   });
 
+  it('returns the same safe conflict contract for possible duplicates on create and update', async () => {
+    patients.create.mockRejectedValueOnce(new PatientPossibleDuplicateError());
+    const create = await app.inject({
+      method: 'POST',
+      url: `${root}/patients`,
+      headers,
+      payload: {
+        patientNumber: 'PAT-DUPLICATE',
+        firstName: 'Amina',
+        lastName: 'Hassan',
+        phone: '+966500000000',
+      },
+    });
+    expect(create.statusCode).toBe(409);
+    expect(create.json()).toEqual({
+      code: 'PATIENT_DUPLICATE_POSSIBLE',
+      message: 'A possible matching patient already exists.',
+    });
+    expect(JSON.stringify(create.json())).not.toMatch(/nationalId|address|databaseName|patientId/i);
+
+    patients.update.mockRejectedValueOnce(new PatientPossibleDuplicateError());
+    const update = await app.inject({
+      method: 'PATCH',
+      url: `${root}/patients/${patientId}`,
+      headers,
+      payload: { email: 'possible@example.test' },
+    });
+    expect(update.statusCode).toBe(409);
+    expect(update.json()).toEqual(create.json());
+    expect(JSON.stringify(update.json())).not.toContain(patientId);
+  });
+
   it('rejects invalid demographic/contact data, malformed IDs, and protected-field injection', async () => {
     const invalidPayloads = [
       { patientNumber: 'PAT-1', firstName: ' ', lastName: 'Hassan' },
       { patientNumber: 'PAT-1', firstName: 'Amina', lastName: 'Hassan', email: 'invalid' },
       { patientNumber: 'PAT-1', firstName: 'Amina', lastName: 'Hassan', phone: 'phone' },
+      { patientNumber: 'PAT-1', firstName: { $where: 'true' }, lastName: 'Hassan' },
       { patientNumber: 'PAT-1', firstName: 'Amina', lastName: 'Hassan', dateOfBirth: '2030-01-01' },
       {
         patientNumber: 'PAT-1',
@@ -396,7 +430,12 @@ describe('Tenant patient HTTP authorization and routing', () => {
       expect(response.statusCode).toBe(400);
     }
 
-    for (const payload of [{}, { tenantId: otherTenantId }, { status: PatientStatus.INACTIVE }]) {
+    for (const payload of [
+      {},
+      { tenantId: otherTenantId },
+      { status: PatientStatus.INACTIVE },
+      { email: { $ne: null } },
+    ]) {
       const response = await app.inject({
         method: 'PATCH',
         url: `${root}/patients/${patientId}`,
@@ -519,6 +558,7 @@ describe('Tenant patient HTTP authorization and routing', () => {
     const create = document.paths[collectionPath]?.post;
     const list = document.paths[collectionPath]?.get;
     const byNumber = document.paths[byNumberPath]?.get;
+    const update = document.paths[resourcePath]?.patch;
 
     expect(create?.security).toEqual([{ bearer: [] }]);
     expect(create?.requestBody).toMatchObject({
@@ -529,6 +569,24 @@ describe('Tenant patient HTTP authorization and routing', () => {
       },
     });
     expect(responseDescription(create?.responses?.['403'])).toContain('tenant.patients.manage');
+    expect(responseDescription(create?.responses?.['409'])).toContain('PATIENT_DUPLICATE_POSSIBLE');
+    expect(create?.responses?.['409']).toMatchObject({
+      content: {
+        'application/json': {
+          schema: { $ref: '#/components/schemas/PatientConflictResponseDto' },
+        },
+      },
+    });
+    const conflictSchema = document.components?.schemas?.PatientConflictResponseDto as {
+      properties?: Record<string, unknown>;
+    };
+    expect(conflictSchema.properties).toHaveProperty('success');
+    expect(conflictSchema.properties).toHaveProperty('error');
+    expect(conflictSchema.properties).toHaveProperty('requestId');
+    expect(conflictSchema.properties).toHaveProperty('timestamp');
+    expect(create?.description).toContain('same UTC date of birth');
+    expect(responseDescription(update?.responses?.['409'])).toContain('PATIENT_DUPLICATE_POSSIBLE');
+    expect(update?.description).toContain('The current patient is excluded');
     expect(responseDescription(list?.responses?.['403'])).toContain('tenant.patients.read');
     expect(list?.parameters).toEqual(
       expect.arrayContaining([

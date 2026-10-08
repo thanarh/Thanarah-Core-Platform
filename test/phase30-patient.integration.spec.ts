@@ -738,6 +738,7 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       ...patientPayload(`PAT31-PAGE2-${RUN_ID}`),
       firstName: `PagingMarker${RUN_ID}`,
       lastName: 'Pagination',
+      dateOfBirth: '1991-01-01',
     });
     const page0Url = `?search=PagingMarker&limit=1&offset=0`;
     const page0 = await list(tenantA, page0Url);
@@ -781,6 +782,236 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
     expect(arbitraryFilter.statusCode).toBe(400);
     expect(arbitrarySort.statusCode).toBe(400);
     expect(arbitraryProjection.statusCode).toBe(400);
+  });
+
+  it('verifies Phase 32 deterministic duplicate prevention and indexes against MongoDB', async () => {
+    const firstName = `DupFirst${RUN_ID}`;
+    const middleName = 'Dup Middle';
+    const lastName = `DupLast-${RUN_ID}`;
+    const phone = '+966 50 123 4567';
+    const email = `duplicate-${RUN_ID}@example.test`;
+    const baseIdentity = {
+      firstName,
+      middleName,
+      lastName,
+      dateOfBirth: '1990-06-15',
+      phone,
+      email,
+    };
+
+    const createPatient = (
+      tenant: TestTenant,
+      patientNumber: string,
+      demographics: Record<string, unknown>,
+    ): ReturnType<NestFastifyApplication['inject']> =>
+      getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenant)}/patients`,
+        headers: bearerHeaders(),
+        payload: { patientNumber, ...demographics },
+      });
+
+    const original = await createPatient(tenantA, `PAT32-SHARED-${RUN_ID}`, baseIdentity);
+    expect(original.statusCode).toBe(201);
+    const originalPatient = original.json<{ id: string; patientNumber: string }>();
+
+    const phoneAndNameDuplicate = await createPatient(tenantA, `PAT32-PHONE-${RUN_ID}`, {
+      firstName: firstName.toUpperCase(),
+      middleName: ` ${middleName.toUpperCase()} `,
+      lastName: lastName.toUpperCase(),
+      phone: '+966  50   123 4567',
+    });
+    expect(phoneAndNameDuplicate.statusCode).toBe(409);
+    expect(phoneAndNameDuplicate.json()).toMatchObject({
+      error: {
+        code: 'PATIENT_DUPLICATE_POSSIBLE',
+        message: 'A possible matching patient already exists.',
+      },
+    });
+    expect(JSON.stringify(phoneAndNameDuplicate.json())).not.toMatch(
+      /patientNumber|patientId|firstName|lastName|phone|email|nationalId|address|databaseName/i,
+    );
+
+    const emailAndNameDuplicate = await createPatient(tenantA, `PAT32-EMAIL-${RUN_ID}`, {
+      firstName,
+      middleName,
+      lastName,
+      email: email.toUpperCase(),
+    });
+    expect(emailAndNameDuplicate.statusCode).toBe(409);
+    expect(emailAndNameDuplicate.json()).toMatchObject({
+      error: { code: 'PATIENT_DUPLICATE_POSSIBLE' },
+    });
+
+    const nameAndDateDuplicate = await createPatient(tenantA, `PAT32-DOB-${RUN_ID}`, {
+      firstName: firstName.toUpperCase(),
+      middleName: 'Different Middle',
+      lastName: lastName.toUpperCase(),
+      dateOfBirth: '1990-06-15',
+    });
+    expect(nameAndDateDuplicate.statusCode).toBe(409);
+    expect(nameAndDateDuplicate.json()).toMatchObject({
+      error: { code: 'PATIENT_DUPLICATE_POSSIBLE' },
+    });
+
+    const samePhoneOnly = await createPatient(tenantA, `PAT32-WEAK-PHONE-${RUN_ID}`, {
+      firstName: 'Different',
+      lastName: 'Person',
+      phone,
+    });
+    const sameEmailOnly = await createPatient(tenantA, `PAT32-WEAK-EMAIL-${RUN_ID}`, {
+      firstName: 'Another',
+      lastName: 'Person',
+      email,
+    });
+    const punctuationIsSignificant = await createPatient(tenantA, `PAT32-PHONE-PUNCT-${RUN_ID}`, {
+      firstName,
+      middleName,
+      lastName,
+      phone: '+966501234567',
+    });
+    const sameNameWithoutContactOrDate = await createPatient(tenantA, `PAT32-WEAK-NAME-${RUN_ID}`, {
+      firstName,
+      lastName,
+    });
+    expect(samePhoneOnly.statusCode).toBe(201);
+    expect(sameEmailOnly.statusCode).toBe(201);
+    expect(punctuationIsSignificant.statusCode).toBe(201);
+    expect(sameNameWithoutContactOrDate.statusCode).toBe(201);
+
+    const crossTenantIdentity = await createPatient(
+      tenantB,
+      originalPatient.patientNumber,
+      baseIdentity,
+    );
+    expect(crossTenantIdentity.statusCode).toBe(201);
+    expect(crossTenantIdentity.json<{ id: string }>().id).not.toBe(originalPatient.id);
+
+    const selfUpdate = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/patients/${originalPatient.id}`,
+      headers: bearerHeaders(),
+      payload: { phone },
+    });
+    expect(selfUpdate.statusCode).toBe(200);
+
+    const updateCandidate = await createPatient(tenantA, `PAT32-UPDATE-${RUN_ID}`, {
+      firstName: 'Update',
+      middleName: null,
+      lastName: 'Candidate',
+      phone: '+966 50 999 0000',
+    });
+    expect(updateCandidate.statusCode).toBe(201);
+    const updateCandidateId = updateCandidate.json<{ id: string }>().id;
+    const duplicateUpdate = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/patients/${updateCandidateId}`,
+      headers: bearerHeaders(),
+      payload: { firstName, middleName, lastName, phone },
+    });
+    expect(duplicateUpdate.statusCode).toBe(409);
+    expect(duplicateUpdate.json()).toMatchObject({
+      error: phoneAndNameDuplicate.json<{ error: unknown }>().error,
+    });
+
+    const unchangedAfterRejection = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/patients/${updateCandidateId}`,
+      headers: bearerHeaders(),
+    });
+    expect(unchangedAfterRejection.json()).toMatchObject({
+      id: updateCandidateId,
+      firstName: 'Update',
+      lastName: 'Candidate',
+      phone: '+966 50 999 0000',
+    });
+
+    const dateUpdateCandidate = await createPatient(tenantA, `PAT32-DATE-UPDATE-${RUN_ID}`, {
+      firstName: 'Date',
+      middleName: null,
+      lastName: 'Candidate',
+      dateOfBirth: '1980-06-15',
+    });
+    expect(dateUpdateCandidate.statusCode).toBe(201);
+    const dateUpdateCandidateId = dateUpdateCandidate.json<{ id: string }>().id;
+    const duplicateDateUpdate = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/patients/${dateUpdateCandidateId}`,
+      headers: bearerHeaders(),
+      payload: { firstName, middleName: 'Different Middle', lastName, dateOfBirth: '1990-06-15' },
+    });
+    expect(duplicateDateUpdate.statusCode).toBe(409);
+    expect(duplicateDateUpdate.json()).toMatchObject({
+      error: { code: 'PATIENT_DUPLICATE_POSSIBLE' },
+    });
+
+    const patients = mongoAdminClient!.db(tenantA.databaseName).collection(PATIENT_COLLECTION);
+    const storedOriginal = await patients.findOne({ _id: originalPatient.id });
+    expect(storedOriginal).toMatchObject({
+      firstName,
+      middleName,
+      lastName,
+      phone,
+      email,
+    });
+    expect(storedOriginal).not.toHaveProperty('normalizedPhone');
+    expect(storedOriginal).not.toHaveProperty('normalizedEmail');
+    expect(storedOriginal).not.toHaveProperty('normalizedName');
+
+    const duplicateIndexes = await patients.indexes();
+    const duplicateIndexNames = [
+      'tenant_patient_duplicate_phone_name_idx',
+      'tenant_patient_duplicate_email_name_idx',
+      'tenant_patient_duplicate_name_dob_idx',
+    ];
+    for (const name of duplicateIndexNames) {
+      expect(duplicateIndexes.find((index) => index.name === name)?.collation).toMatchObject({
+        locale: 'en',
+        strength: 2,
+      });
+    }
+
+    const phonePlan = await patients
+      .find({
+        _tenantId: tenantA.id,
+        phone,
+        firstName: firstName.toLowerCase(),
+        middleName: middleName.toLowerCase(),
+        lastName: lastName.toLowerCase(),
+      })
+      .collation({ locale: 'en', strength: 2 })
+      .hint(duplicateIndexNames[0]!)
+      .limit(1)
+      .explain('queryPlanner');
+    expect(JSON.stringify(phonePlan.queryPlanner.winningPlan)).toContain(duplicateIndexNames[0]);
+
+    const emailPlan = await patients
+      .find({
+        _tenantId: tenantA.id,
+        email,
+        firstName: firstName.toLowerCase(),
+        middleName: middleName.toLowerCase(),
+        lastName: lastName.toLowerCase(),
+      })
+      .collation({ locale: 'en', strength: 2 })
+      .hint(duplicateIndexNames[1]!)
+      .limit(1)
+      .explain('queryPlanner');
+    expect(JSON.stringify(emailPlan.queryPlanner.winningPlan)).toContain(duplicateIndexNames[1]);
+
+    const dateStart = new Date('1990-06-15T00:00:00.000Z');
+    const datePlan = await patients
+      .find({
+        _tenantId: tenantA.id,
+        firstName: firstName.toLowerCase(),
+        lastName: lastName.toLowerCase(),
+        dateOfBirth: { $gte: dateStart, $lt: new Date('1990-06-16T00:00:00.000Z') },
+      })
+      .collation({ locale: 'en', strength: 2 })
+      .hint(duplicateIndexNames[2]!)
+      .limit(1)
+      .explain('queryPlanner');
+    expect(JSON.stringify(datePlan.queryPlanner.winningPlan)).toContain(duplicateIndexNames[2]);
   });
 
   it('preserves records after application shutdown and a fresh Nest app/repository is created', async () => {
@@ -1114,7 +1345,7 @@ function patientPayload(patientNumber: string): {
 } {
   return {
     patientNumber,
-    firstName: 'Phase',
+    firstName: `Phase-${patientNumber}`,
     middleName: null,
     lastName: 'Thirty',
     dateOfBirth: '1990-01-01',

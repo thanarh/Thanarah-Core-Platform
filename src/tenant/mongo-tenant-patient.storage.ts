@@ -5,10 +5,15 @@ import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from '
 import {
   PATIENT_DIRECTORY_SEARCH_FIELDS,
   type PatientDirectoryRecord,
+  type PatientDuplicateIdentity,
   type PatientMutationResult,
   type PatientRecord,
   type PatientStatus,
 } from './patient.model';
+import {
+  normalizePatientDuplicateIdentity,
+  PATIENT_DUPLICATE_COLLATION,
+} from './patient-duplicate';
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
@@ -87,6 +92,56 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
       if (isPatientNumberDuplicate(error)) return { kind: 'patient-number-conflict' };
       throw error;
     }
+  }
+
+  async findPotentialDuplicates(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    identity: PatientDuplicateIdentity,
+    exceptPatientId?: string,
+  ): Promise<boolean> {
+    const collection = await this.getCollection(context, route);
+    const normalized = normalizePatientDuplicateIdentity(identity);
+    const rules: Filter<PatientMongoDocument>[] = [];
+
+    if (normalized.phone !== null) {
+      rules.push({
+        phone: normalized.phone,
+        firstName: normalized.firstName,
+        middleName: normalized.middleName,
+        lastName: normalized.lastName,
+      });
+    }
+    if (normalized.email !== null) {
+      rules.push({
+        email: normalized.email,
+        firstName: normalized.firstName,
+        middleName: normalized.middleName,
+        lastName: normalized.lastName,
+      });
+    }
+    if (normalized.dateOfBirth !== null) {
+      rules.push({
+        firstName: normalized.firstName,
+        lastName: normalized.lastName,
+        dateOfBirth: {
+          $gte: normalized.dateOfBirth,
+          $lt: new Date(normalized.dateOfBirth.getTime() + 24 * 60 * 60 * 1000),
+        },
+      });
+    }
+    if (rules.length === 0) return false;
+
+    const filter: Filter<PatientMongoDocument> = {
+      _tenantId: context.tenantId,
+      ...(exceptPatientId ? { _id: { $ne: exceptPatientId } } : {}),
+      $or: rules,
+    };
+    const existing = await collection.findOne(filter, {
+      projection: { _id: 1 },
+      collation: PATIENT_DUPLICATE_COLLATION,
+    });
+    return existing !== null;
   }
 
   async list(
@@ -210,6 +265,27 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
     await collection.createIndex(
       { _tenantId: 1, createdAt: -1, _id: -1 },
       { name: 'tenant_patient_created_idx' },
+    );
+    await collection.createIndex(
+      { _tenantId: 1, phone: 1, firstName: 1, middleName: 1, lastName: 1 },
+      {
+        name: 'tenant_patient_duplicate_phone_name_idx',
+        collation: PATIENT_DUPLICATE_COLLATION,
+      },
+    );
+    await collection.createIndex(
+      { _tenantId: 1, email: 1, firstName: 1, middleName: 1, lastName: 1 },
+      {
+        name: 'tenant_patient_duplicate_email_name_idx',
+        collation: PATIENT_DUPLICATE_COLLATION,
+      },
+    );
+    await collection.createIndex(
+      { _tenantId: 1, firstName: 1, lastName: 1, dateOfBirth: 1 },
+      {
+        name: 'tenant_patient_duplicate_name_dob_idx',
+        collation: PATIENT_DUPLICATE_COLLATION,
+      },
     );
   }
 

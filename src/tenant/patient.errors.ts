@@ -36,6 +36,15 @@ export class PatientNumberConflictError extends ConflictException {
   }
 }
 
+export class PatientPossibleDuplicateError extends ConflictException {
+  constructor() {
+    super({
+      code: 'PATIENT_DUPLICATE_POSSIBLE',
+      message: 'A possible matching patient already exists.',
+    });
+  }
+}
+
 export class PatientLifecycleConflictError extends ConflictException {
   constructor() {
     super({

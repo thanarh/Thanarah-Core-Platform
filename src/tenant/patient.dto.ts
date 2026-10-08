@@ -4,8 +4,16 @@ import { PatientStatus } from './patient.model';
 export const MAX_PATIENT_LIST_OFFSET = 100_000;
 export const MAX_PATIENT_SEARCH_LENGTH = 100;
 
-function normalizePatientName(value: string): string {
+export function normalizePatientName(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+export function normalizePatientPhone(value: string): string {
+  return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
+}
+
+export function normalizePatientEmail(value: string): string {
+  return value.normalize('NFKC').trim().toLowerCase();
 }
 
 const patientNameSchema = z
@@ -30,12 +38,12 @@ const patientSearchSchema = z
 
 const patientEmailSchema = z
   .string()
-  .transform((value) => value.normalize('NFKC').trim().toLowerCase())
+  .transform(normalizePatientEmail)
   .pipe(z.string().min(1).max(191).email());
 
 const patientPhoneSchema = z
   .string()
-  .transform((value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' '))
+  .transform(normalizePatientPhone)
   .pipe(
     z
       .string()

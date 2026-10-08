@@ -197,3 +197,28 @@ export class PatientListResponseDto {
   @ApiProperty({ type: Boolean, description: 'Whether another result slice is available.' })
   hasNext!: boolean;
 }
+
+export class PatientConflictErrorDetailDto {
+  @ApiProperty({
+    type: String,
+    enum: ['PATIENT_NUMBER_CONFLICT', 'PATIENT_DUPLICATE_POSSIBLE'],
+  })
+  code!: string;
+
+  @ApiProperty({ type: String })
+  message!: string;
+}
+
+export class PatientConflictResponseDto {
+  @ApiProperty({ type: Boolean, enum: [false] })
+  success!: boolean;
+
+  @ApiProperty({ type: PatientConflictErrorDetailDto })
+  error!: PatientConflictErrorDetailDto;
+
+  @ApiProperty({ type: String })
+  requestId!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  timestamp!: string;
+}

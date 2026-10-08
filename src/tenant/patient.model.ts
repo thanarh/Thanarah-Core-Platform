@@ -23,6 +23,11 @@ export interface PatientRecord {
   updatedAt: Date;
 }
 
+export type PatientDuplicateIdentity = Pick<
+  PatientRecord,
+  'firstName' | 'middleName' | 'lastName' | 'dateOfBirth' | 'phone' | 'email'
+>;
+
 export interface PatientDirectoryRecord {
   id: string;
   patientNumber: string;

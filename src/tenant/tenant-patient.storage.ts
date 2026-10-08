@@ -4,10 +4,12 @@ import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from '
 import {
   PATIENT_DIRECTORY_SEARCH_FIELDS,
   type PatientDirectoryRecord,
+  type PatientDuplicateIdentity,
   type PatientMutationResult,
   type PatientRecord,
   type PatientStatus,
 } from './patient.model';
+import { hasPotentialPatientDuplicate } from './patient-duplicate';
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
@@ -33,6 +35,12 @@ export interface TenantPatientStorage {
     route: TenantStorageRoute,
     input: CreatePatientInput,
   ): Promise<PatientMutationResult>;
+  findPotentialDuplicates(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    identity: PatientDuplicateIdentity,
+    exceptPatientId?: string,
+  ): Promise<boolean>;
   list(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -104,6 +112,24 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     };
     patients.set(record.id, record);
     return { kind: 'changed', record: cloneRecord(record) };
+  }
+
+  async findPotentialDuplicates(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    identity: PatientDuplicateIdentity,
+    exceptPatientId?: string,
+  ): Promise<boolean> {
+    this.assertScope(context, route);
+    const patients = this.partition(context, false);
+    if (!patients) return false;
+
+    for (const patient of patients.values()) {
+      if (patient.id !== exceptPatientId && hasPotentialPatientDuplicate(identity, patient)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   async list(
@@ -245,6 +271,10 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
 @Injectable()
 export class UnconfiguredTenantPatientStorage implements TenantPatientStorage {
   async create(): Promise<PatientMutationResult> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async findPotentialDuplicates(): Promise<boolean> {
     throw new TenantStorageUnavailableError();
   }
 

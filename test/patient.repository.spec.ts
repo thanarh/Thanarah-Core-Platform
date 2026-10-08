@@ -153,6 +153,81 @@ describe('TenantStoragePatientRepository', () => {
     await expect(repository.findByPatientNumber(contextB, 'PAT-A-ONLY')).resolves.toBeNull();
   });
 
+  it('detects only strong normalized identity combinations within the trusted tenant', async () => {
+    const { repository } = setup();
+    const originalDateOfBirth = new Date('1990-06-15T14:30:00.000Z');
+    const created = await repository.create(contextA, {
+      ...createInput,
+      patientNumber: 'PAT-DUP-A',
+      firstName: 'Ａmina',
+      middleName: 'Noor',
+      lastName: 'Hassan',
+      dateOfBirth: originalDateOfBirth,
+      phone: '+1  555  123-4567',
+      email: 'PERSON@EXAMPLE.COM',
+    });
+    if (created.kind !== 'changed') throw new Error('Expected a created record');
+    expect(created.record).toMatchObject({
+      firstName: 'Ａmina',
+      phone: '+1  555  123-4567',
+      email: 'PERSON@EXAMPLE.COM',
+    });
+
+    const sameIdentity = {
+      firstName: ' amina ',
+      middleName: 'Noor',
+      lastName: 'HASSAN',
+      dateOfBirth: new Date('1990-06-15T00:00:00.000Z'),
+      phone: '+1 555 123-4567',
+      email: 'person@example.com',
+    };
+    await expect(repository.findPotentialDuplicates(contextA, sameIdentity)).resolves.toBe(true);
+    await expect(
+      repository.findPotentialDuplicates(contextA, sameIdentity, created.record.id),
+    ).resolves.toBe(false);
+    await expect(repository.findPotentialDuplicates(contextB, sameIdentity)).resolves.toBe(false);
+
+    await expect(
+      repository.findPotentialDuplicates(contextA, {
+        ...sameIdentity,
+        phone: null,
+        dateOfBirth: null,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      repository.findPotentialDuplicates(contextA, {
+        ...sameIdentity,
+        email: null,
+        phone: null,
+        middleName: 'Different Middle',
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      repository.findPotentialDuplicates(contextA, {
+        ...sameIdentity,
+        email: null,
+        dateOfBirth: null,
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      repository.findPotentialDuplicates(contextA, {
+        ...sameIdentity,
+        firstName: 'Different',
+        dateOfBirth: null,
+        email: null,
+        phone: null,
+      }),
+    ).resolves.toBe(false);
+    await expect(
+      repository.findPotentialDuplicates(contextA, {
+        ...sameIdentity,
+        firstName: 'Different',
+        dateOfBirth: null,
+        phone: null,
+      }),
+    ).resolves.toBe(false);
+  });
+
   it('updates and transitions a record only within its tenant partition', async () => {
     const { repository } = setup();
     const created = await repository.create(contextA, createInput);

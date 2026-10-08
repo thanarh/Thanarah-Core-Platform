@@ -164,6 +164,9 @@ describe('MongoTenantPatientStorage', () => {
       lastName: createInput.lastName,
       status: PatientStatus.ACTIVE,
     });
+    expect(stored).not.toHaveProperty('normalizedPhone');
+    expect(stored).not.toHaveProperty('normalizedEmail');
+    expect(stored).not.toHaveProperty('normalizedName');
     expect(result.record.id).toBe(stored?._id);
     expect(result.record).not.toHaveProperty('_tenantId');
     expect(setupState.targetResolver.findActivePrimaryTarget).toHaveBeenCalledWith(
@@ -260,6 +263,78 @@ describe('MongoTenantPatientStorage', () => {
     });
   });
 
+  it('builds tenant-scoped duplicate predicates from normalized identity fields only', async () => {
+    const setupState = setup();
+
+    await expect(
+      setupState.storage.findPotentialDuplicates(
+        context,
+        route,
+        {
+          firstName: ' Ａmina ',
+          middleName: 'Noor',
+          lastName: ' HASSAN ',
+          dateOfBirth: new Date('1990-06-15T12:30:00.000Z'),
+          phone: '+1  555 123-4567',
+          email: ' PERSON@EXAMPLE.COM ',
+        },
+        '66666666-6666-4666-8666-666666666666',
+      ),
+    ).resolves.toBe(true);
+
+    expect(setupState.collection.findOne).toHaveBeenLastCalledWith(
+      {
+        _tenantId: tenantId,
+        _id: { $ne: '66666666-6666-4666-8666-666666666666' },
+        $or: [
+          {
+            phone: '+1 555 123-4567',
+            firstName: 'amina',
+            middleName: 'noor',
+            lastName: 'hassan',
+          },
+          {
+            email: 'person@example.com',
+            firstName: 'amina',
+            middleName: 'noor',
+            lastName: 'hassan',
+          },
+          {
+            firstName: 'amina',
+            lastName: 'hassan',
+            dateOfBirth: {
+              $gte: new Date('1990-06-15T00:00:00.000Z'),
+              $lt: new Date('1990-06-16T00:00:00.000Z'),
+            },
+          },
+        ],
+      },
+      {
+        projection: { _id: 1 },
+        collation: { locale: 'en', strength: 2 },
+      },
+    );
+    expect(JSON.stringify(setupState.collection.findOne.mock.calls[0])).not.toMatch(
+      /nationalId|address|\\$where|\\$regex/i,
+    );
+  });
+
+  it('does not query when no strong duplicate combination is available', async () => {
+    const setupState = setup();
+
+    await expect(
+      setupState.storage.findPotentialDuplicates(context, route, {
+        firstName: 'Amina',
+        middleName: null,
+        lastName: 'Hassan',
+        dateOfBirth: null,
+        phone: null,
+        email: null,
+      }),
+    ).resolves.toBe(false);
+    expect(setupState.collection.findOne).not.toHaveBeenCalled();
+  });
+
   it('uses a conditional status update and translates the unique patient-number index conflict', async () => {
     const setupState = setup();
     await setupState.storage.changeStatusIfCurrent(
@@ -289,7 +364,7 @@ describe('MongoTenantPatientStorage', () => {
     const setupState = setup();
     await setupState.storage.ensureIndexesForTarget(target);
 
-    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(3);
+    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(6);
     expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
       1,
       { _tenantId: 1, patientNumber: 1 },
@@ -304,6 +379,30 @@ describe('MongoTenantPatientStorage', () => {
       3,
       { _tenantId: 1, createdAt: -1, _id: -1 },
       { name: 'tenant_patient_created_idx' },
+    );
+    expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
+      4,
+      { _tenantId: 1, phone: 1, firstName: 1, middleName: 1, lastName: 1 },
+      {
+        name: 'tenant_patient_duplicate_phone_name_idx',
+        collation: { locale: 'en', strength: 2 },
+      },
+    );
+    expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
+      5,
+      { _tenantId: 1, email: 1, firstName: 1, middleName: 1, lastName: 1 },
+      {
+        name: 'tenant_patient_duplicate_email_name_idx',
+        collation: { locale: 'en', strength: 2 },
+      },
+    );
+    expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
+      6,
+      { _tenantId: 1, firstName: 1, lastName: 1, dateOfBirth: 1 },
+      {
+        name: 'tenant_patient_duplicate_name_dob_idx',
+        collation: { locale: 'en', strength: 2 },
+      },
     );
   });
 

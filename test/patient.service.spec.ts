@@ -9,6 +9,7 @@ import {
   PatientLifecycleConflictError,
   PatientNotFoundError,
   PatientNumberConflictError,
+  PatientPossibleDuplicateError,
 } from '../src/tenant/patient.errors';
 import { PatientStatus, type PatientRecord } from '../src/tenant/patient.model';
 import { PatientService } from '../src/tenant/patient.service';
@@ -56,6 +57,7 @@ function record(status = PatientStatus.ACTIVE): PatientRecord {
 describe('PatientService', () => {
   const patients = {
     create: vi.fn(),
+    findPotentialDuplicates: vi.fn(),
     list: vi.fn(),
     findByPatientNumber: vi.fn(),
     findByIdForTenant: vi.fn(),
@@ -68,6 +70,9 @@ describe('PatientService', () => {
   beforeEach(() => {
     vi.resetAllMocks();
     audit.recordAudit.mockResolvedValue(undefined);
+    patients.findByPatientNumber.mockResolvedValue(null);
+    patients.findPotentialDuplicates.mockResolvedValue(false);
+    patients.findByIdForTenant.mockResolvedValue(record());
     service = new PatientService(
       patients as unknown as ConstructorParameters<typeof PatientService>[0],
       audit as unknown as PlatformAuditService,
@@ -103,6 +108,15 @@ describe('PatientService', () => {
       nationalId: 'ID-9988',
       address: '12 Main Street',
     });
+    expect(patients.findPotentialDuplicates).toHaveBeenCalledWith(context, {
+      firstName: 'Amina Noor',
+      middleName: null,
+      lastName: 'Hassan',
+      dateOfBirth: new Date('1990-06-15T00:00:00.000Z'),
+      phone: '+1 (555) 123-4567',
+      email: 'person@example.com',
+    });
+    expect(patients.findByPatientNumber).toHaveBeenCalledWith(context, 'PAT-000001');
     expect(audit.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: PlatformAuditEventType.PATIENT_CREATED,
@@ -125,6 +139,46 @@ describe('PatientService', () => {
     expect(metadata).not.toHaveProperty('phone');
     expect(metadata).not.toHaveProperty('dateOfBirth');
     expect(metadata).not.toHaveProperty('patientNumber');
+  });
+
+  it('rejects a possible duplicate before create with a safe conflict response', async () => {
+    patients.findPotentialDuplicates.mockResolvedValue(true);
+
+    await expect(
+      service.create(
+        context,
+        {
+          patientNumber: 'PAT-NEW',
+          firstName: 'Amina',
+          lastName: 'Hassan',
+          phone: '+1 (555) 123-4567',
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(PatientPossibleDuplicateError);
+
+    expect(patients.findByPatientNumber).toHaveBeenCalledWith(context, 'PAT-NEW');
+    expect(patients.create).not.toHaveBeenCalled();
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+    expect(new PatientPossibleDuplicateError().getResponse()).toEqual({
+      code: 'PATIENT_DUPLICATE_POSSIBLE',
+      message: 'A possible matching patient already exists.',
+    });
+  });
+
+  it('preserves patient-number conflict precedence before possible-duplicate checks', async () => {
+    patients.findByPatientNumber.mockResolvedValueOnce(record());
+
+    await expect(
+      service.create(
+        context,
+        { patientNumber: 'PAT-000001', firstName: 'Amina', lastName: 'Hassan' },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(PatientNumberConflictError);
+
+    expect(patients.findPotentialDuplicates).not.toHaveBeenCalled();
+    expect(patients.create).not.toHaveBeenCalled();
   });
 
   it('lists with the trusted tenant, exact-number and status filters, bounded paging, and no read audit', async () => {
@@ -272,6 +326,11 @@ describe('PatientService', () => {
       phone: null,
       nationalId: null,
     });
+    expect(patients.findPotentialDuplicates).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ phone: null, firstName: 'Amina', lastName: 'Hassan' }),
+      patientId,
+    );
     expect(audit.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: PlatformAuditEventType.PATIENT_UPDATED,
@@ -286,12 +345,52 @@ describe('PatientService', () => {
     );
   });
 
+  it('blocks an update matching another patient and excludes the current patient from the check', async () => {
+    patients.findPotentialDuplicates.mockResolvedValue(true);
+
+    await expect(
+      service.update(context, patientId, { phone: '+966500000000' }, actor),
+    ).rejects.toBeInstanceOf(PatientPossibleDuplicateError);
+
+    expect(patients.findPotentialDuplicates).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        firstName: 'Amina',
+        middleName: null,
+        lastName: 'Hassan',
+        phone: '+966500000000',
+      }),
+      patientId,
+    );
+    expect(patients.update).not.toHaveBeenCalled();
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+  });
+
+  it('skips duplicate checks for unrelated updates', async () => {
+    patients.update.mockResolvedValue({
+      kind: 'changed',
+      record: { ...record(), address: 'New address' },
+    });
+
+    await expect(
+      service.update(context, patientId, { address: 'New address' }, actor),
+    ).resolves.toMatchObject({ address: 'New address' });
+
+    expect(patients.findByIdForTenant).not.toHaveBeenCalled();
+    expect(patients.findPotentialDuplicates).not.toHaveBeenCalled();
+  });
+
   it('rejects required-field, email, phone, date, HTML address, and protected-field errors', async () => {
     const invalidPayloads = [
       {},
       { patientNumber: 'PAT-1', firstName: '', lastName: 'Valid' },
       { patientNumber: 'PAT-1', firstName: 'Valid', lastName: 'Valid', email: 'not-an-email' },
       { patientNumber: 'PAT-1', firstName: 'Valid', lastName: 'Valid', phone: 'call me' },
+      {
+        patientNumber: 'PAT-1',
+        firstName: { $where: 'true' },
+        lastName: 'Valid',
+      },
       { patientNumber: 'PAT-1', firstName: 'Valid', lastName: 'Valid', dateOfBirth: '2026-99-99' },
       {
         patientNumber: 'PAT-1',
@@ -320,8 +419,12 @@ describe('PatientService', () => {
     await expect(
       service.update(context, patientId, { status: PatientStatus.INACTIVE } as never, actor),
     ).rejects.toBeInstanceOf(PatientInputValidationError);
+    await expect(
+      service.update(context, patientId, { phone: { $ne: null } } as never, actor),
+    ).rejects.toBeInstanceOf(PatientInputValidationError);
     expect(patients.create).not.toHaveBeenCalled();
     expect(patients.update).not.toHaveBeenCalled();
+    expect(patients.findPotentialDuplicates).not.toHaveBeenCalled();
   });
 
   it('rejects future birth dates and maps tenant-scoped patient-number conflicts', async () => {
