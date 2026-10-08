@@ -3,7 +3,7 @@ import type { Db } from 'mongodb';
 import { describe, expect, it, vi } from 'vitest';
 import type { CreatePatientInput } from '../src/tenant/patient.dto';
 import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
-import { PatientStatus } from '../src/tenant/patient.model';
+import { PATIENT_DIRECTORY_SEARCH_FIELDS, PatientStatus } from '../src/tenant/patient.model';
 import { MongoTenantPatientStorage } from '../src/tenant/mongo-tenant-patient.storage';
 import type { TenantMongoClientManager } from '../src/tenant/tenant-mongo-client.manager';
 import type {
@@ -208,6 +208,55 @@ describe('MongoTenantPatientStorage', () => {
     });
     expect(setupState.getLastUpdate()).toMatchObject({
       $set: { phone: '+966500000000', updatedAt: expect.any(Date) },
+    });
+  });
+
+  it('builds literal case-insensitive search only from approved fields and shares filters with count', async () => {
+    const setupState = setup();
+    const search = 'Amina.* [H]';
+
+    await setupState.storage.list(context, route, {
+      search,
+      status: PatientStatus.ACTIVE,
+      limit: 10,
+      offset: 0,
+    });
+
+    const expectedFilter = {
+      _tenantId: tenantId,
+      status: PatientStatus.ACTIVE,
+      $or: PATIENT_DIRECTORY_SEARCH_FIELDS.map((field) => ({
+        [field]: { $regex: 'Amina\\.\\* \\[H\\]', $options: 'i' },
+      })),
+    };
+    expect(setupState.getLastFindFilter()).toEqual(expectedFilter);
+    expect(setupState.collection.countDocuments).toHaveBeenCalledWith(expectedFilter);
+    expect(setupState.collection.find).toHaveBeenCalledWith(expectedFilter, {
+      projection: {
+        _id: 1,
+        patientNumber: 1,
+        firstName: 1,
+        middleName: 1,
+        lastName: 1,
+        preferredName: 1,
+        phone: 1,
+        email: 1,
+        status: 1,
+      },
+    });
+    expect(JSON.stringify(expectedFilter)).not.toMatch(/nationalId|address|dateOfBirth|\\$where/i);
+  });
+
+  it('uses an exact tenant-scoped patient-number equality lookup', async () => {
+    const setupState = setup();
+
+    await expect(
+      setupState.storage.findByPatientNumber(context, route, 'PAT-000001'),
+    ).resolves.toMatchObject({ patientNumber: 'PAT-000001' });
+
+    expect(setupState.collection.findOne).toHaveBeenLastCalledWith({
+      _tenantId: tenantId,
+      patientNumber: 'PAT-000001',
     });
   });
 

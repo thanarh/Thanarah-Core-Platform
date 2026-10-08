@@ -57,6 +57,7 @@ describe('PatientService', () => {
   const patients = {
     create: vi.fn(),
     list: vi.fn(),
+    findByPatientNumber: vi.fn(),
     findByIdForTenant: vi.fn(),
     update: vi.fn(),
     changeStatusIfCurrent: vi.fn(),
@@ -129,33 +130,86 @@ describe('PatientService', () => {
   it('lists with the trusted tenant, exact-number and status filters, bounded paging, and no read audit', async () => {
     patients.list.mockResolvedValue({ items: [record(PatientStatus.INACTIVE)], total: 26 });
 
-    await expect(
-      service.list(context, {
-        status: PatientStatus.INACTIVE,
-        patientNumber: 'PAT-000001',
-        limit: 20,
-        offset: 5,
-      }),
-    ).resolves.toMatchObject({
+    const result = await service.list(context, {
+      status: PatientStatus.INACTIVE,
+      patientNumber: 'PAT-000001',
+      search: '  Ａｍｉｎａ   Hassan  ',
+      limit: 20,
+      offset: 5,
+    });
+
+    expect(result).toMatchObject({
       items: [{ status: PatientStatus.INACTIVE }],
       limit: 20,
       offset: 5,
       total: 26,
       hasNext: true,
     });
+    expect(result.items[0]).toEqual({
+      id: patientId,
+      patientNumber: 'PAT-000001',
+      firstName: 'Amina',
+      middleName: null,
+      lastName: 'Hassan',
+      preferredName: null,
+      phone: null,
+      email: null,
+      status: PatientStatus.INACTIVE,
+    });
+    for (const sensitiveOrDetailField of [
+      'nationalId',
+      'address',
+      'dateOfBirth',
+      'gender',
+      'createdAt',
+      'updatedAt',
+    ]) {
+      expect(result.items[0]).not.toHaveProperty(sensitiveOrDetailField);
+    }
     expect(patients.list).toHaveBeenCalledWith(context, {
       status: PatientStatus.INACTIVE,
       patientNumber: 'PAT-000001',
+      search: 'Amina Hassan',
       limit: 20,
       offset: 5,
     });
     expect(audit.recordAudit).not.toHaveBeenCalled();
   });
 
+  it('treats an empty normalized search as no filter', async () => {
+    patients.list.mockResolvedValue({ items: [], total: 0 });
+
+    await service.list(context, { search: ' \t  ', limit: 20, offset: 0 });
+
+    expect(patients.list).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ search: undefined, limit: 20, offset: 0 }),
+    );
+  });
+
+  it('accepts the maximum established limit and offset', async () => {
+    patients.list.mockResolvedValue({ items: [], total: 0 });
+
+    await expect(service.list(context, { limit: 100, offset: 100_000 })).resolves.toMatchObject({
+      items: [],
+      limit: 100,
+      offset: 100_000,
+      total: 0,
+      hasNext: false,
+    });
+    expect(patients.list).toHaveBeenCalledWith(context, { limit: 100, offset: 100_000 });
+  });
+
   it('rejects invalid filters, status values, and unsafe pagination', async () => {
     for (const query of [
       { status: 'UNKNOWN', limit: 20, offset: 0 },
       { patientNumber: ' ', limit: 20, offset: 0 },
+      { search: 'x'.repeat(101), limit: 20, offset: 0 },
+      { search: ' '.repeat(101), limit: 20, offset: 0 },
+      { search: { $regex: '.*' }, limit: 20, offset: 0 },
+      { filter: { $where: 'true' }, limit: 20, offset: 0 },
+      { sort: 'patientNumber', limit: 20, offset: 0 },
+      { projection: 'nationalId', limit: 20, offset: 0 },
       { limit: 0, offset: 0 },
       { limit: 101, offset: 0 },
       { limit: 'not-a-number', offset: 0 },
@@ -169,6 +223,25 @@ describe('PatientService', () => {
       );
     }
     expect(patients.list).not.toHaveBeenCalled();
+  });
+
+  it('performs exact tenant-scoped patient-number lookup without auditing reads', async () => {
+    patients.findByPatientNumber.mockResolvedValueOnce(record()).mockResolvedValueOnce(null);
+
+    await expect(service.findByPatientNumber(context, ' PAT-000001 ')).resolves.toMatchObject({
+      id: patientId,
+      patientNumber: 'PAT-000001',
+      dateOfBirth: '1990-06-15',
+    });
+    await expect(service.findByPatientNumber(context, 'PAT-MISSING')).rejects.toBeInstanceOf(
+      PatientNotFoundError,
+    );
+    await expect(service.findByPatientNumber(context, '  ')).rejects.toBeInstanceOf(
+      PatientInputValidationError,
+    );
+    expect(patients.findByPatientNumber).toHaveBeenNthCalledWith(1, context, 'PAT-000001');
+    expect(patients.findByPatientNumber).toHaveBeenNthCalledWith(2, context, 'PAT-MISSING');
+    expect(audit.recordAudit).not.toHaveBeenCalled();
   });
 
   it('reads only a patient returned for the trusted tenant', async () => {

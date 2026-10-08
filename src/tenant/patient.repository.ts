@@ -1,6 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
-import type { PatientMutationResult, PatientRecord, PatientStatus } from './patient.model';
+import type {
+  PatientDirectoryRecord,
+  PatientMutationResult,
+  PatientRecord,
+  PatientStatus,
+} from './patient.model';
 import { TenantContextInvalidError, TenantContextRequiredError } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
 import {
@@ -16,7 +21,14 @@ export const PATIENT_REPOSITORY = Symbol('PATIENT_REPOSITORY');
 
 export interface PatientRepository {
   create(context: TrustedTenantContext, input: CreatePatientInput): Promise<PatientMutationResult>;
-  list(context: TrustedTenantContext, query: ListPatientsQuery): Promise<TenantPatientList>;
+  list(
+    context: TrustedTenantContext,
+    query: ListPatientsQuery,
+  ): Promise<{ items: PatientDirectoryRecord[]; total: number }>;
+  findByPatientNumber(
+    context: TrustedTenantContext,
+    patientNumber: string,
+  ): Promise<PatientRecord | null>;
   findByIdForTenant(context: TrustedTenantContext, id: string): Promise<PatientRecord | null>;
   update(
     context: TrustedTenantContext,
@@ -48,6 +60,15 @@ export class TenantStoragePatientRepository implements PatientRepository {
 
   list(context: TrustedTenantContext, query: ListPatientsQuery): Promise<TenantPatientList> {
     return this.withRoute(context, (route) => this.storage.list(context, route, query));
+  }
+
+  findByPatientNumber(
+    context: TrustedTenantContext,
+    patientNumber: string,
+  ): Promise<PatientRecord | null> {
+    return this.withRoute(context, (route) =>
+      this.storage.findByPatientNumber(context, route, patientNumber),
+    );
   }
 
   findByIdForTenant(context: TrustedTenantContext, id: string): Promise<PatientRecord | null> {

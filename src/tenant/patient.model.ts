@@ -23,6 +23,28 @@ export interface PatientRecord {
   updatedAt: Date;
 }
 
+export interface PatientDirectoryRecord {
+  id: string;
+  patientNumber: string;
+  firstName: string;
+  middleName: string | null;
+  lastName: string;
+  preferredName: string | null;
+  phone: string | null;
+  email: string | null;
+  status: PatientStatus;
+}
+
+export const PATIENT_DIRECTORY_SEARCH_FIELDS = [
+  'patientNumber',
+  'firstName',
+  'middleName',
+  'lastName',
+  'preferredName',
+  'phone',
+  'email',
+] as const satisfies readonly (keyof PatientRecord)[];
+
 export type PatientMutationResult =
   | { kind: 'changed'; record: PatientRecord }
   | { kind: 'not-found' }

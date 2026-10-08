@@ -43,7 +43,9 @@ import {
   createPatientSchema,
   listPatientsQuerySchema,
   MAX_PATIENT_LIST_OFFSET,
+  MAX_PATIENT_SEARCH_LENGTH,
   patientIdSchema,
+  patientNumberSchema,
   updatePatientSchema,
   type CreatePatientInput,
   type ListPatientsQuery,
@@ -90,9 +92,17 @@ export class TenantPatientController {
   @Get('patients')
   @RequireTenantPermissions('tenant.patients.read')
   @ApiOperation({
-    summary: 'List patients in the trusted tenant',
+    summary: 'Search and list patients in the trusted tenant',
     description:
-      'Returns ACTIVE and INACTIVE patients by default. Optional status and exact patientNumber filters are tenant-scoped. Pagination uses bounded limit/offset and results are ordered by createdAt descending then id descending.',
+      'Returns ACTIVE and INACTIVE patients by default. Optional status and exact patientNumber filters are tenant-scoped. Search is a case-insensitive literal substring over patientNumber, firstName, middleName, lastName, preferredName, phone, and email; input is NFKC-normalized, trimmed, whitespace-collapsed, and limited to 100 characters. Empty or whitespace-only search adds no filter. National ID, address, and date of birth are not searched or returned in directory entries. Substring matching uses escaped Mongo regular expressions and is not supported by the existing B-tree indexes. Pagination uses bounded limit/offset and results are ordered by createdAt descending then ID descending.',
+  })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    maxLength: MAX_PATIENT_SEARCH_LENGTH,
+    description:
+      'Case-insensitive literal substring over patientNumber, firstName, middleName, lastName, preferredName, phone, and email. NFKC-normalized; surrounding and repeated whitespace is normalized. Empty or whitespace-only input is treated as no search filter.',
   })
   @ApiQuery({
     name: 'status',
@@ -132,6 +142,30 @@ export class TenantPatientController {
     @Query(new ZodValidationPipe(listPatientsQuerySchema)) query: ListPatientsQuery,
   ): ReturnType<PatientService['list']> {
     return this.patients.list(context, query);
+  }
+
+  @Get('patients/by-number/:patientNumber')
+  @RequireTenantPermissions('tenant.patients.read')
+  @ApiOperation({
+    summary: 'Get a patient by exact number within the trusted tenant',
+    description:
+      'Uses an exact, case-sensitive patientNumber match after NFKC normalization and trimming. The lookup is tenant-scoped and requires tenant.patients.read.',
+  })
+  @ApiParam({
+    name: 'patientNumber',
+    schema: { type: 'string', minLength: 1, maxLength: 64 },
+    description: 'Exact patient number within the trusted tenant.',
+  })
+  @ApiOkResponse({ type: PatientResponseDto })
+  @ApiBadRequestResponse({ description: 'Patient number is invalid' })
+  @ApiNotFoundResponse({ description: 'Patient was not found in the trusted tenant' })
+  @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
+  @ApiForbiddenResponse({ description: 'tenant.patients.read is required' })
+  findByPatientNumber(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('patientNumber', new ZodValidationPipe(patientNumberSchema)) patientNumber: string,
+  ): ReturnType<PatientService['findByPatientNumber']> {
+    return this.patients.findByPatientNumber(context, patientNumber);
   }
 
   @Get('patients/:patientId')

@@ -2,6 +2,7 @@ import { z } from 'zod';
 import { PatientStatus } from './patient.model';
 
 export const MAX_PATIENT_LIST_OFFSET = 100_000;
+export const MAX_PATIENT_SEARCH_LENGTH = 100;
 
 function normalizePatientName(value: string): string {
   return value.normalize('NFKC').trim().replace(/\s+/gu, ' ');
@@ -14,10 +15,18 @@ const patientNameSchema = z
 
 const optionalNullableNameSchema = patientNameSchema.nullable().optional();
 
-const patientNumberSchema = z
+export const patientNumberSchema = z
   .string()
   .transform((value) => value.normalize('NFKC').trim())
   .pipe(z.string().min(1).max(64));
+
+const patientSearchSchema = z
+  .string()
+  .max(MAX_PATIENT_SEARCH_LENGTH)
+  .transform((value) => value.normalize('NFKC').trim().replace(/\s+/gu, ' '))
+  .pipe(z.string().max(MAX_PATIENT_SEARCH_LENGTH))
+  .transform((value) => value || undefined)
+  .optional();
 
 const patientEmailSchema = z
   .string()
@@ -120,6 +129,7 @@ export const listPatientsQuerySchema = z
   .object({
     status: z.nativeEnum(PatientStatus).optional(),
     patientNumber: patientNumberSchema.optional(),
+    search: patientSearchSchema,
     limit: patientListIntegerSchema(1, 100).default(50),
     offset: patientListIntegerSchema(0, MAX_PATIENT_LIST_OFFSET).default(0),
   })

@@ -532,6 +532,257 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
     expect(JSON.stringify(invalidConfigFailure.getResponse())).not.toContain(invalidConfigUri);
   });
 
+  it('verifies Phase 31 directory search, filters, pagination, privacy, and number lookup against MongoDB', async () => {
+    const sharedPatientNumber = `PAT31-NUM${RUN_ID}-SHARED`;
+    const firstName = `FirstDir${RUN_ID}`;
+    const middleName = `MiddleDir${RUN_ID}`;
+    const lastName = `LastDir${RUN_ID}`;
+    const preferredName = 'PreferredDir.*[x]';
+
+    const createAt = async (
+      tenant: TestTenant,
+      payload: Record<string, unknown>,
+    ): Promise<{ id: string; patientNumber: string }> => {
+      const response = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenant)}/patients`,
+        headers: bearerHeaders(),
+        payload,
+      });
+      expect(response.statusCode).toBe(201);
+      return response.json<{ id: string; patientNumber: string }>();
+    };
+    const list = (tenant: TestTenant, query = ''): ReturnType<NestFastifyApplication['inject']> =>
+      getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenant)}/patients${query}`,
+        headers: bearerHeaders(),
+      });
+
+    const patientA = await createAt(tenantA, {
+      ...patientPayload(sharedPatientNumber),
+      firstName,
+      middleName,
+      lastName,
+      preferredName,
+      phone: '+966500123456',
+      email: `emaildir-${RUN_ID}@example.test`,
+      nationalId: `NID-ONLY-${RUN_ID}`,
+      address: `AddressOnly-${RUN_ID}`,
+    });
+    const patientB = await createAt(tenantB, {
+      ...patientPayload(sharedPatientNumber),
+      firstName,
+      middleName,
+      lastName,
+      preferredName,
+      phone: '+966501234567',
+      email: `b-emaildir-${RUN_ID}@example.test`,
+      nationalId: `B-NID-ONLY-${RUN_ID}`,
+      address: `B-AddressOnly-${RUN_ID}`,
+    });
+
+    for (const search of [
+      `num${RUN_ID.toLowerCase()}`,
+      'firstdir',
+      `MIDDLEDIR${RUN_ID.toUpperCase()}`,
+      'lastdir',
+      '.*[x]',
+      '500123',
+      `EMAILDIR-${RUN_ID.toUpperCase()}`,
+    ]) {
+      const response = await list(tenantA, `?search=${encodeURIComponent(search)}`);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({
+        total: 1,
+        items: [{ id: patientA.id }],
+      });
+    }
+
+    const directory = await list(tenantA, `?search=${encodeURIComponent('firstdir')}`);
+    const directoryEntry = directory.json<{
+      items: Array<Record<string, unknown>>;
+    }>().items[0];
+    expect(directoryEntry).toMatchObject({
+      id: patientA.id,
+      patientNumber: sharedPatientNumber,
+      firstName,
+      middleName,
+      lastName,
+      preferredName,
+      phone: '+966500123456',
+      email: `emaildir-${RUN_ID}@example.test`,
+    });
+    for (const privateOrDetailField of [
+      'nationalId',
+      'address',
+      'dateOfBirth',
+      'gender',
+      'createdAt',
+      'updatedAt',
+      '_id',
+      '_tenantId',
+      'tenantId',
+      'databaseName',
+      'connectionReference',
+    ]) {
+      expect(directoryEntry).not.toHaveProperty(privateOrDetailField);
+    }
+
+    const sensitiveFieldSearches = [`NID-ONLY-${RUN_ID}`, `AddressOnly-${RUN_ID}`];
+    for (const search of sensitiveFieldSearches) {
+      const response = await list(tenantA, `?search=${encodeURIComponent(search)}`);
+      expect(response.statusCode).toBe(200);
+      expect(response.json()).toMatchObject({ items: [], total: 0, hasNext: false });
+    }
+    const rawRegexPatternSearch = await list(tenantA, `?search=${encodeURIComponent('.+dir')}`);
+    expect(rawRegexPatternSearch.statusCode).toBe(200);
+    expect(rawRegexPatternSearch.json()).toMatchObject({ items: [], total: 0, hasNext: false });
+
+    const tenantBNameSearch = await list(tenantB, `?search=${encodeURIComponent('firstdir')}`);
+    expect(tenantBNameSearch.json()).toMatchObject({
+      total: 1,
+      items: [{ id: patientB.id }],
+    });
+
+    const byNumberA = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/patients/by-number/${encodeURIComponent(sharedPatientNumber)}`,
+      headers: bearerHeaders(),
+    });
+    const byNumberB = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/patients/by-number/${encodeURIComponent(sharedPatientNumber)}`,
+      headers: bearerHeaders(),
+    });
+    expect(byNumberA.statusCode).toBe(200);
+    expect(byNumberB.statusCode).toBe(200);
+    expect(byNumberA.json()).toMatchObject({ id: patientA.id, patientNumber: sharedPatientNumber });
+    expect(byNumberB.json()).toMatchObject({ id: patientB.id, patientNumber: sharedPatientNumber });
+    expect(byNumberA.json()).toHaveProperty('nationalId', `NID-ONLY-${RUN_ID}`);
+    expect(byNumberA.json()).toHaveProperty('address', `AddressOnly-${RUN_ID}`);
+
+    const patientNumberOnlyInA = `PAT31-ONLYA-${RUN_ID}`;
+    await createAt(tenantA, patientPayload(patientNumberOnlyInA));
+    const crossTenantNumberLookup = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/patients/by-number/${encodeURIComponent(patientNumberOnlyInA)}`,
+      headers: bearerHeaders(),
+    });
+    const nonexistentNumberLookup = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/patients/by-number/NO-SUCH-${RUN_ID}`,
+      headers: bearerHeaders(),
+    });
+    const crossTenantIdLookup = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/patients/${patientA.id}`,
+      headers: bearerHeaders(),
+    });
+    expect(crossTenantNumberLookup.statusCode).toBe(404);
+    expect(nonexistentNumberLookup.statusCode).toBe(404);
+    expect(crossTenantIdLookup.statusCode).toBe(404);
+    expect(crossTenantNumberLookup.json<{ error: unknown }>().error).toEqual(
+      nonexistentNumberLookup.json<{ error: unknown }>().error,
+    );
+    expect(crossTenantIdLookup.json<{ error: unknown }>().error).toEqual(
+      nonexistentNumberLookup.json<{ error: unknown }>().error,
+    );
+
+    const lowercaseNumberLookup = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/patients/by-number/${encodeURIComponent(
+        sharedPatientNumber.toLowerCase(),
+      )}`,
+      headers: bearerHeaders(),
+    });
+    expect(lowercaseNumberLookup.statusCode).toBe(404);
+
+    const activeBeforeDeactivation = await list(
+      tenantA,
+      `?search=${encodeURIComponent('firstdir')}&status=ACTIVE`,
+    );
+    expect(activeBeforeDeactivation.json()).toMatchObject({
+      total: 1,
+      items: [{ id: patientA.id, status: 'ACTIVE' }],
+      hasNext: false,
+    });
+
+    const deactivate = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients/${patientA.id}/deactivate`,
+      headers: bearerHeaders(),
+    });
+    expect(deactivate.statusCode).toBe(200);
+    const inactiveSearch = await list(
+      tenantA,
+      `?search=${encodeURIComponent('firstdir')}&status=INACTIVE`,
+    );
+    const activeSearch = await list(
+      tenantA,
+      `?search=${encodeURIComponent('firstdir')}&status=ACTIVE`,
+    );
+    expect(inactiveSearch.json()).toMatchObject({
+      total: 1,
+      items: [{ id: patientA.id, status: 'INACTIVE' }],
+      hasNext: false,
+    });
+    expect(activeSearch.json()).toMatchObject({ items: [], total: 0, hasNext: false });
+
+    await createAt(tenantA, {
+      ...patientPayload(`PAT31-PAGE1-${RUN_ID}`),
+      firstName: `PagingMarker${RUN_ID}`,
+      lastName: 'Pagination',
+    });
+    await createAt(tenantA, {
+      ...patientPayload(`PAT31-PAGE2-${RUN_ID}`),
+      firstName: `PagingMarker${RUN_ID}`,
+      lastName: 'Pagination',
+    });
+    const page0Url = `?search=PagingMarker&limit=1&offset=0`;
+    const page0 = await list(tenantA, page0Url);
+    const page0Repeat = await list(tenantA, page0Url);
+    const page1 = await list(tenantA, '?search=PagingMarker&limit=1&offset=1');
+    const beyondTotal = await list(tenantA, '?search=PagingMarker&limit=1&offset=10');
+    expect(page0.json()).toMatchObject({ total: 2, limit: 1, offset: 0, hasNext: true });
+    expect(page1.json()).toMatchObject({ total: 2, limit: 1, offset: 1, hasNext: false });
+    expect(beyondTotal.json()).toMatchObject({
+      items: [],
+      total: 2,
+      limit: 1,
+      offset: 10,
+      hasNext: false,
+    });
+    expect(page0.json().items.map(({ id }: { id: string }) => id)).toEqual(
+      page0Repeat.json().items.map(({ id }: { id: string }) => id),
+    );
+
+    const emptySearch = await list(tenantA, '?search=%20%20');
+    const noSearch = await list(tenantA);
+    expect(emptySearch.statusCode).toBe(200);
+    expect(emptySearch.json().items.map(({ id }: { id: string }) => id)).toEqual(
+      noSearch.json().items.map(({ id }: { id: string }) => id),
+    );
+    expect(emptySearch.json()).toMatchObject({ total: noSearch.json().total, offset: 0 });
+
+    const noMatch = await list(tenantA, `?search=NoMatch-${RUN_ID}`);
+    expect(noMatch.json()).toMatchObject({ items: [], total: 0, hasNext: false });
+    const maximumSearch = await list(tenantA, `?search=${'x'.repeat(100)}`);
+    const oversizedSearch = await list(tenantA, `?search=${'x'.repeat(101)}`);
+    expect(maximumSearch.statusCode).toBe(200);
+    expect(maximumSearch.json()).toMatchObject({ items: [], total: 0 });
+    expect(oversizedSearch.statusCode).toBe(400);
+
+    const rawOperatorObject = await list(tenantA, '?search%5B%24regex%5D=.%2A');
+    const arbitraryFilter = await list(tenantA, '?filter%5B%24where%5D=true');
+    const arbitrarySort = await list(tenantA, '?sort=patientNumber');
+    const arbitraryProjection = await list(tenantA, '?projection=nationalId');
+    expect(rawOperatorObject.statusCode).toBe(400);
+    expect(arbitraryFilter.statusCode).toBe(400);
+    expect(arbitrarySort.statusCode).toBe(400);
+    expect(arbitraryProjection.statusCode).toBe(400);
+  });
+
   it('preserves records after application shutdown and a fresh Nest app/repository is created', async () => {
     const patientNumber = 'PAT-300005';
     const create = await getApplication().inject({

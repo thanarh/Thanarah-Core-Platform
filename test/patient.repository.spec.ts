@@ -130,6 +130,29 @@ describe('TenantStoragePatientRepository', () => {
     });
   });
 
+  it('looks up an exact patient number only within the trusted tenant', async () => {
+    const { repository } = setup();
+    const patientA = await repository.create(contextA, {
+      ...createInput,
+      patientNumber: 'PAT-A-ONLY',
+    });
+    const patientB = await repository.create(contextB, {
+      ...createInput,
+      patientNumber: 'PAT-B-ONLY',
+    });
+    if (patientA.kind !== 'changed' || patientB.kind !== 'changed') {
+      throw new Error('Expected both tenant records to be created');
+    }
+
+    await expect(repository.findByPatientNumber(contextA, 'PAT-A-ONLY')).resolves.toMatchObject({
+      id: patientA.record.id,
+    });
+    await expect(repository.findByPatientNumber(contextB, 'PAT-B-ONLY')).resolves.toMatchObject({
+      id: patientB.record.id,
+    });
+    await expect(repository.findByPatientNumber(contextB, 'PAT-A-ONLY')).resolves.toBeNull();
+  });
+
   it('updates and transitions a record only within its tenant partition', async () => {
     const { repository } = setup();
     const created = await repository.create(contextA, createInput);

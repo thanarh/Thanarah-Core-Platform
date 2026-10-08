@@ -61,6 +61,18 @@ const patientResponse = {
   updatedAt: '2026-10-07T10:00:00.000Z',
 };
 
+const patientDirectoryResponse = {
+  id: patientId,
+  patientNumber: 'PAT-000001',
+  firstName: 'Amina',
+  middleName: null,
+  lastName: 'Hassan',
+  preferredName: null,
+  phone: null,
+  email: null,
+  status: PatientStatus.ACTIVE,
+};
+
 const responseDescription = (response: unknown): string | undefined =>
   (response as { description?: string } | undefined)?.description;
 
@@ -83,6 +95,7 @@ describe('Tenant patient HTTP authorization and routing', () => {
   const patients = {
     create: vi.fn(),
     list: vi.fn(),
+    findByPatientNumber: vi.fn(),
     findById: vi.fn(),
     update: vi.fn(),
     activate: vi.fn(),
@@ -102,12 +115,13 @@ describe('Tenant patient HTTP authorization and routing', () => {
     );
     patients.create.mockResolvedValue(patientResponse);
     patients.list.mockResolvedValue({
-      items: [patientResponse],
+      items: [patientDirectoryResponse],
       limit: 50,
       offset: 0,
       total: 1,
       hasNext: false,
     });
+    patients.findByPatientNumber.mockResolvedValue(patientResponse);
     patients.findById.mockResolvedValue(patientResponse);
     patients.update.mockResolvedValue(patientResponse);
     patients.activate.mockResolvedValue(patientResponse);
@@ -171,17 +185,48 @@ describe('Tenant patient HTTP authorization and routing', () => {
       'tenant.patients.read',
     );
 
+    const deniedDetailRead = await app.inject({
+      method: 'GET',
+      url: `${root}/patients/${patientId}`,
+      headers,
+    });
+    expect(deniedDetailRead.statusCode).toBe(403);
+    expect(patients.findById).not.toHaveBeenCalled();
+
     allowedPermissions.add('tenant.patients.read');
     const read = await app.inject({ method: 'GET', url: `${root}/patients`, headers });
     expect(read.statusCode).toBe(200);
     expect(read.json()).toMatchObject({
-      items: [patientResponse],
+      items: [patientDirectoryResponse],
       limit: 50,
       offset: 0,
       total: 1,
       hasNext: false,
     });
     expect(read.json().items[0]).not.toHaveProperty('tenantId');
+    expect(read.json().items[0]).not.toHaveProperty('nationalId');
+    expect(read.json().items[0]).not.toHaveProperty('address');
+
+    allowedPermissions.delete('tenant.patients.read');
+    const deniedNumberRead = await app.inject({
+      method: 'GET',
+      url: `${root}/patients/by-number/PAT-000001`,
+      headers,
+    });
+    expect(deniedNumberRead.statusCode).toBe(403);
+    expect(patients.findByPatientNumber).not.toHaveBeenCalled();
+    allowedPermissions.add('tenant.patients.read');
+
+    const numberRead = await app.inject({
+      method: 'GET',
+      url: `${root}/patients/by-number/PAT-000001`,
+      headers,
+    });
+    expect(numberRead.statusCode).toBe(200);
+    expect(patients.findByPatientNumber).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      'PAT-000001',
+    );
 
     allowedPermissions.delete('tenant.patients.manage');
     const deniedManage = await app.inject({
@@ -268,16 +313,31 @@ describe('Tenant patient HTTP authorization and routing', () => {
 
     const list = await app.inject({
       method: 'GET',
-      url: `${root}/patients?status=INACTIVE&patientNumber=PAT-000001&limit=10&offset=5`,
+      url: `${root}/patients?status=INACTIVE&patientNumber=PAT-000001&search=mina&limit=10&offset=5`,
       headers,
     });
     expect(list.statusCode).toBe(200);
     expect(patients.list).toHaveBeenCalledWith(expect.objectContaining({ tenantId }), {
       status: PatientStatus.INACTIVE,
       patientNumber: 'PAT-000001',
+      search: 'mina',
       limit: 10,
       offset: 5,
     });
+
+    const emptySearch = await app.inject({
+      method: 'GET',
+      url: `${root}/patients?search=%20%20`,
+      headers,
+    });
+    expect(emptySearch.statusCode).toBe(200);
+    expect(patients.list.mock.calls.at(-1)?.[1]).toMatchObject({
+      limit: 50,
+      offset: 0,
+    });
+    expect((patients.list.mock.calls.at(-1)?.[1] as { search?: string } | undefined)?.search).toBe(
+      undefined,
+    );
 
     const read = await app.inject({
       method: 'GET',
@@ -346,6 +406,23 @@ describe('Tenant patient HTTP authorization and routing', () => {
       expect(response.statusCode).toBe(400);
     }
 
+    const invalidDirectoryQueries = [
+      `search=${'x'.repeat(101)}`,
+      'search%5B%24regex%5D=.%2A',
+      'filter%5B%24where%5D=true',
+      'sort=patientNumber',
+      'projection=nationalId',
+      'status=UNKNOWN',
+    ];
+    for (const query of invalidDirectoryQueries) {
+      const response = await app.inject({
+        method: 'GET',
+        url: `${root}/patients?${query}`,
+        headers,
+      });
+      expect(response.statusCode).toBe(400);
+    }
+
     const malformedId = await app.inject({
       method: 'GET',
       url: `${root}/patients/not-a-uuid`,
@@ -353,6 +430,7 @@ describe('Tenant patient HTTP authorization and routing', () => {
     });
     expect(malformedId.statusCode).toBe(400);
     expect(patients.create).not.toHaveBeenCalled();
+    expect(patients.list).not.toHaveBeenCalled();
     expect(patients.update).not.toHaveBeenCalled();
   });
 
@@ -392,7 +470,29 @@ describe('Tenant patient HTTP authorization and routing', () => {
     });
     expect(mismatchedTenant.statusCode).toBe(403);
 
-    validator.validateMembership.mockRejectedValueOnce(new TenantContextInvalidError());
+    const mismatchedNumberLookup = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${otherTenantId}/patients/by-number/PAT-000001`,
+      headers,
+    });
+    expect(mismatchedNumberLookup.statusCode).toBe(403);
+
+    validator.validateMembership
+      .mockRejectedValueOnce(new TenantContextInvalidError())
+      .mockRejectedValueOnce(new TenantContextInvalidError())
+      .mockRejectedValueOnce(new TenantContextInvalidError());
+    const inactiveNumberMembership = await app.inject({
+      method: 'GET',
+      url: `${root}/patients/by-number/PAT-000001`,
+      headers,
+    });
+    expect(inactiveNumberMembership.statusCode).toBe(403);
+    const inactiveDetailMembership = await app.inject({
+      method: 'GET',
+      url: `${root}/patients/${patientId}`,
+      headers,
+    });
+    expect(inactiveDetailMembership.statusCode).toBe(403);
     const inactiveMembership = await app.inject({
       method: 'GET',
       url: `${root}/patients`,
@@ -400,6 +500,8 @@ describe('Tenant patient HTTP authorization and routing', () => {
     });
     expect(inactiveMembership.statusCode).toBe(403);
     expect(patients.list).not.toHaveBeenCalled();
+    expect(patients.findById).not.toHaveBeenCalled();
+    expect(patients.findByPatientNumber).not.toHaveBeenCalled();
   });
 
   it('publishes patient request, response, permission, filter, and lifecycle contracts in OpenAPI', () => {
@@ -413,8 +515,10 @@ describe('Tenant patient HTTP authorization and routing', () => {
     );
     const collectionPath = '/api/v1/tenants/{tenantId}/patients';
     const resourcePath = `${collectionPath}/{patientId}`;
+    const byNumberPath = `${collectionPath}/by-number/{patientNumber}`;
     const create = document.paths[collectionPath]?.post;
     const list = document.paths[collectionPath]?.get;
+    const byNumber = document.paths[byNumberPath]?.get;
 
     expect(create?.security).toEqual([{ bearer: [] }]);
     expect(create?.requestBody).toMatchObject({
@@ -428,6 +532,11 @@ describe('Tenant patient HTTP authorization and routing', () => {
     expect(responseDescription(list?.responses?.['403'])).toContain('tenant.patients.read');
     expect(list?.parameters).toEqual(
       expect.arrayContaining([
+        expect.objectContaining({
+          name: 'search',
+          in: 'query',
+          schema: expect.objectContaining({ maxLength: 100 }),
+        }),
         expect.objectContaining({
           name: 'status',
           in: 'query',
@@ -450,7 +559,26 @@ describe('Tenant patient HTTP authorization and routing', () => {
         }),
       ]),
     );
-    expect(list?.description).toContain('createdAt descending then id descending');
+    expect(list?.description).toContain('createdAt descending then ID descending');
+    expect(list?.description).toContain('case-insensitive literal substring');
+    expect(byNumber?.security).toEqual([{ bearer: [] }]);
+    expect(byNumber?.parameters).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'patientNumber',
+          in: 'path',
+          schema: { type: 'string', minLength: 1, maxLength: 64 },
+        }),
+      ]),
+    );
+    expect(responseDescription(byNumber?.responses?.['403'])).toContain('tenant.patients.read');
+    const directorySchema = document.components?.schemas?.PatientDirectoryEntryDto as {
+      properties?: Record<string, unknown>;
+    };
+    expect(directorySchema.properties).toHaveProperty('patientNumber');
+    expect(directorySchema.properties).not.toHaveProperty('nationalId');
+    expect(directorySchema.properties).not.toHaveProperty('address');
+    expect(directorySchema.properties).not.toHaveProperty('dateOfBirth');
     expect(document.paths[`${resourcePath}/activate`]?.post).toBeDefined();
     expect(document.paths[`${resourcePath}/deactivate`]?.post).toBeDefined();
     expect(document.paths[resourcePath]?.delete).toBeUndefined();

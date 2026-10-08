@@ -1,8 +1,14 @@
 import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
-import type { Collection, Document } from 'mongodb';
+import type { Collection, Document, Filter } from 'mongodb';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
-import type { PatientMutationResult, PatientRecord, PatientStatus } from './patient.model';
+import {
+  PATIENT_DIRECTORY_SEARCH_FIELDS,
+  type PatientDirectoryRecord,
+  type PatientMutationResult,
+  type PatientRecord,
+  type PatientStatus,
+} from './patient.model';
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
@@ -23,6 +29,17 @@ import type {
 
 const PATIENT_COLLECTION_NAME = 'patients';
 const PATIENT_NUMBER_INDEX_NAME = 'tenant_patient_number_unique';
+const PATIENT_DIRECTORY_PROJECTION = {
+  _id: 1,
+  patientNumber: 1,
+  firstName: 1,
+  middleName: 1,
+  lastName: 1,
+  preferredName: 1,
+  phone: 1,
+  email: 1,
+  status: 1,
+} as const;
 
 interface PatientMongoDocument extends Document, Omit<PatientRecord, 'id'> {
   _id: string;
@@ -78,14 +95,21 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
     query: ListPatientsQuery,
   ): Promise<TenantPatientList> {
     const collection = await this.getCollection(context, route);
-    const filter = {
+    const filter: Filter<PatientMongoDocument> = {
       _tenantId: context.tenantId,
       ...(query.status ? { status: query.status } : {}),
       ...(query.patientNumber ? { patientNumber: query.patientNumber } : {}),
+      ...(query.search
+        ? {
+            $or: PATIENT_DIRECTORY_SEARCH_FIELDS.map((field) => ({
+              [field]: { $regex: escapeRegex(query.search!), $options: 'i' },
+            })),
+          }
+        : {}),
     };
     const [documents, total] = await Promise.all([
       collection
-        .find(filter)
+        .find(filter, { projection: PATIENT_DIRECTORY_PROJECTION })
         .sort({ createdAt: -1, _id: -1 })
         .skip(query.offset)
         .limit(query.limit)
@@ -93,7 +117,20 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
       collection.countDocuments(filter),
     ]);
 
-    return { items: documents.map(toPatientRecord), total };
+    return { items: documents.map(toPatientDirectoryRecord), total };
+  }
+
+  async findByPatientNumber(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    patientNumber: string,
+  ): Promise<PatientRecord | null> {
+    const collection = await this.getCollection(context, route);
+    const document = await collection.findOne({
+      _tenantId: context.tenantId,
+      patientNumber,
+    });
+    return document ? toPatientRecord(document) : null;
   }
 
   async findById(
@@ -245,6 +282,24 @@ function toPatientRecord(document: PatientMongoDocument): PatientRecord {
     createdAt: new Date(document.createdAt),
     updatedAt: new Date(document.updatedAt),
   };
+}
+
+function toPatientDirectoryRecord(document: PatientMongoDocument): PatientDirectoryRecord {
+  return {
+    id: document._id,
+    patientNumber: document.patientNumber,
+    firstName: document.firstName,
+    middleName: document.middleName,
+    lastName: document.lastName,
+    preferredName: document.preferredName,
+    phone: document.phone,
+    email: document.email,
+    status: document.status,
+  };
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function cloneDate(value: Date | null): Date | null {

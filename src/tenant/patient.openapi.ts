@@ -148,9 +148,38 @@ export class PatientResponseDto {
   updatedAt!: Date;
 }
 
+export class PatientDirectoryEntryDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: String, maxLength: 64 })
+  patientNumber!: string;
+
+  @ApiProperty({ type: String, maxLength: 191 })
+  firstName!: string;
+
+  @ApiProperty({ type: String, maxLength: 191, nullable: true })
+  middleName!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 191 })
+  lastName!: string;
+
+  @ApiProperty({ type: String, maxLength: 191, nullable: true })
+  preferredName!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 32, nullable: true })
+  phone!: string | null;
+
+  @ApiProperty({ type: String, format: 'email', maxLength: 191, nullable: true })
+  email!: string | null;
+
+  @ApiProperty({ type: String, enum: PatientStatus })
+  status!: PatientStatus;
+}
+
 export class PatientListResponseDto {
-  @ApiProperty({ type: PatientResponseDto, isArray: true })
-  items!: PatientResponseDto[];
+  @ApiProperty({ type: PatientDirectoryEntryDto, isArray: true })
+  items!: PatientDirectoryEntryDto[];
 
   @ApiProperty({ type: Number, minimum: 1, maximum: 100 })
   limit!: number;

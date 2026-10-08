@@ -12,6 +12,7 @@ import {
   listPatientsQuerySchema,
   MAX_PATIENT_LIST_OFFSET,
   patientIdSchema,
+  patientNumberSchema,
   updatePatientSchema,
   type CreatePatientInput,
   type ListPatientsQuery,
@@ -25,7 +26,7 @@ import {
   PatientNumberConflictError,
 } from './patient.errors';
 import { type PatientRepository, PATIENT_REPOSITORY } from './patient.repository';
-import { PatientStatus, type PatientRecord } from './patient.model';
+import { PatientStatus, type PatientDirectoryRecord, type PatientRecord } from './patient.model';
 
 export type PatientAuditContext = Pick<
   TrustedSecurityContext,
@@ -37,7 +38,7 @@ export type PatientResponse = Omit<PatientRecord, 'dateOfBirth'> & {
 };
 
 export interface PatientListResponse {
-  items: PatientResponse[];
+  items: PatientDirectoryRecord[];
   limit: number;
   offset: number;
   total: number;
@@ -105,7 +106,7 @@ export class PatientService {
     const { items, total } = await this.patients.list(context, parsed.data);
     const nextOffset = offset + limit;
     return {
-      items: items.map((record) => this.present(record)),
+      items: items.map((record) => this.presentDirectory(record)),
       limit,
       offset,
       total,
@@ -117,6 +118,18 @@ export class PatientService {
     this.trustedTenantId(context);
     const id = this.patientId(patientId);
     const record = await this.patients.findByIdForTenant(context, id);
+    if (!record) throw new PatientNotFoundError();
+    return this.present(record);
+  }
+
+  async findByPatientNumber(
+    context: TrustedTenantContext,
+    patientNumber: string,
+  ): Promise<PatientResponse> {
+    this.trustedTenantId(context);
+    const parsed = patientNumberSchema.safeParse(patientNumber);
+    if (!parsed.success) throw new PatientInputValidationError();
+    const record = await this.patients.findByPatientNumber(context, parsed.data);
     if (!record) throw new PatientNotFoundError();
     return this.present(record);
   }
@@ -269,6 +282,20 @@ export class PatientService {
     return {
       ...record,
       dateOfBirth: record.dateOfBirth?.toISOString().slice(0, 10) ?? null,
+    };
+  }
+
+  private presentDirectory(record: PatientDirectoryRecord): PatientDirectoryRecord {
+    return {
+      id: record.id,
+      patientNumber: record.patientNumber,
+      firstName: record.firstName,
+      middleName: record.middleName,
+      lastName: record.lastName,
+      preferredName: record.preferredName,
+      phone: record.phone,
+      email: record.email,
+      status: record.status,
     };
   }
 }

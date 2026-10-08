@@ -1,7 +1,13 @@
 import { randomUUID } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
-import type { PatientMutationResult, PatientRecord, PatientStatus } from './patient.model';
+import {
+  PATIENT_DIRECTORY_SEARCH_FIELDS,
+  type PatientDirectoryRecord,
+  type PatientMutationResult,
+  type PatientRecord,
+  type PatientStatus,
+} from './patient.model';
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
@@ -16,7 +22,7 @@ import type { TenantStorageRoute } from './tenant-storage.contract';
 export const TENANT_PATIENT_STORAGE = Symbol('TENANT_PATIENT_STORAGE');
 
 export interface TenantPatientList {
-  items: PatientRecord[];
+  items: PatientDirectoryRecord[];
   total: number;
 }
 
@@ -32,6 +38,11 @@ export interface TenantPatientStorage {
     route: TenantStorageRoute,
     query: ListPatientsQuery,
   ): Promise<TenantPatientList>;
+  findByPatientNumber(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    patientNumber: string,
+  ): Promise<PatientRecord | null>;
   findById(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -105,15 +116,28 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     const filtered = [...(patients?.values() ?? [])]
       .filter((patient) => !query.status || patient.status === query.status)
       .filter((patient) => !query.patientNumber || patient.patientNumber === query.patientNumber)
+      .filter((patient) => matchesSearch(patient, query.search))
       .sort(
         (left, right) =>
           right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id),
       );
 
     return {
-      items: filtered.slice(query.offset, query.offset + query.limit).map(cloneRecord),
+      items: filtered.slice(query.offset, query.offset + query.limit).map(toPatientDirectoryRecord),
       total: filtered.length,
     };
+  }
+
+  async findByPatientNumber(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    patientNumber: string,
+  ): Promise<PatientRecord | null> {
+    this.assertScope(context, route);
+    const record = [...(this.partition(context, false)?.values() ?? [])].find(
+      (patient) => patient.patientNumber === patientNumber,
+    );
+    return record ? cloneRecord(record) : null;
   }
 
   async findById(
@@ -228,6 +252,10 @@ export class UnconfiguredTenantPatientStorage implements TenantPatientStorage {
     throw new TenantStorageUnavailableError();
   }
 
+  async findByPatientNumber(): Promise<PatientRecord | null> {
+    throw new TenantStorageUnavailableError();
+  }
+
   async findById(): Promise<PatientRecord | null> {
     throw new TenantStorageUnavailableError();
   }
@@ -251,5 +279,28 @@ function cloneRecord(record: PatientRecord): PatientRecord {
     dateOfBirth: cloneDate(record.dateOfBirth),
     createdAt: new Date(record.createdAt.getTime()),
     updatedAt: new Date(record.updatedAt.getTime()),
+  };
+}
+
+function matchesSearch(patient: PatientRecord, search: string | undefined): boolean {
+  if (!search) return true;
+  const normalizedSearch = search.toLowerCase();
+  return PATIENT_DIRECTORY_SEARCH_FIELDS.some((field) => {
+    const value = patient[field];
+    return typeof value === 'string' && value.toLowerCase().includes(normalizedSearch);
+  });
+}
+
+function toPatientDirectoryRecord(patient: PatientRecord): PatientDirectoryRecord {
+  return {
+    id: patient.id,
+    patientNumber: patient.patientNumber,
+    firstName: patient.firstName,
+    middleName: patient.middleName,
+    lastName: patient.lastName,
+    preferredName: patient.preferredName,
+    phone: patient.phone,
+    email: patient.email,
+    status: patient.status,
   };
 }
