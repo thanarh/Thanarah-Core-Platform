@@ -54,6 +54,15 @@ enum PatientStatus {
   INACTIVE
 }
 
+enum TenantStorageTargetStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum TenantStorageProvider {
+  MONGODB
+}
+
 enum TenantCatalogStatus {
   ACTIVE
   SUSPENDED
@@ -285,25 +294,26 @@ model PlatformRefreshTokenHistory {
 }
 
 model Tenant {
-  id              String             @id @default(uuid()) @db.Char(36)
-  slug            String             @unique @db.VarChar(64)
-  legalName       String             @db.VarChar(191)
-  displayName     String             @db.VarChar(191)
-  status          TenantStatus       @default(ACTIVE)
-  statusChangedAt DateTime           @default(now())
+  id              String                @id @default(uuid()) @db.Char(36)
+  slug            String                @unique @db.VarChar(64)
+  legalName       String                @db.VarChar(191)
+  displayName     String                @db.VarChar(191)
+  status          TenantStatus          @default(ACTIVE)
+  statusChangedAt DateTime              @default(now())
   suspendedAt     DateTime?
   deactivatedAt   DateTime?
-  createdAt       DateTime           @default(now())
-  updatedAt       DateTime           @updatedAt
-  auditEvents     PlatformAuditLog[] @relation("TenantAuditSubject")
+  createdAt       DateTime              @default(now())
+  updatedAt       DateTime              @updatedAt
+  auditEvents     PlatformAuditLog[]    @relation("TenantAuditSubject")
   facilities      Facility[]
-  staff           Staff[]            @relation("TenantStaffTenant")
+  staff           Staff[]               @relation("TenantStaffTenant")
   departments     Department[]
   specialties     Specialty[]
   services        Service[]
   doctors         Doctor[]
   patients        Patient[]
-  memberships     TenantMembership[] @relation("TenantMembershipTenant")
+  storageTargets  TenantStorageTarget[]
+  memberships     TenantMembership[]    @relation("TenantMembershipTenant")
   roles           TenantRole[]
   subscriptions   Subscription[]
 
@@ -574,6 +584,23 @@ model Patient {
   @@unique([tenantId, patientNumber])
   @@index([tenantId, status, createdAt])
   @@index([tenantId, createdAt])
+}
+
+model TenantStorageTarget {
+  id                  String                    @id @default(uuid()) @db.Char(36)
+  tenantId            String                    @db.Char(36)
+  provider            TenantStorageProvider     @default(MONGODB)
+  connectionReference String                    @default("primary") @db.VarChar(64)
+  databaseName        String                    @db.VarChar(63)
+  status              TenantStorageTargetStatus @default(INACTIVE)
+  isPrimary           Boolean                   @default(false)
+  createdAt           DateTime                  @default(now())
+  updatedAt           DateTime                  @updatedAt
+  tenant              Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+
+  @@unique([connectionReference, databaseName])
+  @@index([tenantId, status, isPrimary, createdAt])
+  @@index([provider, status])
 }
 
 model Doctor {

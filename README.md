@@ -32,7 +32,7 @@
 | **Runtime** | Node.js 22 |
 | **Framework** | NestJS 11 + Fastify |
 | **Central persistence** | Prisma 6 + MySQL/MariaDB |
-| **Tenant persistence** | Isolated MongoDB database(s) per tenant — planned, not implemented |
+| **Tenant persistence** | Official MongoDB driver behind the tenant-storage boundary; requires explicit target configuration |
 | **Language** | TypeScript 5 (strict) |
 | **Validation** | Zod |
 | **API Docs** | Swagger / OpenAPI |
@@ -49,20 +49,29 @@ Thanarah uses two permanent, distinct persistence systems:
 - **Central platform:** Prisma 6 with MySQL/MariaDB stores global identities,
   authentication, sessions, platform roles and permissions, and other
   platform-level metadata.
-- **Tenant data:** the future target is isolated tenant-owned storage, with one
-  logical tenant allowed to span multiple physical placements. No persistent
-  tenant database driver or production registry is implemented.
-- **Patient boundary:** Patient operations now require trusted tenant context
-  and resolve through the tenant-storage contracts. Development uses a
-  process-local memory adapter only; non-development environments fail closed
-  until persistent tenant storage is configured. Patient data is not persisted
-  in central MySQL by the application.
+- **Tenant data:** Patient persistence uses the official MongoDB driver through
+  the tenant-storage boundary. Central MySQL stores registry metadata, including
+  an allowlisted connection reference and a tenant database name, but never a
+  MongoDB URI. Registry targets start inactive; provisioning and activation are
+  explicit operator actions.
+- **Patient boundary:** Each operation requires trusted tenant context and a
+  server-resolved active primary target. The current adapter supports one active
+  target per operation; the registry can represent additional targets but does
+  not shard, replicate, or automatically route across them. `memory` is an
+  explicit development-only mode. Missing configuration or storage failures
+  return sanitized unavailable responses; there is no central Patient fallback.
+- **Runtime configuration:** use `TENANT_STORAGE_PROVIDER=memory` only in local
+  development, or `TENANT_STORAGE_PROVIDER=mongodb` with
+  `TENANT_STORAGE_MONGO_URI` supplied through the runtime secret manager and an
+  active central registry target. `disabled` is the default. `/health` remains
+  a liveness check and `/ready` checks only the central database.
 
 The central Patient Prisma model/table is retained as legacy schema to protect
 existing records, but the Patient application repository no longer queries it.
-This phase adds no drop or data-movement migration. Any future removal requires
-a persistent tenant backend and an approved data disposition. Clients must
-never select a database name or provide a connection string.
+The registry migration adds metadata only; it does not create MongoDB databases,
+move Patient records, or alter the legacy Patient table. Any future removal
+requires an approved data disposition. Clients must never select a database
+name or provide a connection string.
 
 ## Authorization Model and Runtime
 
@@ -346,9 +355,10 @@ delete route. Tenant permissions use `tenant.branches.*`; there is no
 facility-level or branch-level RBAC.
 
 Branches remain central platform metadata. They do not create MongoDB
-databases or represent healthcare records. Doctors, clinical staff records,
-healthcare operations, and MongoDB/tenant-database provisioning remain future
-phases. Tenant staff profiles are documented separately below.
+databases or represent healthcare records. Doctors, clinical staff records, and
+healthcare operations remain separate future phases. Tenant MongoDB target
+provisioning is manual and is not performed by Branch or Patient requests.
+Tenant staff profiles are documented separately below.
 The entitlement runtime is implemented separately, but no existing business
 route is gated by it.
 
@@ -471,8 +481,9 @@ Thanarah-Core-Platform/
 - [x] Platform role and permission authorization foundation
 - [x] Tenant organization, membership, and tenant role/permission foundations
 - [x] Coming Soon splash page (Arabic typewriter effect)
-- [ ] Tenant database registry and trusted server-side storage resolution
-- [ ] Isolated tenant MongoDB database(s) — planned, not implemented
+- [x] Tenant storage registry and trusted server-side Patient storage resolution
+- [x] Persistent Patient adapter using MongoDB (requires explicitly provisioned targets)
+- [ ] Multi-target routing, automated provisioning, and storage for additional healthcare domains
 - [ ] Login page — bilingual (AR/EN)
 - [ ] Dashboard — multi-tenant healthcare management
 - [x] API documentation — Swagger

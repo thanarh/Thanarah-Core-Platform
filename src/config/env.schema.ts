@@ -39,6 +39,8 @@ export const envSchema = z
      *   live database connection and PrismaService.isConnected() returns false.
      */
     DATABASE_URL: z.string().default(''),
+    TENANT_STORAGE_PROVIDER: z.enum(['disabled', 'memory', 'mongodb']).default('disabled'),
+    TENANT_STORAGE_MONGO_URI: z.string().default(''),
     JWT_ACCESS_SECRET: z.string().default(''),
     AUTH_ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(15),
     AUTH_REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().max(365).default(30),

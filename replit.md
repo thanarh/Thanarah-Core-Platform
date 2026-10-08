@@ -9,7 +9,7 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 | Runtime | Node.js 22+ |
 | Framework | NestJS 11 + Fastify 5 |
 | Central persistence | MySQL / MariaDB on cPanel — via Prisma 6 |
-| Tenant persistence | Trusted tenant-storage boundary implemented; persistent tenant database driver/registry not configured |
+| Tenant persistence | MongoDB Patient adapter and central registry implemented; target provisioning/configuration remains explicit |
 | Language | TypeScript 5 (strict) |
 | Validation | Zod |
 | API Docs | Swagger / OpenAPI at `/docs` |
@@ -20,28 +20,43 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
 | **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, tenant identity and memberships, and other platform metadata |
-| **Tenant Healthcare and Operations** | Not selected yet | Isolated MongoDB database(s) per tenant (future) | Tenant-owned healthcare and operational data |
+| **Tenant Healthcare and Operations** | Official MongoDB driver | Isolated MongoDB database per registered target | Tenant-owned healthcare and operational data |
 
-Tenant healthcare and operational data needs persistent tenant-owned storage;
-MongoDB remains a possible future implementation, but no MongoDB client,
-production registry, connection manager, or provisioning is configured.
 Phase 14A adds a central-platform Tenant/Organization identity; Phase 14B adds
-its central platform-user membership relationship. A tenant may eventually use
-multiple physical placements while presenting one logical tenant data space.
-Phase 28 moves Patient runtime persistence behind the trusted tenant-storage
-boundary. Development uses an explicitly process-local memory adapter;
-staging/production fail closed until a persistent tenant-storage backend and
-registry are configured. The central Patient model remains temporarily as
-legacy schema for data preservation; the runtime repository does not use it.
-No data-drop or data-movement migration is added in this phase.
+its central platform-user membership relationship. Phase 28 established the
+trusted Patient storage boundary; Phase 29 adds central target metadata and a
+bounded official MongoDB client manager. A tenant may have multiple registered
+physical targets, but the current Patient adapter resolves exactly one active
+primary target and does not shard or automatically route across targets.
+Development memory storage is opt-in and only selected with
+`TENANT_STORAGE_PROVIDER=memory` while `NODE_ENV=development`. Persistent
+runtime selection requires `TENANT_STORAGE_PROVIDER=mongodb`, the
+`TENANT_STORAGE_MONGO_URI` runtime secret, and an active primary registry target.
+Targets are registered inactive and must be provisioned and activated
+explicitly. The central Patient model remains as legacy schema for data
+preservation; the runtime repository does not use it. No Patient data is moved
+or deleted by this phase.
 All tenant-scoped business decisions must be server-side:
 
 `Authenticated Platform Identity → Tenant Membership → Trusted Tenant Context → Tenant Authorization (where required) → Subscription Entitlement (where required) → Business Service → Tenant Storage Resolver → Tenant Database Registry → Storage Placement/Routing Policy → Tenant Repository → Tenant Data`
 
-Clients must never provide a database name or connection string. The Tenant
-foundation implements trusted-context resolution and the Patient storage
-adapter boundary. It does not implement a persistent tenant database registry,
-MongoDB connection modules, or provisioning.
+Clients must never provide a database name or connection string. Central
+registry rows store only a connection-reference alias and a database name;
+MongoDB URIs remain runtime secrets. Registry operations are internal and have
+no public CRUD endpoints. No automatic database provisioning or production
+migration is performed. `/health` is liveness-only and `/ready` checks only
+central Prisma/MySQL readiness, never every tenant database.
+
+The current secret mapping accepts only the `primary` connection reference and
+resolves it from `TENANT_STORAGE_MONGO_URI`; unknown aliases fail closed. The
+manager caches at most four clients by connection reference and configures each
+driver pool with a maximum of 20 connections and bounded connection timeouts.
+For an existing, manually provisioned tenant database, operators must register
+the target inactive and run the internal
+`MongoTenantPatientStorage.ensureIndexesForTarget` action before activating it.
+It is not called at startup or during Patient requests. The required Patient
+indexes enforce `(tenant, patientNumber)` uniqueness and support the current
+status/creation-time list order.
 
 Platform audit logs and security events are central-platform records stored in
 the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep
@@ -194,15 +209,16 @@ public/                  # Static files — Coming Soon splash page + assets
 
 ## Tenant foundation and isolation boundary
 
-**Tenant identity, membership, and tenant authorization are implemented; physical
-tenant database isolation is not operational yet.** Phase 14A adds the platform
-Tenant record and administration endpoints. Phase 14B adds central
+**Tenant identity, membership, and tenant authorization are implemented. Patient
+storage isolation is available when a provisioned target is configured.** Phase
+14A adds the platform Tenant record and administration endpoints. Phase 14B adds central
 TenantMembership persistence, lifecycle operations, audit events, and
 membership administration endpoints. Phase 14C adds trusted tenant context,
-tenant roles/permissions, and the `TenantAuthorizationGuard`. Patient APIs now
-use the tenant-storage boundary. The development adapter is volatile process
-memory; persistent tenant storage and database-registry records are not
-configured.
+tenant roles/permissions, and the `TenantAuthorizationGuard`. Patient APIs use
+the tenant-storage boundary. Persistent storage is available when the explicit
+MongoDB provider, runtime URI secret, and active central registry target are
+configured; otherwise Patient storage fails closed. The development memory
+adapter is also explicit and unavailable outside development.
 
 - Platform administrators use `/api/v1/platform/tenants` to create, list, and
   inspect tenants, and `/api/v1/platform/tenants/:id/status` to change status.
@@ -277,15 +293,16 @@ configured.
 - Platform storage is reserved for platform identities, authentication,
   sessions, roles/permissions, current tenant identity/lifecycle and membership
   metadata, the platform-level SaaS Plan/Feature catalog and Subscription
-  assignments, future database-registry metadata, and platform audit/security records. Future
-  tenant MongoDB storage is for tenant operational/healthcare data such as
+  assignments, tenant storage-registry metadata, and platform audit/security
+  records. Tenant MongoDB storage is for tenant operational/healthcare data such as
   patients, doctors, staff, departments/specialties, scheduling/appointments/
   visits, medical records/clinical notes/prescriptions, documents, billing/
-  insurance, and notifications. Patient runtime persistence follows the tenant
-  storage boundary, but persistent tenant storage is not implemented. Phase 28
-  retains the central Patient schema temporarily for data preservation while
-  removing it from runtime persistence. No migration is applied, and this phase
-  does not move or delete production data.
+  insurance, and notifications. Patient runtime persistence uses the MongoDB
+  storage boundary when configured. Phase 28 retains the central Patient
+  schema temporarily for data preservation while removing it from runtime
+  persistence. The Phase 29 migration adds registry metadata only; it does not
+  provision MongoDB targets or move/delete production data, and it has not been
+  applied from this workspace.
 - Plans and Feature definitions are reusable central-platform metadata, not
   tenant-owned permissions. Subscription is a Tenant-specific assignment to a
   reusable Plan, stored centrally with retained history. Creating one requires
@@ -361,6 +378,7 @@ configuration belong to the cPanel environment.
 ## cPanel deployment notes
 
 - Set `DATABASE_URL`, `JWT_ACCESS_SECRET`, `AUTH_TRUSTED_PROXIES`, and `NODE_ENV=production` in the cPanel Node.js application environment.
+- Configure `TENANT_STORAGE_PROVIDER=mongodb` and supply `TENANT_STORAGE_MONGO_URI` through the hosting secret manager before enabling any active tenant target. Never put the URI in registry rows or source control.
 - Database host is `localhost` on cPanel.
 - Run `npx prisma migrate deploy` from the approved cPanel production environment for deployments that include new migrations.
 - The `prepare` script uses `husky || true` to prevent build failures in CI/production.

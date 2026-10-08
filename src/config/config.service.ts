@@ -18,6 +18,14 @@ export class ConfigService {
     return this.config.get('DATABASE_URL', { infer: true });
   }
 
+  get tenantStorageProvider(): 'disabled' | 'memory' | 'mongodb' {
+    return this.config.get('TENANT_STORAGE_PROVIDER', { infer: true });
+  }
+
+  get tenantStorageMongoUri(): string {
+    return this.config.get('TENANT_STORAGE_MONGO_URI', { infer: true });
+  }
+
   get jwtAccessSecret(): string {
     return this.config.get('JWT_ACCESS_SECRET', { infer: true });
   }
