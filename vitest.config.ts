@@ -6,6 +6,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: ['test/**/*.spec.ts'],
+    exclude: ['test/phase30-patient.integration.spec.ts'],
     coverage: {
       provider: 'v8',
       reporter: ['text', 'lcov'],

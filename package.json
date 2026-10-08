@@ -21,6 +21,7 @@
     "type-check": "tsc --noEmit",
     "type-check:tenant-contracts": "tsc --noEmit -p tsconfig.tenant-contracts.json",
     "test": "vitest run",
+    "test:phase30": "npm run build && DOCKER_HOST=unix:///var/run/docker.sock vitest run --config vitest.phase30.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky || true"
@@ -43,6 +44,7 @@
     "nestjs-pino": "^4.6.1",
     "pino-http": "^10.5.0",
     "prisma": "^6.19.3",
+    "testcontainers": "^12.2.0",
     "zod": "^3.25.76"
   },
   "devDependencies": {
