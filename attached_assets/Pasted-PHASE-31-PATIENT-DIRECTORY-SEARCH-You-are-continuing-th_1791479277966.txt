@@ -1,0 +1,756 @@
+PHASE 31 — PATIENT DIRECTORY & SEARCH
+
+You are continuing the Thanarah production SaaS architecture.
+
+THIS IS ONE PHASE ONLY.
+
+The objective is to add a production-grade Patient Directory and safe Patient lookup/search on top of the already verified persistent tenant storage.
+
+Do NOT redesign storage.
+Do NOT add appointments.
+Do NOT add scheduling.
+Do NOT add visits.
+Do NOT add encounters.
+Do NOT add medical records.
+Do NOT add prescriptions.
+Do NOT add billing.
+Do NOT add insurance.
+Do NOT add payments.
+Do NOT add patient authentication.
+Do NOT add patient portal.
+Do NOT add doctor-patient relationships.
+Do NOT add service booking.
+
+Do not contact production.
+Do not apply production migrations.
+Do not use production data.
+Do not modify the uploaded architecture specification.
+
+==================================================
+CURRENT VERIFIED STATE
+==================================================
+
+Latest commits:
+
+45ac599
+refactor(healthcare): establish patient tenant storage boundary
+
+1b6e361
+feat(infrastructure): add persistent tenant storage foundation
+
+25772dc6b04cdef486df20b2122644b860f76d0d
+test(infrastructure): verify persistent patient tenant storage
+
+Phase 30 verified:
+
+- Real disposable MongoDB 7.0.17
+- Real MySQL 8.0.41 test infrastructure
+- 5 integration tests passed
+- Full suite: 790 tests passed across 88 files
+- Build passed
+- Type-check passed
+- Lint passed
+- Format passed
+- Prisma validation passed
+- Patient CRUD works against real MongoDB
+- Tenant isolation verified
+- Tenant-scoped patientNumber uniqueness verified
+- Mongo indexes verified
+- Connection reuse verified
+- Cleanup verified
+- Fail-closed behavior verified
+- /health returned HTTP 200
+- Production was NOT contacted
+- Production data was NOT touched
+
+Known Phase 30 follow-ups:
+- Persistence was verified across Nest application recreation within the same Node process, not a separate OS process.
+- Real stalled-handshake integration fixture exceeded test timeout and was not retained.
+Do not include either follow-up in Phase 31.
+
+==================================================
+PHASE OBJECTIVE
+==================================================
+
+Build a safe Patient Directory for tenant staff.
+
+The directory must allow authorized tenant users to:
+
+- list patients
+- paginate patients
+- filter patients
+- search patients
+- retrieve a patient by ID
+- retrieve a patient by tenant-scoped patientNumber
+
+This is a DIRECTORY/READ phase.
+
+Do not expand Patient's domain model.
+
+==================================================
+1. EXISTING API CONTRACT
+==================================================
+
+Preserve the existing:
+
+GET
+/api/v1/tenants/:tenantId/patients
+
+GET
+/api/v1/tenants/:tenantId/patients/:patientId
+
+Do not break existing response contracts unnecessarily.
+
+Reuse the pagination contract established in Phase 26.
+
+The collection contract currently uses:
+
+items
+limit
+offset
+total
+hasNext
+
+Do not introduce a second pagination system.
+
+==================================================
+2. SEARCH
+==================================================
+
+Add safe Patient directory search.
+
+Query parameter:
+
+search
+
+Search should support the patient's useful directory identity fields:
+
+- patientNumber
+- firstName
+- middleName
+- lastName
+- preferredName
+- phone
+- email
+
+Do NOT search:
+
+- nationalId by default
+- address
+- dateOfBirth
+- clinical data
+- future medical records
+
+National ID is sensitive and must not become a casual directory search field.
+
+Search behavior:
+
+- case-insensitive where supported
+- partial matching
+- bounded input length
+- whitespace normalized
+- no raw Mongo query operators
+- no raw regular expressions supplied directly by the client
+- no arbitrary field selection
+- no arbitrary Mongo filter object
+
+The client must never be able to submit Mongo operators such as:
+
+$regex
+$where
+$or
+$expr
+$ne
+$gt
+$exists
+
+or equivalent raw query structures.
+
+Build the Mongo query server-side from validated input.
+
+==================================================
+3. SEARCH SEMANTICS
+==================================================
+
+Do not implement a sophisticated search engine.
+
+Use a predictable directory search.
+
+A single search value may match any of the approved fields.
+
+Example:
+
+search=Ahmed
+
+may match:
+
+Ahmed
+Ahmed Ali
+Mohamed Ahmed
+Ahmed123
+
+according to the safe matching convention selected.
+
+Document the exact behavior.
+
+Do not introduce:
+- Elasticsearch
+- OpenSearch
+- Atlas Search
+- external search APIs
+- vector search
+- AI search
+
+==================================================
+4. FILTERS
+==================================================
+
+Support:
+
+status
+
+Use the existing Patient lifecycle enum.
+
+Invalid status must be rejected.
+
+Do not add:
+
+doctor
+facility
+branch
+department
+specialty
+service
+appointment
+insurance
+billing
+
+Those relationships do not exist yet.
+
+==================================================
+5. PAGINATION
+==================================================
+
+Reuse:
+
+limit
+offset
+
+Use the existing established limits.
+
+Do not create page/pageSize if the current API uses limit/offset.
+
+Requirements:
+
+- limit must remain bounded
+- offset must be non-negative
+- invalid values rejected
+- no unbounded queries
+- total count must use the same filters as the result query
+- hasNext must be correct
+
+==================================================
+6. DETERMINISTIC ORDERING
+==================================================
+
+Maintain the existing stable ordering.
+
+Do not rely on Mongo's default ordering.
+
+Use the established ordering from Phase 26 where possible.
+
+If createdAt is the primary order:
+
+createdAt
++
+stable ID tie-breaker
+
+must remain deterministic.
+
+Do not change ordering without documenting the reason.
+
+==================================================
+7. DIRECTORY RESPONSE
+==================================================
+
+The directory should return only appropriate patient directory fields.
+
+Do NOT expose:
+
+- internal Mongo identifiers unless already part of the public ID contract
+- tenant storage identifiers
+- Mongo database names
+- Mongo connection details
+- authorization metadata
+- audit metadata
+- infrastructure metadata
+
+Sensitive fields must be handled carefully.
+
+Do not automatically expose:
+
+- nationalId
+- full address
+
+in the list response.
+
+The list response should be lightweight.
+
+If the existing GET-by-ID response already exposes fields established by Phase 27, preserve that contract unless there is a demonstrated security issue.
+
+==================================================
+8. PATIENT DETAIL
+==================================================
+
+GET:
+
+/api/v1/tenants/:tenantId/patients/:patientId
+
+must remain:
+
+- tenant-scoped
+- permission protected
+- persistent-storage backed
+- fail-closed
+
+Do not introduce a separate public patient lookup.
+
+Do not allow a patient from another tenant to be inferred through error differences.
+
+==================================================
+9. PATIENT NUMBER LOOKUP
+==================================================
+
+Support safe tenant-scoped retrieval by patientNumber if the existing API architecture permits it.
+
+Preferred approach:
+
+GET
+/api/v1/tenants/:tenantId/patients/by-number/:patientNumber
+
+If the existing routing conventions make this inappropriate, use the project's established alternative.
+
+Requirements:
+
+- tenant scoped
+- read permission required
+- exact patientNumber match
+- no global lookup
+- no cross-tenant leakage
+
+Do not make patientNumber globally unique.
+
+==================================================
+10. AUTHORIZATION
+==================================================
+
+Continue using:
+
+tenant.patients.read
+
+Do NOT create a new permission for searching.
+
+Search/list/detail are read operations.
+
+Do not allow:
+
+- inactive membership
+- suspended membership
+- removed membership
+
+to access the directory.
+
+Do not change tenant authorization architecture.
+
+==================================================
+11. STORAGE BOUNDARY
+==================================================
+
+This phase MUST NOT bypass Phase 29/30 architecture.
+
+Patient reads must continue through:
+
+TrustedTenantContext
+→ Tenant Storage Resolver
+→ Patient Repository
+→ Persistent Tenant Storage
+→ MongoDB
+
+Do NOT import PrismaClient into Patient code.
+
+Do NOT query central MySQL for Patient directory data.
+
+Do NOT add a MySQL fallback.
+
+Do NOT query Mongo directly from controllers.
+
+==================================================
+12. MONGO QUERY SAFETY
+==================================================
+
+All search/filter values must be validated before reaching the repository.
+
+The repository must build queries structurally.
+
+Do NOT accept:
+
+Record<string, unknown>
+
+as a raw query parameter from the controller.
+
+Do NOT pass request.query directly into Mongo.
+
+Do NOT allow arbitrary projection.
+
+Do NOT allow arbitrary sorting.
+
+Sorting must remain server-defined.
+
+==================================================
+13. PERFORMANCE
+==================================================
+
+This is a directory feature.
+
+Avoid obviously expensive queries.
+
+Do not:
+
+- load every patient into memory
+- perform application-side filtering over the entire collection
+- perform application-side pagination after fetching all records
+- perform N+1 queries
+- create one Mongo connection per request
+
+Filtering, sorting, and pagination should happen in Mongo.
+
+Count and list queries must use equivalent filters.
+
+Do not introduce caching in this phase.
+
+==================================================
+14. INDEX REVIEW
+==================================================
+
+Review Mongo indexes required by the implemented directory queries.
+
+Existing:
+
+tenant-scoped patientNumber uniqueness/index
+
+Review whether additional indexes are justified for:
+
+- status
+- createdAt
+- patientNumber
+- searchable identity fields
+
+Do NOT create an index for every searchable field automatically.
+
+Do not add speculative indexes.
+
+If a search index is not appropriate for the current Mongo implementation, use the safest reasonable query strategy and document the limitation.
+
+Do not introduce Mongo Atlas Search.
+
+==================================================
+15. PRIVACY
+==================================================
+
+Patient directory data is sensitive.
+
+Search must not become a mechanism for broad personal-data enumeration.
+
+Apply:
+
+- bounded search input
+- bounded result size
+- tenant isolation
+- authorization
+- safe error responses
+
+Do not expose sensitive patient fields in collection results unnecessarily.
+
+Do not log search terms together with full patient data.
+
+Do not log patient records.
+
+==================================================
+16. AUDIT
+==================================================
+
+Do NOT add audit events for ordinary Patient GET/list/search requests unless the existing security architecture explicitly requires it.
+
+Do not change:
+
+PATIENT_CREATED
+PATIENT_UPDATED
+PATIENT_STATUS_CHANGED
+
+Audit behavior remains unchanged.
+
+==================================================
+17. OPENAPI
+==================================================
+
+Update OpenAPI documentation for:
+
+- search
+- status
+- limit
+- offset
+- response metadata
+- patientNumber lookup if implemented
+- validation limits
+- authorization requirements
+
+Document exact behavior.
+
+Do not document future search functionality.
+
+==================================================
+18. TESTING
+==================================================
+
+Add focused tests.
+
+SEARCH:
+
+- search by patientNumber
+- search by firstName
+- search by middleName
+- search by lastName
+- search by preferredName
+- search by phone
+- search by email
+- case-insensitive search
+- partial search
+- no-match search
+- bounded search length
+- empty search behavior
+
+FILTER:
+
+- ACTIVE
+- INACTIVE
+- invalid status
+- search + status combined
+
+PAGINATION:
+
+- default
+- limit
+- offset
+- maximum limit
+- invalid limit
+- invalid offset
+- offset beyond total
+- correct total
+- correct hasNext
+
+ORDERING:
+
+- deterministic ordering
+- identical requests produce identical order
+
+TENANT ISOLATION:
+
+- Tenant A cannot search Tenant B
+- identical names across tenants remain isolated
+- identical patientNumber across tenants remain isolated
+- patient ID from another tenant cannot be retrieved
+
+SECURITY:
+
+- Mongo operator injection attempts rejected
+- arbitrary filter injection rejected
+- arbitrary sort injection rejected
+- arbitrary projection injection rejected
+
+DETAIL:
+
+- GET by ID
+- safe not-found
+- permission denied
+- inactive membership denied
+
+PATIENT NUMBER:
+
+- exact lookup succeeds
+- wrong tenant cannot retrieve
+- nonexistent number returns safe not-found
+
+==================================================
+19. REAL MONGO TESTING
+==================================================
+
+Continue using the safe disposable MongoDB integration environment established in Phase 30.
+
+Do not switch back to mocks for the main directory verification.
+
+At least the critical directory tests should execute against real MongoDB.
+
+Do not use production MongoDB.
+
+Do not use production credentials.
+
+==================================================
+20. REGRESSION
+==================================================
+
+Run relevant existing tests for:
+
+- Patient
+- Tenant authorization
+- Service
+- Doctor
+- Staff
+- Department
+- Specialty
+- Facility
+- Branch
+- Tenant Storage
+- Mongo infrastructure
+
+Then run the complete suite.
+
+==================================================
+21. NO CENTRAL SCHEMA CHANGE
+==================================================
+
+Do not remove the legacy central Prisma Patient model in this phase.
+
+Do not create new central Patient tables.
+
+Do not create dual writes.
+
+Do not create Patient MySQL queries.
+
+No Prisma migration should be required for this phase unless an actual infrastructure defect is discovered.
+
+If a schema change appears necessary:
+
+STOP and reassess rather than silently expanding scope.
+
+==================================================
+22. FAILURE BEHAVIOR
+==================================================
+
+If tenant storage is unavailable:
+
+Patient directory operations must fail safely.
+
+Never:
+
+- return empty results as if there were no patients
+- switch to MySQL
+- switch to memory
+- query another tenant
+- leak Mongo errors
+
+A storage failure must not be represented as a legitimate empty directory.
+
+==================================================
+23. GIT
+==================================================
+
+Use the existing development branch.
+
+Do not bypass hooks.
+
+Never use:
+
+--no-verify
+
+Stage ONLY Phase 31 files.
+
+Do not stage the uploaded architecture specification.
+
+Create ONE focused commit:
+
+feat(healthcare): add patient directory search
+
+==================================================
+24. ACCEPTANCE CRITERIA
+==================================================
+
+Phase 31 is accepted only if:
+
+1. Patient directory supports safe search.
+
+2. Search is tenant-scoped.
+
+3. Search cannot inject Mongo operators.
+
+4. Pagination remains bounded and deterministic.
+
+5. Status filtering works.
+
+6. Patient number lookup is tenant-scoped.
+
+7. Sensitive fields are not unnecessarily exposed in directory results.
+
+8. Patient reads still use persistent tenant storage.
+
+9. No central MySQL Patient reads exist.
+
+10. Real Mongo integration tests pass.
+
+11. Cross-tenant tests pass.
+
+12. Existing Patient CRUD remains green.
+
+13. Full suite passes.
+
+14. No production system was contacted.
+
+15. No production data was touched.
+
+16. No later healthcare feature was implemented.
+
+==================================================
+25. VERIFICATION
+==================================================
+
+Run:
+
+- focused Patient directory tests
+- real Mongo integration tests
+- tenant isolation tests
+- security/injection tests
+- authorization regression
+- full suite
+- build
+- root type-check
+- lint
+- format
+- Prisma validation
+- application restart
+- /health
+
+The known Phase 30 follow-up limitations must remain separate and must not be silently altered.
+
+==================================================
+FINAL REPORT
+==================================================
+
+Report only:
+
+1. exact commit hash
+2. search fields supported
+3. filters
+4. pagination contract
+5. patientNumber lookup status
+6. Mongo indexes added/used
+7. security/injection test result
+8. tenant isolation result
+9. real Mongo integration result
+10. full test count
+11. build/type-check/lint/format result
+12. /health result
+13. confirmation production was NOT contacted
+14. confirmation no production data was touched
+15. confirmation no later healthcare modules were implemented
+16. any remaining limitation
+
+Do NOT claim Phase 31 complete unless all required checks pass.
