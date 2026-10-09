@@ -1,11 +1,26 @@
 import { normalizePatientEmail, normalizePatientName, normalizePatientPhone } from './patient.dto';
 import type { PatientDuplicateIdentity } from './patient.model';
 
+export const PATIENT_DUPLICATE_IDENTITY_FIELDS = [
+  'firstName',
+  'middleName',
+  'lastName',
+  'dateOfBirth',
+  'phone',
+  'email',
+] as const satisfies readonly (keyof PatientDuplicateIdentity)[];
+
 /**
  * Name comparisons are case-insensitive through this collation. It is shared
  * by the duplicate queries and their compound indexes.
  */
 export const PATIENT_DUPLICATE_COLLATION = { locale: 'en', strength: 2 } as const;
+
+export function hasPatientDuplicateIdentityChange(
+  input: Partial<PatientDuplicateIdentity>,
+): boolean {
+  return PATIENT_DUPLICATE_IDENTITY_FIELDS.some((field) => input[field] !== undefined);
+}
 
 /**
  * Values are normalized for comparison only. Phone punctuation and the leading

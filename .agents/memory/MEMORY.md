@@ -2,3 +2,4 @@
 - [Doctor catalog assignments](doctor-catalog-assignments.md) — keep Department and Specialty links independent; inherit organizational scope from Staff.
 - [Vitest Nest provider identity](vitest-nest-provider-identity.md) — load compiled Nest classes and injection tokens through the same module loader in integration tests.
 - [Patient duplicate test fixtures](patient-duplicate-test-fixtures.md) — keep unrelated same-tenant fixtures outside strong duplicate combinations.
+- [Patient duplicate index enforcement](patient-duplicate-index-enforcement.md) — rely on tenant-scoped unique indexes, not assumed transaction support, and keep unprovisioned targets unavailable.

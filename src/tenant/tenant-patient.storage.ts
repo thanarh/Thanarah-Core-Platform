@@ -5,11 +5,15 @@ import {
   PATIENT_DIRECTORY_SEARCH_FIELDS,
   type PatientDirectoryRecord,
   type PatientDuplicateIdentity,
+  type PatientLifecycleMutationResult,
   type PatientMutationResult,
   type PatientRecord,
   type PatientStatus,
 } from './patient.model';
-import { hasPotentialPatientDuplicate } from './patient-duplicate';
+import {
+  hasPatientDuplicateIdentityChange,
+  hasPotentialPatientDuplicate,
+} from './patient-duplicate';
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
@@ -69,7 +73,7 @@ export interface TenantPatientStorage {
     expectedStatus: PatientStatus,
     nextStatus: PatientStatus,
     changedAt: Date,
-  ): Promise<PatientMutationResult>;
+  ): Promise<PatientLifecycleMutationResult>;
 }
 
 /**
@@ -90,6 +94,17 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     if (!patients) throw new TenantStorageUnavailableError();
     if (this.hasPatientNumber(patients, input.patientNumber)) {
       return { kind: 'patient-number-conflict' };
+    }
+    const identity: PatientDuplicateIdentity = {
+      firstName: input.firstName,
+      middleName: input.middleName ?? null,
+      lastName: input.lastName,
+      dateOfBirth: input.dateOfBirth ?? null,
+      phone: input.phone ?? null,
+      email: input.email ?? null,
+    };
+    if ([...patients.values()].some((patient) => hasPotentialPatientDuplicate(identity, patient))) {
+      return { kind: 'possible-duplicate' };
     }
 
     const now = new Date();
@@ -206,6 +221,14 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
           : cloneDate(input.dateOfBirth),
       updatedAt: new Date(),
     };
+    if (
+      hasPatientDuplicateIdentityChange(input) &&
+      [...patients.values()].some(
+        (patient) => patient.id !== id && hasPotentialPatientDuplicate(updated, patient),
+      )
+    ) {
+      return { kind: 'possible-duplicate' };
+    }
     patients.set(id, updated);
     return { kind: 'changed', record: cloneRecord(updated) };
   }
@@ -217,7 +240,7 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     expectedStatus: PatientStatus,
     nextStatus: PatientStatus,
     changedAt: Date,
-  ): Promise<PatientMutationResult> {
+  ): Promise<PatientLifecycleMutationResult> {
     this.assertScope(context, route);
     const patients = this.partition(context, false);
     const current = patients?.get(id);
@@ -294,7 +317,7 @@ export class UnconfiguredTenantPatientStorage implements TenantPatientStorage {
     throw new TenantStorageUnavailableError();
   }
 
-  async changeStatusIfCurrent(): Promise<PatientMutationResult> {
+  async changeStatusIfCurrent(): Promise<PatientLifecycleMutationResult> {
     throw new TenantStorageUnavailableError();
   }
 }

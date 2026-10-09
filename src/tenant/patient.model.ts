@@ -54,4 +54,7 @@ export type PatientMutationResult =
   | { kind: 'changed'; record: PatientRecord }
   | { kind: 'not-found' }
   | { kind: 'patient-number-conflict' }
-  | { kind: 'not-changed' };
+  | { kind: 'possible-duplicate' };
+
+export type PatientLifecycleMutationResult =
+  { kind: 'changed'; record: PatientRecord } | { kind: 'not-found' } | { kind: 'not-changed' };

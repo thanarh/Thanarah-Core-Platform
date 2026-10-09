@@ -26,6 +26,7 @@ import {
   PatientNumberConflictError,
   PatientPossibleDuplicateError,
 } from './patient.errors';
+import { hasPatientDuplicateIdentityChange } from './patient-duplicate';
 import { type PatientRepository, PATIENT_REPOSITORY } from './patient.repository';
 import {
   PatientStatus,
@@ -63,15 +64,6 @@ const PATIENT_MUTABLE_FIELDS = [
   'email',
   'nationalId',
   'address',
-] as const;
-
-const PATIENT_DUPLICATE_FIELDS = [
-  'firstName',
-  'middleName',
-  'lastName',
-  'dateOfBirth',
-  'phone',
-  'email',
 ] as const;
 
 @Injectable()
@@ -173,7 +165,7 @@ export class PatientService {
     const parsed = updatePatientSchema.safeParse(input);
     if (!parsed.success) throw new PatientInputValidationError();
 
-    if (PATIENT_DUPLICATE_FIELDS.some((field) => parsed.data[field] !== undefined)) {
+    if (hasPatientDuplicateIdentityChange(parsed.data)) {
       const current = await this.patients.findByIdForTenant(context, id);
       if (!current) throw new PatientNotFoundError();
       const candidate = { ...current, ...parsed.data };
@@ -251,7 +243,6 @@ export class PatientService {
       nextStatus,
       changedAt,
     );
-    if (result.kind === 'patient-number-conflict') throw new PatientNumberConflictError();
     if (result.kind === 'not-found') throw new PatientNotFoundError();
     if (result.kind === 'not-changed') {
       const latest = await this.patients.findByIdForTenant(context, id);
@@ -281,6 +272,7 @@ export class PatientService {
     if (result.kind === 'changed') return result.record;
     if (result.kind === 'not-found') throw new PatientNotFoundError();
     if (result.kind === 'patient-number-conflict') throw new PatientNumberConflictError();
+    if (result.kind === 'possible-duplicate') throw new PatientPossibleDuplicateError();
     throw new PatientLifecycleConflictError();
   }
 

@@ -40,6 +40,34 @@ const createInput: CreatePatientInput = {
   firstName: 'Amina',
   lastName: 'Hassan',
 };
+const requiredPatientWriteIndexes = [
+  {
+    name: 'tenant_patient_number_unique',
+    key: { _tenantId: 1, patientNumber: 1 },
+    unique: true,
+  },
+  {
+    name: 'tenant_patient_duplicate_phone_name_unique_idx',
+    key: { _tenantId: 1, firstName: 1, middleName: 1, lastName: 1, phone: 1 },
+    unique: true,
+    partialFilterExpression: { phone: { $type: 'string' } },
+    collation: { locale: 'en', strength: 2 },
+  },
+  {
+    name: 'tenant_patient_duplicate_email_name_unique_idx',
+    key: { _tenantId: 1, firstName: 1, middleName: 1, lastName: 1, email: 1 },
+    unique: true,
+    partialFilterExpression: { email: { $type: 'string' } },
+    collation: { locale: 'en', strength: 2 },
+  },
+  {
+    name: 'tenant_patient_duplicate_name_dob_unique_idx',
+    key: { _tenantId: 1, lastName: 1, firstName: 1, dateOfBirth: 1 },
+    unique: true,
+    partialFilterExpression: { dateOfBirth: { $type: 'date' } },
+    collation: { locale: 'en', strength: 2 },
+  },
+];
 
 type TestMockFunction = ReturnType<typeof vi.fn>;
 
@@ -54,6 +82,8 @@ interface MongoStorageHarness {
     updateOne: TestMockFunction;
     countDocuments: TestMockFunction;
     createIndex: TestMockFunction;
+    indexes: TestMockFunction;
+    dropIndex: TestMockFunction;
   };
   cursor: {
     sort: TestMockFunction;
@@ -120,6 +150,8 @@ function setup(activeTarget: TenantStorageTargetRecord | null = target): MongoSt
     }),
     countDocuments: vi.fn().mockResolvedValue(1),
     createIndex: vi.fn().mockResolvedValue('index'),
+    indexes: vi.fn().mockResolvedValue(requiredPatientWriteIndexes),
+    dropIndex: vi.fn().mockResolvedValue({ ok: 1 }),
   };
   const database = {
     collection: vi.fn().mockReturnValue(collection),
@@ -360,8 +392,92 @@ describe('MongoTenantPatientStorage', () => {
     });
   });
 
+  it('fails closed when atomic duplicate indexes are not provisioned', async () => {
+    const setupState = setup();
+    setupState.collection.indexes.mockResolvedValue([]);
+
+    await expect(setupState.storage.create(context, route, createInput)).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+    expect(setupState.collection.insertOne).not.toHaveBeenCalled();
+
+    await expect(
+      setupState.storage.update(context, route, '66666666-6666-4666-8666-666666666666', {
+        firstName: 'Amina Noor',
+      }),
+    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+    expect(setupState.collection.updateOne).not.toHaveBeenCalled();
+  });
+
+  it('keeps unrelated updates independent from the duplicate indexes', async () => {
+    const preferredNameUpdate = setup();
+    preferredNameUpdate.collection.indexes.mockResolvedValue([]);
+    await expect(
+      preferredNameUpdate.storage.update(context, route, '66666666-6666-4666-8666-666666666666', {
+        preferredName: 'Amina',
+      }),
+    ).resolves.toMatchObject({ kind: 'changed' });
+    expect(preferredNameUpdate.collection.indexes).not.toHaveBeenCalled();
+
+    const patientNumberUpdate = setup();
+    patientNumberUpdate.collection.indexes.mockResolvedValue([requiredPatientWriteIndexes[0]]);
+    await expect(
+      patientNumberUpdate.storage.update(context, route, '66666666-6666-4666-8666-666666666666', {
+        patientNumber: 'PAT-UPDATED',
+      }),
+    ).resolves.toMatchObject({ kind: 'changed' });
+    expect(patientNumberUpdate.collection.indexes).toHaveBeenCalledOnce();
+  });
+
+  it('translates an atomic duplicate-key write to the safe duplicate result', async () => {
+    const setupState = setup();
+    setupState.collection.insertOne.mockRejectedValue({
+      code: 11000,
+      keyPattern: {
+        _tenantId: 1,
+        firstName: 1,
+        middleName: 1,
+        lastName: 1,
+        phone: 1,
+      },
+    });
+    setupState.collection.findOne.mockResolvedValueOnce(null);
+
+    await expect(setupState.storage.create(context, route, createInput)).resolves.toEqual({
+      kind: 'possible-duplicate',
+    });
+  });
+
+  it('preserves patient-number precedence when a concurrent insert violates both rules', async () => {
+    const setupState = setup();
+    setupState.collection.insertOne.mockRejectedValue({
+      code: 11000,
+      keyPattern: {
+        _tenantId: 1,
+        firstName: 1,
+        middleName: 1,
+        lastName: 1,
+        phone: 1,
+      },
+    });
+
+    await expect(setupState.storage.create(context, route, createInput)).resolves.toEqual({
+      kind: 'patient-number-conflict',
+    });
+    expect(setupState.collection.findOne).toHaveBeenCalledWith(
+      { _tenantId: tenantId, patientNumber: createInput.patientNumber },
+      { projection: { _id: 1 } },
+    );
+  });
+
   it('creates only the indexes needed for current operations on explicit operator request', async () => {
     const setupState = setup();
+    setupState.collection.indexes.mockResolvedValue([
+      ...requiredPatientWriteIndexes,
+      { name: 'tenant_patient_duplicate_phone_name_idx' },
+      { name: 'tenant_patient_duplicate_email_name_idx' },
+      { name: 'tenant_patient_duplicate_name_dob_idx' },
+    ]);
     await setupState.storage.ensureIndexesForTarget(target);
 
     expect(setupState.collection.createIndex).toHaveBeenCalledTimes(6);
@@ -382,28 +498,55 @@ describe('MongoTenantPatientStorage', () => {
     );
     expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
       4,
-      { _tenantId: 1, phone: 1, firstName: 1, middleName: 1, lastName: 1 },
+      { _tenantId: 1, firstName: 1, middleName: 1, lastName: 1, phone: 1 },
       {
-        name: 'tenant_patient_duplicate_phone_name_idx',
+        name: 'tenant_patient_duplicate_phone_name_unique_idx',
+        unique: true,
+        partialFilterExpression: { phone: { $type: 'string' } },
         collation: { locale: 'en', strength: 2 },
       },
     );
     expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
       5,
-      { _tenantId: 1, email: 1, firstName: 1, middleName: 1, lastName: 1 },
+      { _tenantId: 1, firstName: 1, middleName: 1, lastName: 1, email: 1 },
       {
-        name: 'tenant_patient_duplicate_email_name_idx',
+        name: 'tenant_patient_duplicate_email_name_unique_idx',
+        unique: true,
+        partialFilterExpression: { email: { $type: 'string' } },
         collation: { locale: 'en', strength: 2 },
       },
     );
     expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
       6,
-      { _tenantId: 1, firstName: 1, lastName: 1, dateOfBirth: 1 },
+      { _tenantId: 1, lastName: 1, firstName: 1, dateOfBirth: 1 },
       {
-        name: 'tenant_patient_duplicate_name_dob_idx',
+        name: 'tenant_patient_duplicate_name_dob_unique_idx',
+        unique: true,
+        partialFilterExpression: { dateOfBirth: { $type: 'date' } },
         collation: { locale: 'en', strength: 2 },
       },
     );
+    expect(setupState.collection.dropIndex.mock.calls).toEqual([
+      ['tenant_patient_duplicate_phone_name_idx'],
+      ['tenant_patient_duplicate_email_name_idx'],
+      ['tenant_patient_duplicate_name_dob_idx'],
+    ]);
+  });
+
+  it('keeps legacy indexes when unique provisioning fails on conflicting existing data', async () => {
+    const setupState = setup();
+    setupState.collection.createIndex.mockImplementation(async (...args: unknown[]) => {
+      const options = args[1] as { name?: string };
+      if (options.name === 'tenant_patient_duplicate_phone_name_unique_idx') {
+        throw Object.assign(new Error('duplicate key'), { code: 11000 });
+      }
+      return 'index';
+    });
+
+    await expect(setupState.storage.ensureIndexesForTarget(target)).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+    expect(setupState.collection.dropIndex).not.toHaveBeenCalled();
   });
 
   it('fails closed for cross-tenant targets and unsupported multi-target routes', async () => {

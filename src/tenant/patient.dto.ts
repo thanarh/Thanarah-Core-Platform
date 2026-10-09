@@ -77,7 +77,8 @@ const patientDateOfBirthStringSchema = z
 const patientDateOfBirthDateSchema = z
   .date()
   .refine((value) => value.toISOString().slice(0, 4) >= '1000')
-  .refine((value) => value.toISOString().slice(0, 10) <= new Date().toISOString().slice(0, 10));
+  .refine((value) => value.toISOString().slice(0, 10) <= new Date().toISOString().slice(0, 10))
+  .transform((value) => new Date(`${value.toISOString().slice(0, 10)}T00:00:00.000Z`));
 
 const patientDateOfBirthSchema = z.union([
   patientDateOfBirthStringSchema,

@@ -519,11 +519,16 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
     const authFailure = await patientListFailureForMongoUri(invalidMongoUri);
     const invalidConfigUri = 'not-a-mongodb-uri';
     const invalidConfigFailure = await patientListFailureForMongoUri(invalidConfigUri);
-    const unavailableFailure = await patientListFailureForMongoUri(
-      'mongodb://127.0.0.1:1/?directConnection=true',
-    );
+    const unavailableUri = 'mongodb://127.0.0.1:1/?directConnection=true';
+    const unavailableFailure = await patientListFailureForMongoUri(unavailableUri);
+    const unavailableWriteFailure = await patientCreateFailureForMongoUri(unavailableUri);
 
-    for (const failure of [authFailure, invalidConfigFailure, unavailableFailure]) {
+    for (const failure of [
+      authFailure,
+      invalidConfigFailure,
+      unavailableFailure,
+      unavailableWriteFailure,
+    ]) {
       expect(failure).toBeInstanceOf(TenantStorageUnavailableError);
       expect(JSON.stringify(failure.getResponse())).toContain('TENANT_STORAGE_UNAVAILABLE');
     }
@@ -960,16 +965,32 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
 
     const duplicateIndexes = await patients.indexes();
     const duplicateIndexNames = [
-      'tenant_patient_duplicate_phone_name_idx',
-      'tenant_patient_duplicate_email_name_idx',
-      'tenant_patient_duplicate_name_dob_idx',
+      'tenant_patient_duplicate_phone_name_unique_idx',
+      'tenant_patient_duplicate_email_name_unique_idx',
+      'tenant_patient_duplicate_name_dob_unique_idx',
     ];
     for (const name of duplicateIndexNames) {
-      expect(duplicateIndexes.find((index) => index.name === name)?.collation).toMatchObject({
-        locale: 'en',
-        strength: 2,
+      expect(duplicateIndexes.find((index) => index.name === name)).toMatchObject({
+        unique: true,
+        collation: { locale: 'en', strength: 2 },
       });
+      expect(
+        duplicateIndexes.find((index) => index.name === name)?.partialFilterExpression,
+      ).toBeDefined();
     }
+    expect(
+      duplicateIndexes.some((index) =>
+        [
+          'tenant_patient_duplicate_phone_name_idx',
+          'tenant_patient_duplicate_email_name_idx',
+          'tenant_patient_duplicate_name_dob_idx',
+        ].includes(index.name ?? ''),
+      ),
+    ).toBe(false);
+    const collectionNames = (
+      await mongoAdminClient!.db(tenantA.databaseName).listCollections().toArray()
+    ).map((collection) => collection.name);
+    expect(collectionNames.some((name) => /claim|reservation/i.test(name))).toBe(false);
 
     const phonePlan = await patients
       .find({
@@ -1012,6 +1033,292 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       .limit(1)
       .explain('queryPlanner');
     expect(JSON.stringify(datePlan.queryPlanner.winningPlan)).toContain(duplicateIndexNames[2]);
+  });
+
+  it('enforces each duplicate rule across deterministic concurrent Mongo creates', async () => {
+    const sharedFirst = `Concurrent${RUN_ID}`;
+    const sharedLast = `Patient${RUN_ID}`;
+    const sharedDate = '1991-07-12';
+    const scenarios: Array<{
+      payloads: [Record<string, unknown>, Record<string, unknown>];
+      match: Record<string, unknown>;
+    }> = [
+      {
+        payloads: [
+          {
+            firstName: sharedFirst,
+            middleName: 'Phone Match',
+            lastName: sharedLast,
+            phone: '+966 50 700 0101',
+          },
+          {
+            firstName: sharedFirst.toUpperCase(),
+            middleName: 'phone match',
+            lastName: sharedLast.toUpperCase(),
+            phone: '+966 50 700 0101',
+          },
+        ],
+        match: {
+          firstName: sharedFirst,
+          middleName: 'Phone Match',
+          lastName: sharedLast,
+          phone: '+966 50 700 0101',
+        },
+      },
+      {
+        payloads: [
+          {
+            firstName: `${sharedFirst}Email`,
+            middleName: 'Email Match',
+            lastName: sharedLast,
+            email: `race-${RUN_ID}@example.test`,
+          },
+          {
+            firstName: `${sharedFirst}EMAIL`.toUpperCase(),
+            middleName: 'email match',
+            lastName: sharedLast.toUpperCase(),
+            email: `RACE-${RUN_ID}@EXAMPLE.TEST`,
+          },
+        ],
+        match: {
+          firstName: `${sharedFirst}Email`,
+          middleName: 'Email Match',
+          lastName: sharedLast,
+          email: `race-${RUN_ID}@example.test`,
+        },
+      },
+      {
+        payloads: [
+          {
+            firstName: `${sharedFirst}Date`,
+            middleName: 'Date A',
+            lastName: sharedLast,
+            dateOfBirth: sharedDate,
+          },
+          {
+            firstName: `${sharedFirst}DATE`.toUpperCase(),
+            middleName: 'Date B',
+            lastName: sharedLast.toUpperCase(),
+            dateOfBirth: sharedDate,
+          },
+        ],
+        match: {
+          firstName: `${sharedFirst}Date`,
+          lastName: sharedLast,
+          dateOfBirth: {
+            $gte: new Date(`${sharedDate}T00:00:00.000Z`),
+            $lt: new Date('1991-07-13T00:00:00.000Z'),
+          },
+        },
+      },
+    ];
+
+    const patients = mongoAdminClient!.db(tenantA.databaseName).collection(PATIENT_COLLECTION);
+    for (const [index, scenario] of scenarios.entries()) {
+      const numbers = [`PAT33-RACE-${index}-A-${RUN_ID}`, `PAT33-RACE-${index}-B-${RUN_ID}`];
+      const { result: responses, checks } = await withDuplicateCheckBarrier(2, () =>
+        Promise.all(
+          scenario.payloads.map((payload, requestIndex) =>
+            getApplication().inject({
+              method: 'POST',
+              url: `${tenantRoot(tenantA)}/patients`,
+              headers: bearerHeaders(),
+              payload: { patientNumber: numbers[requestIndex]!, ...payload },
+            }),
+          ),
+        ),
+      );
+
+      expect(checks).toEqual([false, false]);
+      expect(responses.map((response) => response.statusCode).sort((a, b) => a - b)).toEqual([
+        201, 409,
+      ]);
+      const conflict = responses.find((response) => response.statusCode === 409);
+      expect(conflict?.json()).toMatchObject({
+        error: {
+          code: 'PATIENT_DUPLICATE_POSSIBLE',
+          message: 'A possible matching patient already exists.',
+        },
+      });
+      expect(JSON.stringify(conflict?.json())).not.toMatch(
+        /patientNumber|patientId|firstName|lastName|phone|email|dateOfBirth/i,
+      );
+      await expect(
+        patients.countDocuments(
+          { _tenantId: tenantA.id, ...scenario.match },
+          { collation: { locale: 'en', strength: 2 } },
+        ),
+      ).resolves.toBe(1);
+    }
+  });
+
+  it('prevents concurrent identity-changing updates and preserves the losing patient identity', async () => {
+    const startingPatients = [
+      {
+        patientNumber: `PAT33-UPDATE-A-${RUN_ID}`,
+        firstName: `BeforeA${RUN_ID}`,
+        middleName: 'Initial',
+        lastName: `UpdateRace${RUN_ID}`,
+        phone: '+966 50 711 0001',
+      },
+      {
+        patientNumber: `PAT33-UPDATE-B-${RUN_ID}`,
+        firstName: `BeforeB${RUN_ID}`,
+        middleName: 'Initial',
+        lastName: `UpdateRace${RUN_ID}`,
+        phone: '+966 50 711 0002',
+      },
+    ];
+    const created = await Promise.all(
+      startingPatients.map((patient) =>
+        getApplication().inject({
+          method: 'POST',
+          url: `${tenantRoot(tenantA)}/patients`,
+          headers: bearerHeaders(),
+          payload: patient,
+        }),
+      ),
+    );
+    expect(created.map((response) => response.statusCode)).toEqual([201, 201]);
+    const patientIds = created.map((response) => response.json<{ id: string }>().id);
+    const targetIdentity = {
+      firstName: `UpdateTarget${RUN_ID}`,
+      middleName: 'Shared',
+      lastName: `UpdateRace${RUN_ID}`,
+      phone: '+966 50 711 0099',
+    };
+
+    const { result: updates, checks } = await withDuplicateCheckBarrier(2, () =>
+      Promise.all(
+        patientIds.map((id) =>
+          getApplication().inject({
+            method: 'PATCH',
+            url: `${tenantRoot(tenantA)}/patients/${id}`,
+            headers: bearerHeaders(),
+            payload: targetIdentity,
+          }),
+        ),
+      ),
+    );
+
+    expect(checks).toEqual([false, false]);
+    expect(updates.map((response) => response.statusCode).sort((a, b) => a - b)).toEqual([
+      200, 409,
+    ]);
+    const losingIndex = updates.findIndex((response) => response.statusCode === 409);
+    const losingPatient = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/patients/${patientIds[losingIndex]}`,
+      headers: bearerHeaders(),
+    });
+    expect(losingPatient.statusCode).toBe(200);
+    expect(losingPatient.json()).toMatchObject({
+      firstName: startingPatients[losingIndex]!.firstName,
+      middleName: startingPatients[losingIndex]!.middleName,
+      lastName: startingPatients[losingIndex]!.lastName,
+      phone: startingPatients[losingIndex]!.phone,
+    });
+    expect(
+      await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection(PATIENT_COLLECTION)
+        .countDocuments(
+          { _tenantId: tenantA.id, ...targetIdentity },
+          { collation: { locale: 'en', strength: 2 } },
+        ),
+    ).toBe(1);
+
+    const attemptedDuplicate = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: {
+        ...startingPatients[losingIndex],
+        patientNumber: `PAT33-LOSER-IDENTITY-${RUN_ID}`,
+      },
+    });
+    expect(attemptedDuplicate.statusCode).toBe(409);
+    expect(attemptedDuplicate.json()).toMatchObject({
+      error: { code: 'PATIENT_DUPLICATE_POSSIBLE' },
+    });
+  });
+
+  it('preserves patient-number precedence and does not reserve identities after failed inserts', async () => {
+    const repository = getApplication().get(TenantStoragePatientRepository);
+    const numberOwner = {
+      patientNumber: `PAT33-NUMBER-OWNER-${RUN_ID}`,
+      firstName: `NumberOwner${RUN_ID}`,
+      lastName: 'Existing',
+    };
+    const identityAfterFailure = {
+      firstName: `RetryAfterFailure${RUN_ID}`,
+      lastName: 'RetryPatient',
+      phone: '+966 50 712 0001',
+    };
+    const numberOwnerResult = await repository.create(contextA, numberOwner);
+    expect(numberOwnerResult.kind).toBe('changed');
+
+    await expect(
+      repository.create(contextA, {
+        ...identityAfterFailure,
+        patientNumber: numberOwner.patientNumber,
+      }),
+    ).resolves.toEqual({ kind: 'patient-number-conflict' });
+
+    const retry = await repository.create(contextA, {
+      ...identityAfterFailure,
+      patientNumber: `PAT33-RETRY-${RUN_ID}`,
+    });
+    expect(retry.kind).toBe('changed');
+
+    const identityOwner = await repository.create(contextA, {
+      patientNumber: `PAT33-IDENTITY-OWNER-${RUN_ID}`,
+      firstName: `IdentityOwner${RUN_ID}`,
+      lastName: 'Existing',
+      phone: '+966 50 712 0002',
+    });
+    expect(identityOwner.kind).toBe('changed');
+    await expect(
+      repository.create(contextA, {
+        patientNumber: numberOwner.patientNumber,
+        firstName: `IdentityOwner${RUN_ID}`,
+        lastName: 'Existing',
+        phone: '+966 50 712 0002',
+      }),
+    ).resolves.toEqual({ kind: 'patient-number-conflict' });
+  });
+
+  it('fails Patient writes closed when an atomic duplicate index is missing', async () => {
+    const patients = mongoAdminClient!.db(tenantA.databaseName).collection(PATIENT_COLLECTION);
+    const indexName = 'tenant_patient_duplicate_phone_name_unique_idx';
+    await patients.dropIndex(indexName);
+    const patientNumber = `PAT33-NO-INDEX-${RUN_ID}`;
+
+    try {
+      const response = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/patients`,
+        headers: bearerHeaders(),
+        payload: {
+          patientNumber,
+          firstName: `NoIndex${RUN_ID}`,
+          lastName: 'Blocked',
+          phone: '+966 50 713 0001',
+        },
+      });
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({
+        error: { code: 'TENANT_STORAGE_UNAVAILABLE' },
+      });
+      expect(JSON.stringify(response.json())).not.toMatch(
+        /patientNumber|firstName|lastName|phone|databaseName/i,
+      );
+      await expect(patients.countDocuments({ _tenantId: tenantA.id, patientNumber })).resolves.toBe(
+        0,
+      );
+    } finally {
+      await getApplication().get(MongoTenantPatientStorage).ensureIndexesForTarget(targetA);
+    }
   });
 
   it('preserves records after application shutdown and a fresh Nest app/repository is created', async () => {
@@ -1076,6 +1383,39 @@ async function patientListFailureForMongoUri(uri: string): Promise<TenantStorage
   throw new Error('Expected Patient storage to fail closed');
 }
 
+async function patientCreateFailureForMongoUri(
+  uri: string,
+): Promise<TenantStorageUnavailableError> {
+  const manager = new TenantMongoClientManager(
+    { tenantStorageMongoUri: uri } as unknown as ConfigService,
+    new OfficialTenantMongoClientFactory(),
+  );
+  const storage = new MongoTenantPatientStorage(
+    getApplication().get(TenantStorageRegistryService),
+    manager,
+  );
+  const repository = new TenantStoragePatientRepository(
+    getApplication().get(TenantStorageResolverService),
+    storage,
+  );
+
+  try {
+    await repository.create(contextA, {
+      patientNumber: `PAT33-UNAVAILABLE-${RUN_ID}`,
+      firstName: 'Unavailable',
+      lastName: 'Storage',
+      phone: '+966 50 799 0001',
+    });
+  } catch (error) {
+    if (error instanceof TenantStorageUnavailableError) return error;
+    throw error;
+  } finally {
+    await manager.onApplicationShutdown();
+  }
+
+  throw new Error('Expected Patient storage create to fail closed');
+}
+
 function createTestTenant(suffix: string): TestTenant {
   const slug = `phase30-${RUN_ID}-${suffix}`;
   return {
@@ -1090,6 +1430,36 @@ function createTestTenant(suffix: string): TestTenant {
 function getApplication(): NestFastifyApplication {
   if (!application) throw new Error('Phase 30 test application is not running');
   return application;
+}
+
+async function withDuplicateCheckBarrier<T>(
+  expectedChecks: number,
+  operation: () => Promise<T>,
+): Promise<{ result: T; checks: boolean[] }> {
+  const repository = getApplication().get(TenantStoragePatientRepository);
+  const original = repository.findPotentialDuplicates;
+  const checks: boolean[] = [];
+  let release!: () => void;
+  const gate = new Promise<void>((resolveGate) => {
+    release = resolveGate;
+  });
+  const timeout = setTimeout(release, 15_000);
+  repository.findPotentialDuplicates = async (...args: unknown[]): Promise<boolean> => {
+    const duplicate = (await original.apply(repository, args)) as boolean;
+    checks.push(duplicate);
+    if (checks.length === expectedChecks) release();
+    await gate;
+    return duplicate;
+  };
+
+  try {
+    const result = await operation();
+    return { result, checks };
+  } finally {
+    clearTimeout(timeout);
+    release();
+    repository.findPotentialDuplicates = original;
+  }
 }
 
 async function createApplication(): Promise<void> {

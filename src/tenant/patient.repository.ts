@@ -3,6 +3,7 @@ import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from '
 import type {
   PatientDirectoryRecord,
   PatientDuplicateIdentity,
+  PatientLifecycleMutationResult,
   PatientMutationResult,
   PatientRecord,
   PatientStatus,
@@ -47,7 +48,7 @@ export interface PatientRepository {
     expectedStatus: PatientStatus,
     nextStatus: PatientStatus,
     changedAt: Date,
-  ): Promise<PatientMutationResult>;
+  ): Promise<PatientLifecycleMutationResult>;
 }
 
 /** Patient persistence is resolved from trusted scope before every operation. */
@@ -105,7 +106,7 @@ export class TenantStoragePatientRepository implements PatientRepository {
     expectedStatus: PatientStatus,
     nextStatus: PatientStatus,
     changedAt: Date,
-  ): Promise<PatientMutationResult> {
+  ): Promise<PatientLifecycleMutationResult> {
     return this.withRoute(context, (route) =>
       this.storage.changeStatusIfCurrent(context, route, id, expectedStatus, nextStatus, changedAt),
     );

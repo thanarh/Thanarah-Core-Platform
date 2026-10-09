@@ -1,0 +1,195 @@
+# Phase 33 — Atomic Patient Duplicate Protection
+
+## Project Context
+
+You are working on Thanarah, a production-oriented multi-tenant healthcare SaaS platform.
+
+Implement only Phase 33. This is a real commercial system, not a prototype.
+
+Follow the existing repository architecture, naming conventions, coding style, security boundaries, testing patterns, and commit discipline. Do not reorganize unrelated code or introduce unnecessary abstractions.
+
+Do not expose implementation details as AI-generated artifacts. All code, naming, comments, APIs, tests, and documentation must look like conventional professional production engineering.
+
+## 1. Objective
+
+Phase 32 introduced tenant-scoped patient duplicate detection.
+
+The existing duplicate rules are:
+
+1. Case-insensitive normalized full name + normalized phone.
+2. Case-insensitive normalized full name + normalized email.
+3. Normalized first name + normalized last name + same UTC date of birth.
+
+The current checks are not atomic. Concurrent requests may both pass the preliminary duplicate query and create conflicting patients.
+
+Implement reliable concurrency protection for patient creation and identity-changing updates.
+
+**An application-level check followed by an ordinary write is not sufficient.** The final protection must be enforced through a concurrency-safe persistence mechanism.
+
+## 2. Mandatory Initial Audit
+
+Before changing code:
+
+- Inspect the complete Phase 32 implementation and its tests.
+- Inspect the MongoDB patient adapter, repository interfaces, tenant storage resolver, connection manager, indexes, and transaction/session capabilities.
+- Inspect the disposable MongoDB integration-test setup and its topology.
+- Determine whether the supported runtime MongoDB deployment guarantees transaction-capable replica-set or sharded-cluster behavior.
+- Inspect current patient creation and update flows, including error translation, audit events, and storage failure handling.
+
+Do not assume MongoDB transactions are available merely because the driver exposes session APIs.
+
+Do not modify the central platform database to store patient identity claims. Patient identity protection must remain inside the trusted tenant storage boundary.
+
+## 3. Preserve Existing Behavior
+
+Keep all three Phase 32 duplicate rules and their established normalization semantics.
+
+Preserve:
+
+- Tenant isolation.
+- Existing patient-number uniqueness and its conflict precedence.
+- Existing HTTP 409 response code `PATIENT_DUPLICATE_POSSIBLE`.
+- Safe duplicate-conflict messages that disclose no matching patient details.
+- Existing authorization, audit, DTO, pagination, and patient lifecycle contracts.
+- Existing behavior for updates that do not modify identity-related fields.
+- The ability to register legitimate patients who share a name, phone, email, or date of birth when they do not satisfy the established duplicate rules.
+
+Do not return matched patient records, names, phone numbers, emails, or other identifying details in duplicate-conflict responses.
+
+Never trust a tenant ID, physical database name, connection string, or storage identifier supplied by an untrusted client.
+
+## 4. Design the Atomic Protection
+
+Select the safest design after the initial audit.
+
+Possible mechanisms include:
+
+- MongoDB transactions with unique constraints, but only if transaction support is guaranteed by the actual supported deployment.
+- A tenant-scoped identity-claim collection with unique indexes and a carefully designed reservation/release lifecycle, if it can provide the required concurrency guarantees without relying on unsupported transactions.
+
+These are design candidates, not permission to implement an unsafe hybrid.
+
+If using identity claims:
+
+- Derive claims from exactly the three existing duplicate rules.
+- Include the logical tenant identity and rule type in the uniqueness boundary where required by the physical storage architecture.
+- Ensure competing requests cannot reserve the same claim successfully.
+- Ensure a failed request releases only claims it acquired and never removes another patient's claims.
+- Handle patient creation failures, update failures, retries, existing claims, and partial claim acquisition.
+- Handle identity-changing updates without prematurely releasing the patient's existing claims.
+- Account for process termination between reservation and patient persistence. Do not silently leave permanent stale claims or assume an in-process `finally` block solves crash recovery.
+- Define safe recovery or reconciliation behavior for incomplete reservations.
+- Do not introduce automatic patient merging or deletion.
+
+Do not add unconditional unique indexes directly to patient fields if doing so would reject legitimate records or change the existing duplicate rules.
+
+Do not use an unkeyed hash of sensitive patient identifiers as though it protects them from disclosure. If claims store identity material, follow existing tenant data protection practices and prevent claims from appearing in API responses or logs.
+
+**Important:** If no design can safely guarantee atomic duplicate protection under the actual supported MongoDB topology, stop before committing and report the exact technical blocker and the missing deployment guarantee. Do not claim atomicity based only on passing mocked tests.
+
+## 5. Patient Creation
+
+For concurrent creation requests:
+
+- Ensure only one request can successfully create a patient when the requests satisfy an existing duplicate rule.
+- Return the established safe 409 duplicate response to the losing request.
+- Preserve patient-number conflict behavior.
+- Ensure failed writes do not leave permanently blocking reservations.
+- Ensure retries and duplicate-key errors are translated consistently.
+- Keep all operations within the trusted tenant storage context.
+
+## 6. Identity-Changing Updates
+
+Apply equivalent concurrency protection when changing any field that participates in duplicate detection:
+
+- `firstName`
+- `middleName`
+- `lastName`
+- `phone`
+- `email`
+- `dateOfBirth`
+
+Exclude the current patient from its own duplicate comparison.
+
+Do not reserve or release identity claims unnecessarily for unrelated updates.
+
+Prevent two concurrent updates from successfully creating conflicting patient identities. Preserve the original patient's valid identity protection if an update fails.
+
+Do not introduce lost updates or weaken existing patient-number uniqueness.
+
+## 7. Indexes and Persistence
+
+- Use indexes that enforce the selected concurrency strategy at the database level.
+- Ensure index definitions are tenant-safe for the actual physical storage model.
+- Make index creation and migration or initialization behavior consistent with existing infrastructure conventions.
+- Do not apply production migrations or connect to production.
+- Avoid expensive full-collection scans where the existing persistence model allows an indexed solution.
+- Do not create a central MySQL fallback for tenant patient data.
+
+## 8. Integration Tests
+
+Use the existing disposable real-MongoDB integration-test setup. Inspect whether it supports the selected design; adapt only the test fixture necessary to prove the guarantees.
+
+Add tests for at least:
+
+1. Concurrent creates matching rule 1.
+2. Concurrent creates matching rule 2.
+3. Concurrent creates matching rule 3.
+4. Different tenants may create otherwise matching patients independently.
+5. Legitimate non-duplicate patients remain registerable.
+6. Concurrent identity-changing updates cannot produce duplicate identities.
+7. A failed create leaves no permanently blocking reservation.
+8. A failed update preserves valid identity protection.
+9. Patient-number uniqueness and its existing conflict precedence remain intact.
+10. Existing claims or recovery behavior are handled safely.
+11. Tenant isolation remains enforced.
+12. Database errors fail safely and never produce a false success response.
+
+Use deterministic synchronization barriers or equivalent techniques where needed to exercise actual races. Avoid tests that only issue sequential requests and label them concurrency tests.
+
+Mocks may supplement the tests but cannot replace real MongoDB concurrency verification.
+
+## 9. Regression and Quality Gates
+
+Run the relevant checks using the repository's existing scripts:
+
+- New real-MongoDB integration tests.
+- Full existing test suite.
+- Production build.
+- Root TypeScript type-check.
+- Lint.
+- Formatting checks.
+- Application startup and `/health` verification.
+
+Report any pre-existing unrelated errors separately. Do not conceal failures or claim checks passed unless their actual output confirms it.
+
+Do not expand scope to unrelated TypeScript errors in the separate tenant-contracts test suite unless Phase 33 directly introduces or modifies those errors.
+
+## 10. Git and Scope
+
+- Work only on Phase 33 implementation and directly related tests or necessary infrastructure.
+- Review the final diff before committing.
+- Do not include unrelated changes, uploaded architecture specifications, or project-memory files.
+- Never use `git commit --no-verify`.
+- Use the repository's established Conventional Commit and validation workflow.
+- Create a focused commit only after the implementation and required checks genuinely pass.
+- If a required guarantee cannot be achieved safely, do not create a misleading completion commit.
+
+Suggested commit message:
+
+`feat(healthcare): enforce atomic patient duplicate protection`
+
+## 11. Final Report
+
+When finished, report:
+
+1. The persistence strategy selected and why it is safe for the supported MongoDB topology.
+2. How concurrent creation and updates are protected.
+3. How failed operations and interrupted reservations are recovered.
+4. Indexes or schema changes introduced.
+5. Real MongoDB race tests and their actual results.
+6. Full test count and results of each quality gate.
+7. Commit hash, if a commit was created.
+8. Remaining limitations and any deployment requirements.
+
+Do not begin Phase 34. Do not claim Phase 33 is complete until the implementation, concurrency tests, and required checks have actually passed.

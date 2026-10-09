@@ -166,6 +166,55 @@ describe('PatientService', () => {
     });
   });
 
+  it('maps a persistence duplicate-key result to the safe conflict without auditing', async () => {
+    patients.create.mockResolvedValue({ kind: 'possible-duplicate' });
+
+    await expect(
+      service.create(
+        context,
+        {
+          patientNumber: 'PAT-NEW',
+          firstName: 'Amina',
+          lastName: 'Hassan',
+          phone: '+1 (555) 123-4567',
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(PatientPossibleDuplicateError);
+
+    expect(audit.recordAudit).not.toHaveBeenCalled();
+    expect(new PatientPossibleDuplicateError().getResponse()).toEqual({
+      code: 'PATIENT_DUPLICATE_POSSIBLE',
+      message: 'A possible matching patient already exists.',
+    });
+  });
+
+  it('stores Date-valued birth dates at UTC day precision for atomic duplicate indexes', async () => {
+    patients.create.mockResolvedValue({ kind: 'changed', record: record() });
+    const inputDate = new Date('1990-06-15T14:30:00.000Z');
+    const expectedDate = new Date('1990-06-15T00:00:00.000Z');
+
+    await service.create(
+      context,
+      {
+        patientNumber: 'PAT-DATE-NORMALIZED',
+        firstName: 'Amina',
+        lastName: 'Hassan',
+        dateOfBirth: inputDate,
+      },
+      actor,
+    );
+
+    expect(patients.findPotentialDuplicates).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ dateOfBirth: expectedDate }),
+    );
+    expect(patients.create).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ dateOfBirth: expectedDate }),
+    );
+  });
+
   it('preserves patient-number conflict precedence before possible-duplicate checks', async () => {
     patients.findByPatientNumber.mockResolvedValueOnce(record());
 

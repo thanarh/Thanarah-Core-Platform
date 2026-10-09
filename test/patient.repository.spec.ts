@@ -228,6 +228,43 @@ describe('TenantStoragePatientRepository', () => {
     ).resolves.toBe(false);
   });
 
+  it('checks duplicate identities again inside process-local create and update writes', async () => {
+    const { repository } = setup();
+    const sharedIdentity = {
+      firstName: 'Atomic',
+      middleName: 'Storage',
+      lastName: 'Check',
+      phone: '+1 555 123 4567',
+    };
+    const creates = await Promise.all([
+      repository.create(contextA, { patientNumber: 'PAT-ATOMIC-A', ...sharedIdentity }),
+      repository.create(contextA, { patientNumber: 'PAT-ATOMIC-B', ...sharedIdentity }),
+    ]);
+    expect(creates.map((result) => result.kind).sort()).toEqual(
+      ['changed', 'possible-duplicate'].sort(),
+    );
+    const accepted = creates.find((result) => result.kind === 'changed');
+    if (!accepted || accepted.kind !== 'changed') throw new Error('Expected one created record');
+
+    const candidate = await repository.create(contextA, {
+      patientNumber: 'PAT-ATOMIC-CANDIDATE',
+      firstName: 'Before',
+      lastName: 'Update',
+    });
+    if (candidate.kind !== 'changed') throw new Error('Expected an update candidate');
+
+    await expect(repository.update(contextA, candidate.record.id, sharedIdentity)).resolves.toEqual(
+      { kind: 'possible-duplicate' },
+    );
+    await expect(
+      repository.findByIdForTenant(contextA, candidate.record.id),
+    ).resolves.toMatchObject({
+      firstName: 'Before',
+      lastName: 'Update',
+      phone: null,
+    });
+  });
+
   it('updates and transitions a record only within its tenant partition', async () => {
     const { repository } = setup();
     const created = await repository.create(contextA, createInput);
