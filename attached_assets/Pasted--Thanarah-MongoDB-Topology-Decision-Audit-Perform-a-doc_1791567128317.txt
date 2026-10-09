@@ -1,0 +1,43 @@
+# Thanarah — MongoDB Topology Decision Audit
+
+Perform a documentation-only architecture audit. Do not implement new features, change database schemas, provision infrastructure, access production, use production credentials, apply migrations, stage files, or create commits.
+
+## Objective
+
+Resolve the documented deployment assumptions needed to evaluate Phase 33's tenant Patient unique indexes.
+
+## Tasks
+
+1. Inspect existing project documentation, configuration, infrastructure files, MongoDB connection management, tenant storage registry, and Phase 29–33 implementation and tests.
+
+2. Identify only topology and deployment facts explicitly supported by existing project artifacts. Separate:
+   - Documented and implemented facts.
+   - Test-only assumptions.
+   - Proposed architecture decisions.
+   - Unresolved production requirements.
+
+3. Determine whether any existing artifact explicitly establishes:
+   - MongoDB provider and supported server versions.
+   - Standalone, replica-set, or sharded-cluster support.
+   - Production transaction guarantees.
+   - A shard key, including the exact ordered fields for a compound key.
+   - Whether tenant databases are isolated databases on shared clusters or use separate clusters.
+   - Required unique-index compatibility for sharded collections.
+
+4. Review the three Phase 33 unique-index definitions against MongoDB's documented unique-index restrictions for the topology that is actually established. Do not assume that standalone test success proves sharded deployment compatibility.
+
+5. Assess the existing tenant index-provisioning gate. Identify how it verifies the required indexes on each tenant storage target, how failures prevent Patient writes, and how existing duplicate data affects activation.
+
+6. If the production topology or shard key is undocumented, explicitly report it as unresolved. Do not select one by guesswork or claim that Phase 33 is release-ready.
+
+## Deliverable
+
+Return a concise architecture decision report containing:
+- Evidence and file paths for each established fact.
+- Supported topology, if actually documented.
+- Exact shard-key fields and order, only if explicitly documented.
+- Phase 33 index-compatibility findings.
+- Release blockers and the minimum decisions required to resolve them.
+- Recommended next action.
+
+Keep the repository unchanged. Do not contact production or request credentials.
