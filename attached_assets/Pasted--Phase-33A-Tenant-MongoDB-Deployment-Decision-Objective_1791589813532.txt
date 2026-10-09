@@ -1,0 +1,138 @@
+# Phase 33A — Tenant MongoDB Deployment Decision
+
+## Objective
+
+Establish a documented, evidence-based deployment decision for Thanarah tenant MongoDB storage so Phase 33 Patient duplicate protection can be evaluated against a clearly defined supported topology.
+
+This is a documentation-only phase. Thanarah is a production-oriented multi-tenant healthcare SaaS platform.
+
+## Strict Boundaries
+
+- Do not access production systems or production credentials.
+- Do not provision or modify database infrastructure.
+- Do not connect to production MongoDB.
+- Do not apply migrations or modify database contents.
+- Do not change application code, configuration, schemas, index definitions, or tests.
+- Do not stage files or create a commit until the documentation-only review is complete and the final diff has been inspected.
+- Do not invent deployment facts or describe proposed decisions as already approved.
+
+## 1. Inspect Existing Evidence
+
+Review the current repository documentation and relevant implementation, including:
+
+- `README.md`
+- `replit.md`
+- `MIGRATION_IMPACT_REPORT.md`
+- Tenant MongoDB client manager and storage registry
+- Tenant Patient storage adapter and index provisioning
+- Phase 30 and Phase 33 integration-test setup
+- Existing architecture decisions and deployment instructions
+
+Record the relevant file paths and line references for each conclusion.
+
+Separate findings into:
+
+1. Explicitly documented and implemented facts.
+2. Test-only assumptions.
+3. Unresolved production requirements.
+4. Proposed decisions requiring approval.
+
+## 2. Prepare the Deployment Decision
+
+Create a focused architecture decision document using the repository's existing documentation conventions.
+
+It must address:
+
+### A. Provider and server version
+
+Record the MongoDB provider and supported server version only if existing approved evidence establishes them.
+
+Otherwise mark them `UNRESOLVED`. Do not choose a provider or version by assumption.
+
+### B. Supported topology
+
+Explicitly evaluate:
+
+- Standalone MongoDB
+- Replica Set
+- Sharded Cluster
+
+Distinguish application-level support, test coverage, and approved production support. Do not claim a topology is supported merely because the driver can connect to it.
+
+### C. Tenant storage model
+
+Preserve the approved architecture:
+
+- Tenant healthcare and operational data reside in isolated MongoDB storage.
+- A logical tenant may map to multiple physical databases.
+- Tenant storage is resolved server-side through trusted tenant context and registry metadata.
+- Clients cannot select physical databases.
+- Central platform persistence remains separate from tenant Patient storage.
+
+Do not imply that multiple databases per tenant automatically means MongoDB sharding.
+
+### D. Patient duplicate-protection compatibility
+
+Document the three existing duplicate rules and the current Phase 33 index characteristics.
+
+Explain the reported incompatibility between the current non-simple collation and shard-wide unique-index guarantees for sharded collections.
+
+If sharding remains possible, specify that the exact shard-key fields and compound-key order must be approved before claiming index compatibility. Do not invent a shard key.
+
+Do not silently replace case-insensitive duplicate semantics with case-sensitive matching or weaker application-only checks.
+
+### E. Transactions and atomicity
+
+Document only transaction guarantees established by approved deployment evidence.
+
+Do not infer production transaction support from the availability of driver APIs or from standalone integration tests.
+
+### F. Tenant activation and index readiness
+
+Document the required operational guarantee: a tenant storage target must not become available for Patient writes until all required indexes have been provisioned and verified.
+
+This phase must document the requirement only. Do not implement the activation gate yet.
+
+### G. Existing data conflicts
+
+Document that unique-index creation may fail if existing patient data violates the constraint. Such failures must not cause automatic merging or deletion of patient records.
+
+## 3. Decision Status
+
+If the repository contains insufficient evidence to approve a production topology, preserve the status as `PENDING APPROVAL`.
+
+Provide a small decision table showing:
+
+- Decision
+- Current documented status
+- Evidence
+- Required approval or follow-up
+
+Do not make unsupported claims that a specific provider, topology, shard key, or transaction model has been selected.
+
+## 4. Release Gate
+
+State explicitly that Phase 33 remains blocked from a production-safety claim until:
+
+1. The supported production topology is approved and documented.
+2. Phase 33 indexes are verified compatible with that topology.
+3. Required index provisioning is enforced before tenant activation.
+4. Non-production tests validate the approved deployment characteristics.
+
+## 5. Validation and Final Report
+
+Inspect the documentation diff and ensure no application code or configuration changed.
+
+Run any appropriate documentation checks already available in the repository.
+
+Report:
+
+- Files created or modified.
+- Evidence supporting the documented facts.
+- Decisions that remain unresolved.
+- Whether Phase 33 remains blocked.
+- Checks actually performed.
+
+Do not begin implementation of the activation gate or modify Phase 33 indexes in this phase. Do not begin Phase 34.
+
+A commit may be created only if the documentation is accurate, the diff is focused, and the repository's established validation workflow passes. Never use `git commit --no-verify`.
