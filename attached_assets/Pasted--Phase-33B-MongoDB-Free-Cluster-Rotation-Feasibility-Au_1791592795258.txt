@@ -1,0 +1,90 @@
+# Phase 33B — MongoDB Free Cluster Rotation Feasibility Audit
+
+## Objective
+
+Review the existing Thanarah MongoDB deployment decision and document the feasibility of a free-cluster rotation and archival strategy for the production SaaS architecture.
+
+This phase is strictly **documentation-only and read-only**.
+
+## Business requirement
+
+Thanarah needs tenant-isolated healthcare storage while minimizing recurring infrastructure costs.
+
+The proposed idea is:
+
+1. Use a MongoDB free cluster for active tenant workloads.
+2. Monitor capacity and operational limits.
+3. When a cluster approaches its permitted capacity, provision another eligible cluster through an officially supported process.
+4. Verify the destination cluster, required indexes, tenant isolation, and migrated data before switching writes.
+5. Retain the previous cluster as a read-only archive when the provider and plan permit it.
+6. Keep an authoritative registry mapping each tenant's data to its actual storage location.
+7. Never delete, overwrite, or silently abandon historical patient data.
+
+Do not assume that unlimited free clusters, unlimited projects, repeated free-tier provisioning, or indefinite archival storage are available.
+
+## Required investigation
+
+Inspect the existing `TENANT_MONGODB_DEPLOYMENT_DECISION.md`, Phase 33 implementation, tenant storage registry, index provisioning, and related architecture documentation.
+
+Use existing repository evidence and official MongoDB documentation to establish:
+
+- Current Atlas Free cluster storage, database, collection, and operational limits.
+- Restrictions on the number of free clusters per project and any relevant project or organization limits.
+- Whether multiple free clusters can be provisioned under the intended account structure.
+- Whether repeated provisioning or account/project rotation is permitted under current provider terms.
+- Supported methods for migrating data between clusters.
+- Whether the proposed archival cluster can remain available for read-only access and under what limitations.
+- What happens if a new free cluster cannot be provisioned.
+- How unique patient indexes and duplicate-protection guarantees behave on the destination.
+- Whether the existing index strategy remains valid for the actual deployment topology.
+- The impact of migration on write consistency, downtime, concurrent updates, tenant isolation, and auditability.
+
+Cite official source URLs and record the date checked. Clearly separate verified provider facts from assumptions and unresolved questions.
+
+## Architecture constraints
+
+- Tenant healthcare records must remain in tenant-isolated MongoDB storage.
+- Central MySQL/MariaDB remains the platform control plane; do not move patient records into it.
+- One tenant may eventually use multiple physical databases or storage locations.
+- Do not introduce automatic sharding, automatic migration, or rebalancing in this phase.
+- Do not treat hostname, client-provided tenant IDs, or client-provided database names as authorization.
+- Do not activate a destination before required indexes and tenant isolation have been verified.
+- Do not promise zero downtime unless the migration design and tests demonstrate it.
+- Do not assume the free tier meets production backup, recovery, availability, or healthcare data retention requirements.
+
+## Deliverable
+
+Update `TENANT_MONGODB_DEPLOYMENT_DECISION.md` with a new section titled:
+
+`Free Cluster Rotation and Read-Only Archive Feasibility`
+
+Include:
+
+1. Verified provider limits and official citations.
+2. Feasibility assessment: supported, unsupported, or unverified for each requirement.
+3. A proposed storage lifecycle and migration sequence.
+4. Conditions required before an old cluster becomes read-only.
+5. Failure and rollback behavior.
+6. Data integrity, backup, retention, and recovery risks.
+7. A clear recommendation distinguishing a development/free-tier experiment from a production-safe architecture.
+8. Open decisions requiring human approval.
+
+Keep the deployment decision in `PENDING APPROVAL`. Do not describe the proposed rotation model as approved or implemented.
+
+## Strict prohibitions
+
+- No production database connections.
+- No account or cluster creation.
+- No changes to application code, schemas, indexes, environment variables, or infrastructure.
+- No migrations or writes to patient data.
+- No credential inspection or printing.
+- No staging or committing files.
+- Do not mark Phase 33 as accepted or production-ready.
+
+## Validation and report
+
+Run only the documentation-appropriate formatting and diff checks.
+
+Report the exact file changed, official sources consulted, verified findings, unresolved risks, validation results, and Git status.
+
+Stop after this phase and wait for review before making any implementation changes.
