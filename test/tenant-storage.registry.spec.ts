@@ -139,67 +139,6 @@ describe('TenantStorageRegistryService', () => {
     expect(delegate.create).not.toHaveBeenCalled();
   });
 
-  it('activates a registered target only when no other active primary exists', async () => {
-    const { registry, delegate } = makeRegistry();
-    const inactivePrimary = makeTarget({ status: TenantStorageTargetStatus.INACTIVE });
-    const activePrimary = makeTarget();
-    delegate.findFirst
-      .mockResolvedValueOnce(inactivePrimary)
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(activePrimary);
-    delegate.updateMany.mockResolvedValue({ count: 1 });
-
-    await expect(
-      registry.setTargetStatus(tenantId, targetId, TenantStorageTargetStatus.ACTIVE),
-    ).resolves.toEqual(activePrimary);
-    expect(delegate.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({
-        where: { id: targetId, tenantId },
-        data: { status: TenantStorageTargetStatus.ACTIVE, updatedAt: expect.any(Date) },
-      }),
-    );
-  });
-
-  it('rejects activation when another active primary is already registered', async () => {
-    const { registry, delegate } = makeRegistry();
-    delegate.findFirst
-      .mockResolvedValueOnce(makeTarget({ status: TenantStorageTargetStatus.INACTIVE }))
-      .mockResolvedValueOnce({ id: '55555555-5555-4555-8555-555555555555' });
-
-    await expect(
-      registry.setTargetStatus(tenantId, targetId, TenantStorageTargetStatus.ACTIVE),
-    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
-    expect(delegate.updateMany).not.toHaveBeenCalled();
-  });
-
-  it('switches the primary among active targets without deleting registry history', async () => {
-    const { registry, delegate } = makeRegistry();
-    const activeTarget = makeTarget({ isPrimary: false });
-    delegate.findFirst.mockResolvedValueOnce({ id: targetId }).mockResolvedValueOnce(activeTarget);
-    delegate.updateMany.mockResolvedValue({ count: 1 });
-
-    await expect(registry.setPrimaryTarget(tenantId, targetId)).resolves.toEqual(activeTarget);
-    expect(delegate.updateMany).toHaveBeenNthCalledWith(
-      1,
-      expect.objectContaining({
-        where: {
-          tenantId,
-          status: TenantStorageTargetStatus.ACTIVE,
-          isPrimary: true,
-          id: { not: targetId },
-        },
-        data: { isPrimary: false, updatedAt: expect.any(Date) },
-      }),
-    );
-    expect(delegate.updateMany).toHaveBeenNthCalledWith(
-      2,
-      expect.objectContaining({
-        where: { id: targetId, tenantId, status: TenantStorageTargetStatus.ACTIVE },
-        data: { isPrimary: true, updatedAt: expect.any(Date) },
-      }),
-    );
-  });
-
   it('does not query the registry for malformed trusted context', async () => {
     const { registry, delegate } = makeRegistry();
 

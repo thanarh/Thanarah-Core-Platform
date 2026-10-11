@@ -9,6 +9,7 @@ import {
   TenantMongoClientManager,
 } from './tenant-mongo-client.manager';
 import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
+import { TenantStorageActivationService } from './tenant-storage.activation.service';
 import { PATIENT_REPOSITORY, TenantStoragePatientRepository } from './patient.repository';
 import {
   DevelopmentTenantDatabaseRegistry,
@@ -34,6 +35,7 @@ import { effectiveTenantStorageProvider } from './tenant-storage.mode';
   imports: [ConfigModule, DatabaseModule],
   providers: [
     TenantStorageRegistryService,
+    TenantStorageActivationService,
     {
       provide: TENANT_DATABASE_REGISTRY,
       inject: [ConfigService, TenantStorageRegistryService],
@@ -104,6 +106,7 @@ import { effectiveTenantStorageProvider } from './tenant-storage.mode';
     PATIENT_REPOSITORY,
     TENANT_STORAGE_RESOLVER,
     TenantStorageRegistryService,
+    TenantStorageActivationService,
     MongoTenantPatientStorage,
   ],
 })

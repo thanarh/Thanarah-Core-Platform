@@ -533,6 +533,19 @@ describe('MongoTenantPatientStorage', () => {
     ]);
   });
 
+  it('fails index readiness verification when required indexes are absent after creation', async () => {
+    const setupState = setup();
+    setupState.collection.indexes.mockResolvedValue([]);
+
+    await expect(setupState.storage.ensureIndexesForTarget(target)).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(6);
+    expect(setupState.collection.dropIndex).not.toHaveBeenCalled();
+    expect(setupState.collection.insertOne).not.toHaveBeenCalled();
+    expect(setupState.collection.updateOne).not.toHaveBeenCalled();
+  });
+
   it('keeps legacy indexes when unique provisioning fails on conflicting existing data', async () => {
     const setupState = setup();
     setupState.collection.createIndex.mockImplementation(async (...args: unknown[]) => {
@@ -547,6 +560,8 @@ describe('MongoTenantPatientStorage', () => {
       TenantStorageUnavailableError,
     );
     expect(setupState.collection.dropIndex).not.toHaveBeenCalled();
+    expect(setupState.collection.insertOne).not.toHaveBeenCalled();
+    expect(setupState.collection.updateOne).not.toHaveBeenCalled();
   });
 
   it('fails closed for cross-tenant targets and unsupported multi-target routes', async () => {

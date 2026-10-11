@@ -46,6 +46,9 @@ const { TenantStoragePatientRepository } = requireFromWorkspace(
 const { TenantStorageRegistryService } = requireFromWorkspace(
   '../dist/tenant/tenant-storage.registry',
 );
+const { TenantStorageActivationService } = requireFromWorkspace(
+  '../dist/tenant/tenant-storage.activation.service',
+);
 const { TenantMembershipValidatorService, TrustedTenantContextFactoryService } =
   requireFromWorkspace('../dist/tenant/tenant-context.service');
 const { TenantStorageResolverService } = requireFromWorkspace(
@@ -475,9 +478,9 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       await prisma.tenantRolePermission.create({ data: rolePermission });
     }
 
-    const registry = getApplication().get(TenantStorageRegistryService);
+    const activation = getApplication().get(TenantStorageActivationService);
     try {
-      await registry.setTargetStatus(tenantA.id, targetA.id, TenantStorageTargetStatus.INACTIVE);
+      await activation.setTargetStatus(tenantA.id, targetA.id, TenantStorageTargetStatus.INACTIVE);
       const inactive = await getApplication().inject({
         method: 'GET',
         url: `${tenantRoot(tenantA)}/patients`,
@@ -486,7 +489,7 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       expect(inactive.statusCode).toBe(503);
       expect(inactive.json()).toMatchObject({ error: { code: 'TENANT_STORAGE_NOT_CONFIGURED' } });
 
-      await registry.setTargetStatus(tenantA.id, targetA.id, TenantStorageTargetStatus.ACTIVE);
+      await activation.setTargetStatus(tenantA.id, targetA.id, TenantStorageTargetStatus.ACTIVE);
       await prisma.tenantStorageTarget.update({
         where: { id: targetA.id },
         data: { databaseName: 'admin' },
@@ -1573,10 +1576,10 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
 async function provisionTenantTarget(tenant: TestTenant): Promise<void> {
   await mongoAdminClient!.db(tenant.databaseName).createCollection(PATIENT_COLLECTION);
   const registry = getApplication().get(TenantStorageRegistryService);
+  const activation = getApplication().get(TenantStorageActivationService);
   const target = await registry.registerTarget(tenant.id, tenant.databaseName);
-  await getApplication().get(MongoTenantPatientStorage).ensureIndexesForTarget(target);
-  await registry.setTargetStatus(tenant.id, target.id, TenantStorageTargetStatus.ACTIVE);
-  const primaryTarget = await registry.setPrimaryTarget(tenant.id, target.id);
+  await activation.setTargetStatus(tenant.id, target.id, TenantStorageTargetStatus.ACTIVE);
+  const primaryTarget = await activation.setPrimaryTarget(tenant.id, target.id);
   if (!primaryTarget) throw new Error('Could not activate the disposable tenant storage target');
   if (tenant === tenantA) targetA = primaryTarget;
   else targetB = primaryTarget;
@@ -1584,18 +1587,25 @@ async function provisionTenantTarget(tenant: TestTenant): Promise<void> {
 
 async function restorePrimaryTargetA(): Promise<void> {
   const prisma = getApplication().get(PrismaService);
+  const activation = getApplication().get(TenantStorageActivationService);
   const existing = await prisma.tenantStorageTarget.findFirst({
     where: { tenantId: tenantA.id, connectionReference: 'primary' },
   });
   if (existing) {
-    targetA = await prisma.tenantStorageTarget.update({
+    await activation.setTargetStatus(tenantA.id, existing.id, TenantStorageTargetStatus.INACTIVE);
+    await prisma.tenantStorageTarget.update({
       where: { id: existing.id },
-      data: {
-        databaseName: tenantA.databaseName,
-        status: TenantStorageTargetStatus.ACTIVE,
-        isPrimary: true,
-      },
+      data: { databaseName: tenantA.databaseName, isPrimary: false },
     });
+    const activeTarget = await activation.setTargetStatus(
+      tenantA.id,
+      existing.id,
+      TenantStorageTargetStatus.ACTIVE,
+    );
+    if (!activeTarget) throw new Error('Could not reactivate the disposable tenant storage target');
+    const primaryTarget = await activation.setPrimaryTarget(tenantA.id, existing.id);
+    if (!primaryTarget) throw new Error('Could not restore the disposable primary target');
+    targetA = primaryTarget;
     return;
   }
   await provisionTenantTarget(tenantA);
