@@ -1,0 +1,45 @@
+# Resume Phase 34B — Final Read-Only Review Before Commit
+
+The current task remains the final read-only review of the actual Phase 34 and Phase 34A implementation changes before deciding whether they are safe to commit.
+
+A newly uploaded Phase 34 specification is present and differs from the version already in HEAD. Do not overwrite, delete, stage, commit, or modify that uploaded file. Do not silently replace the current implementation requirements with the new document.
+
+For this task, continue the previously requested code review. If the specification differences reveal a concrete conflict affecting the implementation's correctness, report that conflict separately without changing scope.
+
+Inspect the actual current working tree and these files:
+
+- `src/tenant/tenant-storage.activation.service.ts`
+- `src/tenant/tenant-storage.registry.ts`
+- `src/tenant/tenant-storage.module.ts`
+- `test/tenant-storage.activation.service.spec.ts`
+- `test/tenant-storage.registry.spec.ts`
+- `test/mongo-tenant-patient.storage.spec.ts`
+- `test/phase30-patient.integration.spec.ts`
+
+Verify:
+
+1. Routing identity comparison covers tenant ID, target ID, provider, connection reference, and database name.
+2. A mismatch aborts before any registry mutation.
+3. Primary switching cannot leave a partial state if the second mutation fails.
+4. The activation service is the only supported application path for target status and primary changes.
+5. Mocked concurrency tests are accurately described and do not claim to prove real database locking.
+6. Existing duplicate-index definitions and Patient write fail-closed behavior remain unchanged.
+7. No unrelated application behavior or production configuration changed.
+8. Phase 34A tests meaningfully exercise the claimed failure and rollback behavior.
+9. The uploaded specification remains untouched and is not accidentally included in the implementation diff.
+
+Return findings with file and line references, concrete commit blockers, `git diff --stat`, and `git status --short`.
+
+Conclude with exactly one recommendation:
+- SAFE TO COMMIT
+- NEEDS FIXES
+- NEEDS ADDITIONAL TEST
+
+Restrictions:
+- Read-only review only.
+- Do not run tests or migrations.
+- Do not connect to production or inspect secrets.
+- Do not stage, commit, reset, or discard any changes.
+- Do not use `--no-verify`.
+
+Stop after reporting.
