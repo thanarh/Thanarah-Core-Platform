@@ -1,0 +1,76 @@
+# Phase 34 — Enforce Tenant Storage Index Readiness Before Activation
+
+## Objective
+
+Implement a fail-closed activation gate so a tenant MongoDB storage target cannot become active for Patient writes unless all required indexes have been provisioned and verified successfully.
+
+This is a focused production-safety change, not a MongoDB cluster-rotation implementation.
+
+## Required initial inspection
+
+Before editing, inspect:
+
+- `src/tenant/tenant-storage.registry.ts`
+- `src/tenant/mongo-tenant-patient.storage.ts`
+- `src/tenant/tenant-mongo-client.manager.ts`
+- `src/tenant/tenant-storage` related interfaces and tests
+- `test/phase30-patient.integration.spec.ts`
+- Existing activation, provisioning, and storage readiness call paths
+
+Confirm the actual signatures and dependency boundaries before designing the change.
+
+## Required behavior
+
+1. The activation operation must not mark a target active until the required Patient indexes have been successfully provisioned and verified for that exact target.
+2. Index verification must use trusted server-side target identity and must never accept a client-supplied database name, URI, or physical connection identifier.
+3. If index creation, verification, target resolution, or database connectivity fails, activation must fail closed. The target must not become active.
+4. Existing duplicate data that prevents unique-index creation must not be merged, deleted, or modified automatically.
+5. Existing active-target conflict rules must remain intact.
+6. Do not silently switch unrelated tenants or targets.
+7. Preserve existing Patient-number uniqueness, all three duplicate rules, partial filters, collations, and current conflict-response behavior.
+8. Do not claim that index readiness proves shard-wide uniqueness. The production topology remains unapproved, and the current collation-based indexes are not proven compatible with sharded Patient collections.
+9. Keep provisioning idempotent and avoid dropping legacy indexes before all required replacements have been verified.
+10. Avoid exposing database URIs, credentials, raw MongoDB errors, patient data, or sensitive infrastructure details in API responses and logs.
+
+## Concurrency and consistency
+
+Inspect the existing activation transaction and target state transitions.
+
+Prevent concurrent activation requests from bypassing the readiness gate or producing multiple active primary targets where the existing design prohibits them.
+
+Do not assume a central SQL transaction can atomically include MongoDB index creation. Design the sequence to handle failures between index verification and registry activation safely.
+
+If the existing architecture cannot guarantee the required invariant, explain the limitation and implement the narrowest safe solution without claiming stronger guarantees than the implementation provides.
+
+## Tests
+
+Add focused tests covering at least:
+
+- Successful activation after index provisioning and verification.
+- Index creation failure leaves the target inactive.
+- Index verification failure leaves the target inactive.
+- Database unavailable leaves the target inactive.
+- Existing duplicate data preventing unique-index creation leaves the target inactive.
+- Existing active-target conflict behavior remains correct.
+- Concurrent activation attempts cannot violate the existing primary-target invariant.
+- No Patient records are inserted, deleted, merged, or modified by activation.
+- Existing Patient duplicate-protection tests remain unchanged in behavior.
+
+Use disposable non-production test databases only. Do not contact production.
+
+## Restrictions
+
+- Do not implement automatic cluster provisioning, cluster rotation, data migration, archive routing, or sharding.
+- Do not add a new MongoDB provider or change the production provider decision.
+- Do not weaken unique constraints or replace database-enforced duplicate protection with application-only checks.
+- Do not change central MySQL/MariaDB into Patient-record storage.
+- Do not access or print secrets.
+- Do not stage or commit changes before reporting results.
+
+## Validation and report
+
+Run the focused tests and relevant existing regression tests, plus build, type-check, lint, formatting, and `git diff --check` where available.
+
+Report the exact files changed, the activation invariant now enforced, test results, any remaining concurrency or topology limitations, and Git status.
+
+Stop after implementation and report. Do not proceed to cluster rotation or production deployment.
