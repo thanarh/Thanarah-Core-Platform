@@ -41,6 +41,19 @@ function matchesTarget(target: TenantStorageTargetRecord, where: TargetWhere): b
   });
 }
 
+function applyTargetUpdate(
+  targets: TenantStorageTargetRecord[],
+  update: { where: TargetWhere; data: Partial<TenantStorageTargetRecord> },
+): { count: number } {
+  let count = 0;
+  for (const target of targets) {
+    if (!matchesTarget(target, update.where)) continue;
+    Object.assign(target, update.data);
+    count += 1;
+  }
+  return { count };
+}
+
 interface ActivationServiceHarness {
   service: TenantStorageActivationService;
   targets: TenantStorageTargetRecord[];
@@ -65,15 +78,8 @@ function makeActivationService(
     return target ? { ...target } : null;
   });
   const updateMany = vi.fn(
-    async ({ where, data }: { where: TargetWhere; data: Partial<TenantStorageTargetRecord> }) => {
-      let count = 0;
-      for (const target of targets) {
-        if (!matchesTarget(target, where)) continue;
-        Object.assign(target, data);
-        count += 1;
-      }
-      return { count };
-    },
+    async (update: { where: TargetWhere; data: Partial<TenantStorageTargetRecord> }) =>
+      applyTargetUpdate(targets, update),
   );
   const delegate = { findFirst, updateMany };
   const prismaMock = {
@@ -81,6 +87,7 @@ function makeActivationService(
     $transaction: vi.fn(
       async (operation: (transaction: unknown) => Promise<unknown>, _options?: unknown) => {
         let releaseLock: (() => void) | undefined;
+        let snapshot: TenantStorageTargetRecord[] | undefined;
         const transaction = {
           tenantStorageTarget: delegate,
           $queryRaw: vi.fn(async (query: Prisma.Sql) => {
@@ -92,6 +99,7 @@ function makeActivationService(
             });
             lockTail = previous.then(() => current);
             await previous;
+            snapshot = targets.map((target) => ({ ...target }));
             releaseLock = release;
             return [{ id: tenantId }];
           }),
@@ -99,6 +107,10 @@ function makeActivationService(
 
         try {
           return await operation(transaction);
+        } catch (error) {
+          // Model Prisma's transaction rollback for deterministic unit coverage.
+          if (snapshot) targets.splice(0, targets.length, ...snapshot);
+          throw error;
         } finally {
           releaseLock?.();
         }
@@ -136,6 +148,23 @@ describe('TenantStorageActivationService', () => {
     expect(harness.prismaMock.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
     });
+  });
+
+  it('rejects activation if the database name changes after index preflight', async () => {
+    const harness = makeActivationService([makeTarget(targetId)]);
+    harness.patientStorage.ensureIndexesForTarget.mockImplementationOnce(async () => {
+      const storedTarget = harness.targets.find((candidate) => candidate.id === targetId);
+      if (!storedTarget) throw new Error('Expected the target to remain registered');
+      storedTarget.databaseName = 'tenant_changed';
+    });
+
+    await expect(
+      harness.service.setTargetStatus(tenantId, targetId, TenantStorageTargetStatus.ACTIVE),
+    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+
+    expect(harness.targets[0]?.databaseName).toBe('tenant_changed');
+    expect(harness.targets[0]?.status).toBe(TenantStorageTargetStatus.INACTIVE);
+    expect(harness.updateMany).not.toHaveBeenCalled();
   });
 
   it('leaves the target inactive when index creation fails', async () => {
@@ -224,7 +253,59 @@ describe('TenantStorageActivationService', () => {
     expect(harness.targets[1]?.isPrimary).toBe(true);
   });
 
-  it('serializes concurrent primary activations for one tenant', async () => {
+  it('rejects a primary switch if the connection reference changes after index preflight', async () => {
+    const previousPrimary = makeTarget(targetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: true,
+    });
+    const candidate = makeTarget(secondTargetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: false,
+    });
+    const harness = makeActivationService([previousPrimary, candidate]);
+    harness.patientStorage.ensureIndexesForTarget.mockImplementationOnce(async () => {
+      const storedCandidate = harness.targets.find((target) => target.id === secondTargetId);
+      if (!storedCandidate) throw new Error('Expected the candidate to remain registered');
+      storedCandidate.connectionReference = 'changed-reference';
+    });
+
+    await expect(harness.service.setPrimaryTarget(tenantId, secondTargetId)).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+
+    expect(harness.targets[0]?.isPrimary).toBe(true);
+    expect(harness.targets[1]?.connectionReference).toBe('changed-reference');
+    expect(harness.targets[1]?.isPrimary).toBe(false);
+    expect(harness.updateMany).not.toHaveBeenCalled();
+  });
+
+  it('rolls back a primary switch when the candidate update fails after clearing the old primary', async () => {
+    const previousPrimary = makeTarget(targetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: true,
+    });
+    const candidate = makeTarget(secondTargetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: false,
+    });
+    const harness = makeActivationService([previousPrimary, candidate]);
+    const failure = new Error('simulated candidate update failure');
+    harness.updateMany
+      .mockImplementationOnce(
+        (update: { where: TargetWhere; data: Partial<TenantStorageTargetRecord> }) =>
+          Promise.resolve(applyTargetUpdate(harness.targets, update)),
+      )
+      .mockImplementationOnce(() => Promise.reject(failure));
+
+    await expect(harness.service.setPrimaryTarget(tenantId, secondTargetId)).rejects.toBe(failure);
+
+    expect(harness.updateMany).toHaveBeenCalledTimes(2);
+    expect(harness.targets[0]?.isPrimary).toBe(true);
+    expect(harness.targets[1]?.isPrimary).toBe(false);
+  });
+
+  it('rejects a competing primary activation in the serialized transaction mock', async () => {
+    // This verifies service conflict handling; the mocked queue does not prove database locking.
     const harness = makeActivationService([makeTarget(targetId), makeTarget(secondTargetId)]);
 
     const results = await Promise.allSettled([

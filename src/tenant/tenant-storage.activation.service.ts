@@ -12,6 +12,10 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3
 
 /**
  * Coordinates MongoDB index readiness with control-plane activation.
+ * The registry routing identity (tenant, target, provider, connection reference,
+ * and database name) is checked again inside the tenant-locked transaction.
+ * Supported application paths register routing metadata but do not edit it;
+ * any future metadata mutation must preserve this invariant.
  * MongoDB index DDL and the Prisma transaction cannot commit atomically; Patient
  * write paths also verify the required indexes and fail closed if they later drift.
  */
@@ -29,10 +33,11 @@ export class TenantStorageActivationService {
   ): Promise<TenantStorageTargetRecord | null> {
     this.assertIdentifiers(tenantId, targetId);
 
+    let verifiedTarget: TenantStorageTargetRecord | null = null;
     if (status === TenantStorageTargetStatus.ACTIVE) {
-      const target = await this.findTarget(tenantId, targetId);
-      if (!target) return null;
-      await this.ensurePatientIndexes(target);
+      verifiedTarget = await this.findTarget(tenantId, targetId);
+      if (!verifiedTarget) return null;
+      await this.ensurePatientIndexes(verifiedTarget);
     }
 
     return this.prisma.$transaction(
@@ -47,6 +52,11 @@ export class TenantStorageActivationService {
           select: TENANT_STORAGE_TARGET_SELECT,
         });
         if (!current) return null;
+
+        if (status === TenantStorageTargetStatus.ACTIVE) {
+          if (!verifiedTarget) return null;
+          this.assertSameRoutingIdentity(verifiedTarget, current);
+        }
 
         if (status === TenantStorageTargetStatus.ACTIVE && current.isPrimary) {
           const otherPrimary = await transaction.tenantStorageTarget.findFirst({
@@ -102,9 +112,10 @@ export class TenantStorageActivationService {
             provider: TenantStorageProvider.MONGODB,
             status: TenantStorageTargetStatus.ACTIVE,
           },
-          select: { id: true },
+          select: TENANT_STORAGE_TARGET_SELECT,
         });
         if (!current) return null;
+        this.assertSameRoutingIdentity(target, current);
 
         await transaction.tenantStorageTarget.updateMany({
           where: {
@@ -158,6 +169,21 @@ export class TenantStorageActivationService {
     try {
       await this.patientStorage.ensureIndexesForTarget(target);
     } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  private assertSameRoutingIdentity(
+    verified: TenantStorageTargetRecord,
+    current: TenantStorageTargetRecord,
+  ): void {
+    if (
+      verified.id !== current.id ||
+      verified.tenantId !== current.tenantId ||
+      verified.provider !== current.provider ||
+      verified.connectionReference !== current.connectionReference ||
+      verified.databaseName !== current.databaseName
+    ) {
       throw new TenantStorageUnavailableError();
     }
   }
