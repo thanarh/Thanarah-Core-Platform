@@ -1,0 +1,194 @@
+# Phase 35F–35N — Tenant Storage Readiness, Documentation Integrity, and Deployment Safety
+
+## Overall objective
+
+Complete one cohesive, multi-stage engineering task for Thanarah covering tenant MongoDB deployment documentation, Patient index verification, storage activation safeguards, and production-readiness evidence.
+
+Work through the stages sequentially in the same task. Avoid stopping after every small stage to request permission. Complete all safe, in-scope stages, maintain a clear record of findings, and produce one consolidated final report.
+
+This task must not invent infrastructure facts or silently approve production decisions.
+
+## Permanent architecture constraints
+
+- Thanarah is a multi-tenant healthcare SaaS platform.
+- Central platform/control-plane data remains separate from tenant healthcare records.
+- Tenant Patient records belong in tenant-isolated MongoDB storage.
+- Production database credentials must remain in the production environment and must never be printed or exposed.
+- Replit development must not connect to production databases.
+- One logical tenant may eventually use multiple physical MongoDB databases, but do not implement cluster rotation, sharding, automatic rebalancing, or archive routing without an approved design.
+- Patient duplicate prevention must remain tenant-scoped.
+- The current deployment decision must remain `PENDING APPROVAL` until authoritative evidence exists.
+
+## Stage 1 — Establish the actual repository state
+
+Inspect the current branch, `HEAD`, working tree, recent relevant commits, and existing changes.
+
+Identify the current contents and status of:
+- `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `replit.md`
+- `src/tenant/tenant-storage.activation.service.ts`
+- `src/tenant/mongo-tenant-patient.storage.ts`
+- `src/tenant/tenant-storage.registry.ts`
+- `test/mongo-tenant-patient.storage.spec.ts`
+- `test/phase30-patient.integration.spec.ts`
+
+Do not assume prior reports still describe the current working tree.
+
+Record any pre-existing user changes. Do not overwrite, discard, or silently absorb unrelated work.
+
+## Stage 2 — Reconcile the documentation
+
+Review all relevant passages in `TENANT_MONGODB_DEPLOYMENT_DECISION.md` and `replit.md`.
+
+Correct statements that incorrectly imply:
+- Index provisioning is still a separate manual step before supported application activation.
+- The current activation service is not enforcing index readiness.
+- Index-definition verification establishes the MongoDB deployment topology.
+- Atlas Free or another provider has been selected.
+- Patient collections have already been approved as unsharded.
+- Production readiness has been established.
+
+Distinguish historical observations from current implementation behavior.
+
+Preserve legitimate operational requirements such as tenant database provisioning and the requirement for an approved infrastructure decision.
+
+## Stage 3 — Verify the precise index behavior
+
+Inspect the actual index definitions, creation logic, verification logic, and write-time readiness checks in `src/tenant/mongo-tenant-patient.storage.ts`.
+
+Document the distinction between:
+1. Indexes created during provisioning.
+2. Patient-number uniqueness indexes whose definitions are verified.
+3. Duplicate-prevention indexes whose definitions are verified.
+4. List indexes that may be created but are not covered by the current verifier.
+
+Do not claim that an index is verified unless the implementation actually verifies it.
+
+Do not change index definitions or duplicate matching semantics during this documentation-focused task.
+
+## Stage 4 — Verify activation safeguards
+
+Inspect `src/tenant/tenant-storage.activation.service.ts` and `src/tenant/tenant-storage.registry.ts`.
+
+Confirm:
+- Setting a target ACTIVE invokes the required provisioning and verification path.
+- Assigning a primary target requires the appropriate target state and invokes provisioning and verification.
+- Routing identity is rechecked inside the transaction before registry mutations.
+- Failed checks prevent registry state changes.
+- Primary switching is protected by the implemented transaction behavior.
+- The registry does not expose another supported application path that bypasses these safeguards.
+
+Distinguish what source inspection establishes from what requires a real database test.
+
+Do not describe mocked rollback or concurrency tests as proof of real MariaDB locking, transaction isolation, or MongoDB DDL atomicity.
+
+## Stage 5 — Reconcile duplicate-prevention guarantees
+
+Review the three existing duplicate-prevention rules:
+- Full name plus normalized phone.
+- Full name plus normalized email.
+- First name, last name, and UTC date of birth.
+
+Confirm the existing collation, partial filters, compound keys, unique constraints, and fail-closed write behavior.
+
+Do not weaken uniqueness, remove safeguards, alter normalization, merge patients, or delete records.
+
+Identify how the actual deployment topology could affect the guarantees provided by these indexes.
+
+## Stage 6 — Assess deployment evidence
+
+Inspect only repository documentation and non-production configuration already available in the project.
+
+Determine which facts are confirmed and which remain unknown:
+- MongoDB provider.
+- Supported server version.
+- Standalone, replica-set, or sharded topology.
+- Patient collection sharding policy.
+- Shard key, if applicable.
+- Whether the non-production environment matches the intended deployment.
+
+Do not connect to production or inspect production credentials.
+
+Do not infer production topology from a connection URI, driver version, or standalone test container.
+
+If the evidence is insufficient, keep each unresolved decision explicitly `PENDING APPROVAL`.
+
+## Stage 7 — Define the validation matrix
+
+Prepare a practical non-production validation matrix for the approved deployment once it is known.
+
+Include:
+- Required server version and topology.
+- Index creation and definition verification.
+- Existing-data conflicts that could block unique-index creation.
+- Concurrent duplicate Patient creation.
+- Concurrent identity-changing updates.
+- Failed provisioning and fail-closed behavior.
+- Activation failure without partial registry mutation.
+- Primary-target switching failure and rollback.
+- Required evidence for any sharded deployment.
+
+Clearly label tests that have already been executed versus tests that are only proposed.
+
+Do not run tests or migrations during this task.
+
+## Stage 8 — Apply only justified changes
+
+Apply documentation corrections to:
+- `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `replit.md`
+
+Make the smallest coherent set of changes necessary to ensure both documents accurately reflect the code and the unresolved deployment decisions.
+
+Do not edit application code, schemas, index definitions, tests, or deployment configuration in this task.
+
+If a source-code defect is discovered, report it separately with file and line references. Do not silently expand the scope.
+
+Do not create duplicate or redundant decision documents unless there is a concrete need.
+
+## Stage 9 — Internal consistency review
+
+Review the complete final diff.
+
+Verify:
+- Every implementation claim is supported by source code.
+- Proposed infrastructure constraints are clearly labeled as proposals.
+- Unknown infrastructure facts remain unresolved.
+- The decision remains `PENDING APPROVAL`.
+- No provider, server version, topology, shard key, or unsharded-only policy has been silently approved.
+- No secrets, patient data, or production identifiers are exposed.
+- Only the two permitted documentation files were changed.
+- No unrelated user changes were overwritten.
+
+## Stage 10 — Final verification and report
+
+Run `git diff --check`.
+
+Do not run tests, migrations, builds, or commands that require production access.
+
+Report:
+1. Executive summary.
+2. Documentation changes by file and section.
+3. Verified activation and index behavior.
+4. Indexes created versus indexes actually verified.
+5. Confirmed facts and unresolved infrastructure decisions.
+6. Production-readiness blockers.
+7. The non-production validation matrix.
+8. Exact changed-file list.
+9. `git diff --stat`.
+10. `git status --short`.
+11. Any source-code issues discovered but intentionally left untouched.
+12. The single most important next action.
+
+## Restrictions
+
+- Do not stage or commit.
+- Do not reset, rebase, amend, force-push, or rewrite history.
+- Do not use `--no-verify`.
+- Do not connect to production.
+- Do not inspect or print secrets.
+- Do not modify application code, schemas, indexes, tests, or deployment configuration.
+- Do not claim production readiness without verified deployment evidence.
+- Do not select infrastructure on the user's behalf.
+
+Complete every safe stage within this scope, then stop and provide one consolidated report. Do not ask for intermediate approval between stages.

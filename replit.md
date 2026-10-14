@@ -53,15 +53,32 @@ manager caches at most four clients by connection reference and configures each
 driver pool with a maximum of 20 connections and bounded connection timeouts.
 For an existing, manually provisioned tenant database, operators register the
 target inactive. When an operator uses `TenantStorageActivationService` to set
-the target `ACTIVE` or assign it as primary, the service invokes
-`MongoTenantPatientStorage.ensureIndexesForTarget` to provision and verify the
-required Patient indexes before completing the registry change. This is not run
-at startup or during ordinary Patient requests. Patient writes also fail closed
-when required write indexes are missing or mismatched. These checks verify
-index definitions; they do not establish collection sharding state, shard-key
-compatibility, or production topology. The indexes enforce
-`(tenant, patientNumber)` uniqueness, the Phase 33 duplicate rules, and support
-the current status/creation-time list order.
+the target `ACTIVE` or assign an already ACTIVE target as primary, the service
+invokes `MongoTenantPatientStorage.ensureIndexesForTarget` before the registry
+change. This is not run at startup or during ordinary Patient requests; relevant
+write paths perform readiness checks.
+
+The provisioning method requests six indexes: the Patient-number unique index,
+two list indexes, and three Phase 33 duplicate-prevention unique indexes. The
+current readiness helper checks the Patient-number and duplicate indexes, but
+does not check the two list indexes. It checks compound-key fields and
+directions without checking their order, and the Patient-number check does not
+validate collation. Do not treat the current helper as full index-definition
+verification. It also does not establish collection sharding state, shard-key
+compatibility, or production topology. Patient creation and duplicate-identity
+updates check the write-enforcement indexes; Patient-number-only updates check
+the Patient-number index; unrelated updates do not query index metadata. The
+relevant write paths fail closed when the current helper detects a missing or
+mismatched required index. Because the helper does not verify compound-key order
+or Patient-number collation, it does not detect every definition mismatch.
+
+The registry method registers targets as inactive and non-primary. Supported
+activation paths provision indexes before setting a target `ACTIVE` or primary
+and recheck its routing identity inside the tenant-locked transaction. Index DDL
+and the central registry transaction are not atomic with each other. The
+indexes enforce `(tenant, patientNumber)` uniqueness and the Phase 33 duplicate
+rules when their definitions and deployment topology support those guarantees;
+the list indexes support the current status/creation-time order.
 
 Platform audit logs and security events are central-platform records stored in
 the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep
