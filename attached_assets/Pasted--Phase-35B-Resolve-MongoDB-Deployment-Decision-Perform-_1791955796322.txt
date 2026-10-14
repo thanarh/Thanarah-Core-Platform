@@ -1,0 +1,45 @@
+# Phase 35B — Resolve MongoDB Deployment Decision
+
+Perform a documentation-only decision-preparation phase for Thanarah's tenant MongoDB deployment.
+
+## Objective
+
+Resolve the missing deployment assumptions identified in Phase 35A without inventing infrastructure facts or changing application behavior.
+
+## Inspect
+
+Review:
+- `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `README.md`
+- `replit.md`
+- Current tenant storage registry and activation implementation
+- The three patient duplicate-prevention index definitions
+
+## Required output
+
+Prepare a concise decision record with these fields:
+
+1. **Provider:** Confirmed or PENDING.
+2. **Supported MongoDB server version:** Confirmed or PENDING.
+3. **Deployment topology:** Standalone, replica set, or sharded — only if supported by explicit evidence; otherwise PENDING.
+4. **Patient collection sharding policy:** Sharding prohibited, permitted, or PENDING.
+5. **Shard key:** Record only if an actual sharded deployment has been approved; otherwise NOT APPLICABLE or PENDING.
+6. **Duplicate enforcement:** Explain whether the current three unique indexes establish the required guarantee under the confirmed topology.
+7. **Non-production validation:** Identify the server version and topology required to match the approved deployment.
+8. **Outstanding approval:** Identify the infrastructure owner or decision-maker needed to resolve each unknown.
+
+Separate repository-confirmed facts from proposed decisions and external assumptions.
+
+If no authoritative infrastructure decision is available, retain `PENDING APPROVAL`. Do not select Atlas Free, a provider, a server version, or a topology on the user's behalf.
+
+## Restrictions
+
+- Documentation and decision preparation only.
+- Do not edit application code, indexes, schemas, tests, or deployment configuration.
+- Do not run tests or migrations.
+- Do not connect to production or inspect credentials.
+- Do not stage or commit.
+- Preserve the existing deployment decision document unless a clearly separated proposed decision record is necessary.
+- Do not claim production readiness.
+
+Stop after reporting the proposed decision record and the remaining approvals required.
