@@ -1,0 +1,49 @@
+# Phase 35D — Reconcile Activation and Index Readiness Documentation
+
+Implement only the documentation corrections identified in the Phase 35C review.
+
+## Files in scope
+
+- `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `replit.md`
+
+## Required changes
+
+1. Correct the stale description of `TenantStorageRegistryService.setTargetStatus`. Document that supported activation and primary-assignment paths invoke Patient-index provisioning and verification through `TenantStorageActivationService`.
+2. Explain that the gate verifies index definitions but does not establish collection sharding state, shard-key compatibility, or production topology.
+3. Remove outdated statements describing the Patient-index activation gate as future work or an outstanding implementation requirement.
+4. Update the release-gate and next-step sections to focus on:
+   - An approved infrastructure decision.
+   - Validation against the approved MongoDB server version and topology.
+   - A compatible duplicate-enforcement strategy if Patient collections are sharded.
+5. Qualify references to activation gating in the cluster-rotation/cutover sections as rotation/cutover activation gating, so they cannot be confused with the existing Patient-index gate.
+6. Remove index-readiness enforcement from the obsolete open implementation questions while retaining genuinely unresolved routing, cutover, and archive decisions.
+7. Correct `replit.md:54–59` so it describes the supported activation flow accurately rather than instructing operators to perform a separate manual provisioning step.
+
+## Decision status and wording safeguards
+
+- Keep the deployment decision `PENDING APPROVAL`.
+- Do not approve an unsharded-only policy.
+- Do not select Atlas Free or any provider, server version, topology, or shard key.
+- Do not claim production readiness.
+- Preserve valid historical context where necessary, but clearly distinguish historical observations from current implementation behavior.
+
+## Verification
+
+Report:
+- Exact documentation sections changed.
+- Confirmation that only the two files in scope changed.
+- `git diff --check`.
+- `git diff --stat`.
+- `git status --short`.
+
+## Restrictions
+
+- Documentation-only changes.
+- Do not modify application code, indexes, schemas, tests, or deployment configuration.
+- Do not run tests or migrations.
+- Do not connect to production or inspect credentials.
+- Do not stage or commit.
+- Do not use `--no-verify`.
+
+Stop after reporting the changes and verification results.

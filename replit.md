@@ -51,12 +51,17 @@ The current secret mapping accepts only the `primary` connection reference and
 resolves it from `TENANT_STORAGE_MONGO_URI`; unknown aliases fail closed. The
 manager caches at most four clients by connection reference and configures each
 driver pool with a maximum of 20 connections and bounded connection timeouts.
-For an existing, manually provisioned tenant database, operators must register
-the target inactive and run the internal
-`MongoTenantPatientStorage.ensureIndexesForTarget` action before activating it.
-It is not called at startup or during Patient requests. The required Patient
-indexes enforce `(tenant, patientNumber)` uniqueness and support the current
-status/creation-time list order.
+For an existing, manually provisioned tenant database, operators register the
+target inactive. When an operator uses `TenantStorageActivationService` to set
+the target `ACTIVE` or assign it as primary, the service invokes
+`MongoTenantPatientStorage.ensureIndexesForTarget` to provision and verify the
+required Patient indexes before completing the registry change. This is not run
+at startup or during ordinary Patient requests. Patient writes also fail closed
+when required write indexes are missing or mismatched. These checks verify
+index definitions; they do not establish collection sharding state, shard-key
+compatibility, or production topology. The indexes enforce
+`(tenant, patientNumber)` uniqueness, the Phase 33 duplicate rules, and support
+the current status/creation-time list order.
 
 Platform audit logs and security events are central-platform records stored in
 the Prisma/MySQL database. They are platform-scoped, append-oriented, and keep

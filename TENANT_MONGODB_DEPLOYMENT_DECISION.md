@@ -87,7 +87,7 @@ The operational requirement is: **a tenant storage target must not become availa
 
 `MongoTenantPatientStorage.ensureIndexesForTarget` creates the Patient-number and list indexes, creates the three duplicate indexes, lists indexes to verify their expected definitions, and only then drops legacy duplicate-index names. (`src/tenant/mongo-tenant-patient.storage.ts:317–353`) Patient writes check required indexes and fail closed when they are missing or mismatched; the integration test verifies the HTTP 503/no-insert behavior for a missing duplicate index. (`src/tenant/mongo-tenant-patient.storage.ts:355–367`; `test/phase30-patient.integration.spec.ts:1291–1321`)
 
-The documented operator sequence says to run index provisioning before activation. (`replit.md:54–59`) However, `TenantStorageRegistryService.setTargetStatus` checks for another active primary target but does not call or verify MongoDB index provisioning. (`src/tenant/tenant-storage.registry.ts:111–148`) Thus, the ordering requirement is not enforced by the activation method. Making activation enforce readiness is a follow-up implementation decision, outside this documentation-only phase.
+Supported activation paths invoke `MongoTenantPatientStorage.ensureIndexesForTarget` through `TenantStorageActivationService`: `setTargetStatus(..., ACTIVE)` provisions and verifies indexes before changing status, and `setPrimaryTarget` does so before assigning primary. The service rechecks the target's routing identity in the tenant-locked transaction. (`src/tenant/tenant-storage.activation.service.ts:29–59,96–118`; `src/tenant/mongo-tenant-patient.storage.ts:317–353`) This gate verifies index definitions but does not inspect collection sharding state, shard-key compatibility, or production topology; it cannot establish topology compatibility or production readiness.
 
 ## Existing data conflicts
 
@@ -100,8 +100,7 @@ These are proposals, not approved deployment facts:
 1. Either approve unsharded Patient collections as the only topology for the current Phase 33 collation-based indexes, or require a redesigned and tested duplicate-key strategy before allowing sharded Patient collections. Do not weaken the current case-insensitive rules or replace the database-enforced guarantee with application-only checks without an explicit decision.
 2. Approve and document the MongoDB provider, supported server version, production topology, and whether Patient collections may be sharded.
 3. If Patient collections may be sharded, approve the exact ordered shard-key pattern and demonstrate compatibility of every required unique index; the current non-simple collations remain a blocker.
-4. Require and later implement an activation gate that prevents Patient writes until index provisioning and verification have succeeded.
-5. Add non-production integration coverage for the approved deployment characteristics before making a production-safety claim.
+4. Add non-production integration coverage for the approved deployment characteristics before making a production-safety claim.
 
 ## Decision table
 
@@ -114,7 +113,7 @@ These are proposals, not approved deployment facts:
 | Shard key | **UNRESOLVED; none documented** | No shard-key field exists in target metadata or deployment instructions. `_tenantId` is only an index field. | If Patient collections may be sharded, approve the exact ordered key and verify every unique index. |
 | Production transaction guarantee | **UNRESOLVED** | No Mongo transaction guarantee or Mongo session usage is documented. Central Prisma transactions are for registry metadata. | Record any required guarantee based on approved deployment evidence; do not infer from the driver or standalone tests. |
 | Phase 33 index compatibility | **Conditional for unsharded collections; not established for sharded Patient collections** | Three unique partial indexes use non-simple collation; MongoDB documents the sharded uniqueness restrictions. | Approve unsharded-only use or require a compatible redesign and topology-specific tests. |
-| Index-ready activation | **Required operationally; not enforced by `setTargetStatus`** | Operator sequence is documented, but the status method does not verify indexes. (`replit.md:54–59`; `src/tenant/tenant-storage.registry.ts:111–148`) | Implement enforcement in a later phase before production activation. |
+| Index-ready activation | **Implemented for supported application activation paths; topology compatibility remains unresolved** | `TenantStorageActivationService` provisions and verifies required indexes before setting a target `ACTIVE` or primary. Verification checks index definitions, not collection sharding state or shard-key compatibility. (`src/tenant/tenant-storage.activation.service.ts:29–59,96–118`; `src/tenant/mongo-tenant-patient.storage.ts:317–353,404–445`) | Approve the deployment topology and validate it in matching non-production infrastructure; if Patient collections are sharded, demonstrate a compatible duplicate-enforcement strategy. |
 | Existing duplicate data | **No automatic merge or deletion** | Unique-index creation may fail; provisioning catches failure and drops legacy indexes only after successful verification. (`src/tenant/mongo-tenant-patient.storage.ts:317–353`) | Resolve conflicts only through an approved data process before activation. |
 
 ## Release gate and recommended next action
@@ -123,10 +122,9 @@ Phase 33 remains blocked from a production-safety claim until:
 
 1. The provider, supported server version, and production topology are approved and documented.
 2. The Patient collection's sharded or unsharded status is explicit; if sharded, the exact shard key is approved and the duplicate-index strategy is proven compatible.
-3. Activation is prevented until the required indexes are provisioned and verified on the target.
-4. Non-production tests validate the approved deployment characteristics and concurrent duplicate behavior.
+3. Non-production tests validate the approved server version and topology, index provisioning and verification, and concurrent duplicate behavior.
 
-**Recommended next action:** obtain the infrastructure owner's written decision on provider, server version, topology, and whether Patient collections may be sharded. Then validate or redesign the Phase 33 indexes against that decision and schedule activation-gate implementation separately. Do not access production or choose a topology by assumption.
+**Recommended next action:** obtain the infrastructure owner's written decision on provider, server version, topology, and whether Patient collections may be sharded. Then validate or redesign the Phase 33 indexes against that decision and run matching non-production tests. The application activation paths already provision and verify indexes, but that check does not determine topology or shard compatibility. Do not access production or choose a topology by assumption.
 
 ## Free Cluster Rotation and Read-Only Archive Feasibility
 
@@ -200,7 +198,7 @@ The current registry has no archive/read-only route. Even after a future route i
 - **Failure after destination writes begin:** a pointer flip is not a safe rollback. Stop writes, preserve both copies, and use a separately approved reconciliation/reverse-migration procedure so destination-only updates are not lost.
 - **Archive becomes paused or cannot resume:** use the documented provider recovery/export process and an independently validated backup. Do not promise recovery from the Free cluster alone.
 
-No capacity trigger, dual-write process, change capture, per-tenant cluster switch, archive route, automated rollback, or reconciliation mechanism is implemented in the current repository. The sequence above must not be mistaken for existing behavior.
+No capacity trigger, dual-write process, change capture, per-tenant cluster switch, archive route, automated rollback, or reconciliation mechanism is implemented in the current repository. No **rotation/cutover activation gate** is implemented; this is distinct from the existing Patient-index readiness gate. The sequence above must not be mistaken for existing behavior.
 
 ### Data integrity, security, retention, and production recommendation
 
@@ -209,7 +207,7 @@ No capacity trigger, dual-write process, change capture, per-tenant cluster swit
 - Free clusters can pause when unused, run provider-selected/upgraded MongoDB versions, and be deactivated under the Terms. MongoDB's Cloud Terms disclaim continued storage after cluster or agreement termination. These properties do not meet an evidenced indefinite-archive or recovery commitment.
 - MongoDB Cloud Terms require a signed BAA before PHI may be stored or processed. Whether a BAA is available for the candidate Free plan is not established here. Until the authorized legal/security owners confirm it, do not load real patient or other PHI data.
 - The current integration tests use MongoDB 7.0.17 standalone, not the MongoDB 8.0 three-node Atlas Free topology. Test-only success is insufficient for the destination.
-- The current runtime cannot isolate a tenant's destination cluster from its source archive. A registry/client-manager design that supports multiple cluster references, activation gating, controlled cutover, and read-only archive access would be required in a later implementation phase.
+- The current runtime cannot isolate a tenant's destination cluster from its source archive. A registry/client-manager design that supports multiple cluster references, **rotation/cutover activation gating** (distinct from the existing Patient-index readiness gate), controlled cutover, and read-only archive access would be required in a later implementation phase.
 
 **Recommendation:** Atlas Free is suitable only for a bounded, non-production feasibility experiment using synthetic data, after reviewing its current terms and limits. It is **not a production-safe SaaS healthcare storage, capacity-rotation, backup, or archival architecture on the evidence available**. Use an approved paid tier or another provider with documented capacity, supported migration, recoverable backups, retention controls, and required healthcare agreements for production. This recommendation does not select a provider or plan.
 
@@ -220,7 +218,7 @@ No capacity trigger, dual-write process, change capture, per-tenant cluster swit
 3. What supported production tier, MongoDB version, and unsharded/sharded topology will Phase 33 target?
 4. What tenant count, collection count, measured BSON-plus-index size, connection load, write throughput, transfer volume, and safety margin must be supported?
 5. Is a maintenance/write-freeze window acceptable, and what RPO/RTO, backup retention, archive availability, and rollback/reconciliation policy are required?
-6. What later change will give each storage target an authoritative cluster reference and enforce index readiness before activation?
+6. What later change will give each storage target an authoritative cluster reference and support safe rotation/cutover and read-only archive routing?
 
 ### Official sources checked
 
