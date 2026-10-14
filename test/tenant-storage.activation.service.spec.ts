@@ -253,6 +253,30 @@ describe('TenantStorageActivationService', () => {
     expect(harness.targets[1]?.isPrimary).toBe(true);
   });
 
+  it('does not switch the primary when candidate index provisioning or verification fails', async () => {
+    const previousPrimary = makeTarget(targetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: true,
+    });
+    const candidate = makeTarget(secondTargetId, {
+      status: TenantStorageTargetStatus.ACTIVE,
+      isPrimary: false,
+    });
+    const harness = makeActivationService([previousPrimary, candidate]);
+    harness.patientStorage.ensureIndexesForTarget.mockRejectedValueOnce(
+      new TenantStorageUnavailableError(),
+    );
+
+    await expect(harness.service.setPrimaryTarget(tenantId, secondTargetId)).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+
+    expect(harness.targets[0]?.isPrimary).toBe(true);
+    expect(harness.targets[1]?.isPrimary).toBe(false);
+    expect(harness.prismaMock.$transaction).not.toHaveBeenCalled();
+    expect(harness.updateMany).not.toHaveBeenCalled();
+  });
+
   it('rejects a primary switch if the connection reference changes after index preflight', async () => {
     const previousPrimary = makeTarget(targetId, {
       status: TenantStorageTargetStatus.ACTIVE,

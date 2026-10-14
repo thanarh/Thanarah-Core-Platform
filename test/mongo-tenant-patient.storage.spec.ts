@@ -409,6 +409,111 @@ describe('MongoTenantPatientStorage', () => {
     expect(setupState.collection.updateOne).not.toHaveBeenCalled();
   });
 
+  it('accepts the required ordered indexes with MongoDB simple-collation metadata forms', async () => {
+    const omittedCollation = setup();
+    await expect(
+      omittedCollation.storage.create(context, route, createInput),
+    ).resolves.toMatchObject({ kind: 'changed' });
+
+    const explicitSimpleCollation = setup();
+    explicitSimpleCollation.collection.indexes.mockResolvedValue([
+      { ...requiredPatientWriteIndexes[0], collation: { locale: 'simple' } },
+      ...requiredPatientWriteIndexes.slice(1),
+    ]);
+    await expect(
+      explicitSimpleCollation.storage.create(context, route, createInput),
+    ).resolves.toMatchObject({ kind: 'changed' });
+  });
+
+  it('fails closed when required index definitions differ in order, fields, direction, or properties', async () => {
+    const duplicateIndex = requiredPatientWriteIndexes[1]!;
+    const patientNumberIndex = requiredPatientWriteIndexes[0]!;
+    const reverseKey = (key: Record<string, unknown>): Record<string, unknown> =>
+      Object.fromEntries(Object.entries(key).reverse());
+    const withoutField = (key: Record<string, unknown>, field: string): Record<string, unknown> =>
+      Object.fromEntries(Object.entries(key).filter(([name]) => name !== field));
+
+    const invalidDefinitions = [
+      {
+        name: 'reordered duplicate compound key',
+        indexName: duplicateIndex.name,
+        overrides: { key: reverseKey(duplicateIndex.key) },
+      },
+      {
+        name: 'missing duplicate compound-key field',
+        indexName: duplicateIndex.name,
+        overrides: { key: withoutField(duplicateIndex.key, 'middleName') },
+      },
+      {
+        name: 'extra duplicate compound-key field',
+        indexName: duplicateIndex.name,
+        overrides: { key: { ...duplicateIndex.key, preferredName: 1 } },
+      },
+      {
+        name: 'incorrect duplicate compound-key direction',
+        indexName: duplicateIndex.name,
+        overrides: { key: { ...duplicateIndex.key, firstName: -1 } },
+      },
+      {
+        name: 'reordered Patient-number compound key',
+        indexName: patientNumberIndex.name,
+        overrides: { key: reverseKey(patientNumberIndex.key) },
+      },
+      {
+        name: 'missing Patient-number compound-key field',
+        indexName: patientNumberIndex.name,
+        overrides: { key: withoutField(patientNumberIndex.key, 'patientNumber') },
+      },
+      {
+        name: 'extra Patient-number compound-key field',
+        indexName: patientNumberIndex.name,
+        overrides: { key: { ...patientNumberIndex.key, status: 1 } },
+      },
+      {
+        name: 'incorrect Patient-number compound-key direction',
+        indexName: patientNumberIndex.name,
+        overrides: { key: { ...patientNumberIndex.key, patientNumber: -1 } },
+      },
+      {
+        name: 'incompatible Patient-number collation',
+        indexName: patientNumberIndex.name,
+        overrides: { collation: { locale: 'en', strength: 2 } },
+      },
+      {
+        name: 'non-canonical explicit Patient-number simple collation',
+        indexName: patientNumberIndex.name,
+        overrides: { collation: { locale: 'simple', strength: 2 } },
+      },
+      {
+        name: 'non-unique duplicate index',
+        indexName: duplicateIndex.name,
+        overrides: { unique: false },
+      },
+      {
+        name: 'incorrect duplicate partial filter',
+        indexName: duplicateIndex.name,
+        overrides: { partialFilterExpression: { phone: { $type: 'number' } } },
+      },
+    ];
+
+    for (const invalid of invalidDefinitions) {
+      const setupState = setup();
+      const indexes = [...requiredPatientWriteIndexes];
+      const position = indexes.findIndex(({ name }) => name === invalid.indexName);
+      indexes[position] = {
+        ...indexes[position]!,
+        ...invalid.overrides,
+      } as (typeof requiredPatientWriteIndexes)[number];
+      setupState.collection.indexes.mockResolvedValue(indexes);
+
+      await expect(
+        setupState.storage.create(context, route, createInput),
+        invalid.name,
+      ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+      expect(setupState.collection.insertOne, invalid.name).not.toHaveBeenCalled();
+    }
+  });
+
   it('keeps unrelated updates independent from the duplicate indexes', async () => {
     const preferredNameUpdate = setup();
     preferredNameUpdate.collection.indexes.mockResolvedValue([]);

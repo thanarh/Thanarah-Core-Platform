@@ -416,8 +416,16 @@ function hasPatientNumberUniqueIndex(indexes: IndexDescription[]): boolean {
       index.name === PATIENT_NUMBER_INDEX_NAME &&
       index.unique === true &&
       index.partialFilterExpression === undefined &&
+      hasSimplePatientNumberCollation(index) &&
       sameIndexKey(index.key, { _tenantId: 1, patientNumber: 1 }),
   );
+}
+
+function hasSimplePatientNumberCollation(index: IndexDescription): boolean {
+  // MongoDB omits collation metadata for the default simple collation.
+  if (index.collation === undefined) return true;
+  const collation = index.collation as Document;
+  return collation.locale === 'simple' && Object.keys(collation).every((key) => key === 'locale');
 }
 
 function isAtomicDuplicateIndex(
@@ -449,10 +457,10 @@ function sameIndexKey(actual: IndexSpecification, expected: IndexSpecification):
   const expectedEntries = Object.entries(expected as Document);
   return (
     actualEntries.length === expectedEntries.length &&
-    expectedEntries.every(([field, direction]) =>
-      actualEntries.some(
-        ([actualField, actualDirection]) => actualField === field && actualDirection === direction,
-      ),
+    actualEntries.every(
+      ([actualField, actualDirection], position) =>
+        expectedEntries[position]?.[0] === actualField &&
+        expectedEntries[position]?.[1] === actualDirection,
     )
   );
 }

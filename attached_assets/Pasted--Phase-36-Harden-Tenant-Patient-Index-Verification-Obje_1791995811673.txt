@@ -1,0 +1,139 @@
+# Phase 36 — Harden Tenant Patient Index Verification
+
+## Objective
+
+Correct the documented gaps in the tenant Patient index-readiness verifier, with focused implementation, regression coverage, and a final consolidated review.
+
+The current audit identified two issues in `src/tenant/mongo-tenant-patient.storage.ts`:
+
+1. `sameIndexKey` compares compound-index fields without preserving field order.
+2. Patient-number index verification does not validate the expected collation.
+
+Resolve these issues based on the actual index definitions and supported MongoDB behavior. Do not broaden the task into infrastructure selection or deployment redesign.
+
+## Stage 1 — Establish the baseline
+
+Inspect the current working tree, `HEAD`, and all pending changes before editing.
+
+Preserve the existing documentation modifications in:
+- `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `replit.md`
+
+Do not overwrite, revert, stage, or commit those changes.
+
+Inspect the current index definitions, provisioning logic, verifier, activation service, and existing MongoDB integration tests.
+
+## Stage 2 — Define exact verification semantics
+
+Derive expected verification behavior from the actual index definitions.
+
+For every index covered by the verifier, determine:
+- Expected index name.
+- Ordered compound key fields and directions.
+- Uniqueness.
+- Partial-filter expression, where applicable.
+- Collation, including whether the expected behavior is explicit or relies on MongoDB's default simple collation.
+- Any other index property necessary to guarantee the existing write-enforcement behavior.
+
+Do not assume every created index is currently verified.
+
+Do not silently change the duplicate-matching rules, index names, normalization semantics, or partial-filter semantics.
+
+## Stage 3 — Fix compound-key verification
+
+Update the comparison logic so compound-key field order is verified exactly as required by the expected index definition.
+
+Ensure that:
+- Reordered compound keys are rejected.
+- Missing or extra key fields are rejected.
+- Incorrect key directions are rejected.
+- Correct index definitions continue to pass.
+
+Avoid broad refactoring unrelated to index readiness.
+
+## Stage 4 — Fix Patient-number collation verification
+
+Determine the intended Patient-number index collation from the actual index definition and write semantics.
+
+Implement a precise check that distinguishes the expected collation from a missing or incompatible collation.
+
+Account explicitly for MongoDB's representation of the default simple collation. Do not treat omitted metadata as proof of an incompatible index without checking the documented driver/server behavior.
+
+Do not change the Patient-number uniqueness rule or existing conflict precedence.
+
+## Stage 5 — Regression tests
+
+Add focused tests for:
+- Correct compound-key order.
+- Incorrect compound-key order.
+- Missing and extra compound-key fields.
+- Incorrect key directions.
+- Correct Patient-number collation.
+- Missing or incompatible Patient-number collation.
+- Missing indexes.
+- Incorrect uniqueness and partial-filter properties where relevant.
+- Fail-closed Patient writes when required verification fails.
+- Activation and primary assignment refusing targets when provisioning/verification fails.
+
+Use the existing test conventions and fixtures.
+
+If integration tests require a MongoDB server, use only the existing disposable non-production test setup. Never connect to production.
+
+## Stage 6 — Compatibility review
+
+Review whether the verifier correctly handles the actual index metadata returned by the supported MongoDB driver/server combination.
+
+Do not claim compatibility with an unapproved production topology or server version.
+
+Explicitly separate:
+- What unit tests establish.
+- What disposable MongoDB integration tests establish.
+- What remains unverified until the intended deployment profile is approved.
+
+Do not claim that these changes solve sharded uniqueness limitations.
+
+## Stage 7 — Validation
+
+Run the focused tests relevant to the verifier and affected write/activation paths.
+
+Run the project's applicable type-check, lint, formatting, and diff checks if supported by the current environment.
+
+If any command cannot run, report the exact failure rather than claiming success.
+
+Do not run migrations or connect to production.
+
+## Stage 8 — Final review
+
+Review the complete diff for:
+- Correct ordered-key comparison.
+- Correct Patient-number collation handling.
+- No weakening of tenant isolation or duplicate prevention.
+- No regression in patient-number conflict precedence.
+- No accidental modification of unrelated application behavior.
+- No modification or loss of the pre-existing documentation changes.
+- Accurate test and deployment claims.
+
+## Final report
+
+Provide one consolidated report containing:
+1. Root cause.
+2. Files changed.
+3. Implementation details.
+4. Tests executed and exact results.
+5. Build/type-check/lint/format results.
+6. `git diff --check`.
+7. `git diff --stat`.
+8. `git status --short`.
+9. Remaining limitations and production blockers.
+10. A recommendation: SAFE TO COMMIT, NEEDS FIXES, or NEEDS ADDITIONAL TEST.
+
+## Restrictions
+
+- Do not stage or commit.
+- Do not reset, rebase, amend, or rewrite history.
+- Do not use `--no-verify`.
+- Do not connect to production or inspect credentials.
+- Preserve all pre-existing user changes.
+- Do not change infrastructure decisions or claim production readiness.
+
+Complete all safe stages in this task and stop after the consolidated report.

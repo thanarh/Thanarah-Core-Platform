@@ -379,6 +379,7 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       unique: true,
       key: { _tenantId: 1, patientNumber: 1 },
     });
+    expect(uniquePatientNumberIndex?.collation).toBeUndefined();
     expect(indexes.map(({ name }) => name)).toEqual(
       expect.arrayContaining(['tenant_patient_status_created_idx', 'tenant_patient_created_idx']),
     );
@@ -399,6 +400,26 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       });
     expect(auditRows).toBeGreaterThanOrEqual(4);
     expect(mongoFactory.clients).toHaveLength(1);
+  });
+
+  it('rejects a tenant collection whose Patient-number index inherits non-simple default collation', async () => {
+    const incompatibleTarget = {
+      ...targetA,
+      databaseName: `phase36_${RUN_ID}`,
+    };
+    const database = mongoAdminClient!.db(incompatibleTarget.databaseName);
+
+    try {
+      await database.createCollection(PATIENT_COLLECTION, {
+        collation: { locale: 'en', strength: 2 },
+      });
+
+      await expect(
+        getApplication().get(MongoTenantPatientStorage).ensureIndexesForTarget(incompatibleTarget),
+      ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+    } finally {
+      await database.dropDatabase();
+    }
   });
 
   it('enforces tenant boundaries in HTTP, repository, and target resolution', async () => {
