@@ -1,0 +1,67 @@
+# Phase 36A — Final Review and Focused Commit
+
+Phase 36 implementation and reported validation are complete. Perform one final safety review, then commit only the verified implementation changes if every check passes.
+
+## Stage 1 — Verify the current state
+
+Inspect:
+- `git status --short`
+- `git diff --check`
+- `git diff --stat`
+- The complete diff for all modified tracked files
+- Current `HEAD` and recent commit history
+
+The expected implementation files are exactly:
+
+1. `.agents/memory/patient-duplicate-index-enforcement.md`
+2. `src/tenant/mongo-tenant-patient.storage.ts`
+3. `test/mongo-tenant-patient.storage.spec.ts`
+4. `test/phase30-patient.integration.spec.ts`
+5. `test/tenant-storage.activation.service.spec.ts`
+
+The attached Phase 36 instruction file must remain untracked and must not be staged.
+
+## Stage 2 — Final correctness review
+
+Verify that:
+- Compound index keys are compared in exact field order and direction.
+- Patient-number collation verification correctly handles omitted metadata for MongoDB's default simple collation.
+- Non-simple or incompatible explicit collation is rejected.
+- Missing indexes and incompatible definitions fail closed where required.
+- Existing patient-number conflict precedence and duplicate matching rules remain unchanged.
+- Failed provisioning or verification cannot change primary assignment through the supported activation path.
+- The `.agents/memory` change documents actual verified behavior and contains no secrets or unsupported claims.
+- No unrelated source, documentation, schema, configuration, or user changes are included.
+
+Do not claim that this establishes compatibility with an unapproved production topology.
+
+## Stage 3 — Commit
+
+Proceed only if the current diff matches the expected five implementation files and the review finds no blocker.
+
+Stage only the five exact paths listed above.
+
+Create one Conventional Commit:
+
+`fix(tenant): verify patient index definitions precisely`
+
+Do not stage the attached instruction file or any other path.
+
+Do not amend, rebase, reset, force-push, or rewrite history. Do not use `--no-verify`. Do not push to a remote.
+
+If the diff differs unexpectedly, or any review check fails, stop without staging or committing and report the blocker.
+
+## Stage 4 — Post-commit verification
+
+After a successful commit, report:
+- Commit hash and message.
+- `git show --stat --oneline HEAD`
+- `git status --short`
+- Confirmation that the attached instruction file remains untracked and unstaged.
+- Confirmation that no production connection or deployment occurred.
+
+## Production boundary
+
+MongoDB provider, server version, topology, sharding policy, and shard-key decisions remain `PENDING APPROVAL`. This commit does not authorize production deployment.
+
+Stop after reporting.
