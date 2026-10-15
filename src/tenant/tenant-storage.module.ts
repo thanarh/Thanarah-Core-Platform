@@ -9,8 +9,11 @@ import {
   TenantMongoClientManager,
 } from './tenant-mongo-client.manager';
 import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
+import { MongoTenantAppointmentStorage } from './mongo-tenant-appointment.storage';
 import { TenantStorageActivationService } from './tenant-storage.activation.service';
 import { PATIENT_REPOSITORY, TenantStoragePatientRepository } from './patient.repository';
+import { TenantAppointmentRepository } from './appointment.repository';
+import { APPOINTMENT_REPOSITORY } from './tenant-appointment.storage';
 import {
   DevelopmentTenantDatabaseRegistry,
   TENANT_DATABASE_REGISTRY,
@@ -24,6 +27,9 @@ import {
   UnconfiguredTenantPatientStorage,
 } from './tenant-patient.storage';
 import type { TenantPatientStorage } from './tenant-patient.storage';
+import { APPOINTMENT_STORAGE, type AppointmentStorage } from './tenant-appointment.storage';
+import { InMemoryTenantAppointmentStorage } from './in-memory-tenant-appointment.storage';
+import { UnconfiguredTenantAppointmentStorage } from './unconfigured-tenant-appointment.storage';
 import type { TenantDatabaseRegistry } from './tenant-storage.contract';
 import {
   TenantStorageRegistryService,
@@ -70,9 +76,12 @@ import { effectiveTenantStorageProvider } from './tenant-storage.mode';
     },
     TenantMongoClientManager,
     MongoTenantPatientStorage,
+    MongoTenantAppointmentStorage,
     TenantStorageConfigurationNotice,
     InMemoryTenantPatientStorage,
     UnconfiguredTenantPatientStorage,
+    InMemoryTenantAppointmentStorage,
+    UnconfiguredTenantAppointmentStorage,
     {
       provide: TENANT_PATIENT_STORAGE,
       inject: [
@@ -101,13 +110,43 @@ import { effectiveTenantStorageProvider } from './tenant-storage.mode';
       provide: PATIENT_REPOSITORY,
       useExisting: TenantStoragePatientRepository,
     },
+    {
+      provide: APPOINTMENT_STORAGE,
+      inject: [
+        ConfigService,
+        MongoTenantAppointmentStorage,
+        InMemoryTenantAppointmentStorage,
+        UnconfiguredTenantAppointmentStorage,
+      ],
+      useFactory: (
+        config: ConfigService,
+        persistent: MongoTenantAppointmentStorage,
+        memory: InMemoryTenantAppointmentStorage,
+        unconfigured: UnconfiguredTenantAppointmentStorage,
+      ): AppointmentStorage => {
+        const provider = effectiveTenantStorageProvider(
+          config.tenantStorageProvider,
+          config.isDevelopment,
+        );
+        if (provider === 'mongodb') return persistent;
+        if (provider === 'memory') return memory;
+        return unconfigured;
+      },
+    },
+    TenantAppointmentRepository,
+    {
+      provide: APPOINTMENT_REPOSITORY,
+      useExisting: TenantAppointmentRepository,
+    },
   ],
   exports: [
     PATIENT_REPOSITORY,
+    APPOINTMENT_REPOSITORY,
     TENANT_STORAGE_RESOLVER,
     TenantStorageRegistryService,
     TenantStorageActivationService,
     MongoTenantPatientStorage,
+    MongoTenantAppointmentStorage,
   ],
 })
 export class TenantStorageModule {}

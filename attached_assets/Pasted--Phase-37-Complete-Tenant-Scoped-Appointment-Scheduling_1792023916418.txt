@@ -1,0 +1,229 @@
+# Phase 37 — Complete Tenant-Scoped Appointment Scheduling
+
+## Mission
+
+Implement a production-oriented appointment scheduling module for Thanarah as one cohesive engineering task.
+
+Do not stop after an audit, architecture proposal, or documentation-only change. Inspect the existing implementation, identify the actual integration points, implement the feature, run the relevant tests, fix discovered regressions, and deliver a working, tested vertical slice.
+
+Complete all safe stages sequentially without asking for intermediate approval after every stage.
+
+The goal is a functioning appointment-management capability, not a prototype or disconnected collection of files.
+
+## Stage 1 — Inspect the existing architecture
+
+Inspect the actual repository and identify:
+- NestJS modules, controllers, services, validation conventions, and API versioning.
+- Trusted tenant context and tenant authorization enforcement.
+- Tenant storage registry, active-target resolution, and MongoDB client lifecycle.
+- Existing patient, doctor, department, specialty, facility, branch, and service catalog implementations.
+- Existing audit logging and error-handling conventions.
+- Existing frontend application and design system, if present.
+- Existing test fixtures and integration-test infrastructure.
+
+Use the existing architecture. Do not create parallel authentication, tenant resolution, database access, or permission systems.
+
+Preserve all pre-existing changes. Do not overwrite unrelated work or modify the attached Phase 36A instruction file.
+
+## Stage 2 — Define the appointment domain
+
+Implement an appointment domain consistent with the existing healthcare models.
+
+An appointment should support the applicable existing concepts:
+- Tenant and facility/branch scope.
+- Patient.
+- Doctor or appropriate provider.
+- Service, where required by the existing service catalog.
+- Start and end timestamps.
+- Appointment status.
+- Reason or notes, subject to existing privacy and validation conventions.
+- Creation and update timestamps.
+- The authenticated actor responsible for relevant changes.
+
+Use the repository's existing identifiers and conventions wherever possible.
+
+Do not confuse a tenant, facility, and branch.
+
+Do not store patient or appointment records in the central Prisma control-plane database. Use the established tenant MongoDB storage boundary and trusted tenant context.
+
+Do not introduce redundant identity records or copy unnecessary patient data into appointments.
+
+## Stage 3 — Tenant-scoped persistence
+
+Implement the appointment repository and storage integration.
+
+Requirements:
+- Resolve the storage target from trusted server-side tenant context.
+- Never trust a client-supplied tenant ID, database name, connection reference, or physical storage identifier.
+- Enforce tenant isolation at the repository boundary.
+- Validate that referenced patients, doctors, facilities, branches, and services belong to the correct tenant and applicable scope.
+- Add appropriate indexes for the implemented queries.
+- Handle unavailable tenant storage safely.
+- Keep business rules in the service/domain layer rather than controllers.
+- Avoid direct database access from controllers.
+
+Follow existing repository and connection lifecycle conventions. Do not create a second competing storage architecture.
+
+## Stage 4 — Appointment API
+
+Implement the applicable versioned API routes using the project's established conventions.
+
+Provide:
+1. Create appointment.
+2. Retrieve an appointment by ID.
+3. List appointments with pagination and useful filters.
+4. Update permitted appointment fields.
+5. Cancel an appointment through a validated state transition.
+6. Reschedule an appointment with the required validation.
+7. Filter by date range, provider, branch, facility, patient, and status where supported by the existing authorization model.
+
+Validate request bodies, identifiers, date ranges, and state transitions.
+
+Use consistent response DTOs and safe error responses. Avoid leaking patient information, storage identifiers, internal database errors, or cross-tenant existence.
+
+Apply authentication, tenant authorization, and facility/branch scope through existing guards and policies. Subscription entitlements must not be confused with authorization.
+
+## Stage 5 — Scheduling and collision safety
+
+Inspect existing scheduling policies before choosing booking rules.
+
+Implement the strongest collision protection supported by the current architecture, while explicitly preserving correctness.
+
+Requirements:
+- Reject invalid or non-positive appointment durations.
+- Reject appointments outside applicable provider or facility availability when that availability is already implemented.
+- Detect overlapping appointments for the same provider and applicable scheduling scope.
+- Handle rescheduling without incorrectly conflicting with the appointment being rescheduled.
+- Ensure concurrent booking attempts cannot silently create conflicting appointments if the selected persistence strategy claims to guarantee that.
+- Return a stable, documented conflict response.
+- Preserve consistent timestamps and timezone handling.
+
+Do not assume that a normal MongoDB pre-insert query makes overlap checking race-safe.
+
+Do not claim atomic booking guarantees unless the implementation and tests establish them.
+
+If the current infrastructure cannot safely guarantee conflict prevention, implement the safe portion, isolate the unresolved concurrency constraint, and document the exact missing capability. Do not silently require an unapproved replica set, introduce an unapproved shard key, or weaken tenant isolation.
+
+Do not invent business hours, appointment durations, slot sizes, cancellation policies, or grace periods. Reuse existing rules where available. If a policy is genuinely absent, use an explicit configurable rule only when it is safe and consistent with existing conventions; otherwise document the precise decision required without blocking unrelated appointment functionality.
+
+## Stage 6 — Status transitions and auditability
+
+Implement explicit allowed appointment status transitions.
+
+Prevent invalid transitions such as changing a cancelled appointment back into an active booking unless the existing product rules explicitly support that behavior.
+
+Record relevant actions using the existing audit conventions where applicable.
+
+Keep appointment status separate from payment status, subscription status, and provider availability.
+
+Do not log unnecessary patient notes or sensitive clinical information.
+
+## Stage 7 — Permissions and privacy
+
+Use the existing tenant role and permission architecture.
+
+Verify authorization separately for:
+- Creating appointments.
+- Viewing appointment details and lists.
+- Updating appointments.
+- Rescheduling appointments.
+- Cancelling appointments.
+
+Apply existing branch/facility restrictions to reads and writes.
+
+Do not create a new role system or trust roles or permissions supplied by the client.
+
+Add tests for cross-tenant access, out-of-scope branch access, unauthorized mutations, and invalid references.
+
+## Stage 8 — Integrate with the existing application
+
+Inspect the existing frontend before deciding how to integrate the feature.
+
+If the project already has an appropriate tenant dashboard, add a functional appointment-management screen using its established design system. Include:
+- Appointment list.
+- Date and status filters.
+- Pagination.
+- Appointment creation.
+- Details and permitted updates.
+- Rescheduling and cancellation actions.
+- Loading, empty, validation, and error states.
+
+Use the existing API client, authentication flow, routing, and permission handling.
+
+Do not invent a parallel frontend framework or produce a disconnected mockup.
+
+If there is no existing frontend integration point, complete the backend vertical slice and report the exact integration boundary instead of fabricating an unrelated UI.
+
+## Stage 9 — Automated verification
+
+Add focused unit and integration tests using existing conventions.
+
+Cover:
+- Successful appointment creation and retrieval.
+- Pagination and filters.
+- Invalid identifiers and dates.
+- Invalid state transitions.
+- Cross-tenant and cross-branch isolation.
+- Invalid patient/provider/service references.
+- Overlapping appointment attempts.
+- Concurrent booking behavior to the extent the test infrastructure can genuinely establish it.
+- Rescheduling and cancellation.
+- Failed tenant storage access.
+- Authorization failures.
+- Safe conflict and error responses.
+
+Use disposable non-production databases only.
+
+Do not connect to production, inspect production credentials, or use real patient data.
+
+Do not describe mocked tests as proof of real database transaction or concurrency guarantees.
+
+## Stage 10 — Run checks and repair regressions
+
+Run the focused tests first, followed by the applicable project type-check, lint, formatting, build, and integration checks supported by the environment.
+
+Fix failures introduced by this task. Do not hide failures, weaken assertions, or change unrelated tests merely to make the suite pass.
+
+If an existing baseline failure blocks a command, report it precisely and distinguish it from new failures.
+
+Restart the configured development workflow if appropriate and verify that the application starts. Do not claim that the feature works in production based only on a successful development startup.
+
+## Stage 11 — Final review
+
+Review the complete diff for:
+- Tenant isolation.
+- Authorization and branch/facility scope.
+- Data placement in tenant storage.
+- Scheduling correctness.
+- Collision and concurrency guarantees.
+- Sensitive data exposure.
+- API consistency.
+- Unnecessary duplication.
+- Unrelated changes.
+
+Preserve all pre-existing user changes and the unresolved MongoDB deployment decision.
+
+## Final report
+
+Provide one consolidated report containing:
+1. Features implemented.
+2. API routes and permission requirements.
+3. Persistence and index changes.
+4. Scheduling and concurrency guarantees, with limitations.
+5. Frontend integration completed, if applicable.
+6. Tests executed and exact results.
+7. Type-check, lint, formatting, build, and startup results.
+8. `git diff --check`, `git diff --stat`, and `git status --short`.
+9. Remaining blockers and any business decision genuinely required.
+10. The next major unfinished product capability.
+
+## Git and safety rules
+
+- Do not stage or commit automatically.
+- Do not reset, rebase, amend, or rewrite history.
+- Do not use `--no-verify`.
+- Do not connect to production or inspect secrets.
+- Do not modify unrelated subsystems.
+- Do not claim production readiness without the necessary evidence.
+
+Complete the implementation and validation within this task, then stop for one consolidated review. Do not ask for intermediate approval between stages.

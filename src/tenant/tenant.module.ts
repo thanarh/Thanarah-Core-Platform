@@ -48,6 +48,8 @@ import { DoctorRepository } from './doctor.repository';
 import { DoctorService } from './doctor.service';
 import { TenantPatientController } from './tenant-patient.controller';
 import { PatientService } from './patient.service';
+import { TenantAppointmentController } from './tenant-appointment.controller';
+import { AppointmentService } from './appointment.service';
 import { TenantStorageModule } from './tenant-storage.module';
 
 @Module({
@@ -73,6 +75,7 @@ import { TenantStorageModule } from './tenant-storage.module';
     TenantServiceCatalogController,
     DoctorController,
     TenantPatientController,
+    TenantAppointmentController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -99,6 +102,7 @@ import { TenantStorageModule } from './tenant-storage.module';
     DoctorRepository,
     DoctorService,
     PatientService,
+    AppointmentService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,

@@ -37,6 +37,9 @@ const { PrismaService } = requireFromWorkspace('../dist/database/prisma.service'
 const { MongoTenantPatientStorage } = requireFromWorkspace(
   '../dist/tenant/mongo-tenant-patient.storage',
 );
+const { MongoTenantAppointmentStorage } = requireFromWorkspace(
+  '../dist/tenant/mongo-tenant-appointment.storage',
+);
 const { OfficialTenantMongoClientFactory, TENANT_MONGO_CLIENT_FACTORY, TenantMongoClientManager } =
   requireFromWorkspace('../dist/tenant/tenant-mongo-client.manager');
 const { PatientService } = requireFromWorkspace('../dist/tenant/patient.service');
@@ -122,7 +125,7 @@ let platformSessionId = '';
 let readPermissionId = '';
 let managePermissionId = '';
 
-describe('Phase 30 real MongoDB Patient runtime verification', () => {
+describe('Real tenant MongoDB Patient and Appointment runtime verification', () => {
   beforeAll(async () => {
     if (process.env.DOCKER_HOST !== DOCKER_SOCKET) {
       throw new Error('Phase 30 requires the explicitly selected local Docker socket');
@@ -400,6 +403,102 @@ describe('Phase 30 real MongoDB Patient runtime verification', () => {
       });
     expect(auditRows).toBeGreaterThanOrEqual(4);
     expect(mongoFactory.clients).toHaveLength(1);
+  });
+
+  it('persists appointments in the trusted tenant database with real indexed isolation and overlap queries', async () => {
+    const storage = getApplication().get(MongoTenantAppointmentStorage);
+    const routeA: TenantStorageRoute = {
+      placements: [{ placementId: targetA.id as TenantStoragePlacementId }],
+    };
+    const routeB: TenantStorageRoute = {
+      placements: [{ placementId: targetB.id as TenantStoragePlacementId }],
+    };
+    const now = new Date('2026-10-14T12:00:00.000Z');
+    const appointmentId = randomUUID();
+    const record = {
+      id: appointmentId,
+      patientId: randomUUID(),
+      doctorId: randomUUID(),
+      facilityId: randomUUID(),
+      branchId: randomUUID(),
+      serviceId: null,
+      startsAt: new Date('2026-10-15T09:00:00.000Z'),
+      endsAt: new Date('2026-10-15T09:30:00.000Z'),
+      status: 'SCHEDULED',
+      reason: 'Integration test reason',
+      createdAt: now,
+      updatedAt: now,
+      createdBy: platformUserId,
+      updatedBy: platformUserId,
+      cancelledAt: null,
+      cancelledBy: null,
+      version: 1,
+    };
+
+    await expect(storage.create(contextA, routeA, record)).resolves.toMatchObject({
+      id: appointmentId,
+      facilityId: record.facilityId,
+      reason: record.reason,
+    });
+    await expect(storage.findById(contextA, routeA, appointmentId)).resolves.toMatchObject({
+      id: appointmentId,
+      status: 'SCHEDULED',
+    });
+    await expect(storage.findById(contextB, routeB, appointmentId)).resolves.toBeNull();
+    await expect(storage.findById(contextA, routeB, appointmentId)).rejects.toBeInstanceOf(
+      TenantStorageNotConfiguredError,
+    );
+
+    await expect(
+      storage.hasProviderOverlap(contextA, routeA, {
+        doctorId: record.doctorId,
+        startsAt: new Date('2026-10-15T09:15:00.000Z'),
+        endsAt: new Date('2026-10-15T09:45:00.000Z'),
+      }),
+    ).resolves.toBe(true);
+    await expect(
+      storage.hasProviderOverlap(contextA, routeA, {
+        doctorId: record.doctorId,
+        startsAt: new Date('2026-10-15T09:30:00.000Z'),
+        endsAt: new Date('2026-10-15T10:00:00.000Z'),
+      }),
+    ).resolves.toBe(false);
+
+    const listed = await storage.list(contextA, routeA, {
+      from: new Date('2026-10-15T09:15:00.000Z'),
+      to: new Date('2026-10-15T09:45:00.000Z'),
+      branchId: record.branchId,
+      limit: 10,
+      offset: 0,
+      accessScope: { unrestricted: true, facilityIds: [], branchIds: [] },
+    });
+    expect(listed).toMatchObject({ total: 1, items: [{ id: appointmentId }] });
+    expect(listed.items[0]).not.toHaveProperty('_tenantId');
+
+    const cancelled = await storage.update(contextA, routeA, appointmentId, 1, {
+      status: 'CANCELLED',
+      cancelledAt: new Date('2026-10-14T13:00:00.000Z'),
+      cancelledBy: platformUserId,
+      updatedAt: new Date('2026-10-14T13:00:00.000Z'),
+      updatedBy: platformUserId,
+    });
+    expect(cancelled).toMatchObject({ status: 'CANCELLED', version: 2 });
+    await expect(
+      storage.hasProviderOverlap(contextA, routeA, {
+        doctorId: record.doctorId,
+        startsAt: record.startsAt,
+        endsAt: record.endsAt,
+      }),
+    ).resolves.toBe(false);
+
+    const names = new Set(
+      (await mongoAdminClient!.db(tenantA.databaseName).collection('appointments').indexes()).map(
+        ({ name }) => name,
+      ),
+    );
+    expect(names).toContain('tenant_appointment_schedule_overlap_idx');
+    expect(names).toContain('tenant_appointment_branch_starts_idx');
+    expect(names).toContain('tenant_appointment_patient_starts_idx');
   });
 
   it('rejects a tenant collection whose Patient-number index inherits non-simple default collation', async () => {

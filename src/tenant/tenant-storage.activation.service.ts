@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, TenantStorageProvider, TenantStorageTargetStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
+import { MongoTenantAppointmentStorage } from './mongo-tenant-appointment.storage';
 import { TenantStorageUnavailableError } from './tenant-storage.errors';
 import {
   TENANT_STORAGE_TARGET_SELECT,
@@ -24,6 +25,7 @@ export class TenantStorageActivationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly patientStorage: MongoTenantPatientStorage,
+    private readonly appointmentStorage: MongoTenantAppointmentStorage,
   ) {}
 
   async setTargetStatus(
@@ -37,7 +39,7 @@ export class TenantStorageActivationService {
     if (status === TenantStorageTargetStatus.ACTIVE) {
       verifiedTarget = await this.findTarget(tenantId, targetId);
       if (!verifiedTarget) return null;
-      await this.ensurePatientIndexes(verifiedTarget);
+      await this.ensureTenantStorageIndexes(verifiedTarget);
     }
 
     return this.prisma.$transaction(
@@ -100,7 +102,7 @@ export class TenantStorageActivationService {
     this.assertIdentifiers(tenantId, targetId);
     const target = await this.findTarget(tenantId, targetId, TenantStorageTargetStatus.ACTIVE);
     if (!target) return null;
-    await this.ensurePatientIndexes(target);
+    await this.ensureTenantStorageIndexes(target);
 
     return this.prisma.$transaction(
       async (transaction) => {
@@ -165,9 +167,10 @@ export class TenantStorageActivationService {
     });
   }
 
-  private async ensurePatientIndexes(target: TenantStorageTargetRecord): Promise<void> {
+  private async ensureTenantStorageIndexes(target: TenantStorageTargetRecord): Promise<void> {
     try {
       await this.patientStorage.ensureIndexesForTarget(target);
+      await this.appointmentStorage.ensureIndexesForTarget(target);
     } catch {
       throw new TenantStorageUnavailableError();
     }

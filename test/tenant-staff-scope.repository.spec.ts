@@ -72,6 +72,7 @@ describe('TenantStaffScopeRepository', () => {
   };
   const prisma = {
     $transaction: vi.fn(),
+    tenantMembership: { findFirst: vi.fn() },
     staff: { findFirst: vi.fn() },
     staffFacilityAssignment: { findMany: vi.fn(), findFirst: vi.fn() },
     staffBranchAssignment: { findMany: vi.fn(), findFirst: vi.fn() },
@@ -560,5 +561,78 @@ describe('TenantStaffScopeRepository', () => {
         branches: [],
       });
     }
+  });
+
+  it('resolves trusted membership scope and leaves non-staff memberships without location restrictions', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce({
+      staffProfile: { id: staffId },
+    });
+    prisma.staff.findFirst.mockResolvedValueOnce({
+      status: StaffStatus.ACTIVE,
+      membership: {
+        status: TenantMembershipStatus.ACTIVE,
+        platformUser: { status: 'ACTIVE' },
+      },
+      facilityAssignments: [
+        {
+          facility: {
+            id: facilityId,
+            name: 'North Facility',
+            status: FacilityStatus.ACTIVE,
+            tenant: { status: TenantStatus.ACTIVE },
+          },
+        },
+      ],
+      branchAssignments: [
+        {
+          branch: { id: branchId, name: 'Central Branch', status: BranchStatus.ACTIVE },
+          facility: {
+            id: facilityId,
+            name: 'North Facility',
+            status: FacilityStatus.ACTIVE,
+            tenant: { status: TenantStatus.ACTIVE },
+          },
+        },
+      ],
+    });
+
+    await expect(
+      repository.resolveMembershipScope(tenantId, actorMembershipId, actorUserId),
+    ).resolves.toEqual({
+      facilities: [{ id: facilityId, name: 'North Facility' }],
+      branches: [
+        {
+          id: branchId,
+          name: 'Central Branch',
+          facilityId,
+          facilityName: 'North Facility',
+        },
+      ],
+    });
+    expect(prisma.tenantMembership.findFirst).toHaveBeenCalledWith({
+      where: {
+        id: actorMembershipId,
+        tenantId,
+        platformUserId: actorUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
+      },
+      select: { staffProfile: { select: { id: true } } },
+    });
+
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce({ staffProfile: null });
+    await expect(
+      repository.resolveMembershipScope(tenantId, actorMembershipId, actorUserId),
+    ).resolves.toBeNull();
+    expect(prisma.staff.findFirst).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns an empty scope when the trusted tenant membership no longer exists', async () => {
+    prisma.tenantMembership.findFirst.mockResolvedValueOnce(null);
+
+    await expect(
+      repository.resolveMembershipScope(tenantId, actorMembershipId, actorUserId),
+    ).resolves.toEqual({ facilities: [], branches: [] });
+    expect(prisma.staff.findFirst).not.toHaveBeenCalled();
   });
 });

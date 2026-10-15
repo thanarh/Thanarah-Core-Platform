@@ -383,6 +383,26 @@ export class TenantStaffScopeRepository {
     };
   }
 
+  async resolveMembershipScope(
+    tenantId: string,
+    membershipId: string,
+    platformUserId: string,
+  ): Promise<TenantStaffEffectiveScope | null> {
+    const membership = await this.prisma.tenantMembership.findFirst({
+      where: {
+        id: membershipId,
+        tenantId,
+        platformUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
+      },
+      select: { staffProfile: { select: { id: true } } },
+    });
+    if (!membership) return { facilities: [], branches: [] };
+    if (!membership.staffProfile) return null;
+    return this.resolveEffectiveScope(tenantId, membership.staffProfile.id);
+  }
+
   private async checkMutationEligibility(
     transaction: Prisma.TransactionClient,
     input: AssignmentInput,

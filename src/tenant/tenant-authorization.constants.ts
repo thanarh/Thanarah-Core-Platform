@@ -32,6 +32,11 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.doctors.manage',
   'tenant.patients.read',
   'tenant.patients.manage',
+  'tenant.appointments.read',
+  'tenant.appointments.create',
+  'tenant.appointments.update',
+  'tenant.appointments.reschedule',
+  'tenant.appointments.cancel',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -118,6 +123,11 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.patients.manage',
     description: 'Create, update, and change the lifecycle of tenant patients',
   },
+  { code: 'tenant.appointments.read', description: 'View tenant appointments within staff scope' },
+  { code: 'tenant.appointments.create', description: 'Create appointments in the tenant' },
+  { code: 'tenant.appointments.update', description: 'Update non-scheduling appointment details' },
+  { code: 'tenant.appointments.reschedule', description: 'Reschedule or relocate appointments' },
+  { code: 'tenant.appointments.cancel', description: 'Cancel scheduled appointments' },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -164,6 +174,11 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.doctors.manage',
       'tenant.patients.read',
       'tenant.patients.manage',
+      'tenant.appointments.read',
+      'tenant.appointments.create',
+      'tenant.appointments.update',
+      'tenant.appointments.reschedule',
+      'tenant.appointments.cancel',
     ],
   },
   {
@@ -183,6 +198,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.services.read',
       'tenant.doctors.read',
       'tenant.patients.read',
+      'tenant.appointments.read',
     ],
   },
 ] as const satisfies ReadonlyArray<{

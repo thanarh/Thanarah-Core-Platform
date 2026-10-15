@@ -252,6 +252,17 @@ export class TenantStaffScopeService {
     );
   }
 
+  async resolveMembershipScope(
+    context: TrustedTenantContext,
+  ): Promise<TenantStaffEffectiveScope | null> {
+    const tenantId = this.trustedTenantId(context);
+    return this.assignments.resolveMembershipScope(
+      tenantId,
+      context.membershipId.toLowerCase(),
+      context.platformUserId.toLowerCase(),
+    );
+  }
+
   private trustedTenantId(context: TrustedTenantContext): string {
     if (!context) throw new TenantContextRequiredError();
     if (
