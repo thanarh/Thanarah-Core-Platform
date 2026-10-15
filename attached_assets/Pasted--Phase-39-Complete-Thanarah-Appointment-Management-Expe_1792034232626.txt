@@ -1,0 +1,143 @@
+# Phase 39 — Complete Thanarah Appointment Management Experience
+
+## Mission
+
+Deliver a usable tenant-facing appointment-management experience integrated with the existing Phase 37 and Phase 38 backend.
+
+This is a complete product task, not a UI mockup. Inspect the actual frontend first, integrate with the existing framework and design system, implement the real API integration, test the complete flows, fix regressions, and return one consolidated report.
+
+## Stage 1 — Inspect and preserve
+
+Inspect the current repository, frontend entry points, routing, authentication, API client, design system, tenant context, permissions, appointment API, scheduling-policy API, and existing user changes.
+
+Determine whether a frontend integration point exists. Do not assume the previous report remains accurate.
+
+Preserve all existing changes and do not create a parallel frontend framework.
+
+## Stage 2 — Appointment workspace
+
+Implement a responsive appointment workspace with:
+- Today’s appointments.
+- Date navigation and date-range filtering.
+- Provider, branch/facility, and status filters where supported by the API.
+- Search and pagination.
+- Appointment status indicators.
+- Loading, empty, validation, conflict, and error states.
+- Safe refresh behavior after mutations.
+
+Use the existing design system. Maintain a professional, restrained healthcare interface, Arabic RTL support if the application supports Arabic, and accessible keyboard navigation.
+
+Do not fabricate appointment data or present mock data as live data.
+
+## Stage 3 — Booking and rescheduling
+
+Implement functional create and reschedule flows using the existing API.
+
+Include:
+- Patient selection using the tenant-scoped patient directory.
+- Provider and facility/branch selection.
+- Service selection where supported.
+- Start/end time handling and clear time-zone presentation.
+- Client-side validation that complements, but never replaces, server validation.
+- Clear handling of conflicts, policy violations, and unavailable storage.
+- Idempotency support where appropriate to the existing API.
+- Protection against duplicate submissions.
+
+Do not invent clinic hours, appointment durations, cancellation windows, or time zones. Read and display the configured scheduling policy where the API supports it.
+
+## Stage 4 — Appointment details and actions
+
+Implement:
+- Appointment detail view.
+- Permitted updates.
+- Cancellation confirmation.
+- Rescheduling.
+- Clear status and audit-relevant feedback.
+- Appropriate handling of stale records or optimistic-version conflicts.
+
+Do not expose patient demographics or appointment notes to users who lack permission.
+
+## Stage 5 — Scheduling policy administration
+
+If the existing permission model supports authorized tenant administrators, integrate the Phase 38 policy API.
+
+Support viewing and editing the actual configurable policy fields, including time zone, operating hours, availability, duration rules, booking horizon, and notice windows.
+
+Include validation, activation/deactivation, and policy-history views where supported by the existing API.
+
+If the existing API or authorization contract lacks a necessary capability, document the precise gap instead of creating a bypass.
+
+## Stage 6 — Security and API correctness
+
+Ensure:
+- All requests use the existing authentication and API client.
+- The server remains authoritative for tenant identity and authorization.
+- The UI never supplies physical storage identifiers.
+- Cross-tenant data cannot be exposed through client-side caching or stale selections.
+- Actions are shown and enabled according to the existing permissions.
+- API errors are handled safely without exposing internal errors or storage details.
+
+Do not duplicate business rules as the sole enforcement mechanism in the frontend.
+
+## Stage 7 — Automated verification
+
+Add or extend tests using existing project conventions.
+
+Cover:
+- Appointment list loading and filtering.
+- Creation and rescheduling.
+- Conflict and policy-validation responses.
+- Cancellation confirmation.
+- Duplicate submission protection.
+- Unauthorized actions.
+- Loading, empty, and error states.
+- Policy administration permissions.
+- RTL and responsive layout where the current test environment supports them.
+
+Use real API integration tests where practical. Do not claim a browser-level end-to-end test was run unless it actually ran.
+
+## Stage 8 — Run checks and repair regressions
+
+Run the relevant frontend and backend tests, type-check, lint, formatting, build, and end-to-end checks supported by the repository.
+
+Fix regressions introduced by this task. Report unrelated baseline failures precisely.
+
+Restart the development workflow if appropriate and verify the application starts.
+
+Do not connect to production or inspect credentials.
+
+## Stage 9 — Final review
+
+Review the complete diff for:
+- Real API integration rather than mock data.
+- Correct tenant and permission handling.
+- Consistent time-zone behavior.
+- Accessible and responsive UI.
+- No accidental changes to unrelated modules.
+- Preservation of all existing user changes.
+- Honest reporting of tested and untested flows.
+
+## Final report
+
+Provide one consolidated report:
+1. Screens and flows implemented.
+2. API endpoints integrated.
+3. Permission behavior.
+4. Tests executed and exact results.
+5. Type-check, lint, formatting, build, and startup results.
+6. `git diff --check`, `git diff --stat`, and `git status --short`.
+7. Remaining frontend/backend gaps.
+8. Remaining production blockers.
+9. The next major product capability.
+
+## Restrictions
+
+- Do not stage or commit automatically.
+- Do not rewrite Git history.
+- Do not use `--no-verify`.
+- Do not connect to production or inspect secrets.
+- Do not invent business policies or sample data presented as real.
+- Preserve all existing user changes.
+- Do not claim production readiness.
+
+Complete the safe implementation and validation work in one run, then stop with a consolidated report.

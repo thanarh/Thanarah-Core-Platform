@@ -410,6 +410,47 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(mongoFactory.clients).toHaveLength(1);
   });
 
+  it('lists only authenticated active workspaces and server-resolved permission codes', async () => {
+    const unauthenticated = await getApplication().inject({
+      method: 'GET',
+      url: '/api/v1/session/tenants',
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const response = await getApplication().inject({
+      method: 'GET',
+      url: '/api/v1/session/tenants',
+      headers: bearerHeaders(),
+    });
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      items: expect.arrayContaining([
+        {
+          tenantId: tenantA.id,
+          displayName: `Phase 30 ${tenantA.slug}`,
+          slug: tenantA.slug,
+          membershipId: tenantA.membershipId,
+          permissionCodes: expect.arrayContaining([
+            'tenant.patients.manage',
+            'tenant.patients.read',
+          ]),
+        },
+        {
+          tenantId: tenantB.id,
+          displayName: `Phase 30 ${tenantB.slug}`,
+          slug: tenantB.slug,
+          membershipId: tenantB.membershipId,
+          permissionCodes: expect.arrayContaining([
+            'tenant.patients.manage',
+            'tenant.patients.read',
+          ]),
+        },
+      ]),
+    });
+    expect(response.json()).not.toHaveProperty('items.0.databaseName');
+    expect(response.json()).not.toHaveProperty('items.0.connectionReference');
+  });
+
   it('persists appointments in the trusted tenant database with real indexed isolation and overlap queries', async () => {
     const storage = getApplication().get(MongoTenantAppointmentStorage);
     const routeA: TenantStorageRoute = {

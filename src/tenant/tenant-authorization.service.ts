@@ -14,6 +14,10 @@ export class TenantAuthorizationService implements TenantAuthorizationContract {
     private readonly audit: PlatformAuditService,
   ) {}
 
+  getEffectivePermissionCodes(context: TrustedTenantContext): Promise<string[]> {
+    return this.memberships.resolvePermissionCodes(context);
+  }
+
   async authorize(context: TrustedTenantContext, permissionCode: string): Promise<void> {
     if (!(TENANT_PERMISSION_CODES as readonly string[]).includes(permissionCode)) {
       throw new TenantPermissionDeniedError();

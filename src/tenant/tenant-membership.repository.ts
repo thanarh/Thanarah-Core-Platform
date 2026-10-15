@@ -19,6 +19,21 @@ export type TenantMembershipRecord = Prisma.TenantMembershipGetPayload<{
   select: typeof tenantMembershipSelect;
 }>;
 
+const tenantWorkspaceMembershipSelect = {
+  id: true,
+  tenantId: true,
+  tenant: {
+    select: {
+      displayName: true,
+      slug: true,
+    },
+  },
+} satisfies Prisma.TenantMembershipSelect;
+
+export type TenantWorkspaceMembershipRecord = Prisma.TenantMembershipGetPayload<{
+  select: typeof tenantWorkspaceMembershipSelect;
+}>;
+
 export interface TenantMembershipListFilter {
   tenantId: string;
   status?: TenantMembershipStatus;
@@ -66,6 +81,18 @@ export class TenantMembershipRepository {
         tenant: { is: { status: TenantStatus.ACTIVE } },
       },
       select: tenantMembershipSelect,
+    });
+  }
+
+  listActiveForPlatformUser(platformUserId: string): Promise<TenantWorkspaceMembershipRecord[]> {
+    return this.prisma.tenantMembership.findMany({
+      where: {
+        platformUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
+      },
+      orderBy: [{ tenantId: 'asc' }],
+      select: tenantWorkspaceMembershipSelect,
     });
   }
 

@@ -54,6 +54,7 @@ import { TenantStorageModule } from './tenant-storage.module';
 import { FacilitySchedulingPolicyController } from './facility-scheduling-policy.controller';
 import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
+import { TenantWorkspaceController } from './tenant-workspace.controller';
 
 @Module({
   imports: [
@@ -67,6 +68,7 @@ import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy
   controllers: [
     TenantController,
     TenantMembershipController,
+    TenantWorkspaceController,
     TenantRoleController,
     TenantRoleBootstrapController,
     FacilityController,

@@ -93,6 +93,26 @@ describe('TenantMembershipRepository', () => {
     );
   });
 
+  it('lists only the authenticated user’s active memberships in active tenants', async () => {
+    prisma.tenantMembership.findMany.mockResolvedValue([]);
+
+    await repository.listActiveForPlatformUser(platformUserId);
+
+    expect(prisma.tenantMembership.findMany).toHaveBeenCalledWith({
+      where: {
+        platformUserId,
+        status: TenantMembershipStatus.ACTIVE,
+        tenant: { is: { status: TenantStatus.ACTIVE } },
+      },
+      orderBy: [{ tenantId: 'asc' }],
+      select: {
+        id: true,
+        tenantId: true,
+        tenant: { select: { displayName: true, slug: true } },
+      },
+    });
+  });
+
   it('scopes membership IDs to the requested tenant', async () => {
     prisma.tenantMembership.findFirst.mockResolvedValue(null);
     const otherTenantId = '44444444-4444-4444-8444-444444444444';
