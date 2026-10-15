@@ -7,6 +7,8 @@
 
   const safeMessages = {
     APPOINTMENT_INPUT_INVALID: 'راجع بيانات الموعد ثم حاول مرة أخرى.',
+    APPOINTMENT_TIME_ZONE_UNAVAILABLE:
+      'لا توجد سياسة جدولة نشطة تحدد منطقة زمنية للمنشأة؛ تعذّر تطبيق مرشح التاريخ.',
     APPOINTMENT_REFERENCE_INVALID: 'أحد الاختيارات لم يعد متاحًا. حدّث البيانات وحاول مرة أخرى.',
     APPOINTMENT_SCHEDULE_CONFLICT: 'هذا الوقت لم يعد متاحًا. اختر وقتًا آخر.',
     APPOINTMENT_IDEMPOTENCY_CONFLICT: 'تعذّر تأكيد إعادة المحاولة. حدّث المواعيد قبل المتابعة.',
@@ -173,6 +175,14 @@
 
     listAppointments(tenantId, options = {}) {
       return request(withQuery(tenantPath(tenantId, '/appointments'), listOptions(options)));
+    },
+
+    getAppointmentTimeZones(tenantId, facilityIds) {
+      return request(
+        withQuery(tenantPath(tenantId, '/appointments/effective-time-zones'), {
+          facilityIds: [...new Set(facilityIds || [])].join(','),
+        }),
+      );
     },
 
     getAppointment(tenantId, appointmentId) {

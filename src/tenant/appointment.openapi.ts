@@ -141,6 +141,22 @@ export class AppointmentListResponseDto {
   hasNext!: boolean;
 }
 
+export class AppointmentEffectiveTimeZoneDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  facilityId!: string;
+
+  @ApiProperty({ type: String, nullable: true, description: 'IANA time-zone identifier.' })
+  timeZone!: string | null;
+
+  @ApiProperty({ type: String, enum: ['ACTIVE_POLICY', 'NO_ACTIVE_POLICY'] })
+  status!: 'ACTIVE_POLICY' | 'NO_ACTIVE_POLICY';
+}
+
+export class AppointmentEffectiveTimeZonesResponseDto {
+  @ApiProperty({ type: AppointmentEffectiveTimeZoneDto, isArray: true })
+  items!: AppointmentEffectiveTimeZoneDto[];
+}
+
 export class AppointmentErrorResponseDto {
   @ApiProperty({ type: String })
   code!: string;

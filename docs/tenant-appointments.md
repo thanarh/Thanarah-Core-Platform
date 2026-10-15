@@ -20,12 +20,43 @@ platform authentication and tenant authorization guards:
 | Reschedule or relocate | `POST /appointments/:appointmentId/reschedule` | `tenant.appointments.reschedule` |
 | Cancel | `POST /appointments/:appointmentId/cancel` | `tenant.appointments.cancel` |
 
-List filters support `from`, `to`, `doctorId`, `facilityId`, `branchId`,
-`patientId`, and `status`, plus `limit` and `offset`. A date range selects
-appointments overlapping the half-open interval `[from, to)`. Timestamps must
-include a UTC offset. Only `SCHEDULED` appointments can be updated or
-rescheduled; cancellation changes the state to `CANCELLED` and cannot be
-reversed. Repeating cancellation is idempotent.
+List filters support `from`, `to`, `fromDate`, `toDate`, `search`, `doctorId`,
+`facilityId`, `branchId`, `patientId`, `serviceId`, and `status`, plus bounded
+`limit` and `offset`. Explicit `from`/`to` timestamps must include a UTC offset
+and select appointments overlapping the half-open interval `[from, to)`.
+Date-only filters are facility-local: at least one date and `facilityId` are
+required, and an active scheduling policy must provide that facility's IANA
+timezone. `fromDate` starts at local midnight; `toDate` includes that entire
+local day by ending at the next local midnight. DST-short and DST-long days
+therefore have their actual elapsed duration. Explicit timestamps and local
+dates cannot be mixed. If no active timezone policy exists, date filtering
+fails with `APPOINTMENT_TIME_ZONE_UNAVAILABLE`; the server does not substitute
+UTC or the caller's browser timezone.
+
+Search is normalized, bounded to 128 characters, and applied before count,
+sort, and pagination. A UUID searches appointment and reference identifiers;
+an exact patient-ID match is included only when the caller also has
+`tenant.patients.read`. Non-UUID text searches the existing patient-directory
+fields (patient number, first/middle/last/preferred name, phone, and email) and
+requires `tenant.patients.read`. Results contain appointment fields only, never
+patient demographics. The Mongo query joins patients within the tenant's
+database and scopes both sides by trusted tenant ID; it does not materialize
+patient IDs or the appointment collection in application memory. Search/count
+and the stable `startsAt ASC, id ASC` ordering are applied before pagination.
+
+The appointment workspace retrieves timezone-only metadata through
+`GET /api/v1/tenants/:tenantId/appointments/effective-time-zones?facilityIds=...`
+using `tenant.appointments.read`. It returns at most 20 requested, in-scope
+facilities and only each facility ID, effective active-policy timezone, and
+whether an active policy is absent. This route does not grant access to policy
+rules or revision history. Appointment display and local datetime input use
+the facility's active policy timezone when present. When no active policy
+exists, the UI explicitly labels and uses the browser's own timezone; if that
+timezone is unavailable, local-time entry is blocked.
+
+Only `SCHEDULED` appointments can be updated or rescheduled; cancellation
+changes the state to `CANCELLED` and cannot be reversed. Repeating cancellation
+is idempotent.
 
 Owners and admins receive all appointment permissions. Members receive
 read-only appointment permission. Existing custom roles can be assigned the

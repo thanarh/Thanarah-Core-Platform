@@ -60,6 +60,20 @@ export class FacilitySchedulingPolicyRepository {
     });
   }
 
+  findActiveTimeZonesByFacilities(
+    tenantId: string,
+    facilityIds: string[],
+  ): Promise<Array<{ facilityId: string; timeZone: string }>> {
+    return this.prisma.facilitySchedulingPolicy.findMany({
+      where: {
+        tenantId,
+        facilityId: { in: facilityIds },
+        status: FacilitySchedulingPolicyStatus.ACTIVE,
+      },
+      select: { facilityId: true, timeZone: true },
+    });
+  }
+
   async upsert(input: {
     tenantId: string;
     facilityId: string;

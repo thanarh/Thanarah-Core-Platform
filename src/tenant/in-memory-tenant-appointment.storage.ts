@@ -15,6 +15,7 @@ import type {
   AppointmentSchedulingLock,
   LockedAppointmentStorage,
 } from './tenant-appointment.storage';
+import { TenantStorageUnavailableError } from './tenant-storage.errors';
 
 @Injectable()
 export class InMemoryTenantAppointmentStorage implements AppointmentStorage {
@@ -39,6 +40,9 @@ export class InMemoryTenantAppointmentStorage implements AppointmentStorage {
     filter: AppointmentListFilter,
   ): Promise<AppointmentListResult> {
     this.assertScope(context, route);
+    if (filter.search && !isUuid(filter.search)) {
+      throw new TenantStorageUnavailableError();
+    }
     const filtered = [...this.tenantRecords(context.tenantId).values()]
       .filter((record) => matchesFilter(record, filter))
       .sort(
@@ -173,11 +177,25 @@ function normalizeLockKeys(tenantId: string, locks: AppointmentSchedulingLock[])
 }
 
 function matchesFilter(record: AppointmentRecord, filter: AppointmentListFilter): boolean {
+  if (filter.search && isUuid(filter.search)) {
+    const search = filter.search.toLowerCase();
+    if (
+      record.id.toLowerCase() !== search &&
+      record.doctorId.toLowerCase() !== search &&
+      record.facilityId.toLowerCase() !== search &&
+      record.branchId?.toLowerCase() !== search &&
+      record.serviceId?.toLowerCase() !== search &&
+      !(filter.searchPatientRecords && record.patientId.toLowerCase() === search)
+    ) {
+      return false;
+    }
+  }
   if (filter.status && record.status !== filter.status) return false;
   if (filter.doctorId && record.doctorId !== filter.doctorId) return false;
   if (filter.facilityId && record.facilityId !== filter.facilityId) return false;
   if (filter.branchId && record.branchId !== filter.branchId) return false;
   if (filter.patientId && record.patientId !== filter.patientId) return false;
+  if (filter.serviceId && record.serviceId !== filter.serviceId) return false;
   if (filter.from && record.endsAt <= filter.from) return false;
   if (filter.to && record.startsAt >= filter.to) return false;
   if (
@@ -188,6 +206,10 @@ function matchesFilter(record: AppointmentRecord, filter: AppointmentListFilter)
     return false;
   }
   return true;
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
 }
 
 function cloneRecord(record: AppointmentRecord): AppointmentRecord {

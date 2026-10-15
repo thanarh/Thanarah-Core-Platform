@@ -62,9 +62,15 @@ type AppointmentServiceHarness = {
     listBranches: MockFunction;
   };
   schedulingPolicies: {
+    effectiveTimeZone: MockFunction;
+    effectiveTimeZones: MockFunction;
     assertBookingAllowed: MockFunction;
     assertCancellationAllowed: MockFunction;
     assertReschedulingAllowed: MockFunction;
+  };
+  tenantAuthorization: {
+    getEffectivePermissionCodes: MockFunction;
+    authorize: MockFunction;
   };
   audit: { recordAudit: MockFunction };
 };
@@ -183,9 +189,17 @@ function makeService(): AppointmentServiceHarness {
     }),
   };
   const schedulingPolicies = {
+    effectiveTimeZone: vi.fn().mockResolvedValue('America/New_York'),
+    effectiveTimeZones: vi.fn().mockImplementation(async (_context, ids) => {
+      return new Map(ids.map((id: string) => [id, 'America/New_York']));
+    }),
     assertBookingAllowed: vi.fn().mockResolvedValue(undefined),
     assertCancellationAllowed: vi.fn().mockResolvedValue(undefined),
     assertReschedulingAllowed: vi.fn().mockResolvedValue(undefined),
+  };
+  const tenantAuthorization = {
+    getEffectivePermissionCodes: vi.fn().mockResolvedValue([]),
+    authorize: vi.fn().mockResolvedValue(undefined),
   };
   const audit = { recordAudit: vi.fn().mockResolvedValue(undefined) };
   const service = new AppointmentService(
@@ -197,6 +211,7 @@ function makeService(): AppointmentServiceHarness {
     services as never,
     staffScopes as never,
     schedulingPolicies as never,
+    tenantAuthorization as never,
     audit as never,
   );
   return {
@@ -211,6 +226,7 @@ function makeService(): AppointmentServiceHarness {
     services,
     staffScopes,
     schedulingPolicies,
+    tenantAuthorization,
     audit,
   };
 }
@@ -398,6 +414,117 @@ describe('AppointmentService', () => {
         accessScope: { unrestricted: false, facilityIds: [], branchIds: [branchId] },
       }),
     );
+  });
+
+  it('searches patient directory fields only when the caller has patient-read permission', async () => {
+    const harness = makeService();
+
+    await harness.service.list(context, {
+      search: '  Aisha   Noor ',
+      limit: 20,
+      offset: 0,
+    } as never);
+
+    expect(harness.tenantAuthorization.authorize).toHaveBeenCalledWith(
+      context,
+      'tenant.patients.read',
+    );
+    expect(harness.appointments.list).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        search: 'Aisha Noor',
+        searchPatientRecords: true,
+      }),
+    );
+  });
+
+  it('requires patient-read permission for an exact patient-ID list filter', async () => {
+    const harness = makeService();
+
+    await harness.service.list(context, { patientId, limit: 20, offset: 0 } as never);
+
+    expect(harness.tenantAuthorization.authorize).toHaveBeenCalledWith(
+      context,
+      'tenant.patients.read',
+    );
+  });
+
+  it('allows exact UUID search without patient access but excludes patient-ID matching', async () => {
+    const harness = makeService();
+
+    await harness.service.list(context, { search: appointmentId, limit: 20, offset: 0 } as never);
+
+    expect(harness.tenantAuthorization.authorize).not.toHaveBeenCalled();
+    expect(harness.appointments.list).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({ search: appointmentId, searchPatientRecords: false }),
+    );
+  });
+
+  it('converts facility-local inclusive dates using the active policy timezone', async () => {
+    const harness = makeService();
+
+    await harness.service.list(context, {
+      facilityId,
+      fromDate: '2026-11-01',
+      toDate: '2026-11-01',
+      limit: 20,
+      offset: 0,
+    } as never);
+
+    expect(harness.schedulingPolicies.effectiveTimeZone).toHaveBeenCalledWith(context, facilityId);
+    expect(harness.appointments.list).toHaveBeenCalledWith(
+      context,
+      expect.objectContaining({
+        from: new Date('2026-11-01T04:00:00.000Z'),
+        to: new Date('2026-11-02T05:00:00.000Z'),
+      }),
+    );
+    expect(harness.appointments.list.mock.calls[0][1]).not.toHaveProperty('fromDate');
+  });
+
+  it('refuses local-date filtering when the facility has no active timezone policy', async () => {
+    const harness = makeService();
+    harness.schedulingPolicies.effectiveTimeZone.mockResolvedValue(null);
+
+    await expect(
+      harness.service.list(context, {
+        facilityId,
+        fromDate: '2026-10-15',
+        limit: 20,
+        offset: 0,
+      } as never),
+    ).rejects.toMatchObject({ response: { code: 'APPOINTMENT_TIME_ZONE_UNAVAILABLE' } });
+    expect(harness.appointments.list).not.toHaveBeenCalled();
+  });
+
+  it('returns timezone-only metadata to facility and branch-scoped staff', async () => {
+    const harness = makeService();
+    harness.staffScopes.resolveMembershipScope.mockResolvedValue({
+      facilities: [],
+      branches: [{ id: branchId, name: 'Assigned branch', facilityId, facilityName: 'Facility' }],
+    });
+
+    await expect(harness.service.effectiveTimeZones(context, [facilityId])).resolves.toEqual({
+      items: [{ facilityId, timeZone: 'America/New_York', status: 'ACTIVE_POLICY' }],
+    });
+    expect(harness.schedulingPolicies.effectiveTimeZones).toHaveBeenCalledWith(context, [
+      facilityId,
+    ]);
+  });
+
+  it('does not read timezone metadata outside the staff location scope', async () => {
+    const harness = makeService();
+    harness.staffScopes.resolveMembershipScope.mockResolvedValue({
+      facilities: [{ id: facilityId, name: 'Assigned facility' }],
+      branches: [],
+    });
+    const otherFacilityId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+
+    await expect(
+      harness.service.effectiveTimeZones(context, [otherFacilityId]),
+    ).rejects.toBeInstanceOf(AppointmentScopeForbiddenError);
+    expect(harness.schedulingPolicies.effectiveTimeZones).not.toHaveBeenCalled();
   });
 
   it('uses the optional idempotency key to return the same appointment on safe retries', async () => {

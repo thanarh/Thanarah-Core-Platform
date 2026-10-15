@@ -1,0 +1,124 @@
+# Phase 40 — Production-Grade Appointment Search, Filtering & Timezone Contract
+
+## Mission
+
+Complete the appointment search and filtering experience across the full tenant dataset, resolve the scheduling timezone contract, and strengthen integration coverage for the existing Phase 37–39 implementation.
+
+This is an implementation task, not an audit-only task. Inspect the actual repository and complete all compatible stages in one pass.
+
+## Stage 1 — Inspect Existing Contracts
+
+Inspect the existing appointment controllers, services, repositories, DTOs, tenant context, permissions, scheduling policies, MongoDB indexes, frontend, and tests.
+
+Preserve existing architecture and API conventions. Do not duplicate existing functionality or introduce a second appointment subsystem.
+
+## Stage 2 — Server-Side Search and Filtering
+
+Implement tenant-scoped server-side appointment search using the established API conventions.
+
+Support the applicable existing fields:
+- Patient name and supported patient identifiers.
+- Appointment identifier where appropriate.
+- Provider, facility, branch, and service when supported by the existing data model.
+- Appointment status.
+- Date/time range.
+- Existing sorting and pagination conventions.
+
+Requirements:
+- Search the entire authorized tenant dataset, not only the currently loaded page.
+- Validate, normalize, and bound search input and pagination parameters.
+- Use efficient MongoDB query patterns and existing or justified indexes.
+- Do not scan unrelated tenants or load the entire collection into application memory.
+- Enforce authorization and facility/branch scope on the server for every request.
+- Do not expose patient demographics or appointment details through unauthorized search results.
+- Preserve existing list behavior when search parameters are omitted.
+- Document the supported parameters and response contract in OpenAPI and project documentation.
+
+Do not add unsupported search fields merely because they would be convenient in the UI. Follow actual schema capabilities.
+
+## Stage 3 — Frontend Integration
+
+Update `/appointments/` to use the server-side search contract.
+
+Implement:
+- Search across all pages.
+- Combined filters with clear/reset behavior.
+- Stable pagination and sorting.
+- Loading, empty, validation, and recoverable error states.
+- Protection against stale responses when users change filters quickly.
+- Debouncing where appropriate.
+- Safe rendering of user-provided search results.
+- Accessible Arabic RTL controls and usable mobile layouts.
+
+Do not add fake appointments, hardcoded tenant data, or fabricated reference values.
+
+## Stage 4 — Scheduling Timezone Contract
+
+Resolve how the API exposes the effective facility timezone.
+
+- Use the existing scheduling policy as the source of truth when it defines the facility timezone.
+- Provide an authorized, tenant-scoped way for the UI to obtain the effective timezone without granting access to unrelated policy-management data.
+- Ensure date filtering and displayed appointment times use an explicitly documented timezone contract.
+- Handle daylight-saving transitions using IANA timezone identifiers where applicable.
+- Avoid silently interpreting ambiguous local timestamps as UTC.
+- Keep booking, rescheduling, policy enforcement, and display semantics consistent.
+- If no active policy defines a timezone, expose that state explicitly instead of inventing a default business policy.
+
+Add tests for timezone conversion, date boundaries, and relevant daylight-saving cases.
+
+## Stage 5 — API and Data Integrity
+
+Verify that search and filtering do not weaken:
+- Tenant isolation.
+- Facility/branch access scope.
+- Appointment read permissions.
+- Existing optimistic concurrency and scheduling locks.
+- Idempotency behavior.
+- Audit and security event rules.
+
+Do not change appointment overlap or locking semantics unless a test exposes a specific defect. If a defect is found, fix it and add regression coverage.
+
+## Stage 6 — Automated Verification
+
+Add or update tests covering:
+- Search matches on later pages.
+- Combined filters and pagination.
+- Invalid and oversized query parameters.
+- Empty results.
+- Cross-tenant isolation.
+- Facility/branch restrictions.
+- Permission-denied requests.
+- Timezone-aware date ranges.
+- Daylight-saving boundaries where applicable.
+- Frontend request races and filter resets where existing test infrastructure supports them.
+- Regression of existing appointment creation, rescheduling, cancellation, and policy behavior.
+
+Run the full existing test suite, disposable database integration tests, type-check, lint, formatting, build, JavaScript syntax checks, and `git diff --check` where available.
+
+Fix failures caused by this implementation and rerun the relevant checks.
+
+## Stage 7 — Runtime Verification
+
+Restart the configured development application and verify the search API and signed-out workspace behavior.
+
+If a central database connection is unavailable, report the limitation clearly. Use only disposable test databases for integration tests. Do not connect to production to make the preview work.
+
+Do not bypass authentication, disable guards, or create fake production-like sessions.
+
+## Stage 8 — Final Review
+
+Review the final diff for tenant-isolation regressions, unsafe query construction, accidental secret exposure, generated artifacts, and unrelated changes.
+
+Preserve existing user modifications and untracked specification attachments. Do not stage, commit, rewrite history, deploy, or run production migrations.
+
+## Completion Report
+
+Report:
+1. Implemented API and UI changes.
+2. Actual search fields and filtering semantics.
+3. Timezone contract and behavior when no active policy exists.
+4. Tests executed and exact results.
+5. Runtime verification and any environment limitations.
+6. Remaining known risks or unresolved decisions.
+
+Do not claim completion for a check that was not actually run.

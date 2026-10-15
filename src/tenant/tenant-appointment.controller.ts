@@ -43,6 +43,7 @@ import { TenantContextGuard } from './tenant-context.guard';
 import { TenantAuthorizationGuard } from './tenant-authorization.guard';
 import {
   appointmentIdSchema,
+  appointmentEffectiveTimeZonesQuerySchema,
   createAppointmentSchema,
   listAppointmentsQuerySchema,
   rescheduleAppointmentSchema,
@@ -50,6 +51,7 @@ import {
 } from './appointment.dto';
 import type {
   CreateAppointmentInput,
+  AppointmentEffectiveTimeZonesQuery,
   ListAppointmentsQuery,
   RescheduleAppointmentInput,
   UpdateAppointmentInput,
@@ -58,6 +60,7 @@ import { AppointmentService } from './appointment.service';
 import { AppointmentInputValidationError } from './appointment.errors';
 import {
   AppointmentErrorResponseDto,
+  AppointmentEffectiveTimeZonesResponseDto,
   AppointmentListResponseDto,
   AppointmentResponseDto,
   CreateAppointmentRequestDto,
@@ -114,26 +117,64 @@ export class TenantAppointmentController {
   @ApiOperation({
     summary: 'List appointments in the trusted tenant and staff location scope',
     description:
-      'The from/to range returns appointments that overlap the half-open interval [from, to).',
+      'Search and filters apply across all accessible tenant results before pagination. Non-UUID patient search and patientId filtering require tenant.patients.read; appointment results never include patient demographics. Date-only filters use the active timezone policy for the required facility and include the whole local calendar day.',
   })
   @ApiQuery({ name: 'from', required: false, type: String, format: 'date-time' })
   @ApiQuery({ name: 'to', required: false, type: String, format: 'date-time' })
+  @ApiQuery({ name: 'fromDate', required: false, type: String, format: 'date' })
+  @ApiQuery({ name: 'toDate', required: false, type: String, format: 'date' })
+  @ApiQuery({
+    name: 'search',
+    required: false,
+    type: String,
+    maxLength: 128,
+    description:
+      'UUIDs search appointment/reference IDs; text searches patient-directory fields and requires tenant.patients.read.',
+  })
   @ApiQuery({ name: 'doctorId', required: false, type: String, format: 'uuid' })
   @ApiQuery({ name: 'facilityId', required: false, type: String, format: 'uuid' })
   @ApiQuery({ name: 'branchId', required: false, type: String, format: 'uuid' })
   @ApiQuery({ name: 'patientId', required: false, type: String, format: 'uuid' })
+  @ApiQuery({ name: 'serviceId', required: false, type: String, format: 'uuid' })
   @ApiQuery({ name: 'status', required: false, enum: ['SCHEDULED', 'CANCELLED'] })
   @ApiQuery({ name: 'limit', required: false, type: Number, minimum: 1, maximum: 100 })
-  @ApiQuery({ name: 'offset', required: false, type: Number, minimum: 0 })
+  @ApiQuery({ name: 'offset', required: false, type: Number, minimum: 0, maximum: 100_000 })
   @ApiOkResponse({ type: AppointmentListResponseDto })
   @ApiBadRequestResponse({ type: AppointmentErrorResponseDto })
   @ApiForbiddenResponse({ type: AppointmentErrorResponseDto })
+  @ApiUnprocessableEntityResponse({ type: AppointmentErrorResponseDto })
   @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
   list(
     @CurrentTenantContext() context: TrustedTenantContext,
     @Query(new ZodValidationPipe(listAppointmentsQuerySchema)) query: ListAppointmentsQuery,
   ): ReturnType<AppointmentService['list']> {
     return this.appointments.list(context, query);
+  }
+
+  @Get('appointments/effective-time-zones')
+  @RequireTenantPermissions('tenant.appointments.read')
+  @ApiOperation({
+    summary: 'Read effective facility time zones for appointment display and date filtering',
+    description:
+      'Returns only each requested facility ID and its active policy timezone; policy rules and revisions are not exposed.',
+  })
+  @ApiQuery({
+    name: 'facilityIds',
+    required: true,
+    type: String,
+    description: 'Comma-separated facility UUIDs; maximum 20.',
+  })
+  @ApiOkResponse({ type: AppointmentEffectiveTimeZonesResponseDto })
+  @ApiBadRequestResponse({ type: AppointmentErrorResponseDto })
+  @ApiForbiddenResponse({ type: AppointmentErrorResponseDto })
+  @ApiNotFoundResponse({ type: AppointmentErrorResponseDto })
+  @ApiUnauthorizedResponse({ description: 'Platform authentication is required' })
+  effectiveTimeZones(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Query(new ZodValidationPipe(appointmentEffectiveTimeZonesQuerySchema))
+    query: AppointmentEffectiveTimeZonesQuery,
+  ): ReturnType<AppointmentService['effectiveTimeZones']> {
+    return this.appointments.effectiveTimeZones(context, query.facilityIds);
   }
 
   @Get('appointments/:appointmentId')

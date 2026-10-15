@@ -87,6 +87,39 @@ export class FacilitySchedulingPolicyService {
     private readonly audit: PlatformAuditService,
   ) {}
 
+  /**
+   * Exposes only the active policy timezone for appointment date conversion.
+   * Policy rules and revision data remain behind policy-management routes.
+   */
+  async effectiveTimeZone(
+    context: TrustedTenantContext,
+    facilityId: string,
+  ): Promise<string | null> {
+    const tenantId = this.tenantId(context);
+    const facility = this.facilityId(facilityId);
+    const policy = await this.read(() => this.policies.findActiveByFacility(tenantId, facility));
+    if (!policy) return null;
+    if (!isValidIanaTimeZone(policy.timeZone)) throw new SchedulingPolicyUnavailableError();
+    return policy.timeZone;
+  }
+
+  async effectiveTimeZones(
+    context: TrustedTenantContext,
+    facilityIds: string[],
+  ): Promise<Map<string, string>> {
+    const tenantId = this.tenantId(context);
+    const facilities = [...new Set(facilityIds)].map((facilityId) => this.facilityId(facilityId));
+    const policies = await this.read(() =>
+      this.policies.findActiveTimeZonesByFacilities(tenantId, facilities),
+    );
+    const timeZones = new Map<string, string>();
+    for (const policy of policies) {
+      if (!isValidIanaTimeZone(policy.timeZone)) throw new SchedulingPolicyUnavailableError();
+      timeZones.set(policy.facilityId, policy.timeZone);
+    }
+    return timeZones;
+  }
+
   async get(
     context: TrustedTenantContext,
     facilityId: string,

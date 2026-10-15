@@ -2,6 +2,7 @@
   'use strict';
 
   const api = window.ThanarahApi;
+  const timezone = window.ThanarahTimezone;
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRegion = document.getElementById('toast-region');
@@ -19,7 +20,7 @@
     policyManage: 'tenant.appointments.policy.manage',
   };
   const PAGE_SIZE = 20;
-  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || 'المنطقة الزمنية للجهاز';
+  const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
   const state = {
     screen: 'boot',
     workspaces: [],
@@ -37,6 +38,7 @@
       facilityId: '',
       doctorId: '',
       branchId: '',
+      serviceId: '',
     },
     patients: [],
     doctors: [],
@@ -46,6 +48,8 @@
     resourceErrors: {},
     listError: null,
     listLoading: false,
+    timeZones: {},
+    timeZoneError: null,
     policy: null,
     policyLoaded: false,
     policyHistory: [],
@@ -55,6 +59,8 @@
     policyFacilityId: '',
     workspaceEpoch: 0,
     listRequestId: 0,
+    listTimeZoneRequestId: 0,
+    timeZoneRequestId: 0,
     policyRequestId: 0,
     detailRequestId: 0,
     filterBranchRequestId: 0,
@@ -128,48 +134,63 @@
     })[status] ||
     status ||
     'غير محدد';
-  const formatTime = (stamp) => {
+  const timeZoneFor = (facilityId) => {
+    const policyZone = facilityId && state.timeZones[String(facilityId)];
+    return (policyZone && policyZone.timeZone) || browserZone;
+  };
+  const timeZoneLabel = (facilityId) => {
+    const zone = facilityId && state.timeZones[String(facilityId)];
+    if (zone && zone.status === 'ACTIVE_POLICY') return `توقيت المنشأة · ${zone.timeZone}`;
+    if (zone && zone.status === 'NO_ACTIVE_POLICY')
+      return browserZone
+        ? `لا توجد سياسة نشطة · توقيت الجهاز · ${browserZone}`
+        : 'لا توجد سياسة نشطة، والمنطقة الزمنية غير متاحة';
+    if (state.timeZoneError) return 'تعذّر تحميل المنطقة الزمنية';
+    return browserZone ? `توقيت الجهاز · ${browserZone}` : 'المنطقة الزمنية غير متاحة';
+  };
+  const formatTime = (stamp, facilityId) => {
     if (!stamp) return '—';
     const date = new Date(stamp);
     if (Number.isNaN(date.getTime())) return String(stamp);
-    return new Intl.DateTimeFormat('ar', {
-      year: 'numeric',
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: browserZone,
-    }).format(date);
+    const timeZone = timeZoneFor(facilityId);
+    if (!timeZone) return 'المنطقة الزمنية غير متاحة';
+    try {
+      return new Intl.DateTimeFormat('ar', {
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone,
+      }).format(date);
+    } catch (_) {
+      return 'المنطقة الزمنية غير متاحة';
+    }
   };
-  const formatCompactTime = (stamp) => {
+  const formatCompactTime = (stamp, facilityId) => {
     if (!stamp) return '—';
     const date = new Date(stamp);
     if (Number.isNaN(date.getTime())) return String(stamp);
-    return new Intl.DateTimeFormat('ar', {
-      hour: '2-digit',
-      minute: '2-digit',
-      timeZone: browserZone,
-    }).format(date);
+    const timeZone = timeZoneFor(facilityId);
+    if (!timeZone) return 'المنطقة الزمنية غير متاحة';
+    try {
+      return new Intl.DateTimeFormat('ar', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone,
+      }).format(date);
+    } catch (_) {
+      return 'المنطقة الزمنية غير متاحة';
+    }
   };
-  const localInputValue = (stamp) => {
-    if (!stamp) return '';
-    const date = new Date(stamp);
-    if (Number.isNaN(date.getTime())) return '';
-    const adjusted = new Date(date.getTime() - date.getTimezoneOffset() * 60000);
-    return adjusted.toISOString().slice(0, 16);
-  };
-  const toIso = (localValue) => {
-    const parsed = new Date(localValue);
-    if (!localValue || Number.isNaN(parsed.getTime())) return null;
-    return parsed.toISOString();
-  };
-  const localDateBoundary = (value, dayOffset) => {
-    if (!value) return undefined;
-    const parts = value.split('-').map(Number);
-    if (parts.length !== 3 || parts.some((part) => !Number.isInteger(part))) return undefined;
-    const [year, month, day] = parts;
-    const date = new Date(year, month - 1, day + dayOffset, 0, 0, 0, 0);
-    return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
+  const localInputValue = (stamp, facilityId) =>
+    stamp && timezone && timeZoneFor(facilityId)
+      ? timezone.instantToLocalInput(stamp, timeZoneFor(facilityId))
+      : '';
+  const toIso = (localValue, facilityId) => {
+    const zone = timeZoneFor(facilityId);
+    if (!localValue || !timezone || !zone) return null;
+    return timezone.localDateTimeToIso(localValue, zone);
   };
   const icon = (name) => {
     const icons = {
@@ -209,7 +230,10 @@
       facilityId: '',
       doctorId: '',
       branchId: '',
+      serviceId: '',
     };
+    state.timeZones = {};
+    state.timeZoneError = null;
     state.patients = [];
     state.doctors = [];
     state.facilities = [];
@@ -355,13 +379,56 @@
     return {
       limit: PAGE_SIZE,
       offset: state.offset,
-      from: localDateBoundary(filters.from, 0),
-      to: localDateBoundary(filters.to, 1),
+      fromDate: filters.from || undefined,
+      toDate: filters.to || undefined,
+      search: filters.search || undefined,
       status: filters.status || undefined,
       facilityId: filters.facilityId || undefined,
       doctorId: filters.doctorId || undefined,
       branchId: filters.branchId || undefined,
+      serviceId: filters.serviceId || undefined,
     };
+  }
+
+  async function fetchEffectiveTimeZones(facilityIds) {
+    const unique = [...new Set(facilityIds.filter(Boolean).map(String))];
+    const batches = [];
+    for (let index = 0; index < unique.length; index += 20) {
+      batches.push(unique.slice(index, index + 20));
+    }
+    const responses = await Promise.all(
+      batches.map((batch) => api.getAppointmentTimeZones(state.workspace.tenantId, batch)),
+    );
+    return responses.flatMap(itemList);
+  }
+
+  async function ensureFacilityTimeZone(facilityId, forceRefresh) {
+    if (!facilityId) throw new Error('اختر منشأة قبل إدخال وقت محلي.');
+    const key = String(facilityId);
+    const previous = state.timeZones[key];
+    if (previous && !forceRefresh) return previous;
+    const epoch = state.workspaceEpoch;
+    const requestId = ++state.timeZoneRequestId;
+    const zones = await fetchEffectiveTimeZones([key]);
+    if (epoch !== state.workspaceEpoch) throw new Error('تغيّرت مساحة العمل أثناء تحميل المنطقة الزمنية.');
+    if (requestId !== state.timeZoneRequestId && state.timeZones[key])
+      return state.timeZones[key];
+    const result = zones.find((item) => String(item.facilityId) === key);
+    if (!result) throw new Error('تعذّر التحقق من المنطقة الزمنية لهذه المنشأة.');
+    state.timeZones = { ...state.timeZones, [key]: result };
+    state.timeZoneError = null;
+    const note = document.getElementById('appointment-timezone-note');
+    if (note) note.textContent = timeZoneLabel(key);
+    if (
+      previous &&
+      forceRefresh &&
+      (previous.timeZone !== result.timeZone || previous.status !== result.status)
+    ) {
+      throw new Error(
+        'تغيّرت المنطقة الزمنية النشطة للمنشأة. راجع الوقت المحلي الظاهر ثم أعد الإرسال.',
+      );
+    }
+    return result;
   }
 
   async function loadAppointments() {
@@ -378,6 +445,42 @@
       state.total = Number.isFinite(response.total) ? response.total : state.appointments.length;
       state.offset = Number.isFinite(response.offset) ? response.offset : state.offset;
       state.hasNext = !!response.hasNext;
+      state.timeZoneError = null;
+      state.timeZones = {};
+      const timeZoneRequestId = ++state.listTimeZoneRequestId;
+      const facilityIds = [
+        ...new Set([
+          ...state.appointments.map((item) => item.facilityId).filter(Boolean),
+          state.filters.facilityId,
+        ]),
+      ];
+      if (facilityIds.length) {
+        try {
+          const zones = await fetchEffectiveTimeZones(facilityIds);
+          if (
+            epoch !== state.workspaceEpoch ||
+            requestId !== state.listRequestId ||
+            timeZoneRequestId !== state.listTimeZoneRequestId
+          )
+            return;
+          state.timeZones = {
+            ...state.timeZones,
+            ...Object.fromEntries(zones.map((item) => [String(item.facilityId), item])),
+          };
+        } catch (error) {
+          if (
+            epoch !== state.workspaceEpoch ||
+            requestId !== state.listRequestId ||
+            timeZoneRequestId !== state.listTimeZoneRequestId
+          )
+            return;
+          state.timeZoneError = error;
+          if (error.status === 401) {
+            expireSession();
+            return;
+          }
+        }
+      }
       state.listLoading = false;
     } catch (error) {
       if (epoch !== state.workspaceEpoch || requestId !== state.listRequestId) return;
@@ -607,7 +710,7 @@
         <section class="main-area">
           <header class="topbar">
             <div class="breadcrumbs"><span>العمليات</span><span aria-hidden="true"> / </span><strong>${state.view === 'policy' ? 'سياسة الجدولة' : 'المواعيد'}</strong></div>
-            <div class="top-actions"><span class="zone-label">الأوقات معروضة بتوقيت جهازك · ${escapeHtml(browserZone)}</span><span class="user-chip">${escapeHtml(state.workspace.displayName || state.workspace.slug || 'مساحة العمل')}</span><div class="mobile-session-actions"><button type="button" data-action="switch-workspace">تبديل</button><button type="button" data-action="logout">خروج</button></div></div>
+            <div class="top-actions"><span class="zone-label">الأوقات حسب سياسة كل منشأة عند توفرها، وإلا توقيت الجهاز${browserZone ? ` · ${escapeHtml(browserZone)}` : ''}</span><span class="user-chip">${escapeHtml(state.workspace.displayName || state.workspace.slug || 'مساحة العمل')}</span><div class="mobile-session-actions"><button type="button" data-action="switch-workspace">تبديل</button><button type="button" data-action="logout">خروج</button></div></div>
           </header>
           <div class="page-content" id="page-content"></div>
         </section>
@@ -620,7 +723,7 @@
     const countLabel = state.listLoading
       ? 'جارٍ تحديث النتائج…'
       : state.filters.search
-        ? `${filterCurrentPageAppointments().length.toLocaleString('ar')} تطابق في الصفحة · ${state.total.toLocaleString('ar')} ضمن المرشحات`
+        ? `${state.total.toLocaleString('ar')} نتيجة مطابقة عبر النتائج المتاحة`
         : `${state.total.toLocaleString('ar')} موعد`;
     content.innerHTML = `
       <div class="page-heading">
@@ -629,27 +732,35 @@
       </div>
       ${filterMarkup()}
       <section aria-label="قائمة المواعيد">
-        <div class="list-status"><span>${countLabel}</span><span>${escapeHtml(browserZone)} · توقيت الجهاز</span></div>
+        <div class="list-status"><span>${countLabel}</span><span>${escapeHtml(state.filters.facilityId ? timeZoneLabel(state.filters.facilityId) : 'توقيت كل منشأة حسب سياستها')}</span></div>
         <div class="records">${recordsMarkup()}</div>
       </section>`;
   }
 
   function filterMarkup() {
     const f = state.filters;
+    const searchPlaceholder = permission(PERMISSIONS.patientsRead)
+      ? 'اسم المريض أو رقم الملف أو معرّف الموعد'
+      : 'معرّف الموعد أو معرّف مرجع مرتبط';
+    const localDateNote = f.facilityId
+      ? timeZoneLabel(f.facilityId)
+      : 'اختر منشأة لتفسير التاريخ حسب منطقتها الزمنية.';
     return `
       <form id="filter-form">
         <div class="filters-panel">
-          <div class="field search-field"><label for="filter-search">بحث في الصفحة الحالية</label><input id="filter-search" name="search" class="control" type="search" value="${escapeHtml(f.search)}" placeholder="اسم مسموح أو معرّف الموعد" autocomplete="off"></div>
+          <div class="field search-field"><label for="filter-search">بحث في المواعيد</label><input id="filter-search" name="search" class="control" type="search" maxlength="128" value="${escapeHtml(f.search)}" placeholder="${escapeHtml(searchPlaceholder)}" autocomplete="off"></div>
           <div class="field"><label for="filter-status">الحالة</label><select id="filter-status" name="status" class="control"><option value="">كل الحالات</option>${['SCHEDULED', 'CANCELLED'].map((v) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${statusLabel(v)}</option>`).join('')}</select></div>
           ${permission(PERMISSIONS.facilitiesRead) ? `<div class="field"><label for="filter-facility">المنشأة</label><select id="filter-facility" name="facilityId" class="control"><option value="">كل المنشآت</option>${state.facilities.map((item) => `<option value="${escapeHtml(item.id)}" ${String(f.facilityId) === String(item.id) ? 'selected' : ''}>${escapeHtml(humanName(item))}</option>`).join('')}</select></div>` : ''}
           ${permission(PERMISSIONS.doctorsRead) ? `<div class="field"><label for="filter-doctor">الممارس</label><select id="filter-doctor" name="doctorId" class="control"><option value="">كل الممارسين</option>${state.doctors.map((item) => `<option value="${escapeHtml(item.id)}" ${String(f.doctorId) === String(item.id) ? 'selected' : ''}>${escapeHtml(humanName(item))}</option>`).join('')}</select></div>` : ''}
           ${permission(PERMISSIONS.branchesRead) && permission(PERMISSIONS.facilitiesRead) ? `<div class="field"><label for="filter-branch">الفرع</label><select id="filter-branch" name="branchId" class="control" ${!f.facilityId || !state.branches.length ? 'disabled' : ''}><option value="">${f.facilityId ? (state.branches.length ? 'كل الفروع' : 'اختر منشأة ثم حمّل الفروع') : 'اختر منشأة أولًا'}</option>${state.branches.map((item) => `<option value="${escapeHtml(item.id)}" ${String(f.branchId) === String(item.id) ? 'selected' : ''}>${escapeHtml(humanName(item))}</option>`).join('')}</select></div>` : ''}
+          ${permission(PERMISSIONS.servicesRead) ? `<div class="field"><label for="filter-service">الخدمة</label><select id="filter-service" name="serviceId" class="control"><option value="">كل الخدمات</option>${state.services.map((item) => `<option value="${escapeHtml(item.id)}" ${String(f.serviceId) === String(item.id) ? 'selected' : ''}>${escapeHtml(humanName(item))}</option>`).join('')}</select></div>` : ''}
           <div class="filter-actions"><button class="btn btn-secondary btn-small" type="submit">تطبيق</button><button class="btn btn-quiet btn-small" type="button" data-action="clear-filters">مسح</button></div>
         </div>
         <div class="date-range">
           <div class="field"><label for="filter-from">من تاريخ</label><input id="filter-from" name="from" class="control" type="date" value="${escapeHtml(f.from)}"></div>
           <div class="field"><label for="filter-to">إلى تاريخ</label><input id="filter-to" name="to" class="control" type="date" value="${escapeHtml(f.to)}"></div>
         </div>
+        <p class="form-note" id="filter-timezone-note">${escapeHtml(localDateNote)}</p>
       </form>`;
   }
 
@@ -661,8 +772,7 @@
     const appointments = filterCurrentPageAppointments();
     if (!appointments.length) {
       const filtered = Object.values(state.filters).some(Boolean);
-      const searchOnly = !!state.filters.search && state.appointments.length > 0;
-      return `<div class="empty-state"><div class="empty-mark">${icon('empty')}</div><h2>${searchOnly ? 'لا توجد نتائج مطابقة في هذه الصفحة' : filtered ? 'لا توجد نتائج مطابقة' : 'لا توجد مواعيد لعرضها'}</h2><p>${searchOnly ? 'يبحث هذا الحقل ضمن الصفحة المحمّلة فقط. استخدم التنقل بين الصفحات للبحث في نتائج أخرى.' : filtered ? 'عدّل المرشحات أو امسحها لعرض النتائج المتاحة.' : 'ستظهر المواعيد هنا عندما تكون متاحة ضمن نطاق وصولك.'}</p>${filtered ? '<button class="btn btn-secondary btn-small" type="button" data-action="clear-filters">مسح المرشحات</button>' : ''}</div>`;
+      return `<div class="empty-state"><div class="empty-mark">${icon('empty')}</div><h2>${filtered ? 'لا توجد نتائج مطابقة' : 'لا توجد مواعيد لعرضها'}</h2><p>${filtered ? 'عدّل المرشحات أو امسحها لعرض النتائج المتاحة ضمن نطاق وصولك.' : 'ستظهر المواعيد هنا عندما تكون متاحة ضمن نطاق وصولك.'}</p>${filtered ? '<button class="btn btn-secondary btn-small" type="button" data-action="clear-filters">مسح المرشحات</button>' : ''}</div>`;
     }
     const table = `
       <div class="table-wrap"><table class="appointments-table">
@@ -672,7 +782,7 @@
             (item) => `
           <tr>
             <td><span class="patient-name">${escapeHtml(patientLabel(item))}</span></td>
-            <td><span class="time-primary">${escapeHtml(formatTime(item.startsAt))}</span><span class="time-secondary">${escapeHtml(formatCompactTime(item.startsAt))} – ${escapeHtml(formatCompactTime(item.endsAt))}</span></td>
+            <td><span class="time-primary">${escapeHtml(formatTime(item.startsAt, item.facilityId))}</span><span class="time-secondary">${escapeHtml(formatCompactTime(item.startsAt, item.facilityId))} – ${escapeHtml(formatCompactTime(item.endsAt, item.facilityId))}</span><small class="time-zone-note">${escapeHtml(timeZoneLabel(item.facilityId))}</small></td>
             <td>${escapeHtml(authorizedLabel(state.doctors, item.doctorId, PERMISSIONS.doctorsRead, 'بيانات الممارس غير متاحة'))}</td>
             <td>${escapeHtml(authorizedLabel(state.facilities, item.facilityId, PERMISSIONS.facilitiesRead, 'بيانات المنشأة غير متاحة'))}</td>
             <td><span class="status-pill" data-status="${escapeHtml(item.status)}">${escapeHtml(statusLabel(item.status))}</span></td>
@@ -692,24 +802,7 @@
   }
 
   function filterCurrentPageAppointments() {
-    const query = String(state.filters.search || '')
-      .trim()
-      .toLocaleLowerCase();
-    if (!query) return state.appointments;
-    return state.appointments.filter((item) => {
-      const searchable = [
-        item.id,
-        statusLabel(item.status),
-        formatTime(item.startsAt),
-        permission(PERMISSIONS.patientsRead) ? patientLabel(item) : '',
-        authorizedLabel(state.doctors, item.doctorId, PERMISSIONS.doctorsRead, ''),
-        authorizedLabel(state.facilities, item.facilityId, PERMISSIONS.facilitiesRead, ''),
-      ]
-        .filter(Boolean)
-        .join(' ')
-        .toLocaleLowerCase();
-      return searchable.includes(query);
-    });
+    return state.appointments;
   }
 
   function renderPolicy() {
@@ -946,8 +1039,13 @@
       : reschedule
         ? 'اختر وقتًا جديدًا؛ ستتحقق الخدمة من قواعد الجدولة.'
         : 'أدخل البيانات المطلوبة. ستُراجع المراجع والتوفر من قبل الخدمة.';
-    const prefillStart = appointment ? localInputValue(appointment.startsAt) : '';
-    const prefillEnd = appointment ? localInputValue(appointment.endsAt) : '';
+    const appointmentFacilityId = appointment && appointment.facilityId;
+    const prefillStart = appointment
+      ? localInputValue(appointment.startsAt, appointmentFacilityId)
+      : '';
+    const prefillEnd = appointment
+      ? localInputValue(appointment.endsAt, appointmentFacilityId)
+      : '';
     const missingCreatePermission =
       !permission(PERMISSIONS.patientsRead) ||
       !permission(PERMISSIONS.doctorsRead) ||
@@ -979,14 +1077,14 @@
         ${resourceSelect('serviceId', 'الخدمة', state.services, false, permission(PERMISSIONS.servicesRead), state.resourceErrors.services)}
         <div class="field"><label for="startsAt">بداية الموعد</label><input class="control" id="startsAt" name="startsAt" type="datetime-local" required></div>
         <div class="field"><label for="endsAt">نهاية الموعد</label><input class="control" id="endsAt" name="endsAt" type="datetime-local" required></div>
-        <div class="notice span-all">الأوقات المدخلة حسب توقيت جهازك (${escapeHtml(browserZone)}). سياسة المنشأة، إن كانت مهيأة، هي المرجع النهائي لقبول الموعد.</div>
+        <div class="notice span-all" id="appointment-timezone-note">${escapeHtml(browserZone ? `اختر المنشأة لتحميل منطقتها الزمنية. عند غياب سياسة نشطة، سيُستخدم توقيت الجهاز ${browserZone} ويظهر ذلك بوضوح.` : 'لا تتوفر منطقة زمنية من سياسة المنشأة أو الجهاز.')}</div>
         <div class="field span-all"><label for="reason">سبب الموعد (اختياري)</label><textarea class="control" id="reason" name="reason" rows="2"></textarea></div>`;
     } else if (editing) {
       fields = `<div class="field span-all"><label for="reason">سبب الموعد</label><textarea class="control" id="reason" name="reason" rows="3" placeholder="يمكن تركه فارغًا لإزالة السبب">${escapeHtml(appointment.reason || '')}</textarea><small class="form-note">تحديث غير متعلق بالجدولة؛ لن تتغير المواعيد أو المراجع.</small></div>`;
     } else {
       fields = `<div class="field"><label for="startsAt">البداية الجديدة</label><input class="control" id="startsAt" name="startsAt" type="datetime-local" value="${escapeHtml(prefillStart)}" required></div>
         <div class="field"><label for="endsAt">النهاية الجديدة</label><input class="control" id="endsAt" name="endsAt" type="datetime-local" value="${escapeHtml(prefillEnd)}" required></div>
-        <div class="notice span-all">تُرسل الأوقات بصيغة ISO مع إزاحة المنطقة الزمنية للجهاز (${escapeHtml(browserZone)}). سياسة المنشأة هي المرجع في قبول الوقت.</div>`;
+        <div class="notice span-all" id="appointment-timezone-note">${escapeHtml(timeZoneLabel(appointmentFacilityId))}. الوقت المحلي يحوّل إلى لحظة محددة حسب هذه المنطقة.</div>`;
     }
     return `<div class="dialog-header"><div><h2 id="dialog-title">${title}</h2><p>${description}</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="إغلاق">×</button></div>
       <div class="dialog-body"><form id="appointment-form" data-kind="${kind}" ${kind === 'create' ? 'data-idempotency=""' : ''}>
@@ -1063,11 +1161,11 @@
         ),
       ],
       ['الحالة', statusLabel(a.status)],
-      ['البداية', formatTime(a.startsAt)],
-      ['النهاية', formatTime(a.endsAt)],
-      ['أُنشئ في', formatTime(a.createdAt)],
-      ['آخر تحديث', formatTime(a.updatedAt)],
-      ...(a.cancelledAt ? [['أُلغي في', formatTime(a.cancelledAt)]] : []),
+      ['البداية', formatTime(a.startsAt, a.facilityId)],
+      ['النهاية', formatTime(a.endsAt, a.facilityId)],
+      ['أُنشئ في', formatTime(a.createdAt, a.facilityId)],
+      ['آخر تحديث', formatTime(a.updatedAt, a.facilityId)],
+      ...(a.cancelledAt ? [['أُلغي في', formatTime(a.cancelledAt, a.facilityId)]] : []),
       ['سبب الموعد', a.reason || '—'],
       ['معرّف الموعد', a.id],
     ];
@@ -1086,7 +1184,7 @@
       .join('');
     showModal(`<div class="dialog-header"><div><h2 id="dialog-title">تفاصيل الموعد</h2><p>${escapeHtml(a.id || '')} · ${escapeHtml(statusLabel(a.status))}</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="إغلاق">×</button></div>
       <div class="dialog-body"><div class="detail-grid">${details.map(([label, value]) => `<div class="detail-item"><small>${escapeHtml(label)}</small><strong>${escapeHtml(value)}</strong></div>`).join('')}</div>
-        <p class="form-note" style="margin:12px 0 0">الأوقات بتوقيت جهازك: ${escapeHtml(browserZone)}. الحالة والتغييرات تُحسم بواسطة الخدمة.</p>
+        <p class="form-note" style="margin:12px 0 0">${escapeHtml(timeZoneLabel(a.facilityId))}. الحالة والتغييرات تُحسم بواسطة الخدمة.</p>
         ${controls ? `<div class="detail-actions">${controls}</div>` : '<p class="form-note" style="margin-top:15px">لا توجد إجراءات متاحة على هذا الموعد ضمن صلاحياتك أو حالته الحالية.</p>'}
       </div>`);
     const dialog = modalRoot.querySelector('[role="dialog"]');
@@ -1126,12 +1224,16 @@
         if (!form.dataset.idempotency) form.dataset.idempotency = randomIdempotencyKey();
         const patientId = String(data.get('patientId') || '');
         if (!patientId) throw new Error('ابحث عن مريض واختره قبل إنشاء الموعد.');
+        const facilityId = String(data.get('facilityId') || '');
+        const zone = await ensureFacilityTimeZone(facilityId, true);
+        const inputTimeZone = zone.timeZone || browserZone;
+        if (!inputTimeZone) throw new Error('لا توجد منطقة زمنية صالحة للمنشأة أو الجهاز.');
         const input = {
           patientId,
           doctorId: String(data.get('doctorId') || ''),
-          facilityId: String(data.get('facilityId') || ''),
-          startsAt: toIso(data.get('startsAt')),
-          endsAt: toIso(data.get('endsAt')),
+          facilityId,
+          startsAt: toIso(data.get('startsAt'), facilityId),
+          endsAt: toIso(data.get('endsAt'), facilityId),
           reason: String(data.get('reason') || '').trim() || null,
         };
         if (data.get('branchId')) input.branchId = String(data.get('branchId'));
@@ -1152,8 +1254,11 @@
         const appointment = JSON.parse(
           modalRoot.querySelector('[role="dialog"]').dataset.appointment,
         );
-        const startsAt = toIso(data.get('startsAt'));
-        const endsAt = toIso(data.get('endsAt'));
+        const zone = await ensureFacilityTimeZone(appointment.facilityId, true);
+        if (!zone.timeZone && !browserZone)
+          throw new Error('لا توجد منطقة زمنية صالحة للمنشأة أو الجهاز.');
+        const startsAt = toIso(data.get('startsAt'), appointment.facilityId);
+        const endsAt = toIso(data.get('endsAt'), appointment.facilityId);
         if (!startsAt || !endsAt) throw new Error('أدخل وقت بداية ونهاية صالحين.');
         if (new Date(endsAt).getTime() <= new Date(startsAt).getTime()) {
           throw new Error('يجب أن يكون وقت النهاية بعد وقت البداية.');
@@ -1322,8 +1427,13 @@
       const data = new FormData(form);
       const from = String(data.get('from') || '');
       const to = String(data.get('to') || '');
+      const facilityId = String(data.get('facilityId') || '');
       if (from && to && from > to) {
         toast('يجب أن يكون تاريخ البداية قبل تاريخ النهاية أو مساويًا له.', true);
+        return;
+      }
+      if ((from || to) && !facilityId) {
+        toast('اختر منشأة قبل تطبيق مرشح التاريخ حتى يُستخدم توقيتها الصحيح.', true);
         return;
       }
       state.filters = {
@@ -1331,9 +1441,10 @@
         from,
         to,
         status: String(data.get('status') || ''),
-        facilityId: String(data.get('facilityId') || ''),
+        facilityId,
         doctorId: String(data.get('doctorId') || ''),
         branchId: String(data.get('branchId') || ''),
+        serviceId: String(data.get('serviceId') || ''),
       };
       state.offset = 0;
       await loadAppointments();
@@ -1375,6 +1486,7 @@
         facilityId: '',
         doctorId: '',
         branchId: '',
+        serviceId: '',
       };
       state.branches = [];
       state.offset = 0;
@@ -1419,6 +1531,16 @@
           JSON.stringify(appointment);
       }
       if (action === 'reschedule-appointment' && permission(PERMISSIONS.reschedule)) {
+        try {
+          await ensureFacilityTimeZone(appointment.facilityId, true);
+        } catch (error) {
+          if (error.status === 401) {
+            expireSession();
+            return;
+          }
+          toast(apiMessage(error), true);
+          return;
+        }
         showModal(appointmentFormMarkup('reschedule', appointment));
         modalRoot.querySelector('[role="dialog"]').dataset.appointment =
           JSON.stringify(appointment);
@@ -1466,6 +1588,34 @@
   const handleChange = async (event) => {
     const target = event.target;
     if (target.id === 'policy-facility' && target.value) await loadPolicy(target.value);
+    if (target.id === 'filter-facility') {
+      const facilityId = target.value;
+      state.filters.facilityId = facilityId;
+      state.filters.branchId = '';
+      const dateNote = app.querySelector('#filter-timezone-note');
+      if (!facilityId) {
+        state.filters.from = '';
+        state.filters.to = '';
+        const fromInput = app.querySelector('#filter-from');
+        const toInput = app.querySelector('#filter-to');
+        if (fromInput) fromInput.value = '';
+        if (toInput) toInput.value = '';
+        if (dateNote) dateNote.textContent = 'اختر منشأة لتفسير التاريخ حسب منطقتها الزمنية.';
+      } else {
+        if (dateNote) dateNote.textContent = 'جارٍ التحقق من المنطقة الزمنية للمنشأة…';
+        try {
+          await ensureFacilityTimeZone(facilityId);
+          if (dateNote) dateNote.textContent = timeZoneLabel(facilityId);
+        } catch (error) {
+          if (error.status === 401) {
+            expireSession();
+            return;
+          }
+          state.timeZoneError = error;
+          if (dateNote) dateNote.textContent = 'تعذّر التحقق من المنطقة الزمنية؛ لا تطبق مرشح التاريخ الآن.';
+        }
+      }
+    }
     if (target.id === 'filter-facility' && permission(PERMISSIONS.branchesRead)) {
       const branch = app.querySelector('#filter-branch');
       if (!branch) return;
@@ -1499,6 +1649,29 @@
         branch.innerHTML = '<option value="">تعذّر تحميل الفروع</option>';
         branch.disabled = true;
         toast(apiMessage(error), true);
+      }
+    }
+    if (target.id === 'facilityId' && target.closest('#appointment-form')) {
+      const facilityId = target.value;
+      const note = document.getElementById('appointment-timezone-note');
+      if (!facilityId) {
+        if (note)
+          note.textContent = browserZone
+            ? `اختر المنشأة لتحميل منطقتها الزمنية. عند غياب سياسة نشطة، سيُستخدم توقيت الجهاز ${browserZone}.`
+            : 'لا توجد منطقة زمنية صالحة للمنشأة أو الجهاز.';
+      } else {
+        if (note) note.textContent = 'جارٍ التحقق من المنطقة الزمنية للمنشأة…';
+        try {
+          await ensureFacilityTimeZone(facilityId);
+          if (note) note.textContent = timeZoneLabel(facilityId);
+        } catch (error) {
+          if (error.status === 401) {
+            expireSession();
+            return;
+          }
+          state.timeZoneError = error;
+          if (note) note.textContent = 'تعذّر التحقق من المنطقة الزمنية لهذه المنشأة.';
+        }
       }
     }
     if (target.id === 'facilityId' && target.closest('#appointment-form')) {

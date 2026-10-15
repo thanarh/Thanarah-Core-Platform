@@ -30,6 +30,7 @@ import type {
 } from './tenant-storage.registry';
 
 const APPOINTMENT_COLLECTION_NAME = 'appointments';
+const PATIENT_COLLECTION_NAME = 'patients';
 const SCHEDULE_LOCK_COLLECTION_NAME = 'appointment_schedule_locks';
 
 const REQUIRED_APPOINTMENT_INDEXES: ReadonlyArray<{
@@ -59,6 +60,10 @@ const REQUIRED_APPOINTMENT_INDEXES: ReadonlyArray<{
   {
     name: 'tenant_appointment_patient_starts_idx',
     key: { _tenantId: 1, patientId: 1, startsAt: 1, _id: 1 },
+  },
+  {
+    name: 'tenant_appointment_service_starts_idx',
+    key: { _tenantId: 1, serviceId: 1, startsAt: 1, _id: 1 },
   },
 ];
 
@@ -110,8 +115,108 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
     filter: AppointmentListFilter,
   ): Promise<AppointmentListResult> {
     const collection = await this.getCollection(context, route);
-    const query = this.buildListFilter(context.tenantId, filter);
+    const baseQuery = this.buildListFilter(context.tenantId, filter);
     try {
+      if (filter.search && !isUuid(filter.search) && filter.searchPatientRecords) {
+        const escapedSearch = new RegExp(escapeRegex(filter.search), 'i');
+        const patientSearchPipeline: Document[] = [
+          { $match: baseQuery },
+          {
+            $lookup: {
+              from: PATIENT_COLLECTION_NAME,
+              let: { patientId: '$patientId', tenantId: '$_tenantId' },
+              pipeline: [
+                {
+                  $match: {
+                    $expr: {
+                      $and: [
+                        { $eq: ['$_id', '$$patientId'] },
+                        { $eq: ['$_tenantId', '$$tenantId'] },
+                      ],
+                    },
+                  },
+                },
+                {
+                  $project: {
+                    patientNumber: 1,
+                    firstName: 1,
+                    middleName: 1,
+                    lastName: 1,
+                    preferredName: 1,
+                    phone: 1,
+                    email: 1,
+                    searchName: {
+                      $trim: {
+                        input: {
+                          $concat: [
+                            { $ifNull: ['$preferredName', '$firstName'] },
+                            ' ',
+                            { $ifNull: ['$middleName', ''] },
+                            ' ',
+                            { $ifNull: ['$lastName', ''] },
+                          ],
+                        },
+                      },
+                    },
+                  },
+                },
+              ],
+              as: '_patientSearch',
+            },
+          },
+          {
+            $match: {
+              $or: [
+                { '_patientSearch.patientNumber': escapedSearch },
+                { '_patientSearch.firstName': escapedSearch },
+                { '_patientSearch.middleName': escapedSearch },
+                { '_patientSearch.lastName': escapedSearch },
+                { '_patientSearch.preferredName': escapedSearch },
+                { '_patientSearch.searchName': escapedSearch },
+                { '_patientSearch.phone': escapedSearch },
+                { '_patientSearch.email': escapedSearch },
+              ],
+            },
+          },
+          { $sort: { startsAt: 1, _id: 1 } },
+          {
+            $facet: {
+              items: [
+                { $skip: filter.offset },
+                { $limit: filter.limit },
+                { $unset: '_patientSearch' },
+              ],
+              count: [{ $count: 'value' }],
+            },
+          },
+        ];
+        const [result] = await collection
+          .aggregate<{
+            items: AppointmentMongoDocument[];
+            count: Array<{ value: number }>;
+          }>(patientSearchPipeline)
+          .toArray();
+        const items = (result?.items ?? []).map(toAppointmentRecord);
+        const total = result?.count[0]?.value ?? 0;
+        return {
+          items,
+          limit: filter.limit,
+          offset: filter.offset,
+          total,
+          hasNext: filter.offset + items.length < total,
+        };
+      }
+      if (filter.search && !isUuid(filter.search)) {
+        return {
+          items: [],
+          limit: filter.limit,
+          offset: filter.offset,
+          total: 0,
+          hasNext: false,
+        };
+      }
+
+      const query = this.withAppointmentIdSearch(baseQuery, filter);
       const [documents, total] = await Promise.all([
         collection
           .find(query)
@@ -461,6 +566,7 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
     if (filter.facilityId) clauses.push({ facilityId: filter.facilityId });
     if (filter.branchId) clauses.push({ branchId: filter.branchId });
     if (filter.patientId) clauses.push({ patientId: filter.patientId });
+    if (filter.serviceId) clauses.push({ serviceId: filter.serviceId });
     if (filter.from || filter.to) {
       clauses.push({
         ...(filter.from ? { endsAt: { $gt: filter.from } } : {}),
@@ -481,6 +587,31 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
     }
     return clauses.length === 1 ? clauses[0] : { $and: clauses };
   }
+
+  private withAppointmentIdSearch(
+    baseQuery: Filter<AppointmentMongoDocument>,
+    filter: AppointmentListFilter,
+  ): Filter<AppointmentMongoDocument> {
+    if (!filter.search || !isUuid(filter.search)) return baseQuery;
+    const id = filter.search.toLowerCase();
+    const searchableIds: Filter<AppointmentMongoDocument>[] = [
+      { _id: id },
+      { doctorId: id },
+      { facilityId: id },
+      { branchId: id },
+      { serviceId: id },
+      ...(filter.searchPatientRecords ? [{ patientId: id }] : []),
+    ];
+    return { $and: [baseQuery, { $or: searchableIds }] };
+  }
+}
+
+function isUuid(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value);
+}
+
+function escapeRegex(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function hasRequiredIndexes(indexes: IndexDescription[]): boolean {

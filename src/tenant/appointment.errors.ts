@@ -12,6 +12,15 @@ export class AppointmentInputValidationError extends BadRequestException {
   }
 }
 
+export class AppointmentTimeZoneUnavailableError extends UnprocessableEntityException {
+  constructor() {
+    super({
+      code: 'APPOINTMENT_TIME_ZONE_UNAVAILABLE',
+      message: 'An active facility scheduling policy is required for local-date filtering',
+    });
+  }
+}
+
 export class AppointmentIdInvalidError extends BadRequestException {
   constructor() {
     super({ code: 'APPOINTMENT_ID_INVALID', message: 'Appointment ID is invalid' });

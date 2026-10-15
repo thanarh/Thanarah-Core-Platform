@@ -46,11 +46,14 @@ import { FacilityService } from './facility.service';
 import { BranchService } from './branch.service';
 import { ServiceCatalogService } from './service-catalog.service';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
+import { TenantAuthorizationService } from './tenant-authorization.service';
 import type {
   AppointmentSchedulingLock,
   LockedAppointmentStorage,
 } from './tenant-appointment.storage';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
+import { localDateRangeToUtc } from './appointment-timezone';
+import { AppointmentTimeZoneUnavailableError } from './appointment.errors';
 
 export interface AppointmentAuditContext {
   requestId?: string;
@@ -70,6 +73,7 @@ export class AppointmentService {
     private readonly services: ServiceCatalogService,
     private readonly staffScopes: TenantStaffScopeService,
     private readonly schedulingPolicies: FacilitySchedulingPolicyService,
+    private readonly tenantAuthorization: TenantAuthorizationService,
     private readonly audit: PlatformAuditService,
   ) {}
 
@@ -179,11 +183,80 @@ export class AppointmentService {
     if (!parsed.success) throw new AppointmentInputValidationError();
     const accessScope = await this.accessScope(context);
     this.assertQueryScope(accessScope, parsed.data);
-    const result = await this.appointments.list(context, {
+    if (parsed.data.patientId) {
+      await this.tenantAuthorization.authorize(context, 'tenant.patients.read');
+    }
+    let searchPatientRecords = false;
+    if (parsed.data.search) {
+      if (appointmentIdSchema.safeParse(parsed.data.search).success) {
+        const permissions = await this.tenantAuthorization.getEffectivePermissionCodes(context);
+        searchPatientRecords = permissions.includes('tenant.patients.read');
+      } else {
+        await this.tenantAuthorization.authorize(context, 'tenant.patients.read');
+        searchPatientRecords = true;
+      }
+    }
+    let from = parsed.data.from;
+    let to = parsed.data.to;
+    if (parsed.data.fromDate || parsed.data.toDate) {
+      const timeZone = await this.schedulingPolicies.effectiveTimeZone(
+        context,
+        parsed.data.facilityId!,
+      );
+      if (!timeZone) throw new AppointmentTimeZoneUnavailableError();
+      try {
+        const range = localDateRangeToUtc(parsed.data.fromDate, parsed.data.toDate, timeZone);
+        from = range.from;
+        to = range.to;
+      } catch {
+        throw new AppointmentInputValidationError();
+      }
+    }
+    const storageQuery = {
       ...parsed.data,
+      from,
+      to,
+      searchPatientRecords,
       accessScope,
-    });
+    };
+    delete storageQuery.fromDate;
+    delete storageQuery.toDate;
+    const result = await this.appointments.list(context, storageQuery);
     return { ...result, items: result.items.map((record) => this.present(record)) };
+  }
+
+  async effectiveTimeZones(
+    context: TrustedTenantContext,
+    facilityIds: string[],
+  ): Promise<{
+    items: Array<{
+      facilityId: string;
+      timeZone: string | null;
+      status: 'ACTIVE_POLICY' | 'NO_ACTIVE_POLICY';
+    }>;
+  }> {
+    const membershipScope = await this.staffScopes.resolveMembershipScope(context);
+    const uniqueFacilityIds = [...new Set(facilityIds)];
+    if (
+      membershipScope !== null &&
+      uniqueFacilityIds.some(
+        (facilityId) =>
+          !membershipScope.facilities.some((facility) => facility.id === facilityId) &&
+          !membershipScope.branches.some((branch) => branch.facilityId === facilityId),
+      )
+    ) {
+      throw new AppointmentScopeForbiddenError();
+    }
+    const timeZones = await this.schedulingPolicies.effectiveTimeZones(context, uniqueFacilityIds);
+    const items = uniqueFacilityIds.map((facilityId) => {
+      const timeZone = timeZones.get(facilityId) ?? null;
+      return {
+        facilityId,
+        timeZone,
+        status: timeZone ? ('ACTIVE_POLICY' as const) : ('NO_ACTIVE_POLICY' as const),
+      };
+    });
+    return { items };
   }
 
   async findById(

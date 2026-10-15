@@ -10,6 +10,7 @@ interface ThanarahApi {
     tenantId: string,
     options: Record<string, string | number | undefined>,
   ): Promise<unknown>;
+  getAppointmentTimeZones(tenantId: string, facilityIds: string[]): Promise<{ items: unknown[] }>;
   createAppointment(
     tenantId: string,
     input: Record<string, unknown>,
@@ -92,12 +93,16 @@ describe('Thanarah browser API client', () => {
     fetchMock
       .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
       .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, limit: 25, offset: 0 }))
-      .mockResolvedValueOnce(jsonResponse({ id: 'appointment-id' }, 201));
+      .mockResolvedValueOnce(jsonResponse({ id: 'appointment-id' }, 201))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }));
 
     await api.login('staff@example.test', 'not-a-real-password');
     await api.listAppointments('tenant-id', {
-      from: '2026-10-15T00:00:00.000Z',
-      to: '2026-10-16T00:00:00.000Z',
+      fromDate: '2026-10-15',
+      toDate: '2026-10-16',
+      facilityId: 'facility-id',
+      search: 'Layla Noor',
+      serviceId: 'service-id',
       status: 'SCHEDULED',
       limit: 25,
       offset: 0,
@@ -107,18 +112,28 @@ describe('Thanarah browser API client', () => {
       { patientId: 'patient-id', startsAt: '2026-10-15T09:00:00.000Z' },
       'stable-create-retry-key',
     );
+    await api.getAppointmentTimeZones('tenant-id', ['facility-a', 'facility-b', 'facility-a']);
 
     const [listUrl] = fetchMock.mock.calls[1] as [string, RequestInit];
     const [createUrl, createOptions] = fetchMock.mock.calls[2] as [string, RequestInit];
+    const [timeZoneUrl] = fetchMock.mock.calls[3] as [string, RequestInit];
     const listUrlObject = new URL(listUrl, 'http://same-origin');
     expect(listUrlObject.pathname).toBe('/api/v1/tenants/tenant-id/appointments');
     expect(Object.fromEntries(listUrlObject.searchParams)).toEqual({
-      from: '2026-10-15T00:00:00.000Z',
-      to: '2026-10-16T00:00:00.000Z',
+      fromDate: '2026-10-15',
+      toDate: '2026-10-16',
+      facilityId: 'facility-id',
+      search: 'Layla Noor',
+      serviceId: 'service-id',
       status: 'SCHEDULED',
       limit: '25',
       offset: '0',
     });
+    const timeZoneUrlObject = new URL(timeZoneUrl, 'http://same-origin');
+    expect(timeZoneUrlObject.pathname).toBe(
+      '/api/v1/tenants/tenant-id/appointments/effective-time-zones',
+    );
+    expect(timeZoneUrlObject.searchParams.get('facilityIds')).toBe('facility-a,facility-b');
     expect(createUrl).toBe('/api/v1/tenants/tenant-id/appointments');
     expect(new Headers(createOptions.headers).get('idempotency-key')).toBe(
       'stable-create-retry-key',

@@ -17,7 +17,7 @@ import {
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
-import { MongoClient, type Db } from 'mongodb';
+import { MongoClient, type Db, type Document } from 'mongodb';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ConfigService } from '../dist/config/config.service';
 import type { TenantMongoClientFactory } from '../dist/tenant/tenant-mongo-client.manager';
@@ -545,6 +545,122 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(names).toContain('tenant_appointment_schedule_overlap_idx');
     expect(names).toContain('tenant_appointment_branch_starts_idx');
     expect(names).toContain('tenant_appointment_patient_starts_idx');
+    expect(names).toContain('tenant_appointment_service_starts_idx');
+  });
+
+  it('searches patients across the tenant appointment dataset before stable pagination and combined filters', async () => {
+    const storage = getApplication().get(MongoTenantAppointmentStorage);
+    const routeA: TenantStorageRoute = {
+      placements: [{ placementId: targetA.id as TenantStoragePlacementId }],
+    };
+    await storage.ensureIndexesForTarget(targetA);
+    await storage.ensureIndexesForTarget(targetB);
+    const patientId = randomUUID();
+    const serviceId = randomUUID();
+    const facilityId = randomUUID();
+    const doctorId = randomUUID();
+    const branchId = randomUUID();
+    const now = new Date('2026-10-15T12:00:00.000Z');
+    const matchingPatient = {
+      _id: patientId,
+      _tenantId: tenantA.id,
+      patientNumber: 'PHASE40-SEARCH-001',
+      firstName: 'Layla',
+      middleName: 'Shared',
+      lastName: 'Record',
+      preferredName: null,
+      phone: '+966500000001',
+      email: 'layla.phase40@example.test',
+      status: 'ACTIVE',
+      createdAt: now,
+      updatedAt: now,
+    };
+    await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('patients')
+      .insertOne(matchingPatient);
+    await mongoAdminClient!
+      .db(tenantB.databaseName)
+      .collection('patients')
+      .insertOne({ ...matchingPatient, _tenantId: tenantB.id });
+
+    const tenantAAppointmentIds: string[] = [];
+    const tenantADocuments: Document[] = [];
+    for (let index = 0; index < 25; index += 1) {
+      const id = randomUUID();
+      tenantAAppointmentIds.push(id);
+      const startsAt = new Date(Date.parse('2026-10-15T00:00:00.000Z') + index * 60_000);
+      tenantADocuments.push({
+        _id: id,
+        _tenantId: tenantA.id,
+        patientId,
+        doctorId,
+        facilityId,
+        branchId,
+        serviceId,
+        startsAt,
+        endsAt: new Date(startsAt.getTime() + 30 * 60_000),
+        status: 'SCHEDULED',
+        reason: null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: platformUserId,
+        updatedBy: platformUserId,
+        cancelledAt: null,
+        cancelledBy: null,
+        version: 1,
+      });
+    }
+    await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('appointments')
+      .insertMany(tenantADocuments);
+    const tenantBAppointmentId = randomUUID();
+    await mongoAdminClient!
+      .db(tenantB.databaseName)
+      .collection('appointments')
+      .insertOne({
+        _id: tenantBAppointmentId,
+        _tenantId: tenantB.id,
+        patientId,
+        doctorId,
+        facilityId,
+        branchId,
+        serviceId,
+        startsAt: new Date('2026-10-15T08:00:00.000Z'),
+        endsAt: new Date('2026-10-15T08:30:00.000Z'),
+        status: 'SCHEDULED',
+        reason: null,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: platformUserId,
+        updatedBy: platformUserId,
+        cancelledAt: null,
+        cancelledBy: null,
+        version: 1,
+      });
+
+    const listed = await storage.list(contextA, routeA, {
+      search: 'Layla Shared Record',
+      searchPatientRecords: true,
+      from: new Date('2026-10-15T00:00:00.000Z'),
+      to: new Date('2026-10-16T00:00:00.000Z'),
+      facilityId,
+      doctorId,
+      branchId,
+      serviceId,
+      status: 'SCHEDULED',
+      limit: 10,
+      offset: 20,
+      accessScope: { unrestricted: true, facilityIds: [], branchIds: [] },
+    });
+
+    expect(listed).toMatchObject({ total: 25, limit: 10, offset: 20, hasNext: false });
+    expect(listed.items).toHaveLength(5);
+    expect(listed.items.map((item) => item.id)).toEqual(tenantAAppointmentIds.slice(20));
+    expect(listed.items.map((item) => item.id)).not.toContain(tenantBAppointmentId);
+    expect(listed.items[0]).not.toHaveProperty('patientName');
+    expect(listed.items[0]).not.toHaveProperty('phone');
   });
 
   it('serializes overlapping MongoDB bookings and cleans only locks owned by the operation', async () => {
@@ -879,6 +995,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       actor,
     );
     expect(activated).toMatchObject({ status: 'ACTIVE', version: 2 });
+    await expect(policies.effectiveTimeZone(contextA, facility.id)).resolves.toBe('UTC');
+    await expect(
+      policies.effectiveTimeZones(contextA, [facility.id, randomUUID()]),
+    ).resolves.toEqual(new Map([[facility.id, 'UTC']]));
     await expect(
       policies.assertBookingAllowed(contextA, {
         facilityId: facility.id,
@@ -896,6 +1016,8 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       actor,
     );
     expect(deactivated).toMatchObject({ status: 'INACTIVE', version: 3 });
+    await expect(policies.effectiveTimeZone(contextA, facility.id)).resolves.toBeNull();
+    await expect(policies.effectiveTimeZones(contextA, [facility.id])).resolves.toEqual(new Map());
     await expect(policies.history(contextA, facility.id)).resolves.toMatchObject({
       total: 3,
       items: [

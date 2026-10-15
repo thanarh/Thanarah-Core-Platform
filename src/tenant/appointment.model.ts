@@ -40,10 +40,13 @@ export interface AppointmentAccessScope {
 export interface AppointmentListFilter {
   from?: Date;
   to?: Date;
+  search?: string;
+  searchPatientRecords?: boolean;
   doctorId?: string;
   facilityId?: string;
   branchId?: string;
   patientId?: string;
+  serviceId?: string;
   status?: AppointmentStatus;
   limit: number;
   offset: number;

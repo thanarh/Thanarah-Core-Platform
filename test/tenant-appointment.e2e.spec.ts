@@ -82,6 +82,7 @@ describe('Tenant appointment HTTP authorization and routing', () => {
   const appointments = {
     create: vi.fn(),
     list: vi.fn(),
+    effectiveTimeZones: vi.fn(),
     findById: vi.fn(),
     update: vi.fn(),
     reschedule: vi.fn(),
@@ -146,6 +147,15 @@ describe('Tenant appointment HTTP authorization and routing', () => {
       total: 1,
       hasNext: false,
     }));
+    appointments.effectiveTimeZones.mockResolvedValue({
+      items: [
+        {
+          facilityId: appointmentResponse.facilityId,
+          timeZone: 'Asia/Riyadh',
+          status: 'ACTIVE_POLICY',
+        },
+      ],
+    });
     appointments.findById.mockResolvedValue(appointmentResponse);
     appointments.update.mockResolvedValue(appointmentResponse);
     appointments.reschedule.mockResolvedValue(appointmentResponse);
@@ -220,6 +230,12 @@ describe('Tenant appointment HTTP authorization and routing', () => {
         method: 'GET' as const,
         url: `${root}/appointments`,
         operation: appointments.list,
+      },
+      {
+        permission: 'tenant.appointments.read',
+        method: 'GET' as const,
+        url: `${root}/appointments/effective-time-zones?facilityIds=${appointmentResponse.facilityId}`,
+        operation: appointments.effectiveTimeZones,
       },
       {
         permission: 'tenant.appointments.create',
@@ -416,6 +432,7 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     const appointmentsPath = '/api/v1/tenants/{tenantId}/appointments';
     expect(paths[appointmentsPath]).toHaveProperty('post');
     expect(paths[appointmentsPath]).toHaveProperty('get');
+    expect(paths[`${appointmentsPath}/effective-time-zones`]).toHaveProperty('get');
     expect(paths[`${appointmentsPath}/{appointmentId}`]).toHaveProperty('get');
     expect(paths[`${appointmentsPath}/{appointmentId}`]).toHaveProperty('patch');
     expect(paths[`${appointmentsPath}/{appointmentId}/reschedule`]).toHaveProperty('post');
@@ -428,6 +445,7 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     expect(paths[`${policyPath}/history`]).toHaveProperty('get');
     expect(paths[appointmentsPath]?.post?.security).toEqual([{ bearer: [] }]);
     expect(document.components?.schemas?.AppointmentResponseDto).toBeDefined();
+    expect(document.components?.schemas?.AppointmentEffectiveTimeZonesResponseDto).toBeDefined();
     expect(document.components?.schemas?.SchedulingPolicyInputDto).toBeDefined();
   });
 });
