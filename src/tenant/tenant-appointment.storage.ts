@@ -39,6 +39,33 @@ export interface AppointmentStorage {
     expectedVersion: number,
     patch: AppointmentMutationPatch,
   ): Promise<AppointmentRecord | null>;
+  withSchedulingLocks<T>(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    locks: AppointmentSchedulingLock[],
+    operation: (storage: LockedAppointmentStorage) => Promise<T>,
+  ): Promise<T>;
+}
+
+export interface AppointmentSchedulingLock {
+  resourceType: 'DOCTOR' | 'FACILITY' | 'IDEMPOTENCY';
+  resourceId: string;
+}
+
+export interface LockedAppointmentStorage {
+  create(record: AppointmentRecord): Promise<AppointmentRecord>;
+  findById(id: string): Promise<AppointmentRecord | null>;
+  hasProviderOverlap(input: {
+    doctorId: string;
+    startsAt: Date;
+    endsAt: Date;
+    excludeId?: string;
+  }): Promise<boolean>;
+  update(
+    id: string,
+    expectedVersion: number,
+    patch: AppointmentMutationPatch,
+  ): Promise<AppointmentRecord | null>;
 }
 
 export type AppointmentMutationPatch = Partial<

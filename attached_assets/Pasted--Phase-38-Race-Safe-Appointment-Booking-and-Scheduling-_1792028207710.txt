@@ -1,0 +1,196 @@
+# Phase 38 — Race-Safe Appointment Booking and Scheduling Policy Foundation
+
+## Mission
+
+Extend the completed Phase 37 appointment backend into a safer, policy-aware scheduling system.
+
+Implement the strongest correct concurrency protection supported by the existing architecture, establish a configurable scheduling-policy foundation, add comprehensive regression tests, and integrate the functionality into the existing application only if a genuine integration point exists.
+
+Do not stop at an audit or proposal. Complete all safe implementation stages in one run, fix regressions, and return one consolidated report.
+
+## Stage 1 — Inspect current state
+
+Inspect the current repository state, existing user changes, Phase 37 appointment implementation, tenant MongoDB storage boundary, appointment indexes, authorization, audit events, and integration-test setup.
+
+Read `docs/tenant-appointments.md` and identify the actual current API behavior.
+
+Preserve all existing changes. Do not assume prior reports still describe the current working tree.
+
+## Stage 2 — Design race-safe booking
+
+The current implementation detects overlapping appointments but may allow concurrent requests to pass the overlap check before either appointment is persisted.
+
+Investigate the strongest concurrency-safe strategy compatible with the actual current MongoDB implementation.
+
+Evaluate:
+- Atomic MongoDB operations.
+- Shared per-provider scheduling coordination.
+- Unique reservation claims, if the existing scheduling semantics support them.
+- Transaction-based coordination only if the required topology is approved and available.
+- Failure recovery, abandoned claims, retries, idempotency, and cleanup.
+- Rescheduling and cancellation under concurrent requests.
+
+Choose the simplest approach that provides a provable guarantee without silently assuming an unapproved MongoDB topology.
+
+Do not rely on a pre-insert overlap query alone.
+
+Do not introduce a distributed lock with an unsafe lease-expiration race, an unbounded growing document, or an unbounded collection of permanent reservation records.
+
+Do not claim atomicity unless the implementation and tests establish it.
+
+## Stage 3 — Implement concurrency protection
+
+Implement the selected strategy across:
+- Appointment creation.
+- Rescheduling.
+- Relevant appointment updates.
+- Cancellation and reservation release, where applicable.
+
+Requirements:
+- Preserve tenant isolation.
+- Serialize or atomically reject conflicting reservations for the same provider and applicable scheduling scope.
+- Handle duplicate or concurrent requests deterministically.
+- Return a stable conflict response.
+- Avoid leaving appointments and reservation state inconsistent after failures.
+- Ensure retries do not create duplicate appointments.
+- Ensure failed operations cannot silently release another appointment's reservation.
+- Preserve existing appointment status-transition rules.
+- Keep the existing patient-number and patient duplicate-prevention behavior unchanged.
+
+If a correct guarantee requires an unapproved replica-set topology or an unresolved business rule, do not invent one. Complete any independent safe improvements and report the exact remaining blocker.
+
+## Stage 4 — Scheduling policy foundation
+
+Inspect existing provider, facility, branch, and service models for scheduling rules before introducing new configuration.
+
+Establish a tenant-scoped, server-controlled policy model capable of representing:
+- IANA time zone.
+- Clinic/facility operating hours by weekday.
+- Provider availability and exceptions, where supported.
+- Permitted appointment durations or service-specific duration rules.
+- Booking horizon and minimum advance notice, if configured.
+- Cancellation and rescheduling windows, if configured.
+- Policy activation status and audit history.
+
+Use existing domain models and conventions. Avoid duplicating facility or provider records.
+
+Do not invent business values, clinic hours, default appointment durations, cancellation windows, or time zones.
+
+If a policy is absent, preserve the existing explicit start/end appointment behavior unless doing so would be unsafe. Do not silently apply an arbitrary default. Clearly identify which rules are not enforced until configured.
+
+## Stage 5 — Enforce configured policy
+
+Where a valid policy exists, enforce it on the server for create and reschedule operations.
+
+Requirements:
+- Validate time-zone identifiers.
+- Handle daylight-saving transitions correctly where relevant.
+- Normalize persisted timestamps consistently.
+- Reject invalid, non-positive, or out-of-policy intervals.
+- Enforce configured clinic hours, provider availability, service duration, booking horizon, and cancellation/rescheduling restrictions.
+- Apply the same rules to API requests and any internal booking operation.
+- Prevent clients from overriding trusted policy values or supplying physical storage identifiers.
+- Keep tenant and facility/branch authorization independent from scheduling policy.
+
+Do not treat subscription entitlements as authorization.
+
+## Stage 6 — API and audit integration
+
+Use existing API versioning, validation, permission guards, error conventions, and audit infrastructure.
+
+Implement the necessary policy-management operations only if they fit the current authorization model and can be safely restricted to authorized tenant administrators.
+
+Use explicit DTOs and safe error responses.
+
+Audit policy changes and meaningful appointment transitions without recording unnecessary patient demographics, clinical notes, credentials, or sensitive metadata.
+
+Document which policy fields are configurable and which are enforced.
+
+## Stage 7 — User-facing integration
+
+Inspect the existing frontend and routing structure.
+
+If a real appointment-management integration point exists, integrate:
+- Appointment list and filters.
+- Creation and rescheduling.
+- Conflict and policy-validation messages.
+- Cancellation confirmation.
+- Clear time-zone presentation.
+- Loading, empty, and failure states.
+
+If no appropriate frontend exists, do not create a disconnected mockup or an unrelated framework. Complete the backend capability and identify the exact remaining frontend work.
+
+## Stage 8 — Regression tests
+
+Add or extend tests for:
+- Two simultaneous overlapping appointment creations.
+- Concurrent rescheduling into the same time interval.
+- Rescheduling an appointment without conflicting with itself.
+- Cancellation concurrent with another booking.
+- Failed writes and reservation cleanup.
+- Retry and idempotency behavior.
+- Cross-tenant and cross-branch isolation.
+- Unauthorized policy changes.
+- Invalid time zones and daylight-saving edge cases.
+- Configured clinic hours and duration rules.
+- Cancellation and rescheduling restrictions when configured.
+- Backward compatibility when optional policy is absent.
+- Database-topology limitations and fail-closed behavior.
+
+Use disposable non-production databases only.
+
+Distinguish real MongoDB concurrency tests from mocked unit tests. Do not present mocks as proof of distributed correctness.
+
+## Stage 9 — Validation and regression repair
+
+Run the focused appointment and scheduling tests, followed by the relevant integration suite, type-check, lint, formatting, build, and full test suite where practical.
+
+Fix failures introduced by this task. Do not weaken assertions or hide existing failures.
+
+If a command cannot run, report the exact error and distinguish it from the current baseline.
+
+Restart the configured development workflow when appropriate and verify the application startup logs.
+
+Do not connect to production, inspect credentials, or run production migrations.
+
+## Stage 10 — Final review
+
+Review the complete diff for:
+- Race safety and reservation consistency.
+- Tenant isolation.
+- Authorization.
+- Policy validation.
+- Time-zone correctness.
+- Data integrity and cleanup.
+- Performance and index use.
+- Sensitive-data exposure.
+- Compatibility with existing Phase 37 API behavior.
+- Unrelated changes.
+
+Do not change the unresolved MongoDB production deployment decision.
+
+## Final report
+
+Provide one consolidated report containing:
+1. Concurrency failure mechanism and implemented solution.
+2. Exact guarantees established and their limits.
+3. Scheduling-policy model and API changes.
+4. Which rules are enforced and which remain unconfigured.
+5. Files changed.
+6. Tests executed and exact results.
+7. Type-check, lint, formatting, build, and startup results.
+8. `git diff --check`, `git diff --stat`, and `git status --short`.
+9. Remaining blockers, clearly separated into infrastructure and business-policy decisions.
+10. The next major product capability to implement.
+
+## Restrictions
+
+- Do not stage or commit automatically.
+- Do not reset, rebase, amend, or rewrite history.
+- Do not use `--no-verify`.
+- Do not connect to production or inspect secrets.
+- Do not invent clinic policies or infrastructure facts.
+- Preserve all existing user changes.
+- Do not claim production readiness without verified evidence.
+
+Complete all safe implementation and validation stages in this task. Stop only after providing the consolidated report; do not request intermediate approval after each stage.

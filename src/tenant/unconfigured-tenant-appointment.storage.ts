@@ -7,6 +7,10 @@ import type {
   AppointmentRecord,
 } from './appointment.model';
 import type { AppointmentMutationPatch, AppointmentStorage } from './tenant-appointment.storage';
+import type {
+  AppointmentSchedulingLock,
+  LockedAppointmentStorage,
+} from './tenant-appointment.storage';
 import { TenantStorageNotConfiguredError } from './tenant-storage.errors';
 
 @Injectable()
@@ -50,6 +54,15 @@ export class UnconfiguredTenantAppointmentStorage implements AppointmentStorage 
     _expectedVersion: number,
     _patch: AppointmentMutationPatch,
   ): Promise<AppointmentRecord | null> {
+    throw new TenantStorageNotConfiguredError();
+  }
+
+  async withSchedulingLocks<T>(
+    _context: TrustedTenantContext,
+    _route: TenantStorageRoute,
+    _locks: AppointmentSchedulingLock[],
+    _operation: (storage: LockedAppointmentStorage) => Promise<T>,
+  ): Promise<T> {
     throw new TenantStorageNotConfiguredError();
   }
 }

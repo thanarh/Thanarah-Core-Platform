@@ -11,10 +11,15 @@ import type {
   AppointmentRecord,
 } from './appointment.model';
 import type { AppointmentMutationPatch, AppointmentStorage } from './tenant-appointment.storage';
+import type {
+  AppointmentSchedulingLock,
+  LockedAppointmentStorage,
+} from './tenant-appointment.storage';
 
 @Injectable()
 export class InMemoryTenantAppointmentStorage implements AppointmentStorage {
   private readonly records = new Map<string, Map<string, AppointmentRecord>>();
+  private readonly lockQueues = new Map<string, Promise<void>>();
 
   async create(
     context: TrustedTenantContext,
@@ -97,6 +102,28 @@ export class InMemoryTenantAppointmentStorage implements AppointmentStorage {
     return cloneRecord(updated);
   }
 
+  async withSchedulingLocks<T>(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    locks: AppointmentSchedulingLock[],
+    operation: (storage: LockedAppointmentStorage) => Promise<T>,
+  ): Promise<T> {
+    this.assertScope(context, route);
+    const keys = normalizeLockKeys(context.tenantId, locks);
+    const releases: Array<() => void> = [];
+    try {
+      for (const key of keys) releases.push(await this.acquireLock(key));
+      return await operation({
+        create: (record) => this.create(context, route, record),
+        findById: (id) => this.findById(context, route, id),
+        hasProviderOverlap: (input) => this.hasProviderOverlap(context, route, input),
+        update: (id, version, patch) => this.update(context, route, id, version, patch),
+      });
+    } finally {
+      for (const release of releases.reverse()) release();
+    }
+  }
+
   private tenantRecords(tenantId: string): Map<string, AppointmentRecord> {
     let records = this.records.get(tenantId);
     if (!records) {
@@ -110,6 +137,39 @@ export class InMemoryTenantAppointmentStorage implements AppointmentStorage {
     if (!isWellFormedTrustedTenantContext(context)) throw new TenantContextInvalidError();
     if (!route || route.placements.length === 0) throw new TenantContextInvalidError();
   }
+
+  private async acquireLock(key: string): Promise<() => void> {
+    const previous = this.lockQueues.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const current = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    this.lockQueues.set(key, current);
+    await previous;
+    return () => {
+      release();
+      if (this.lockQueues.get(key) === current) this.lockQueues.delete(key);
+    };
+  }
+}
+
+function normalizeLockKeys(tenantId: string, locks: AppointmentSchedulingLock[]): string[] {
+  return [
+    ...new Set(
+      locks.map(({ resourceType, resourceId }) => {
+        if (
+          (resourceType !== 'DOCTOR' &&
+            resourceType !== 'FACILITY' &&
+            resourceType !== 'IDEMPOTENCY') ||
+          typeof resourceId !== 'string' ||
+          resourceId.length === 0
+        ) {
+          throw new TenantContextInvalidError();
+        }
+        return `${tenantId}:${resourceType}:${resourceId}`;
+      }),
+    ),
+  ].sort();
 }
 
 function matchesFilter(record: AppointmentRecord, filter: AppointmentListFilter): boolean {

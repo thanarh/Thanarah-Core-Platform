@@ -51,6 +51,34 @@ export class AppointmentScheduleConflictError extends ConflictException {
   }
 }
 
+export class AppointmentScheduleLockConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'APPOINTMENT_SCHEDULE_CONFLICT',
+      message: 'The provider schedule is busy; retry the request',
+    });
+  }
+}
+
+export class AppointmentIdempotencyConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'APPOINTMENT_IDEMPOTENCY_CONFLICT',
+      message: 'The idempotency key was already used for a different appointment request',
+    });
+  }
+}
+
+export class AppointmentPolicyViolationError extends UnprocessableEntityException {
+  constructor(rule: string) {
+    super({
+      code: 'APPOINTMENT_POLICY_VIOLATION',
+      message: 'The appointment does not satisfy the active scheduling policy',
+      rule,
+    });
+  }
+}
+
 export class AppointmentStateConflictError extends ConflictException {
   constructor() {
     super({

@@ -4,6 +4,7 @@ import {
   Get,
   HttpCode,
   HttpStatus,
+  Headers,
   Inject,
   Param,
   Patch,
@@ -19,6 +20,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -53,6 +55,7 @@ import type {
   UpdateAppointmentInput,
 } from './appointment.dto';
 import { AppointmentService } from './appointment.service';
+import { AppointmentInputValidationError } from './appointment.errors';
 import {
   AppointmentErrorResponseDto,
   AppointmentListResponseDto,
@@ -75,7 +78,12 @@ export class TenantAppointmentController {
   @ApiOperation({
     summary: 'Create a scheduled appointment',
     description:
-      'Validates tenant-owned references, active provider and location assignments, and overlaps already visible in storage. The read-before-write overlap check is not an atomic concurrent-booking guarantee.',
+      'Validates tenant-owned references, active provider and location assignments, and serializes booking changes for the provider and facility. Send Idempotency-Key to make retries safe.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: 'Optional opaque key (1–128 visible ASCII characters) for safe create retries.',
   })
   @ApiBody({ type: CreateAppointmentRequestDto })
   @ApiCreatedResponse({ type: AppointmentResponseDto })
@@ -89,8 +97,16 @@ export class TenantAppointmentController {
     @Body(new ZodValidationPipe(createAppointmentSchema)) body: CreateAppointmentInput,
     @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
     @Req() request: FastifyRequest,
+    @Headers('idempotency-key') idempotencyKey: string | string[] | undefined,
   ): ReturnType<AppointmentService['create']> {
-    return this.appointments.create(context, body, actor, this.requestContext(request));
+    if (Array.isArray(idempotencyKey)) throw new AppointmentInputValidationError();
+    return this.appointments.create(
+      context,
+      body,
+      actor,
+      this.requestContext(request),
+      idempotencyKey,
+    );
   }
 
   @Get('appointments')
@@ -167,7 +183,7 @@ export class TenantAppointmentController {
   @ApiOperation({
     summary: 'Reschedule or relocate an appointment',
     description:
-      'Validates the updated provider, facility, optional branch, and interval. Overlap checking excludes the appointment being rescheduled and is not an atomic concurrent-booking guarantee.',
+      'Validates the updated provider, facility, optional branch, and interval while holding the relevant provider and facility scheduling locks.',
   })
   @ApiParam({ name: 'appointmentId', type: String, format: 'uuid' })
   @ApiBody({ type: RescheduleAppointmentRequestDto })

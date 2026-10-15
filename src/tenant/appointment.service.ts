@@ -1,6 +1,6 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { PlatformAuditEventType } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import type { TrustedTenantContext } from './tenant-context.contract';
@@ -17,6 +17,7 @@ import type {
 import {
   AppointmentIdInvalidError,
   AppointmentInputValidationError,
+  AppointmentIdempotencyConflictError,
   AppointmentNotFoundError,
   AppointmentReferenceInvalidError,
   AppointmentScheduleConflictError,
@@ -29,6 +30,7 @@ import {
   listAppointmentsQuerySchema,
   rescheduleAppointmentSchema,
   updateAppointmentSchema,
+  appointmentIdempotencyKeySchema,
 } from './appointment.dto';
 import type {
   CreateAppointmentInput,
@@ -44,6 +46,8 @@ import { FacilityService } from './facility.service';
 import { BranchService } from './branch.service';
 import { ServiceCatalogService } from './service-catalog.service';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
+import type { AppointmentSchedulingLock, LockedAppointmentStorage } from './tenant-appointment.storage';
+import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 
 export interface AppointmentAuditContext {
   requestId?: string;
@@ -62,6 +66,7 @@ export class AppointmentService {
     private readonly branches: BranchService,
     private readonly services: ServiceCatalogService,
     private readonly staffScopes: TenantStaffScopeService,
+    private readonly schedulingPolicies: FacilitySchedulingPolicyService,
     private readonly audit: PlatformAuditService,
   ) {}
 
@@ -70,37 +75,27 @@ export class AppointmentService {
     input: CreateAppointmentInput,
     actor: AuthenticatedPlatformUser,
     requestContext: AppointmentAuditContext = {},
+    idempotencyKey?: string,
   ): Promise<AppointmentResponse> {
     this.assertActor(context, actor);
     const parsed = createAppointmentSchema.safeParse(input);
     if (!parsed.success) throw new AppointmentInputValidationError();
+    if (
+      idempotencyKey !== undefined &&
+      !appointmentIdempotencyKeySchema.safeParse(idempotencyKey).success
+    ) {
+      throw new AppointmentInputValidationError();
+    }
     await this.assertCanAccessLocation(
       context,
       parsed.data.facilityId,
       parsed.data.branchId ?? null,
     );
-    await this.validateReferences(context, {
-      patientId: parsed.data.patientId,
-      doctorId: parsed.data.doctorId,
-      facilityId: parsed.data.facilityId,
-      branchId: parsed.data.branchId ?? null,
-      serviceId: parsed.data.serviceId ?? null,
-      startsAt: parsed.data.startsAt,
-      endsAt: parsed.data.endsAt,
-    });
-    if (
-      await this.appointments.hasProviderOverlap(context, {
-        doctorId: parsed.data.doctorId,
-        startsAt: parsed.data.startsAt,
-        endsAt: parsed.data.endsAt,
-      })
-    ) {
-      throw new AppointmentScheduleConflictError();
-    }
-
     const now = new Date();
     const record: AppointmentRecord = {
-      id: randomUUID(),
+      id: idempotencyKey
+        ? deterministicAppointmentId(context.tenantId, actor.userId, idempotencyKey)
+        : randomUUID(),
       patientId: parsed.data.patientId,
       doctorId: parsed.data.doctorId,
       facilityId: parsed.data.facilityId,
@@ -118,16 +113,59 @@ export class AppointmentService {
       cancelledBy: null,
       version: 1,
     };
-    const created = await this.appointments.create(context, record);
-    await this.audit.recordAudit({
-      eventType: PlatformAuditEventType.APPOINTMENT_CREATED,
-      actorUserId: actor.userId,
-      subjectTenantId: context.tenantId,
-      sessionId: actor.sessionId,
-      ...requestContext,
-      metadata: { appointmentId: created.id, action: 'created' },
+    const locks: AppointmentSchedulingLock[] = [
+      { resourceType: 'FACILITY', resourceId: record.facilityId },
+      { resourceType: 'DOCTOR', resourceId: record.doctorId },
+      ...(idempotencyKey ? [{ resourceType: 'IDEMPOTENCY' as const, resourceId: record.id }] : []),
+    ];
+    const result = await this.appointments.withSchedulingLocks(context, locks, async (storage) => {
+      if (idempotencyKey) {
+        const existing = await storage.findById(record.id);
+        if (existing) {
+          if (!matchesIdempotentCreate(existing, record)) {
+            throw new AppointmentIdempotencyConflictError();
+          }
+          return { appointment: existing, created: false };
+        }
+      }
+      await this.validateReferences(context, {
+        patientId: record.patientId,
+        doctorId: record.doctorId,
+        facilityId: record.facilityId,
+        branchId: record.branchId,
+        serviceId: record.serviceId,
+        startsAt: record.startsAt,
+        endsAt: record.endsAt,
+      });
+      await this.schedulingPolicies.assertBookingAllowed(context, {
+        facilityId: record.facilityId,
+        doctorId: record.doctorId,
+        serviceId: record.serviceId,
+        startsAt: record.startsAt,
+        endsAt: record.endsAt,
+      });
+      if (
+        await storage.hasProviderOverlap({
+          doctorId: record.doctorId,
+          startsAt: record.startsAt,
+          endsAt: record.endsAt,
+        })
+      ) {
+        throw new AppointmentScheduleConflictError();
+      }
+      return { appointment: await storage.create(record), created: true };
     });
-    return this.present(created);
+    if (result.created) {
+      await this.audit.recordAudit({
+        eventType: PlatformAuditEventType.APPOINTMENT_CREATED,
+        actorUserId: actor.userId,
+        subjectTenantId: context.tenantId,
+        sessionId: actor.sessionId,
+        ...requestContext,
+        metadata: { appointmentId: result.appointment.id, action: 'created' },
+      });
+    }
+    return this.present(result.appointment);
   }
 
   async list(
@@ -186,8 +224,27 @@ export class AppointmentService {
       updatedBy: actor.userId,
     };
     if (Object.keys(patch).length === 2) return this.present(current);
-    const updated = await this.appointments.update(context, current.id, current.version, patch);
-    if (!updated) await this.throwStateConflictIfStale(context, current.id);
+    const updated = await this.appointments.withSchedulingLocks(
+      context,
+      appointmentLocks(current),
+      async (storage) => {
+        const latest = await this.readLockedAppointment(storage, current.id);
+        if (latest.version !== current.version || latest.status !== 'SCHEDULED') {
+          throw new AppointmentStateConflictError();
+        }
+        if (parsed.data.serviceId !== undefined) {
+          await this.schedulingPolicies.assertBookingAllowed(context, {
+            facilityId: latest.facilityId,
+            doctorId: latest.doctorId,
+            serviceId,
+            startsAt: latest.startsAt,
+            endsAt: latest.endsAt,
+          });
+        }
+        return storage.update(current.id, current.version, patch);
+      },
+    );
+    if (!updated) throw new AppointmentStateConflictError();
     await this.audit.recordAudit({
       eventType: PlatformAuditEventType.APPOINTMENT_UPDATED,
       actorUserId: actor.userId,
@@ -224,21 +281,6 @@ export class AppointmentService {
       endsAt: parsed.data.endsAt,
     };
     await this.assertCanAccessLocation(context, next.facilityId, next.branchId);
-    await this.validateReferences(context, {
-      patientId: current.patientId,
-      ...next,
-      serviceId: current.serviceId,
-    });
-    if (
-      await this.appointments.hasProviderOverlap(context, {
-        doctorId: next.doctorId,
-        startsAt: next.startsAt,
-        endsAt: next.endsAt,
-        excludeId: current.id,
-      })
-    ) {
-      throw new AppointmentScheduleConflictError();
-    }
     if (
       current.doctorId === next.doctorId &&
       current.facilityId === next.facilityId &&
@@ -249,12 +291,66 @@ export class AppointmentService {
       return this.present(current);
     }
 
-    const updated = await this.appointments.update(context, current.id, current.version, {
-      ...next,
-      updatedAt: new Date(),
-      updatedBy: actor.userId,
-    });
-    if (!updated) await this.throwStateConflictIfStale(context, current.id);
+    const locks = [
+      ...appointmentLocks(current),
+      { resourceType: 'DOCTOR' as const, resourceId: next.doctorId },
+      { resourceType: 'FACILITY' as const, resourceId: next.facilityId },
+    ];
+    const updated = await this.appointments.withSchedulingLocks(
+      context,
+      locks,
+      async (storage) => {
+        const latest = await this.readLockedAppointment(storage, current.id);
+        if (latest.version !== current.version || latest.status !== 'SCHEDULED') {
+          throw new AppointmentStateConflictError();
+        }
+        if (
+          !(await this.canAccessLocation(context, latest.facilityId, latest.branchId)) ||
+          !(await this.canAccessLocation(context, next.facilityId, next.branchId))
+        ) {
+          throw new AppointmentNotFoundError();
+        }
+        await this.validateReferences(context, {
+          patientId: latest.patientId,
+          ...next,
+          serviceId: latest.serviceId,
+        });
+        const now = new Date();
+        await this.schedulingPolicies.assertReschedulingAllowed(
+          context,
+          latest.facilityId,
+          latest.startsAt,
+          now,
+        );
+        await this.schedulingPolicies.assertBookingAllowed(
+          context,
+          {
+            facilityId: next.facilityId,
+            doctorId: next.doctorId,
+            serviceId: latest.serviceId,
+            startsAt: next.startsAt,
+            endsAt: next.endsAt,
+          },
+          now,
+        );
+        if (
+          await storage.hasProviderOverlap({
+            doctorId: next.doctorId,
+            startsAt: next.startsAt,
+            endsAt: next.endsAt,
+            excludeId: current.id,
+          })
+        ) {
+          throw new AppointmentScheduleConflictError();
+        }
+        return storage.update(current.id, current.version, {
+          ...next,
+          updatedAt: new Date(),
+          updatedBy: actor.userId,
+        });
+      },
+    );
+    if (!updated) throw new AppointmentStateConflictError();
     await this.audit.recordAudit({
       eventType: PlatformAuditEventType.APPOINTMENT_RESCHEDULED,
       actorUserId: actor.userId,
@@ -279,24 +375,44 @@ export class AppointmentService {
     this.assertActor(context, actor);
     const current = await this.findAuthorized(context, appointmentId);
     if (current.status === 'CANCELLED') return this.present(current);
-    const now = new Date();
-    const cancelled = await this.appointments.update(context, current.id, current.version, {
-      status: 'CANCELLED',
-      cancelledAt: now,
-      cancelledBy: actor.userId,
-      updatedAt: now,
-      updatedBy: actor.userId,
-    });
-    if (!cancelled) await this.throwStateConflictIfStale(context, current.id);
-    await this.audit.recordAudit({
-      eventType: PlatformAuditEventType.APPOINTMENT_CANCELLED,
-      actorUserId: actor.userId,
-      subjectTenantId: context.tenantId,
-      sessionId: actor.sessionId,
-      ...requestContext,
-      metadata: { appointmentId: current.id, action: 'cancelled' },
-    });
-    return this.present(cancelled!);
+    const cancellation = await this.appointments.withSchedulingLocks(
+      context,
+      appointmentLocks(current),
+      async (storage) => {
+        const latest = await this.readLockedAppointment(storage, current.id);
+        if (latest.status === 'CANCELLED') return { appointment: latest, changed: false };
+        if (latest.version !== current.version || latest.status !== 'SCHEDULED') {
+          throw new AppointmentStateConflictError();
+        }
+        await this.schedulingPolicies.assertCancellationAllowed(
+          context,
+          latest.facilityId,
+          latest.startsAt,
+        );
+        const now = new Date();
+        const appointment = await storage.update(current.id, current.version, {
+          status: 'CANCELLED',
+          cancelledAt: now,
+          cancelledBy: actor.userId,
+          updatedAt: now,
+          updatedBy: actor.userId,
+        });
+        return { appointment, changed: true };
+      },
+    );
+    const cancelled = cancellation.appointment;
+    if (!cancelled) throw new AppointmentStateConflictError();
+    if (cancellation.changed) {
+      await this.audit.recordAudit({
+        eventType: PlatformAuditEventType.APPOINTMENT_CANCELLED,
+        actorUserId: actor.userId,
+        subjectTenantId: context.tenantId,
+        sessionId: actor.sessionId,
+        ...requestContext,
+        metadata: { appointmentId: current.id, action: 'cancelled' },
+      });
+    }
+    return this.present(cancelled);
   }
 
   private async findAuthorized(
@@ -320,6 +436,15 @@ export class AppointmentService {
     const latest = await this.appointments.findById(context, id);
     if (!latest) throw new AppointmentNotFoundError();
     throw new AppointmentStateConflictError();
+  }
+
+  private async readLockedAppointment(
+    storage: LockedAppointmentStorage,
+    id: string,
+  ): Promise<AppointmentRecord> {
+    const record = await storage.findById(id);
+    if (!record) throw new AppointmentNotFoundError();
+    return record;
   }
 
   private async validateReferences(
@@ -491,4 +616,45 @@ export class AppointmentService {
       cancelledAt: record.cancelledAt,
     };
   }
+}
+
+function appointmentLocks(record: AppointmentRecord): AppointmentSchedulingLock[] {
+  return [
+    { resourceType: 'DOCTOR', resourceId: record.doctorId },
+    { resourceType: 'FACILITY', resourceId: record.facilityId },
+  ];
+}
+
+function matchesIdempotentCreate(
+  existing: AppointmentRecord,
+  requested: AppointmentRecord,
+): boolean {
+  return (
+    existing.patientId === requested.patientId &&
+    existing.doctorId === requested.doctorId &&
+    existing.facilityId === requested.facilityId &&
+    existing.branchId === requested.branchId &&
+    existing.serviceId === requested.serviceId &&
+    existing.startsAt.getTime() === requested.startsAt.getTime() &&
+    existing.endsAt.getTime() === requested.endsAt.getTime() &&
+    existing.status === requested.status &&
+    existing.reason === requested.reason &&
+    existing.createdBy === requested.createdBy
+  );
+}
+
+function deterministicAppointmentId(
+  tenantId: string,
+  actorUserId: string,
+  idempotencyKey: string,
+): string {
+  const digest = createHash('sha256')
+    .update(`${tenantId.toLowerCase()}\u0000${actorUserId.toLowerCase()}\u0000${idempotencyKey}`)
+    .digest('hex')
+    .slice(0, 32)
+    .split('');
+  digest[12] = '5';
+  digest[16] = ((Number.parseInt(digest[16], 16) & 0x3) | 0x8).toString(16);
+  const hex = digest.join('');
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 }

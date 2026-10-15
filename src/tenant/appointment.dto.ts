@@ -6,6 +6,12 @@ export const appointmentIdSchema = z
   .uuid()
   .transform((id) => id.toLowerCase());
 
+export const appointmentIdempotencyKeySchema = z
+  .string()
+  .min(1)
+  .max(128)
+  .regex(/^[\x21-\x7e]+$/u);
+
 const appointmentTimestampStringSchema = z
   .string()
   .datetime({ offset: true })
