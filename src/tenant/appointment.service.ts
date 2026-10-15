@@ -46,7 +46,10 @@ import { FacilityService } from './facility.service';
 import { BranchService } from './branch.service';
 import { ServiceCatalogService } from './service-catalog.service';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
-import type { AppointmentSchedulingLock, LockedAppointmentStorage } from './tenant-appointment.storage';
+import type {
+  AppointmentSchedulingLock,
+  LockedAppointmentStorage,
+} from './tenant-appointment.storage';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 
 export interface AppointmentAuditContext {
@@ -296,60 +299,56 @@ export class AppointmentService {
       { resourceType: 'DOCTOR' as const, resourceId: next.doctorId },
       { resourceType: 'FACILITY' as const, resourceId: next.facilityId },
     ];
-    const updated = await this.appointments.withSchedulingLocks(
-      context,
-      locks,
-      async (storage) => {
-        const latest = await this.readLockedAppointment(storage, current.id);
-        if (latest.version !== current.version || latest.status !== 'SCHEDULED') {
-          throw new AppointmentStateConflictError();
-        }
-        if (
-          !(await this.canAccessLocation(context, latest.facilityId, latest.branchId)) ||
-          !(await this.canAccessLocation(context, next.facilityId, next.branchId))
-        ) {
-          throw new AppointmentNotFoundError();
-        }
-        await this.validateReferences(context, {
-          patientId: latest.patientId,
-          ...next,
+    const updated = await this.appointments.withSchedulingLocks(context, locks, async (storage) => {
+      const latest = await this.readLockedAppointment(storage, current.id);
+      if (latest.version !== current.version || latest.status !== 'SCHEDULED') {
+        throw new AppointmentStateConflictError();
+      }
+      if (
+        !(await this.canAccessLocation(context, latest.facilityId, latest.branchId)) ||
+        !(await this.canAccessLocation(context, next.facilityId, next.branchId))
+      ) {
+        throw new AppointmentNotFoundError();
+      }
+      await this.validateReferences(context, {
+        patientId: latest.patientId,
+        ...next,
+        serviceId: latest.serviceId,
+      });
+      const now = new Date();
+      await this.schedulingPolicies.assertReschedulingAllowed(
+        context,
+        latest.facilityId,
+        latest.startsAt,
+        now,
+      );
+      await this.schedulingPolicies.assertBookingAllowed(
+        context,
+        {
+          facilityId: next.facilityId,
+          doctorId: next.doctorId,
           serviceId: latest.serviceId,
-        });
-        const now = new Date();
-        await this.schedulingPolicies.assertReschedulingAllowed(
-          context,
-          latest.facilityId,
-          latest.startsAt,
-          now,
-        );
-        await this.schedulingPolicies.assertBookingAllowed(
-          context,
-          {
-            facilityId: next.facilityId,
-            doctorId: next.doctorId,
-            serviceId: latest.serviceId,
-            startsAt: next.startsAt,
-            endsAt: next.endsAt,
-          },
-          now,
-        );
-        if (
-          await storage.hasProviderOverlap({
-            doctorId: next.doctorId,
-            startsAt: next.startsAt,
-            endsAt: next.endsAt,
-            excludeId: current.id,
-          })
-        ) {
-          throw new AppointmentScheduleConflictError();
-        }
-        return storage.update(current.id, current.version, {
-          ...next,
-          updatedAt: new Date(),
-          updatedBy: actor.userId,
-        });
-      },
-    );
+          startsAt: next.startsAt,
+          endsAt: next.endsAt,
+        },
+        now,
+      );
+      if (
+        await storage.hasProviderOverlap({
+          doctorId: next.doctorId,
+          startsAt: next.startsAt,
+          endsAt: next.endsAt,
+          excludeId: current.id,
+        })
+      ) {
+        throw new AppointmentScheduleConflictError();
+      }
+      return storage.update(current.id, current.version, {
+        ...next,
+        updatedAt: new Date(),
+        updatedBy: actor.userId,
+      });
+    });
     if (!updated) throw new AppointmentStateConflictError();
     await this.audit.recordAudit({
       eventType: PlatformAuditEventType.APPOINTMENT_RESCHEDULED,

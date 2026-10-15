@@ -3,3 +3,5 @@
 - [Vitest Nest provider identity](vitest-nest-provider-identity.md) — load compiled Nest classes and injection tokens through the same module loader in integration tests.
 - [Patient duplicate test fixtures](patient-duplicate-test-fixtures.md) — keep unrelated same-tenant fixtures outside strong duplicate combinations.
 - [Patient duplicate index enforcement](patient-duplicate-index-enforcement.md) — rely on tenant-scoped unique indexes, not assumed transaction support, and keep unprovisioned targets unavailable.
+- [Additive scheduling migrations](appointment-scheduling-migrations.md) — add policy schema and permission grants in a follow-on migration; test the cumulative migration catalog.
+- [MySQL index names](mysql-index-names.md) — explicitly map verbose Prisma composite index names to concise MySQL identifiers and test against MySQL.

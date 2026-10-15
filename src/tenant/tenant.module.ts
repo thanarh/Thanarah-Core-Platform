@@ -51,6 +51,9 @@ import { PatientService } from './patient.service';
 import { TenantAppointmentController } from './tenant-appointment.controller';
 import { AppointmentService } from './appointment.service';
 import { TenantStorageModule } from './tenant-storage.module';
+import { FacilitySchedulingPolicyController } from './facility-scheduling-policy.controller';
+import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
+import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 
 @Module({
   imports: [
@@ -76,6 +79,7 @@ import { TenantStorageModule } from './tenant-storage.module';
     DoctorController,
     TenantPatientController,
     TenantAppointmentController,
+    FacilitySchedulingPolicyController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -103,6 +107,8 @@ import { TenantStorageModule } from './tenant-storage.module';
     DoctorService,
     PatientService,
     AppointmentService,
+    FacilitySchedulingPolicyRepository,
+    FacilitySchedulingPolicyService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,

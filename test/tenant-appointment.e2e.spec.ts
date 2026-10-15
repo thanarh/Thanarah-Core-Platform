@@ -20,8 +20,10 @@ import { TenantContextGuard } from '../src/tenant/tenant-context.guard';
 import type { TenantMembershipValidatorService } from '../src/tenant/tenant-context.service';
 import { TrustedTenantContextFactoryService } from '../src/tenant/tenant-context.service';
 import { AppointmentService } from '../src/tenant/appointment.service';
+import { FacilitySchedulingPolicyService } from '../src/tenant/appointment-scheduling-policy.service';
 import { AppointmentNotFoundError } from '../src/tenant/appointment.errors';
 import { TenantAppointmentController } from '../src/tenant/tenant-appointment.controller';
+import { FacilitySchedulingPolicyController } from '../src/tenant/facility-scheduling-policy.controller';
 import type { FastifyRequest } from 'fastify';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
@@ -29,6 +31,8 @@ const otherTenantId = '99999999-9999-4999-8999-999999999999';
 const membershipId = '22222222-2222-4222-8222-222222222222';
 const appointmentId = '33333333-3333-4333-8333-333333333333';
 const platformUserId = '44444444-4444-4444-8444-444444444444';
+const policyFacilityId = '88888888-8888-4888-8888-888888888888';
+const policyId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const authenticatedUser: AuthenticatedPlatformUser = {
   userId: platformUserId,
@@ -83,6 +87,32 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     reschedule: vi.fn(),
     cancel: vi.fn(),
   };
+  const policyResponse = {
+    id: policyId,
+    facilityId: policyFacilityId,
+    status: 'INACTIVE',
+    timeZone: 'UTC',
+    rules: {
+      operatingHours: {},
+      providerAvailability: [],
+      allowedDurationsMinutes: [],
+      serviceDurationRules: [],
+      bookingHorizonDays: null,
+      minimumAdvanceNoticeMinutes: null,
+      minimumCancellationNoticeMinutes: null,
+      minimumRescheduleNoticeMinutes: null,
+    },
+    version: 1,
+    createdAt: '2026-10-15T10:00:00.000Z',
+    updatedAt: '2026-10-15T10:00:00.000Z',
+  };
+  const policies = {
+    get: vi.fn(),
+    put: vi.fn(),
+    activate: vi.fn(),
+    deactivate: vi.fn(),
+    history: vi.fn(),
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -93,6 +123,7 @@ describe('Tenant appointment HTTP authorization and routing', () => {
       'tenant.appointments.update',
       'tenant.appointments.reschedule',
       'tenant.appointments.cancel',
+      'tenant.appointments.policy.manage',
     ]) {
       allowedPermissions.add(permission);
     }
@@ -119,6 +150,17 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     appointments.update.mockResolvedValue(appointmentResponse);
     appointments.reschedule.mockResolvedValue(appointmentResponse);
     appointments.cancel.mockResolvedValue({ ...appointmentResponse, status: 'CANCELLED' });
+    policies.get.mockResolvedValue(policyResponse);
+    policies.put.mockResolvedValue(policyResponse);
+    policies.activate.mockResolvedValue({ ...policyResponse, status: 'ACTIVE', version: 2 });
+    policies.deactivate.mockResolvedValue({ ...policyResponse, version: 3 });
+    policies.history.mockResolvedValue({
+      items: [],
+      limit: 50,
+      offset: 0,
+      total: 0,
+      hasNext: false,
+    });
 
     const tenantContextGuard = new TenantContextGuard(
       validator as unknown as TenantMembershipValidatorService,
@@ -129,12 +171,13 @@ describe('Tenant appointment HTTP authorization and routing', () => {
       tenantAuthorization as unknown as TenantAuthorizationService,
     );
     const module = await Test.createTestingModule({
-      controllers: [TenantAppointmentController],
+      controllers: [TenantAppointmentController, FacilitySchedulingPolicyController],
       providers: [
         PlatformAuthGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,
         AppointmentService,
+        FacilitySchedulingPolicyService,
       ],
     })
       .overrideGuard(PlatformAuthGuard)
@@ -145,6 +188,8 @@ describe('Tenant appointment HTTP authorization and routing', () => {
       .useValue(tenantAuthorizationGuard)
       .overrideProvider(AppointmentService)
       .useValue(appointments)
+      .overrideProvider(FacilitySchedulingPolicyService)
+      .useValue(policies)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -294,6 +339,47 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     expect(cancelled.json().status).toBe('CANCELLED');
   });
 
+  it('restricts scheduling-policy management to the dedicated tenant permission', async () => {
+    const policyRoot = `${root}/facilities/${policyFacilityId}/scheduling-policy`;
+    allowedPermissions.delete('tenant.appointments.policy.manage');
+    const denied = await app.inject({
+      method: 'PUT',
+      url: policyRoot,
+      headers,
+      payload: {
+        timeZone: 'UTC',
+        rules: {},
+      },
+    });
+    expect(denied.statusCode).toBe(403);
+    expect(policies.put).not.toHaveBeenCalled();
+
+    allowedPermissions.add('tenant.appointments.policy.manage');
+    const saved = await app.inject({
+      method: 'PUT',
+      url: policyRoot,
+      headers,
+      payload: { timeZone: 'UTC', rules: {} },
+    });
+    expect(saved.statusCode).toBe(200);
+    expect(saved.json()).toEqual(policyResponse);
+    expect(policies.put).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      policyFacilityId,
+      expect.objectContaining({ timeZone: 'UTC' }),
+      authenticatedUser,
+      expect.objectContaining({ ipAddress: expect.any(String) }),
+    );
+
+    const history = await app.inject({
+      method: 'GET',
+      url: `${policyRoot}/history?limit=10`,
+      headers,
+    });
+    expect(history.statusCode).toBe(200);
+    expect(history.json()).toMatchObject({ items: [], limit: 50, total: 0 });
+  });
+
   it('does not route a tenant path that does not match the validated membership', async () => {
     const response = await app.inject({
       method: 'GET',
@@ -334,7 +420,14 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     expect(paths[`${appointmentsPath}/{appointmentId}`]).toHaveProperty('patch');
     expect(paths[`${appointmentsPath}/{appointmentId}/reschedule`]).toHaveProperty('post');
     expect(paths[`${appointmentsPath}/{appointmentId}/cancel`]).toHaveProperty('post');
+    const policyPath = '/api/v1/tenants/{tenantId}/facilities/{facilityId}/scheduling-policy';
+    expect(paths[policyPath]).toHaveProperty('get');
+    expect(paths[policyPath]).toHaveProperty('put');
+    expect(paths[`${policyPath}/activate`]).toHaveProperty('post');
+    expect(paths[`${policyPath}/deactivate`]).toHaveProperty('post');
+    expect(paths[`${policyPath}/history`]).toHaveProperty('get');
     expect(paths[appointmentsPath]?.post?.security).toEqual([{ bearer: [] }]);
     expect(document.components?.schemas?.AppointmentResponseDto).toBeDefined();
+    expect(document.components?.schemas?.SchedulingPolicyInputDto).toBeDefined();
   });
 });

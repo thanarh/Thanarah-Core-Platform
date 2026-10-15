@@ -40,6 +40,11 @@ const { MongoTenantPatientStorage } = requireFromWorkspace(
 const { MongoTenantAppointmentStorage } = requireFromWorkspace(
   '../dist/tenant/mongo-tenant-appointment.storage',
 );
+const { FacilitySchedulingPolicyService } = requireFromWorkspace(
+  '../dist/tenant/appointment-scheduling-policy.service',
+);
+const { AppointmentScheduleConflictError, AppointmentScheduleLockConflictError } =
+  requireFromWorkspace('../dist/tenant/appointment.errors');
 const { OfficialTenantMongoClientFactory, TENANT_MONGO_CLIENT_FACTORY, TenantMongoClientManager } =
   requireFromWorkspace('../dist/tenant/tenant-mongo-client.manager');
 const { PatientService } = requireFromWorkspace('../dist/tenant/patient.service');
@@ -500,6 +505,379 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(names).toContain('tenant_appointment_branch_starts_idx');
     expect(names).toContain('tenant_appointment_patient_starts_idx');
   });
+
+  it('serializes overlapping MongoDB bookings and cleans only locks owned by the operation', async () => {
+    const storage = getApplication().get(MongoTenantAppointmentStorage);
+    const route: TenantStorageRoute = {
+      placements: [{ placementId: targetA.id as TenantStoragePlacementId }],
+    };
+    const doctorId = randomUUID();
+    const facilityId = randomUUID();
+    const startsAt = new Date('2026-10-20T09:00:00.000Z');
+    const endsAt = new Date('2026-10-20T09:30:00.000Z');
+    const locks = [
+      { resourceType: 'DOCTOR' as const, resourceId: doctorId },
+      { resourceType: 'FACILITY' as const, resourceId: facilityId },
+    ];
+    const record = {
+      id: randomUUID(),
+      patientId: randomUUID(),
+      doctorId,
+      facilityId,
+      branchId: null,
+      serviceId: null,
+      startsAt,
+      endsAt,
+      status: 'SCHEDULED' as const,
+      reason: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: platformUserId,
+      updatedBy: platformUserId,
+      cancelledAt: null,
+      cancelledBy: null,
+      version: 1,
+    };
+
+    let announceAcquired!: () => void;
+    let releaseFirst!: () => void;
+    const acquired = new Promise<void>((resolve) => {
+      announceAcquired = resolve;
+    });
+    const holdFirst = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const firstCreate = storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+      expect(await locked.hasProviderOverlap({ doctorId, startsAt, endsAt })).toBe(false);
+      announceAcquired();
+      await holdFirst;
+      return locked.create(record);
+    });
+    await acquired;
+
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+        if (await locked.hasProviderOverlap({ doctorId, startsAt, endsAt })) {
+          throw new AppointmentScheduleConflictError();
+        }
+        return locked.create({ ...record, id: randomUUID() });
+      }),
+    ).rejects.toBeInstanceOf(AppointmentScheduleLockConflictError);
+
+    releaseFirst();
+    await expect(firstCreate).resolves.toMatchObject({ id: record.id });
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+        if (await locked.hasProviderOverlap({ doctorId, startsAt, endsAt })) {
+          throw new AppointmentScheduleConflictError();
+        }
+        return locked.create({ ...record, id: randomUUID() });
+      }),
+    ).rejects.toBeInstanceOf(AppointmentScheduleConflictError);
+
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async () => {
+        throw new Error('intentional callback failure');
+      }),
+    ).rejects.toThrow('intentional callback failure');
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async () => 'lock released'),
+    ).resolves.toBe('lock released');
+
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async (locked) => locked.create(record)),
+    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async () => 'failed write released lock'),
+    ).resolves.toBe('failed write released lock');
+
+    const lockCollection = mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('appointment_schedule_locks');
+    const blockedFacilityId = randomUUID();
+    const ownerToken = randomUUID();
+    await lockCollection.insertOne({
+      _tenantId: tenantA.id,
+      resourceType: 'FACILITY',
+      resourceId: blockedFacilityId,
+      ownerToken,
+      acquiredAt: new Date(),
+    });
+    const partialDoctorId = randomUUID();
+    await expect(
+      storage.withSchedulingLocks(
+        contextA,
+        route,
+        [
+          { resourceType: 'DOCTOR', resourceId: partialDoctorId },
+          { resourceType: 'FACILITY', resourceId: blockedFacilityId },
+        ],
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(AppointmentScheduleLockConflictError);
+    await expect(
+      storage.withSchedulingLocks(
+        contextA,
+        route,
+        [{ resourceType: 'DOCTOR', resourceId: partialDoctorId }],
+        async () => 'partial acquisition cleaned',
+      ),
+    ).resolves.toBe('partial acquisition cleaned');
+
+    await expect(
+      storage.withSchedulingLocks(
+        contextA,
+        route,
+        [{ resourceType: 'FACILITY', resourceId: blockedFacilityId }],
+        async () => undefined,
+      ),
+    ).rejects.toBeInstanceOf(AppointmentScheduleLockConflictError);
+    await lockCollection.deleteOne({
+      _tenantId: tenantA.id,
+      resourceType: 'FACILITY',
+      resourceId: blockedFacilityId,
+      ownerToken,
+    });
+
+    await lockCollection.dropIndex('tenant_appointment_schedule_lock_unique');
+    await expect(
+      storage.withSchedulingLocks(contextA, route, locks, async () => undefined),
+    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+    await storage.ensureIndexesForTarget(targetA);
+  }, 60_000);
+
+  it('serializes competing reschedules and cancellation with a new booking in real MongoDB', async () => {
+    const storage = getApplication().get(MongoTenantAppointmentStorage);
+    const route: TenantStorageRoute = {
+      placements: [{ placementId: targetA.id as TenantStoragePlacementId }],
+    };
+    const doctorId = randomUUID();
+    const facilityId = randomUUID();
+    const locks = [
+      { resourceType: 'DOCTOR' as const, resourceId: doctorId },
+      { resourceType: 'FACILITY' as const, resourceId: facilityId },
+    ];
+    const createdAt = new Date('2026-10-19T12:00:00.000Z');
+    const targetStart = new Date('2026-10-20T09:00:00.000Z');
+    const targetEnd = new Date('2026-10-20T09:30:00.000Z');
+    const existing = [
+      {
+        id: randomUUID(),
+        startsAt: new Date('2026-10-20T08:00:00.000Z'),
+        endsAt: new Date('2026-10-20T08:30:00.000Z'),
+      },
+      {
+        id: randomUUID(),
+        startsAt: new Date('2026-10-20T10:00:00.000Z'),
+        endsAt: new Date('2026-10-20T10:30:00.000Z'),
+      },
+    ];
+    for (const appointment of existing) {
+      await storage.create(contextA, route, {
+        ...appointment,
+        patientId: randomUUID(),
+        doctorId,
+        facilityId,
+        branchId: null,
+        serviceId: null,
+        status: 'SCHEDULED',
+        reason: null,
+        createdAt,
+        updatedAt: createdAt,
+        createdBy: platformUserId,
+        updatedBy: platformUserId,
+        cancelledAt: null,
+        cancelledBy: null,
+        version: 1,
+      });
+    }
+
+    let announceReschedule!: () => void;
+    let releaseReschedule!: () => void;
+    const rescheduleAcquired = new Promise<void>((resolve) => {
+      announceReschedule = resolve;
+    });
+    const holdReschedule = new Promise<void>((resolve) => {
+      releaseReschedule = resolve;
+    });
+    const firstReschedule = storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+      expect(
+        await locked.hasProviderOverlap({
+          doctorId,
+          startsAt: targetStart,
+          endsAt: targetEnd,
+          excludeId: existing[0].id,
+        }),
+      ).toBe(false);
+      announceReschedule();
+      await holdReschedule;
+      return locked.update(existing[0].id, 1, {
+        startsAt: targetStart,
+        endsAt: targetEnd,
+        updatedAt: new Date(),
+        updatedBy: platformUserId,
+      });
+    });
+    await rescheduleAcquired;
+
+    const competingReschedule = (): Promise<unknown> =>
+      storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+        if (
+          await locked.hasProviderOverlap({
+            doctorId,
+            startsAt: targetStart,
+            endsAt: targetEnd,
+            excludeId: existing[1].id,
+          })
+        ) {
+          throw new AppointmentScheduleConflictError();
+        }
+        return locked.update(existing[1].id, 1, {
+          startsAt: targetStart,
+          endsAt: targetEnd,
+          updatedAt: new Date(),
+          updatedBy: platformUserId,
+        });
+      });
+    await expect(competingReschedule()).rejects.toBeInstanceOf(
+      AppointmentScheduleLockConflictError,
+    );
+    releaseReschedule();
+    await expect(firstReschedule).resolves.toMatchObject({
+      id: existing[0].id,
+      version: 2,
+    });
+    await expect(competingReschedule()).rejects.toBeInstanceOf(AppointmentScheduleConflictError);
+    await expect(storage.findById(contextA, route, existing[1].id)).resolves.toMatchObject({
+      startsAt: existing[1].startsAt,
+      version: 1,
+    });
+
+    let announceCancellation!: () => void;
+    let releaseCancellation!: () => void;
+    const cancellationAcquired = new Promise<void>((resolve) => {
+      announceCancellation = resolve;
+    });
+    const holdCancellation = new Promise<void>((resolve) => {
+      releaseCancellation = resolve;
+    });
+    const cancellation = storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+      const latest = await locked.findById(existing[0].id);
+      expect(latest?.status).toBe('SCHEDULED');
+      const updated = await locked.update(existing[0].id, latest!.version, {
+        status: 'CANCELLED',
+        cancelledAt: new Date(),
+        cancelledBy: platformUserId,
+        updatedAt: new Date(),
+        updatedBy: platformUserId,
+      });
+      announceCancellation();
+      await holdCancellation;
+      return updated;
+    });
+    await cancellationAcquired;
+    const newBooking = {
+      id: randomUUID(),
+      patientId: randomUUID(),
+      doctorId,
+      facilityId,
+      branchId: null,
+      serviceId: null,
+      startsAt: targetStart,
+      endsAt: targetEnd,
+      status: 'SCHEDULED',
+      reason: null,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      createdBy: platformUserId,
+      updatedBy: platformUserId,
+      cancelledAt: null,
+      cancelledBy: null,
+      version: 1,
+    };
+    const createBooking = (): Promise<unknown> =>
+      storage.withSchedulingLocks(contextA, route, locks, async (locked) => {
+        if (
+          await locked.hasProviderOverlap({ doctorId, startsAt: targetStart, endsAt: targetEnd })
+        ) {
+          throw new AppointmentScheduleConflictError();
+        }
+        return locked.create(newBooking);
+      });
+    await expect(createBooking()).rejects.toBeInstanceOf(AppointmentScheduleLockConflictError);
+    releaseCancellation();
+    await expect(cancellation).resolves.toMatchObject({ status: 'CANCELLED', version: 3 });
+    await expect(createBooking()).resolves.toMatchObject({ id: newBooking.id });
+  }, 60_000);
+
+  it('persists facility scheduling policy revisions and audit events in disposable MySQL', async () => {
+    const prisma = getApplication().get(PrismaService);
+    const facility = await prisma.facility.create({
+      data: { tenantId: tenantA.id, name: `policy-${RUN_ID}` },
+    });
+    const actor = {
+      userId: platformUserId,
+      sessionId: platformSessionId,
+      tokenVersion: 1,
+      platformRoleIds: [],
+    };
+    const policies = getApplication().get(FacilitySchedulingPolicyService);
+    const created = await policies.put(
+      contextA,
+      facility.id,
+      { timeZone: 'UTC', rules: {} },
+      actor,
+    );
+    expect(created).toMatchObject({ facilityId: facility.id, status: 'INACTIVE', version: 1 });
+
+    const activated = await policies.activate(
+      contextA,
+      facility.id,
+      { expectedVersion: created.version },
+      actor,
+    );
+    expect(activated).toMatchObject({ status: 'ACTIVE', version: 2 });
+    await expect(
+      policies.assertBookingAllowed(contextA, {
+        facilityId: facility.id,
+        doctorId: randomUUID(),
+        serviceId: null,
+        startsAt: new Date('2026-10-20T09:00:00.000Z'),
+        endsAt: new Date('2026-10-20T09:30:00.000Z'),
+      }),
+    ).resolves.toBeUndefined();
+
+    const deactivated = await policies.deactivate(
+      contextA,
+      facility.id,
+      { expectedVersion: activated.version },
+      actor,
+    );
+    expect(deactivated).toMatchObject({ status: 'INACTIVE', version: 3 });
+    await expect(policies.history(contextA, facility.id)).resolves.toMatchObject({
+      total: 3,
+      items: [
+        { version: 3, action: 'DEACTIVATED' },
+        { version: 2, action: 'ACTIVATED' },
+        { version: 1, action: 'CREATED' },
+      ],
+    });
+    await expect(
+      prisma.platformAuditLog.count({
+        where: {
+          subjectTenantId: tenantA.id,
+          eventType: {
+            in: [
+              'SCHEDULING_POLICY_CREATED',
+              'SCHEDULING_POLICY_ACTIVATED',
+              'SCHEDULING_POLICY_DEACTIVATED',
+            ],
+          },
+        },
+      }),
+    ).resolves.toBe(3);
+  }, 60_000);
 
   it('rejects a tenant collection whose Patient-number index inherits non-simple default collation', async () => {
     const incompatibleTarget = {

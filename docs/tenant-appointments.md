@@ -46,26 +46,87 @@ member without a Staff profile continues to use tenant permissions without a
 location restriction because the existing membership role model has no
 facility/branch grant.
 
-## Collision and availability limitations
+## Collision protection
 
-The service rejects a booking if a query finds an overlapping `SCHEDULED`
-appointment for the same provider anywhere in that tenant. Rescheduling excludes
-the appointment being moved. Adjacent appointments are allowed; the interval
-must only have a positive duration.
+Provider overlap checks use half-open intervals: adjacent appointments are
+allowed. The tenant MongoDB adapter now serializes booking mutations with unique,
+tenant-local lock documents for the provider and facility. Create, reschedule,
+appointment updates, and cancellation acquire the same ordered resource locks
+before reading overlaps or changing appointment state. Rescheduling also locks
+the old and new provider/facility scopes. Policy writes use the facility lock so
+a policy cannot change midway through a booking check.
 
-This is a preflight query followed by a separate write, not an atomic
-reservation. Concurrent requests can both observe no conflict and then both
-insert overlapping appointments. Optimistic version checks protect updates to
-the same appointment, but do not prevent two new bookings from racing. The
-MongoDB test environment is standalone and no approved atomic booking
-mechanism, replica-set topology, shard key, or serialization service exists in
-the project. A product/infrastructure decision is required before promising
-race-safe booking.
+The unique-indexed lock acquisition is a per-tenant-database mutex, not a Mongo
+transaction. It prevents two cooperating application writers from both passing
+the overlap check while holding the same provider lock. A busy lock or observed
+overlap returns HTTP 409 with `APPOINTMENT_SCHEDULE_CONFLICT`. Writes fail
+closed if the tenant database or required indexes cannot be verified. Version
+checks continue to protect concurrent changes to one appointment.
 
-No provider or facility availability, business hours, standard duration, slot
-size, cancellation window, or grace period is configured in the existing
-system. The API therefore does not infer those rules; it validates explicit
-start/end timestamps only.
+Create supports an optional `Idempotency-Key` header (1–128 visible ASCII
+characters). Its appointment identifier is deterministic within the tenant and
+actor scope, so an identical retry returns the original record. Reusing the key
+for a different payload returns `APPOINTMENT_IDEMPOTENCY_CONFLICT`.
+
+There is no lock lease or automatic expiry. If a process dies while holding a
+lock, subsequent writers fail closed rather than risking an unsafe takeover.
+An operator may remove an abandoned lock only after confirming every writer for
+that tenant database has stopped and verifying that the lock owner is no longer
+active. A failed operation releases only locks matching its own owner token.
+This safeguard and concurrency behavior are covered by disposable standalone
+MongoDB integration tests; it does not establish the topology or reliability of
+any production deployment. No production topology or deployment decision is
+made here.
+
+## Facility scheduling policy
+
+Policies are central control-plane records scoped to both tenant and existing
+facility; appointment records remain in the tenant MongoDB database. The
+policy starts `INACTIVE`, uses optimistic `version` updates, and records each
+create, update, activation, and deactivation in revision history. Changes are
+audited without patient information. The dedicated
+`tenant.appointments.policy.manage` permission is assigned to tenant owners and
+admins, not members. Existing custom roles can receive it through role
+administration.
+
+| Operation | Route | Permission |
+| --- | --- | --- |
+| Read policy | `GET /api/v1/tenants/:tenantId/facilities/:facilityId/scheduling-policy` | `tenant.appointments.policy.manage` |
+| Create or update policy | `PUT /api/v1/tenants/:tenantId/facilities/:facilityId/scheduling-policy` | `tenant.appointments.policy.manage` |
+| Activate policy | `POST .../scheduling-policy/activate` | `tenant.appointments.policy.manage` |
+| Deactivate policy | `POST .../scheduling-policy/deactivate` | `tenant.appointments.policy.manage` |
+| Read revision history | `GET .../scheduling-policy/history` | `tenant.appointments.policy.manage` |
+
+The request explicitly supplies an IANA `timeZone` and `rules`. Supported
+fields are:
+
+- `operatingHours`: weekday lists of local `HH:mm` intervals. An empty object
+  does not constrain facility hours; once any weekday is configured, omitted
+  weekdays are closed.
+- `providerAvailability`: optional doctor-specific weekday schedules and
+  date-specific exceptions. Only doctors with an explicit entry receive this
+  additional availability check.
+- `allowedDurationsMinutes` and `serviceDurationRules`: optional allowed
+  elapsed-minute durations, globally or per tenant service.
+- `bookingHorizonDays`, `minimumAdvanceNoticeMinutes`,
+  `minimumCancellationNoticeMinutes`, and
+  `minimumRescheduleNoticeMinutes`: optional integer restrictions.
+
+No timezone, working hours, default duration, notice period, booking horizon,
+or provider schedule is inferred. Empty or `null` optional rules are not
+enforced. A missing or inactive policy therefore preserves the existing
+explicit-start/end behavior. When active, booking hours, configured provider
+availability, duration rules, booking horizon, and advance notice are enforced
+on create and reschedule; cancellation and rescheduling notice rules are
+enforced on their respective mutations. IANA conversion evaluates persisted
+instants in the configured zone, including daylight-saving transitions. The
+API still requires timestamps with an explicit UTC offset; it does not accept
+ambiguous local wall-clock timestamps.
+
+Activation revalidates the active facility and any configured doctor/service
+references. Unknown request properties, including physical storage identifiers,
+are rejected. Tenant ownership, staff location authorization, and the policy's
+business rules remain separate checks.
 
 ## Storage and audit operations
 
@@ -75,10 +136,11 @@ patient filters. Existing targets must pass the existing activation/primary
 preflight before appointment writes are enabled. Missing or incompatible
 indexes fail closed.
 
-Central Prisma stores only the new permission catalog entries and appointment
-audit event types. Appointment records remain in tenant MongoDB. Audit events
-include the appointment ID and action, but not the reason, patient details, or
-appointment notes.
+Central Prisma stores policy rules/revisions, permission catalog entries, and
+audit event types. Appointment records remain in tenant MongoDB. Appointment
+audit events include the appointment ID and action, but not the reason, patient
+details, or appointment notes. No patient-number or patient duplicate
+prevention behavior was changed.
 
 There is no tenant frontend in this repository; the integration boundary is
 the versioned API above.

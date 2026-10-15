@@ -376,7 +376,7 @@ model FacilitySchedulingPolicy {
   facility  Facility                       @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
   revisions FacilitySchedulingPolicyRevision[]
 
-  @@unique([tenantId, facilityId])
+  @@unique([facilityId, tenantId])
   @@unique([id, tenantId])
   @@index([tenantId, status])
 }
@@ -396,7 +396,7 @@ model FacilitySchedulingPolicyRevision {
   policy      FacilitySchedulingPolicy               @relation(fields: [policyId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([policyId, version])
-  @@index([tenantId, facilityId, createdAt])
+  @@index([tenantId, facilityId, createdAt], map: "FacilitySchedPolicyRevision_tenant_fac_created_idx")
 }
 
 model Branch {

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { AppointmentRecord } from '../src/tenant/appointment.model';
 import { InMemoryTenantAppointmentStorage } from '../src/tenant/in-memory-tenant-appointment.storage';
+import { AppointmentScheduleConflictError } from '../src/tenant/appointment.errors';
 import { UnconfiguredTenantAppointmentStorage } from '../src/tenant/unconfigured-tenant-appointment.storage';
 import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
 import type { TenantStorageRoute } from '../src/tenant/tenant-storage.contract';
@@ -154,6 +155,61 @@ describe('tenant appointment storage adapters', () => {
       reason: 'Updated',
       version: 2,
     });
+  });
+
+  it('serializes competing provider overlap checks within a tenant', async () => {
+    const storage = new InMemoryTenantAppointmentStorage();
+    const locks = [
+      { resourceType: 'DOCTOR' as const, resourceId: doctorId },
+      { resourceType: 'FACILITY' as const, resourceId: facilityId },
+    ];
+    const startsAt = new Date('2026-10-15T09:00:00.000Z');
+    const endsAt = new Date('2026-10-15T09:30:00.000Z');
+    let announceAcquired!: () => void;
+    let releaseFirst!: () => void;
+    const acquired = new Promise<void>((resolve) => {
+      announceAcquired = resolve;
+    });
+    const holdFirst = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = storage.withSchedulingLocks(context(tenantA), route, locks, async (locked) => {
+      expect(await locked.hasProviderOverlap({ doctorId, startsAt, endsAt })).toBe(false);
+      announceAcquired();
+      await holdFirst;
+      return locked.create(record({ startsAt, endsAt }));
+    });
+    await acquired;
+    const second = storage.withSchedulingLocks(context(tenantA), route, locks, async (locked) => {
+      if (await locked.hasProviderOverlap({ doctorId, startsAt, endsAt })) {
+        throw new AppointmentScheduleConflictError();
+      }
+      return locked.create(
+        record({
+          id: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+          startsAt,
+          endsAt,
+        }),
+      );
+    });
+
+    releaseFirst();
+    await expect(first).resolves.toMatchObject({ id: appointmentId });
+    await expect(second).rejects.toBeInstanceOf(AppointmentScheduleConflictError);
+    await expect(
+      storage.list(context(tenantA), route, {
+        limit: 10,
+        offset: 0,
+        accessScope: { unrestricted: true, facilityIds: [], branchIds: [] },
+      }),
+    ).resolves.toMatchObject({ total: 1 });
+
+    await expect(
+      storage.withSchedulingLocks(context(tenantB), route, locks, async (locked) =>
+        locked.hasProviderOverlap({ doctorId, startsAt, endsAt }),
+      ),
+    ).resolves.toBe(false);
   });
 
   it('fails closed when tenant appointment storage is not configured', async () => {

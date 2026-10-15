@@ -38,9 +38,12 @@ export type FacilitySchedulingPolicyRevisionRecord = {
 export class FacilitySchedulingPolicyRepository {
   constructor(private readonly prisma: PrismaService) {}
 
-  findByFacility(tenantId: string, facilityId: string): Promise<FacilitySchedulingPolicyRecord | null> {
+  findByFacility(
+    tenantId: string,
+    facilityId: string,
+  ): Promise<FacilitySchedulingPolicyRecord | null> {
     return this.prisma.facilitySchedulingPolicy.findUnique({
-      where: { tenantId_facilityId: { tenantId, facilityId } },
+      where: { facilityId_tenantId: { tenantId, facilityId } },
     });
   }
 
@@ -57,22 +60,20 @@ export class FacilitySchedulingPolicyRepository {
     });
   }
 
-  async upsert(
-    input: {
-      tenantId: string;
-      facilityId: string;
-      expectedVersion?: number;
-      timeZone: string;
-      rules: SchedulingPolicyRules;
-      actorUserId: string;
-    },
-  ): Promise<{ policy: FacilitySchedulingPolicyRecord; changed: boolean }> {
+  async upsert(input: {
+    tenantId: string;
+    facilityId: string;
+    expectedVersion?: number;
+    timeZone: string;
+    rules: SchedulingPolicyRules;
+    actorUserId: string;
+  }): Promise<{ policy: FacilitySchedulingPolicyRecord; changed: boolean }> {
     return this.prisma.$transaction(async (transaction) => {
       const current = await transaction.facilitySchedulingPolicy.findUnique({
         where: {
-          tenantId_facilityId: {
-            tenantId: input.tenantId,
+          facilityId_tenantId: {
             facilityId: input.facilityId,
+            tenantId: input.tenantId,
           },
         },
       });
@@ -90,13 +91,15 @@ export class FacilitySchedulingPolicyRepository {
             version: 1,
           },
         });
-        await this.createRevision(transaction, policy, input.actorUserId, FacilitySchedulingPolicyRevisionAction.CREATED);
+        await this.createRevision(
+          transaction,
+          policy,
+          input.actorUserId,
+          FacilitySchedulingPolicyRevisionAction.CREATED,
+        );
         return { policy, changed: true };
       }
-      if (
-        input.expectedVersion === undefined ||
-        input.expectedVersion !== current.version
-      ) {
+      if (input.expectedVersion === undefined || input.expectedVersion !== current.version) {
         throw new SchedulingPolicyVersionConflictError();
       }
 
@@ -128,24 +131,22 @@ export class FacilitySchedulingPolicyRepository {
     });
   }
 
-  async setStatus(
-    input: {
-      tenantId: string;
-      facilityId: string;
-      expectedVersion: number;
-      status: FacilitySchedulingPolicyStatus;
-      actorUserId: string;
-    },
-  ): Promise<{
+  async setStatus(input: {
+    tenantId: string;
+    facilityId: string;
+    expectedVersion: number;
+    status: FacilitySchedulingPolicyStatus;
+    actorUserId: string;
+  }): Promise<{
     policy: FacilitySchedulingPolicyRecord | null;
     changed: boolean;
   }> {
     return this.prisma.$transaction(async (transaction) => {
       const current = await transaction.facilitySchedulingPolicy.findUnique({
         where: {
-          tenantId_facilityId: {
-            tenantId: input.tenantId,
+          facilityId_tenantId: {
             facilityId: input.facilityId,
+            tenantId: input.tenantId,
           },
         },
       });

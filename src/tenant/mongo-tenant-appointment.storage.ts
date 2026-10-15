@@ -207,9 +207,7 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
     operation: (storage: LockedAppointmentStorage) => Promise<T>,
   ): Promise<T> {
     const database = await this.getDatabase(context, route);
-    const appointments = database.collection<AppointmentMongoDocument>(
-      APPOINTMENT_COLLECTION_NAME,
-    );
+    const appointments = database.collection<AppointmentMongoDocument>(APPOINTMENT_COLLECTION_NAME);
     const lockCollection = database.collection<ScheduleLockMongoDocument>(
       SCHEDULE_LOCK_COLLECTION_NAME,
     );

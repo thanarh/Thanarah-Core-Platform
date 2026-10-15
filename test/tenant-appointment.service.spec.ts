@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import {
+  AppointmentIdempotencyConflictError,
   AppointmentNotFoundError,
   AppointmentReferenceInvalidError,
   AppointmentScheduleConflictError,
@@ -41,9 +42,15 @@ type AppointmentServiceHarness = {
   service: AppointmentService;
   record: AppointmentRecord;
   appointments: Record<
-    'create' | 'list' | 'findById' | 'hasProviderOverlap' | 'update',
+    'create' | 'list' | 'findById' | 'hasProviderOverlap' | 'update' | 'withSchedulingLocks',
     MockFunction
   >;
+  lockedStorage: {
+    create: MockFunction;
+    findById: MockFunction;
+    hasProviderOverlap: MockFunction;
+    update: MockFunction;
+  };
   patients: { findById: MockFunction };
   doctors: { findById: MockFunction };
   facilities: { findById: MockFunction };
@@ -53,6 +60,11 @@ type AppointmentServiceHarness = {
     resolveMembershipScope: MockFunction;
     listFacilities: MockFunction;
     listBranches: MockFunction;
+  };
+  schedulingPolicies: {
+    assertBookingAllowed: MockFunction;
+    assertCancellationAllowed: MockFunction;
+    assertReschedulingAllowed: MockFunction;
   };
   audit: { recordAudit: MockFunction };
 };
@@ -99,8 +111,12 @@ function createInput(overrides: Record<string, unknown> = {}): Record<string, un
 
 function makeService(): AppointmentServiceHarness {
   const record = appointment();
-  const appointments = {
-    create: vi.fn().mockImplementation(async (_context, newRecord) => newRecord),
+  let currentRecord = record;
+  const appointments: AppointmentServiceHarness['appointments'] = {
+    create: vi.fn().mockImplementation(async (_context, newRecord) => {
+      currentRecord = newRecord;
+      return newRecord;
+    }),
     list: vi.fn().mockResolvedValue({
       items: [record],
       limit: 50,
@@ -108,16 +124,30 @@ function makeService(): AppointmentServiceHarness {
       total: 1,
       hasNext: false,
     }),
-    findById: vi.fn().mockResolvedValue(record),
+    findById: vi.fn().mockImplementation(async () => currentRecord),
     hasProviderOverlap: vi.fn().mockResolvedValue(false),
+    update: vi.fn().mockImplementation(async (_context, id, version, patch) => {
+      if (id !== currentRecord.id || version !== currentRecord.version) return null;
+      currentRecord = { ...currentRecord, ...patch, version: currentRecord.version + 1 };
+      return currentRecord;
+    }),
+    withSchedulingLocks: vi.fn(),
+  };
+  const lockedStorage = {
+    create: vi.fn().mockImplementation((newRecord) => appointments.create(context, newRecord)),
+    findById: vi
+      .fn()
+      .mockImplementation(async (id) => (id === currentRecord.id ? currentRecord : null)),
+    hasProviderOverlap: vi
+      .fn()
+      .mockImplementation((input) => appointments.hasProviderOverlap(context, input)),
     update: vi
       .fn()
-      .mockImplementation(async (_context, id, version, patch) =>
-        id === record.id && version === record.version
-          ? { ...record, ...patch, version: record.version + 1 }
-          : null,
-      ),
+      .mockImplementation((id, version, patch) => appointments.update(context, id, version, patch)),
   };
+  appointments.withSchedulingLocks.mockImplementation((_context, _locks, operation) =>
+    operation(lockedStorage),
+  );
   const patients = {
     findById: vi.fn().mockResolvedValue({ id: patientId, status: 'ACTIVE' }),
   };
@@ -152,6 +182,11 @@ function makeService(): AppointmentServiceHarness {
       ],
     }),
   };
+  const schedulingPolicies = {
+    assertBookingAllowed: vi.fn().mockResolvedValue(undefined),
+    assertCancellationAllowed: vi.fn().mockResolvedValue(undefined),
+    assertReschedulingAllowed: vi.fn().mockResolvedValue(undefined),
+  };
   const audit = { recordAudit: vi.fn().mockResolvedValue(undefined) };
   const service = new AppointmentService(
     appointments as never,
@@ -161,18 +196,21 @@ function makeService(): AppointmentServiceHarness {
     branches as never,
     services as never,
     staffScopes as never,
+    schedulingPolicies as never,
     audit as never,
   );
   return {
     service,
     record,
     appointments,
+    lockedStorage,
     patients,
     doctors,
     facilities,
     branches,
     services,
     staffScopes,
+    schedulingPolicies,
     audit,
   };
 }
@@ -193,8 +231,7 @@ describe('AppointmentService', () => {
     });
     expect(response).not.toHaveProperty('createdBy');
     expect(response).not.toHaveProperty('version');
-    expect(harness.appointments.create).toHaveBeenCalledWith(
-      context,
+    expect(harness.lockedStorage.create).toHaveBeenCalledWith(
       expect.objectContaining({
         patientId,
         doctorId,
@@ -206,6 +243,14 @@ describe('AppointmentService', () => {
     );
     expect(harness.staffScopes.listFacilities).toHaveBeenCalledWith(context, staffId);
     expect(harness.staffScopes.listBranches).toHaveBeenCalledWith(context, staffId);
+    expect(harness.appointments.withSchedulingLocks).toHaveBeenCalledWith(
+      context,
+      expect.arrayContaining([
+        { resourceType: 'FACILITY', resourceId: facilityId },
+        { resourceType: 'DOCTOR', resourceId: doctorId },
+      ]),
+      expect.any(Function),
+    );
     expect(harness.audit.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({
         eventType: 'APPOINTMENT_CREATED',
@@ -232,7 +277,7 @@ describe('AppointmentService', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(AppointmentInputValidationError);
-    expect(harness.appointments.create).not.toHaveBeenCalled();
+    expect(harness.lockedStorage.create).not.toHaveBeenCalled();
   });
 
   it('rejects inactive or cross-tenant patient references without exposing their existence', async () => {
@@ -242,7 +287,7 @@ describe('AppointmentService', () => {
     await expect(
       harness.service.create(context, createInput() as never, actor),
     ).rejects.toBeInstanceOf(AppointmentReferenceInvalidError);
-    expect(harness.appointments.create).not.toHaveBeenCalled();
+    expect(harness.lockedStorage.create).not.toHaveBeenCalled();
   });
 
   it('rejects observed provider overlap and does not insert', async () => {
@@ -252,11 +297,10 @@ describe('AppointmentService', () => {
     await expect(
       harness.service.create(context, createInput() as never, actor),
     ).rejects.toBeInstanceOf(AppointmentScheduleConflictError);
-    expect(harness.appointments.hasProviderOverlap).toHaveBeenCalledWith(
-      context,
+    expect(harness.lockedStorage.hasProviderOverlap).toHaveBeenCalledWith(
       expect.objectContaining({ doctorId, startsAt: start, endsAt: end }),
     );
-    expect(harness.appointments.create).not.toHaveBeenCalled();
+    expect(harness.lockedStorage.create).not.toHaveBeenCalled();
   });
 
   it('reschedules without conflicting with the appointment itself', async () => {
@@ -270,7 +314,7 @@ describe('AppointmentService', () => {
 
     const result = await harness.service.reschedule(context, appointmentId, input as never, actor);
 
-    expect(harness.appointments.hasProviderOverlap).toHaveBeenCalledWith(context, {
+    expect(harness.lockedStorage.hasProviderOverlap).toHaveBeenCalledWith({
       doctorId,
       startsAt: nextStart,
       endsAt: nextEnd,
@@ -356,27 +400,32 @@ describe('AppointmentService', () => {
     );
   });
 
-  it('does not claim atomic overlap protection when two preflight reads race', async () => {
+  it('uses the optional idempotency key to return the same appointment on safe retries', async () => {
     const harness = makeService();
-    let seen = 0;
-    let release!: () => void;
-    const bothChecked = new Promise<void>((resolve) => {
-      release = resolve;
-    });
-    harness.appointments.hasProviderOverlap.mockImplementation(async () => {
-      seen += 1;
-      if (seen === 2) release();
-      await bothChecked;
-      return false;
-    });
-    harness.appointments.create.mockImplementation(async (_context, input) => input);
+    const input = createInput();
+    const first = await harness.service.create(context, input as never, actor, {}, 'retry-key-1');
+    const retry = await harness.service.create(context, input as never, actor, {}, 'retry-key-1');
+    expect(retry.id).toBe(first.id);
+    expect(harness.lockedStorage.create).toHaveBeenCalledTimes(1);
+    expect(harness.appointments.withSchedulingLocks).toHaveBeenCalledWith(
+      context,
+      expect.arrayContaining([{ resourceType: 'IDEMPOTENCY', resourceId: first.id }]),
+      expect.any(Function),
+    );
+  });
 
-    await Promise.all([
-      harness.service.create(context, createInput() as never, actor),
-      harness.service.create(context, createInput() as never, actor),
-    ]);
-
-    expect(harness.appointments.hasProviderOverlap).toHaveBeenCalledTimes(2);
-    expect(harness.appointments.create).toHaveBeenCalledTimes(2);
+  it('rejects reusing an idempotency key for a different request', async () => {
+    const harness = makeService();
+    await harness.service.create(context, createInput() as never, actor, {}, 'retry-key-2');
+    await expect(
+      harness.service.create(
+        context,
+        createInput({ reason: 'Different reason' }) as never,
+        actor,
+        {},
+        'retry-key-2',
+      ),
+    ).rejects.toBeInstanceOf(AppointmentIdempotencyConflictError);
+    expect(harness.lockedStorage.create).toHaveBeenCalledTimes(1);
   });
 });

@@ -11,7 +11,10 @@ export const SCHEDULING_WEEKDAYS = [
 ] as const;
 
 const weekdaySchema = z.enum(SCHEDULING_WEEKDAYS);
-const idSchema = z.string().uuid().transform((value) => value.toLowerCase());
+const idSchema = z
+  .string()
+  .uuid()
+  .transform((value) => value.toLowerCase());
 const clockStartSchema = z.string().regex(/^(?:[01]\d|2[0-3]):[0-5]\d$/u);
 const clockEndSchema = z.string().regex(/^(?:(?:[01]\d|2[0-3]):[0-5]\d|24:00)$/u);
 
@@ -57,9 +60,18 @@ const uniquePositiveDurations = z
   .max(1440)
   .refine((values) => new Set(values).size === values.length);
 
+const nonEmptyUniquePositiveDurations = z
+  .array(z.number().int().min(1).max(1440))
+  .min(1)
+  .max(1440)
+  .refine((values) => new Set(values).size === values.length);
+
 const providerExceptionSchema = z
   .object({
-    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/u).refine(isCalendarDate),
+    date: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/u)
+      .refine(isCalendarDate),
     intervals: intervalsSchema,
   })
   .strict();
@@ -100,7 +112,7 @@ const serviceDurationRulesSchema = z
     z
       .object({
         serviceId: idSchema,
-        allowedDurationsMinutes: uniquePositiveDurations.min(1),
+        allowedDurationsMinutes: nonEmptyUniquePositiveDurations,
       })
       .strict(),
   )
@@ -165,9 +177,7 @@ function isCalendarDate(value: string): boolean {
   const [year, month, day] = value.split('-').map(Number);
   const date = new Date(Date.UTC(year, month - 1, day));
   return (
-    date.getUTCFullYear() === year &&
-    date.getUTCMonth() === month - 1 &&
-    date.getUTCDate() === day
+    date.getUTCFullYear() === year && date.getUTCMonth() === month - 1 && date.getUTCDate() === day
   );
 }
 

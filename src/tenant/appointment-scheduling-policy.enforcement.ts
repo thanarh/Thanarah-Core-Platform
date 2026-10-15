@@ -24,12 +24,7 @@ export function assertBookingWithinPolicy(
 
   const operatingHours = policy.rules.operatingHours;
   if (Object.keys(operatingHours).length > 0) {
-    assertWithinSchedule(
-      operatingHours,
-      startTime,
-      endTime,
-      'FACILITY_OPERATING_HOURS',
-    );
+    assertWithinSchedule(operatingHours, startTime, endTime, 'FACILITY_OPERATING_HOURS');
   }
 
   const provider = policy.rules.providerAvailability.find(
@@ -37,7 +32,7 @@ export function assertBookingWithinPolicy(
   );
   if (provider) {
     const exception = provider.exceptions.find(({ date }) => date === startTime.date);
-    assertWithinSchedule(
+    assertIntervalsWithinSchedule(
       exception?.intervals ?? provider.weeklyAvailability[startTime.weekday] ?? [],
       startTime,
       endTime,
@@ -66,8 +61,7 @@ export function assertBookingWithinPolicy(
 
   if (
     policy.rules.minimumAdvanceNoticeMinutes !== null &&
-    input.startsAt.getTime() - now.getTime() <
-      policy.rules.minimumAdvanceNoticeMinutes * 60_000
+    input.startsAt.getTime() - now.getTime() < policy.rules.minimumAdvanceNoticeMinutes * 60_000
   ) {
     throw new AppointmentPolicyViolationError('MINIMUM_ADVANCE_NOTICE');
   }
@@ -87,10 +81,7 @@ export function assertCancellationWithinPolicy(
   now: Date = new Date(),
 ): void {
   const minimum = policy.rules.minimumCancellationNoticeMinutes;
-  if (
-    minimum !== null &&
-    startsAt.getTime() - now.getTime() < minimum * 60_000
-  ) {
+  if (minimum !== null && startsAt.getTime() - now.getTime() < minimum * 60_000) {
     throw new AppointmentPolicyViolationError('CANCELLATION_NOTICE');
   }
 }
@@ -101,21 +92,29 @@ export function assertReschedulingWithinPolicy(
   now: Date = new Date(),
 ): void {
   const minimum = policy.rules.minimumRescheduleNoticeMinutes;
-  if (
-    minimum !== null &&
-    startsAt.getTime() - now.getTime() < minimum * 60_000
-  ) {
+  if (minimum !== null && startsAt.getTime() - now.getTime() < minimum * 60_000) {
     throw new AppointmentPolicyViolationError('RESCHEDULING_NOTICE');
   }
 }
 
 function assertWithinSchedule(
-  schedule: Partial<Record<(typeof SCHEDULING_WEEKDAYS)[number], Array<{ start: string; end: string }>>,
+  schedule: Partial<
+    Record<(typeof SCHEDULING_WEEKDAYS)[number], Array<{ start: string; end: string }>>
+  >,
   start: ZonedDateTime,
   end: ZonedDateTime,
   rule: string,
 ): void {
-  if (!scheduleCovers(schedule[start.weekday] ?? [], start, end)) {
+  assertIntervalsWithinSchedule(schedule[start.weekday] ?? [], start, end, rule);
+}
+
+function assertIntervalsWithinSchedule(
+  intervals: Array<{ start: string; end: string }>,
+  start: ZonedDateTime,
+  end: ZonedDateTime,
+  rule: string,
+): void {
+  if (!scheduleCovers(intervals, start, end)) {
     throw new AppointmentPolicyViolationError(rule);
   }
 }
@@ -125,8 +124,7 @@ function scheduleCovers(
   start: ZonedDateTime,
   end: ZonedDateTime,
 ): boolean {
-  const crossesToMidnight =
-    end.date === nextDate(start.date) && end.hour === 0 && end.minute === 0;
+  const crossesToMidnight = end.date === nextDate(start.date) && end.hour === 0 && end.minute === 0;
   if (end.date !== start.date && !crossesToMidnight) return false;
 
   return intervals.some((interval) => {
@@ -134,8 +132,7 @@ function scheduleCovers(
     const intervalEnd = clockMinutes(interval.end);
     const appointmentStart = start.hour * 60 + start.minute;
     const localEnd = end.hour * 60 + end.minute;
-    const appointmentEnd =
-      crossesToMidnight && intervalEnd === 1440 ? 1440 : localEnd;
+    const appointmentEnd = crossesToMidnight && intervalEnd === 1440 ? 1440 : localEnd;
     return (
       appointmentStart >= intervalStart &&
       appointmentStart < intervalEnd &&

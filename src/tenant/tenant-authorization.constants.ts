@@ -37,6 +37,7 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.appointments.update',
   'tenant.appointments.reschedule',
   'tenant.appointments.cancel',
+  'tenant.appointments.policy.manage',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -128,6 +129,10 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   { code: 'tenant.appointments.update', description: 'Update non-scheduling appointment details' },
   { code: 'tenant.appointments.reschedule', description: 'Reschedule or relocate appointments' },
   { code: 'tenant.appointments.cancel', description: 'Cancel scheduled appointments' },
+  {
+    code: 'tenant.appointments.policy.manage',
+    description: 'Configure and audit facility appointment scheduling policies',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -179,6 +184,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.appointments.update',
       'tenant.appointments.reschedule',
       'tenant.appointments.cancel',
+      'tenant.appointments.policy.manage',
     ],
   },
   {

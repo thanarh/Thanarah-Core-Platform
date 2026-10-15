@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, NotFoundException } from '@nestjs/common';
 import {
   FacilitySchedulingPolicyRevisionAction,
   FacilitySchedulingPolicyStatus,
@@ -9,13 +9,17 @@ import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
 import type { TrustedTenantContext } from './tenant-context.contract';
-import { TenantContextInvalidError, isWellFormedTrustedTenantContext } from './tenant-context.contract';
+import {
+  TenantContextInvalidError,
+  isWellFormedTrustedTenantContext,
+} from './tenant-context.contract';
 import { tenantIdSchema } from './tenant.dto';
 import { FacilityService } from './facility.service';
 import { DoctorService } from './doctor.service';
 import { ServiceCatalogService } from './service-catalog.service';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
 import type { TenantAppointmentRepository } from './appointment.repository';
+import { APPOINTMENT_REPOSITORY } from './tenant-appointment.storage';
 import type {
   FacilitySchedulingPolicyRecord,
   FacilitySchedulingPolicyRevisionRecord,
@@ -74,6 +78,7 @@ export interface FacilitySchedulingPolicyRevisionResponse {
 export class FacilitySchedulingPolicyService {
   constructor(
     private readonly policies: FacilitySchedulingPolicyRepository,
+    @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointments: TenantAppointmentRepository,
     private readonly facilities: FacilityService,
     private readonly doctors: DoctorService,
@@ -289,13 +294,7 @@ export class FacilitySchedulingPolicyService {
       },
     );
     if (result.changed && result.policy) {
-      await this.auditPolicyChange(
-        result.policy,
-        actor,
-        requestContext,
-        eventType,
-        action,
-      );
+      await this.auditPolicyChange(result.policy, actor, requestContext, eventType, action);
     }
     if (!result.policy) throw new SchedulingPolicyNotFoundError();
     return this.present(result.policy);
@@ -307,9 +306,7 @@ export class FacilitySchedulingPolicyService {
   ): Promise<ActiveSchedulingPolicy | null> {
     const tenantId = this.tenantId(context);
     const facility = this.facilityId(facilityId);
-    const record = await this.read(() =>
-      this.policies.findActiveByFacility(tenantId, facility),
-    );
+    const record = await this.read(() => this.policies.findActiveByFacility(tenantId, facility));
     return record ? this.activePolicy(record) : null;
   }
 
