@@ -23,6 +23,7 @@ import type { ConfigService } from '../dist/config/config.service';
 import type { TenantMongoClientFactory } from '../dist/tenant/tenant-mongo-client.manager';
 import type { TenantStorageTargetRecord } from '../dist/tenant/tenant-storage.registry';
 import type { TrustedTenantContext } from '../dist/tenant/tenant-context.contract';
+import type { EncounterHistoryEvent, EncounterRecord } from '../src/tenant/encounter.model';
 import type {
   TenantStoragePlacementId,
   TenantStorageRoute,
@@ -39,6 +40,12 @@ const { MongoTenantPatientStorage } = requireFromWorkspace(
 );
 const { MongoTenantAppointmentStorage } = requireFromWorkspace(
   '../dist/tenant/mongo-tenant-appointment.storage',
+);
+const { MongoTenantEncounterStorage } = requireFromWorkspace(
+  '../dist/tenant/mongo-tenant-encounter.storage',
+);
+const { EncounterAppointmentConflictError } = requireFromWorkspace(
+  '../dist/tenant/encounter.errors',
 );
 const { FacilitySchedulingPolicyService } = requireFromWorkspace(
   '../dist/tenant/appointment-scheduling-policy.service',
@@ -449,6 +456,122 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(response.json()).not.toHaveProperty('items.0.databaseName');
     expect(response.json()).not.toHaveProperty('items.0.connectionReference');
+  });
+
+  it('persists tenant-isolated encounters and atomically rejects concurrent appointment duplicates', async () => {
+    const storage = getApplication().get(MongoTenantEncounterStorage);
+    const resolver = getApplication().get(TenantStorageResolverService);
+    await storage.ensureIndexesForTarget(targetA);
+    await storage.ensureIndexesForTarget(targetB);
+    const routeA = await resolver.resolve(contextA);
+    const routeB = await resolver.resolve(contextB);
+    const now = new Date();
+    const appointmentId = randomUUID();
+    const makeEncounter = (id: string): EncounterRecord => {
+      const created: EncounterHistoryEvent = {
+        id: randomUUID(),
+        action: 'CREATED',
+        actorUserId: contextA.platformUserId,
+        occurredAt: now,
+        fromVersion: 0,
+        toVersion: 1,
+        changedFields: ['appointmentId', 'patientId', 'doctorId', 'facilityId'],
+      };
+      return {
+        id,
+        appointmentId,
+        patientId: randomUUID(),
+        doctorId: randomUUID(),
+        facilityId: randomUUID(),
+        branchId: null,
+        encounterAt: now,
+        status: 'DRAFT',
+        clinical: {},
+        version: 1,
+        createdAt: now,
+        updatedAt: now,
+        createdBy: contextA.platformUserId,
+        updatedBy: contextA.platformUserId,
+        completedAt: null,
+        completedBy: null,
+        cancelledAt: null,
+        cancelledBy: null,
+        cancellationReason: null,
+        history: [created],
+      };
+    };
+    const attempts = await Promise.allSettled([
+      storage.create(contextA, routeA, makeEncounter(randomUUID())),
+      storage.create(contextA, routeA, makeEncounter(randomUUID())),
+    ]);
+    const created = attempts.filter(
+      (result: PromiseSettledResult<EncounterRecord>) => result.status === 'fulfilled',
+    ) as PromiseFulfilledResult<EncounterRecord>[];
+    const rejected = attempts.find(
+      (result: PromiseSettledResult<EncounterRecord>) => result.status === 'rejected',
+    ) as PromiseRejectedResult | undefined;
+    expect(created).toHaveLength(1);
+    expect(rejected?.reason).toBeInstanceOf(EncounterAppointmentConflictError);
+
+    const winner = created[0]!.value;
+    const searchResult = await storage.list(contextA, routeA, {
+      search: winner.patientId,
+      limit: 50,
+      offset: 0,
+      accessScope: { unrestricted: true, facilityIds: [], branchIds: [] },
+    });
+    expect(searchResult.items.map((item: EncounterRecord) => item.id)).toContain(winner.id);
+    const tenantBRecord = await storage.create(contextB, routeB, makeEncounter(randomUUID()));
+    expect(tenantBRecord.appointmentId).toBe(appointmentId);
+    expect(await storage.findById(contextB, routeB, winner.id)).toBeNull();
+    expect(await storage.findActiveByAppointment(contextA, routeA, appointmentId)).toMatchObject({
+      id: winner.id,
+    });
+
+    const updatedAt = new Date();
+    const clinicalText = 'integration-note-that-must-not-enter-history';
+    const event: EncounterHistoryEvent = {
+      id: randomUUID(),
+      action: 'CLINICAL_UPDATED',
+      actorUserId: contextA.platformUserId,
+      occurredAt: updatedAt,
+      fromVersion: 1,
+      toVersion: 2,
+      changedFields: ['assessment'],
+    };
+    const updated = await storage.update(
+      contextA,
+      routeA,
+      winner.id,
+      1,
+      'DRAFT',
+      {
+        clinical: { assessment: clinicalText },
+        updatedAt,
+        updatedBy: contextA.platformUserId,
+      },
+      event,
+    );
+    expect(updated?.version).toBe(2);
+    const history = await storage.history(contextA, routeA, winner.id);
+    expect(history).toHaveLength(2);
+    expect(JSON.stringify(history)).not.toContain(clinicalText);
+  });
+
+  it('fails closed when a required encounter index disappears', async () => {
+    const storage = getApplication().get(MongoTenantEncounterStorage);
+    const resolver = getApplication().get(TenantStorageResolverService);
+    const clients = getApplication().get(TenantMongoClientManager);
+    await storage.ensureIndexesForTarget(targetA);
+    const route = await resolver.resolve(contextA);
+    const database = await clients.getDatabase(targetA);
+    await database.collection('encounters').dropIndex('tenant_encounter_patient_date_idx');
+
+    await expect(storage.findById(contextA, route, randomUUID())).rejects.toBeInstanceOf(
+      TenantStorageUnavailableError,
+    );
+
+    await storage.ensureIndexesForTarget(targetA);
   });
 
   it('persists appointments in the trusted tenant database with real indexed isolation and overlap queries', async () => {

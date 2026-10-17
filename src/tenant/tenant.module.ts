@@ -55,6 +55,8 @@ import { FacilitySchedulingPolicyController } from './facility-scheduling-policy
 import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 import { TenantWorkspaceController } from './tenant-workspace.controller';
+import { TenantEncounterController } from './tenant-encounter.controller';
+import { EncounterService } from './encounter.service';
 
 @Module({
   imports: [
@@ -82,6 +84,7 @@ import { TenantWorkspaceController } from './tenant-workspace.controller';
     TenantPatientController,
     TenantAppointmentController,
     FacilitySchedulingPolicyController,
+    TenantEncounterController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -111,6 +114,7 @@ import { TenantWorkspaceController } from './tenant-workspace.controller';
     AppointmentService,
     FacilitySchedulingPolicyRepository,
     FacilitySchedulingPolicyService,
+    EncounterService,
     TenantRepository,
     TenantRoleRepository,
     TenantRoleService,

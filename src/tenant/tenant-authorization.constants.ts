@@ -38,6 +38,14 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.appointments.reschedule',
   'tenant.appointments.cancel',
   'tenant.appointments.policy.manage',
+  'tenant.encounters.create',
+  'tenant.encounters.create.direct',
+  'tenant.encounters.read',
+  'tenant.encounters.patient-history.read',
+  'tenant.encounters.clinical.write',
+  'tenant.encounters.complete',
+  'tenant.encounters.cancel',
+  'tenant.encounters.history.read',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -132,6 +140,38 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   {
     code: 'tenant.appointments.policy.manage',
     description: 'Configure and audit facility appointment scheduling policies',
+  },
+  {
+    code: 'tenant.encounters.create',
+    description: 'Create draft encounters from eligible scheduled appointments',
+  },
+  {
+    code: 'tenant.encounters.create.direct',
+    description: 'Create draft encounters without an appointment',
+  },
+  {
+    code: 'tenant.encounters.read',
+    description: 'Read encounter details and non-clinical encounter summaries',
+  },
+  {
+    code: 'tenant.encounters.patient-history.read',
+    description: 'Read paginated clinical encounter history for a patient',
+  },
+  {
+    code: 'tenant.encounters.clinical.write',
+    description: 'Document and update clinical fields on editable draft encounters',
+  },
+  {
+    code: 'tenant.encounters.complete',
+    description: 'Complete and finalize a draft encounter',
+  },
+  {
+    code: 'tenant.encounters.cancel',
+    description: 'Cancel an editable draft encounter without deleting it',
+  },
+  {
+    code: 'tenant.encounters.history.read',
+    description: 'Read encounter lifecycle and clinical-change history metadata',
   },
 ];
 

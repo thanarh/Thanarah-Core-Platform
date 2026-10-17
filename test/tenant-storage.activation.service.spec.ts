@@ -2,6 +2,7 @@ import { Prisma, TenantStorageProvider, TenantStorageTargetStatus } from '@prism
 import { describe, expect, it, vi } from 'vitest';
 import type { MongoTenantPatientStorage } from '../src/tenant/mongo-tenant-patient.storage';
 import type { MongoTenantAppointmentStorage } from '../src/tenant/mongo-tenant-appointment.storage';
+import type { MongoTenantEncounterStorage } from '../src/tenant/mongo-tenant-encounter.storage';
 import type { PrismaService } from '../src/database/prisma.service';
 import { TenantStorageActivationService } from '../src/tenant/tenant-storage.activation.service';
 import { TenantStorageUnavailableError } from '../src/tenant/tenant-storage.errors';
@@ -65,6 +66,7 @@ interface ActivationServiceHarness {
   };
   patientStorage: { ensureIndexesForTarget: MockFunction };
   appointmentStorage: { ensureIndexesForTarget: MockFunction };
+  encounterStorage: { ensureIndexesForTarget: MockFunction };
   updateMany: MockFunction;
 }
 
@@ -125,10 +127,14 @@ function makeActivationService(
   const appointmentStorage = {
     ensureIndexesForTarget: vi.fn().mockResolvedValue(undefined),
   };
+  const encounterStorage = {
+    ensureIndexesForTarget: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new TenantStorageActivationService(
     prismaMock as unknown as PrismaService,
     patientStorage as unknown as MongoTenantPatientStorage,
     appointmentStorage as unknown as MongoTenantAppointmentStorage,
+    encounterStorage as unknown as MongoTenantEncounterStorage,
   );
 
   return {
@@ -137,6 +143,7 @@ function makeActivationService(
     prismaMock,
     patientStorage,
     appointmentStorage,
+    encounterStorage,
     rawQueries,
     updateMany,
   };
@@ -153,11 +160,15 @@ describe('TenantStorageActivationService', () => {
 
     expect(harness.patientStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
     expect(harness.appointmentStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
+    expect(harness.encounterStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
     expect(harness.patientStorage.ensureIndexesForTarget.mock.invocationCallOrder[0]).toBeLessThan(
       harness.prismaMock.$transaction.mock.invocationCallOrder[0] ?? Infinity,
     );
     expect(
       harness.appointmentStorage.ensureIndexesForTarget.mock.invocationCallOrder[0],
+    ).toBeLessThan(harness.prismaMock.$transaction.mock.invocationCallOrder[0] ?? Infinity);
+    expect(
+      harness.encounterStorage.ensureIndexesForTarget.mock.invocationCallOrder[0],
     ).toBeLessThan(harness.prismaMock.$transaction.mock.invocationCallOrder[0] ?? Infinity);
     expect(harness.targets[0]?.status).toBe(TenantStorageTargetStatus.ACTIVE);
     expect(harness.rawQueries).toHaveLength(1);

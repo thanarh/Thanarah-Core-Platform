@@ -1,0 +1,352 @@
+# Phase 41 — Complete Tenant-Isolated Medical Encounters & Electronic Medical Records (EMR)
+
+## Mission
+
+Implement a complete, production-oriented medical encounter and clinical record module for Thanarah, integrated with the existing appointment management system, tenant storage architecture, authentication, authorization, audit infrastructure, and Arabic RTL frontend.
+
+This is a real healthcare SaaS implementation, not a prototype.
+
+Deliver the backend, tenant MongoDB persistence, frontend, integration tests, documentation, and final verification in one cohesive implementation task.
+
+Inspect the current repository before making changes. Reuse existing services, conventions, permissions, components, API patterns, and tenant isolation mechanisms. Do not create duplicate abstractions or replace working infrastructure unnecessarily.
+
+Do not stop after an audit or plan. Proceed through all compatible implementation stages, resolve implementation-level issues, run verification, and report only what was actually completed.
+
+---
+
+## Stage 1 — Repository and Domain Integration
+
+Inspect the current implementation of:
+
+- Tenant context and tenant storage resolution.
+- Tenant MongoDB database and collection access.
+- Tenant registry and storage activation checks.
+- Appointment models, services, permissions, and scheduling rules.
+- Patient directory and patient identity references.
+- Provider, staff, facility, branch, department, and specialty models.
+- Authentication, authorization, permission guards, and membership checks.
+- Audit and security event infrastructure.
+- Existing frontend routes, design conventions, static hosting, and Arabic RTL workspace.
+- Existing tests and disposable MongoDB/MySQL integration infrastructure.
+
+Identify the authoritative identifiers and actual data contracts before implementation.
+
+Maintain these architectural rules:
+
+1. Tenant, facility, branch, patient, provider, and staff identities remain distinct concepts.
+2. Clinical records are stored in the appropriate tenant MongoDB storage, never in the central platform Prisma database.
+3. The central database may store platform metadata and permission definitions, but must not become the repository for tenant clinical content.
+4. All tenant data access uses the established trusted tenant context and tenant-scoped repository abstractions.
+5. Never accept a client-supplied physical database name, MongoDB connection string, tenant storage identifier, or arbitrary tenant identifier as authority.
+6. A hostname or URL parameter never establishes authorization.
+7. Reuse the existing appointment and patient identifiers. Do not duplicate patient demographics into clinical records unnecessarily.
+8. Preserve support for a tenant using multiple physical storage databases in the future without implementing unapproved sharding, rebalancing, or automatic database migration.
+9. Do not invent clinical defaults, legal policies, or regulatory compliance claims.
+
+If an existing contract blocks safe implementation, make the smallest compatible correction and add regression tests.
+
+## Stage 2 — Medical Encounter Domain
+
+Implement tenant-scoped medical encounters with a clear, documented lifecycle.
+
+Support the following capabilities where compatible with the existing domain:
+
+- Create an encounter from an eligible appointment.
+- Create a direct encounter without an appointment only when the caller has the appropriate permission and the existing domain permits it.
+- Read an encounter and its authorized clinical sections.
+- List and paginate encounters for a patient, provider, facility, branch, and date range.
+- Save clinical documentation incrementally while an encounter remains editable.
+- Complete an encounter through an explicit, authorized transition.
+- Reopen or amend a completed encounter only if a defined permission and auditable workflow support it. Do not silently permit edits to finalized records.
+- Cancel an encounter where applicable, preserving the appropriate history rather than silently deleting clinical records.
+- View encounter history and permitted amendments.
+
+Use an explicit state machine with validated transitions. Choose state names consistent with existing conventions, document them, and reject invalid transitions.
+
+Prevent duplicate active encounters for the same appointment through an appropriate database-enforced or concurrency-safe invariant. Inspect existing behavior first; do not assume that a service-level check alone is sufficient.
+
+Where the data model allows it, prevent unauthorized changes to patient, appointment, tenant, facility, branch, or assigned provider references after encounter creation.
+
+Use versioning or optimistic concurrency controls for clinical updates to prevent one user from silently overwriting another user's changes.
+
+## Stage 3 — Clinical Record Structure
+
+Design a structured, extensible clinical record without turning this phase into a full prescription, billing, or insurance subsystem.
+
+Support appropriate fields from the following list, subject to the actual domain and existing contracts:
+
+- Encounter reason and chief complaint.
+- History of present illness.
+- Relevant medical history.
+- Allergies and medication history as documented information, without inventing a prescribing system.
+- Review of systems.
+- Vital signs with explicit units and validation.
+- Clinical examination findings.
+- Assessment and clinical impression.
+- Diagnosis entries using a clearly identified code system when one is actually configured; otherwise allow explicitly documented text diagnoses without pretending they are standardized codes.
+- Clinical plan and follow-up recommendations.
+- Internal clinical notes.
+- Structured encounter timestamps, author identity, assigned provider, facility, and branch.
+- Draft, completion, and amendment metadata.
+
+Separate structured clinical fields from administrative metadata.
+
+Requirements:
+
+- Validate field types, lengths, allowed values, units, and payload sizes.
+- Distinguish absent, unknown, and explicitly negative information where the domain requires it.
+- Do not invent patient values or prepopulate fabricated medical history.
+- Do not include AI-generated diagnoses or treatment recommendations.
+- Do not automatically convert a clinician's note into a diagnosis.
+- Do not implement prescriptions, medication ordering, insurance claims, or billing as hidden side effects.
+- Keep the model extensible for future prescriptions, documents, orders, and referrals without implementing those subsystems in this phase.
+
+Document the data model and field validation rules.
+
+## Stage 4 — Clinical Authorization and Privacy
+
+Create or reuse granular permissions consistent with the existing authorization system.
+
+The permission design should distinguish, as applicable:
+
+- Encounter creation.
+- Encounter listing and reading.
+- Patient clinical-history reading.
+- Clinical documentation creation and editing.
+- Encounter completion.
+- Encounter cancellation.
+- Viewing amendments and audit history.
+- Reopening or amending finalized encounters.
+- Administrative metadata access.
+
+Do not assume that having appointment access automatically grants access to clinical records.
+
+Requirements:
+
+- Resolve effective permissions server-side.
+- Enforce tenant membership and facility/branch scope on every relevant request.
+- Validate patient and appointment ownership in the resolved tenant.
+- Validate that the assigned provider and facility are permitted within the caller's effective scope.
+- Apply least privilege and deny access by default.
+- Do not trust role names, permissions, tenant identifiers, provider identifiers, or facility identifiers sent by the client.
+- Prevent cross-tenant record enumeration through identifiers and search endpoints.
+- Return safe error responses without leaking clinical content.
+- Ensure audit events never contain full clinical notes, medical history, authentication tokens, or unnecessary patient demographics.
+- Do not log full request bodies containing clinical information.
+
+Keep platform administration and tenant clinical authorization in their established separate permission namespaces.
+
+## Stage 5 — MongoDB Persistence and Concurrency
+
+Implement appropriate tenant MongoDB schemas or collections, repositories, validation, and indexes using the existing tenant storage abstraction.
+
+Define and verify the required indexes based on actual query patterns, potentially including:
+
+- Encounter identifier.
+- Appointment-to-encounter relationship.
+- Patient plus encounter date.
+- Provider plus encounter date.
+- Facility/branch plus encounter date.
+- Encounter state plus relevant listing fields.
+- Stable pagination and sorting fields.
+
+Use compound indexes that reflect actual tenant-scoped query patterns. Do not assume a compound index enforces uniqueness across shards unless the approved topology and shard-key rules prove that it does.
+
+Requirements:
+
+- All repository methods require trusted tenant context by construction.
+- Every read and write is tenant-scoped.
+- Fail closed if tenant storage resolution, required indexes, or required infrastructure is unavailable.
+- Preserve the existing activation and storage registry invariants.
+- Avoid cross-database transactions between central MySQL and tenant MongoDB.
+- Where operations cross storage boundaries, define explicit consistency and recovery behavior.
+- Do not report a central Prisma transaction as if it made a MongoDB write atomic.
+- Use optimistic concurrency or another justified mechanism for clinical edits.
+- Enforce duplicate appointment linkage safely under concurrent requests.
+- Handle partial failures without creating inconsistent or silently duplicated records.
+- Avoid destructive index changes or data migrations without evidence and appropriate compatibility handling.
+
+Document any unavoidable consistency boundaries.
+
+## Stage 6 — API and OpenAPI
+
+Implement versioned APIs using the existing NestJS, Fastify, DTO, validation, and error-handling conventions.
+
+Provide the appropriate endpoints for:
+
+- Creating an encounter from an eligible appointment.
+- Creating a direct encounter where authorized.
+- Listing encounters with pagination and supported filters.
+- Reading an encounter.
+- Reading an authorized patient's encounter history.
+- Updating editable clinical sections.
+- Completing an encounter.
+- Cancelling an encounter.
+- Reading amendment/history information.
+- Reopening or amending finalized encounters if implemented with an explicit policy and permission.
+
+Use the existing route prefix and naming conventions rather than introducing a second API style.
+
+Requirements:
+
+- Validate path parameters, query parameters, body schemas, and payload sizes.
+- Use stable pagination and deterministic sorting.
+- Return consistent response envelopes and error codes.
+- Prevent mass assignment and changes to protected fields.
+- Support concurrency/version conflicts explicitly.
+- Add OpenAPI documentation for routes, permissions, request schemas, response schemas, and errors.
+- Never return internal MongoDB database names, connection details, or storage registry secrets.
+
+## Stage 7 — Audit and Clinical History
+
+Integrate with the existing audit infrastructure.
+
+Record meaningful events, such as:
+
+- Encounter created.
+- Clinical sections changed.
+- Encounter completed or cancelled.
+- Finalized encounter amended or reopened, if supported.
+- Unauthorized clinical access attempts where the established security event model supports them.
+
+Each audit event should contain only the minimum metadata necessary to establish who performed which action, on which resource, in which tenant and scope, and when.
+
+Preserve the distinction between operational audit metadata and clinical record content.
+
+If the existing audit store cannot guarantee the needed durability or append-oriented behavior, document the limitation and use the strongest existing supported mechanism. Do not claim immutable or legally compliant audit history without evidence.
+
+## Stage 8 — Arabic RTL Medical Workspace
+
+Implement a real frontend workspace integrated into the existing application and actual APIs.
+
+Use the existing frontend technology and hosting model. Do not introduce an unnecessary framework or replace the current static-hosted application.
+
+Provide:
+
+1. Encounter workspace with today's encounters and navigation across dates.
+2. Search and filters supported by the actual API.
+3. Patient encounter history, restricted by authorization.
+4. Encounter creation from an eligible appointment.
+5. Direct encounter creation when authorized.
+6. A structured clinical documentation form.
+7. Vital-sign inputs with explicit units and validation.
+8. Draft saving and clear save-status feedback.
+9. Encounter detail and lifecycle status.
+10. Completion and cancellation confirmations.
+11. Clear version-conflict handling that prevents silent data loss.
+12. An amendment/history view when authorized.
+13. Loading, empty, validation, forbidden, unavailable, and retryable error states.
+14. Responsive mobile layouts and accessible Arabic RTL controls.
+
+Design requirements:
+
+- Professional healthcare software appearance.
+- Consistent with Thanarah's existing design system.
+- No fabricated patients, visits, diagnoses, or medical history.
+- No fake success messages.
+- No hardcoded permissions or tenant identities.
+- No clinical data embedded in static frontend assets.
+- Render user-provided text safely; prevent HTML/script injection.
+- Do not store sensitive clinical data in localStorage or sessionStorage.
+- Do not expose clinical content through URLs, analytics, or unnecessary browser logs.
+- Keep authentication intact; signed-out users must remain signed out.
+- Use real API responses and enforce permissions in the backend even when controls are hidden in the UI.
+
+Link the workspace from the existing navigation or landing page using established patterns.
+
+## Stage 9 — Tests and Integration
+
+Add meaningful automated tests using the repository's established test infrastructure.
+
+Cover at least:
+
+- Valid encounter creation from an eligible appointment.
+- Direct encounter creation permission checks.
+- Invalid and duplicate appointment-to-encounter relationships.
+- Patient, provider, facility, and branch reference validation.
+- Tenant isolation for reads, writes, searches, and history.
+- Unauthorized access to clinical content.
+- Facility/branch scope restrictions.
+- Invalid lifecycle transitions.
+- Editing drafts and rejecting prohibited finalized-record edits.
+- Completion and cancellation authorization.
+- Optimistic concurrency conflicts.
+- Concurrent attempts to create an encounter for the same appointment.
+- Validation of clinical fields and vital signs.
+- Audit events without clinical-note leakage.
+- MongoDB unavailable or required-index missing behavior.
+- Partial failures across central metadata and tenant storage where applicable.
+- API validation and error response contracts.
+- Frontend behavior for loading, empty, error, denied, successful save, and concurrency-conflict states where supported by existing test infrastructure.
+
+Use disposable test databases and isolated fixtures. Do not point integration tests at production.
+
+Run the full existing test suite, not just new tests. Fix regressions caused by this implementation and rerun the relevant suites.
+
+## Stage 10 — Documentation and Operations
+
+Update project documentation with:
+
+- Encounter domain and lifecycle.
+- Tenant MongoDB storage boundaries.
+- API routes and permissions.
+- Clinical field schemas and validation.
+- Index requirements.
+- Concurrency behavior.
+- Audit events and privacy boundaries.
+- Local test instructions.
+- Configuration requirements.
+- Known limitations and deferred functionality.
+
+Do not claim regulatory compliance, clinical certification, or production readiness solely because tests pass.
+
+Keep the production MongoDB topology and deployment decisions pending unless already explicitly approved in project documentation.
+
+## Stage 11 — Final Verification
+
+Run the applicable commands from the existing repository, including:
+
+- Full test suite.
+- Disposable MongoDB/MySQL integration suite.
+- Type-check.
+- Lint.
+- Formatting checks.
+- NestJS build.
+- Prisma validation or migration checks if central permission metadata changes.
+- Frontend JavaScript syntax checks and build.
+- `git diff --check`.
+- Development application startup and route verification.
+
+Inspect the final diff for tenant-isolation regressions, unsafe access control, sensitive logging, unintended schema changes, and unrelated modifications.
+
+If the local central database is unavailable, report that limitation. Do not bypass authentication or connect to production to make the preview work.
+
+Preserve existing user modifications and untracked specification attachments. Do not delete files merely because they appear generated or unfamiliar.
+
+## Explicit Restrictions
+
+- No production database connections.
+- No production deployment.
+- No production migrations.
+- No fabricated test results.
+- No authentication bypass.
+- No staging or committing changes.
+- No history rewriting.
+- No secret printing or copying.
+- No unrelated refactoring.
+- No claiming completion for any check that was not actually run.
+
+## Final Report
+
+Provide one consolidated report containing:
+
+1. Implemented backend and frontend capabilities.
+2. Encounter lifecycle and clinical data structure.
+3. Tenant isolation and authorization guarantees actually tested.
+4. MongoDB indexes and concurrency guarantees.
+5. Audit and privacy behavior.
+6. Exact test counts and verification results.
+7. Runtime status and any database limitations.
+8. Outstanding risks, unresolved clinical policy decisions, and deferred functionality.
+
+Begin implementation immediately and continue through all stages that can be safely completed in the current environment.

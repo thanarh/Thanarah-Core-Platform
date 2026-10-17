@@ -189,6 +189,78 @@
       return request(tenantPath(tenantId, `/appointments/${encodeURIComponent(appointmentId)}`));
     },
 
+    createEncounterFromAppointment(tenantId, input) {
+      return request(tenantPath(tenantId, '/encounters/from-appointment'), {
+        method: 'POST',
+        body: input,
+      });
+    },
+
+    createDirectEncounter(tenantId, input) {
+      return request(tenantPath(tenantId, '/encounters/direct'), {
+        method: 'POST',
+        body: input,
+      });
+    },
+
+    listEncounters(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/encounters'), options));
+    },
+
+    listPatientEncounterHistory(tenantId, patientId, options = {}) {
+      return request(
+        withQuery(
+          tenantPath(
+            tenantId,
+            `/patients/${encodeURIComponent(patientId)}/encounters`,
+          ),
+          options,
+        ),
+      );
+    },
+
+    getEncounter(tenantId, encounterId) {
+      return request(tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}`));
+    },
+
+    updateEncounterClinical(tenantId, encounterId, input) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/clinical`),
+        { method: 'PATCH', body: input },
+      );
+    },
+
+    completeEncounter(tenantId, encounterId, expectedVersion) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/complete`),
+        { method: 'POST', body: { expectedVersion } },
+      );
+    },
+
+    cancelEncounter(tenantId, encounterId, expectedVersion, reason) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/cancel`),
+        {
+          method: 'POST',
+          body: { expectedVersion, ...(reason ? { reason } : {}) },
+        },
+      );
+    },
+
+    getEncounterHistory(tenantId, encounterId) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/history`),
+      );
+    },
+
+    getEncounterTimeZones(tenantId, facilityIds) {
+      return request(
+        withQuery(tenantPath(tenantId, '/encounters/effective-time-zones'), {
+          facilityIds: [...new Set(facilityIds || [])].join(','),
+        }),
+      );
+    },
+
     createAppointment(tenantId, input, idempotencyKey) {
       if (typeof idempotencyKey !== 'string' || !idempotencyKey.trim()) {
         throw new TypeError('A stable idempotency key is required for appointment creation.');

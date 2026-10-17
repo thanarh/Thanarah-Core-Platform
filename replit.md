@@ -9,7 +9,7 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 | Runtime | Node.js 22+ |
 | Framework | NestJS 11 + Fastify 5 |
 | Central persistence | MySQL / MariaDB on cPanel — via Prisma 6 |
-| Tenant persistence | MongoDB Patient adapter and central registry implemented; target provisioning/configuration remains explicit |
+| Tenant persistence | MongoDB Patient, Appointment, and Encounter adapters with a central registry; target provisioning/configuration remains explicit |
 | Language | TypeScript 5 (strict) |
 | Validation | Zod |
 | API Docs | Swagger / OpenAPI at `/docs` |
@@ -382,6 +382,26 @@ adapter is also explicit and unavailable outside development.
   the Phase 20 migration is versioned but has not been applied.
 - Preserve `Controller → Service/Policy → Repository → Infrastructure`.
   Controllers and request channels must never select physical tenant storage.
+
+## Phase 41 — medical encounters and clinical records
+
+Phase 41 adds a tenant MongoDB `encounters` collection, a versioned draft /
+completed / cancelled lifecycle, clinical-section validation, encounter
+history, granular tenant permissions, a versioned API, and the Arabic RTL
+workspace at `/encounters/`. Clinical content is not stored in central Prisma.
+Encounter index provisioning is part of the existing explicit target
+activation preflight; runtime reads and writes fail closed if the required
+indexes or trusted tenant route are unavailable.
+
+Encounter creation from an appointment requires both encounter-create and
+appointment-read permission; direct creation is separately permissioned.
+Appointment access does not grant clinical access. Existing `ADMIN` and
+`MEMBER` roles do not automatically receive encounter permissions. The
+workspace and route contract, lifecycle, indexes, privacy boundaries,
+consistency limits, and test instructions are documented in
+`docs/tenant-medical-encounters.md`. Completed/cancelled records are final in
+this phase; no amendment/reopen workflow or standardized diagnosis-code system
+is included.
 
 ## Prisma workflow
 
