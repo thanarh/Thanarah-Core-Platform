@@ -77,7 +77,6 @@ const clinicalRecordPatchSchema = z
     vitalSigns: vitalSignsPatchSchema.nullable().optional(),
     examinationFindings: encounterTextSchema.nullable().optional(),
     assessment: encounterTextSchema.nullable().optional(),
-    diagnoses: z.array(encounterTextSchema).max(20).nullable().optional(),
     plan: encounterTextSchema.nullable().optional(),
     followUp: encounterTextSchema.nullable().optional(),
     internalNotes: encounterTextSchema.nullable().optional(),
@@ -127,6 +126,14 @@ const encounterDateSchema = z
     );
   });
 
+const encounterTimestampSchema = z.union([
+  z
+    .string()
+    .datetime({ offset: true })
+    .transform((value) => new Date(value)),
+  z.date(),
+]);
+
 const listIntegerSchema = (
   minimum: number,
   maximum: number,
@@ -146,16 +153,8 @@ export const listEncountersQuerySchema = z
     status: z
       .enum([EncounterStatus.DRAFT, EncounterStatus.COMPLETED, EncounterStatus.CANCELLED])
       .optional(),
-    from: z
-      .string()
-      .datetime({ offset: true })
-      .transform((value) => new Date(value))
-      .optional(),
-    to: z
-      .string()
-      .datetime({ offset: true })
-      .transform((value) => new Date(value))
-      .optional(),
+    from: encounterTimestampSchema.optional(),
+    to: encounterTimestampSchema.optional(),
     fromDate: encounterDateSchema.optional(),
     toDate: encounterDateSchema.optional(),
     limit: listIntegerSchema(1, 100).default(50),
@@ -193,6 +192,124 @@ export const updateEncounterSchema = z
   .object({ expectedVersion: expectedVersionSchema, clinical: clinicalRecordPatchSchema })
   .strict();
 
+const diagnosisDescriptionSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').replace(/\r\n?/gu, '\n').trim())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(2_000)
+      .refine((value) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)),
+  );
+
+const serviceNoteSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').replace(/\r\n?/gu, '\n').trim())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(3_000)
+      .refine((value) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)),
+  );
+
+const clinicalInstantSchema = encounterTimestampSchema;
+
+const diagnosisEntrySchema = z
+  .object({
+    id: encounterIdSchema.optional(),
+    description: diagnosisDescriptionSchema,
+    priority: z.enum(['PRIMARY', 'SECONDARY']),
+    clinicalStatus: z.enum(['ACTIVE', 'RESOLVED', 'INACTIVE']),
+    onsetAt: clinicalInstantSchema.nullable().optional(),
+  })
+  .strict();
+
+const serviceRecordEntrySchema = z
+  .object({
+    id: encounterIdSchema.optional(),
+    serviceId: encounterIdSchema,
+    providerDoctorId: encounterIdSchema.optional(),
+    status: z.enum(['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED']).optional(),
+    note: serviceNoteSchema.nullable().optional(),
+  })
+  .strict();
+
+const replaceDiagnosesSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    diagnoses: z.array(diagnosisEntrySchema).max(100),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.diagnoses.filter((diagnosis) => diagnosis.priority === 'PRIMARY').length !==
+      (value.diagnoses.length ? 1 : 0)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'A non-empty diagnosis list must have exactly one primary diagnosis',
+      });
+    }
+    if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 48_000) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Diagnosis payload is too large' });
+    }
+  });
+
+const replaceServiceRecordsSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    serviceRecords: z.array(serviceRecordEntrySchema).max(50),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 48_000) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Service record payload is too large',
+      });
+    }
+  });
+
+const amendmentReasonSchema = z
+  .string()
+  .transform((value) => value.normalize('NFKC').replace(/\r\n?/gu, '\n').trim())
+  .pipe(
+    z
+      .string()
+      .min(1)
+      .max(1_000)
+      .refine((value) => !/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/u.test(value)),
+  );
+
+const createAmendmentSchema = z
+  .object({ expectedVersion: expectedVersionSchema, reason: amendmentReasonSchema })
+  .strict();
+
+const updateAmendmentSchema = z
+  .object({
+    expectedVersion: expectedVersionSchema,
+    clinical: clinicalRecordPatchSchema.optional(),
+    diagnoses: z.array(diagnosisEntrySchema).max(100).optional(),
+    serviceRecords: z.array(serviceRecordEntrySchema).max(50).optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (
+      value.clinical === undefined &&
+      value.diagnoses === undefined &&
+      value.serviceRecords === undefined
+    ) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Amendment changes are required' });
+    }
+    if (new TextEncoder().encode(JSON.stringify(value)).byteLength > 48_000) {
+      context.addIssue({ code: z.ZodIssueCode.custom, message: 'Amendment payload is too large' });
+    }
+  });
+
+const finalizeAmendmentSchema = z.object({ expectedVersion: expectedVersionSchema }).strict();
+
 export const completeEncounterSchema = z
   .object({ expectedVersion: expectedVersionSchema })
   .strict();
@@ -211,18 +328,20 @@ export const cancelEncounterSchema = z
 export const encounterEffectiveTimeZonesQuerySchema = z
   .object({
     facilityIds: z
-      .string()
-      .max(1_024)
-      .transform((value) => [
-        ...new Set(
-          value
-            .split(',')
-            .map((id) => id.trim())
-            .filter(Boolean),
-        ),
+      .union([
+        z
+          .string()
+          .max(1_024)
+          .transform((value) =>
+            value
+              .split(',')
+              .map((id) => id.trim())
+              .filter(Boolean),
+          ),
+        z.array(z.string().uuid()),
       ])
       .pipe(z.array(z.string().uuid()).min(1).max(20))
-      .transform((ids) => ids.map((id) => id.toLowerCase())),
+      .transform((ids) => [...new Set(ids.map((id) => id.toLowerCase()))]),
   })
   .strict();
 
@@ -232,9 +351,19 @@ export type CreateEncounterFromAppointmentInput = z.infer<
 export type CreateDirectEncounterInput = z.infer<typeof createDirectEncounterSchema>;
 export type ListEncountersQuery = z.input<typeof listEncountersQuerySchema>;
 export type UpdateEncounterInput = z.infer<typeof updateEncounterSchema>;
+export const replaceEncounterDiagnosesSchema = replaceDiagnosesSchema;
+export const replaceEncounterServiceRecordsSchema = replaceServiceRecordsSchema;
+export const createEncounterAmendmentSchema = createAmendmentSchema;
+export const updateEncounterAmendmentSchema = updateAmendmentSchema;
+export const finalizeEncounterAmendmentSchema = finalizeAmendmentSchema;
+export type ReplaceEncounterDiagnosesInput = z.infer<typeof replaceDiagnosesSchema>;
+export type ReplaceEncounterServiceRecordsInput = z.infer<typeof replaceServiceRecordsSchema>;
+export type CreateEncounterAmendmentInput = z.infer<typeof createAmendmentSchema>;
+export type UpdateEncounterAmendmentInput = z.infer<typeof updateAmendmentSchema>;
+export type FinalizeEncounterAmendmentInput = z.infer<typeof finalizeAmendmentSchema>;
 export type CompleteEncounterInput = z.infer<typeof completeEncounterSchema>;
 export type CancelEncounterInput = z.infer<typeof cancelEncounterSchema>;
-export type EncounterEffectiveTimeZonesQuery = z.infer<
+export type EncounterEffectiveTimeZonesQuery = z.input<
   typeof encounterEffectiveTimeZonesQuerySchema
 >;
 export type EncounterClinicalPatch = z.infer<typeof clinicalRecordPatchSchema>;

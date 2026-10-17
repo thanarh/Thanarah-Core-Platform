@@ -8,6 +8,7 @@ import {
   Param,
   Patch,
   Post,
+  Put,
   Query,
   Req,
   UseGuards,
@@ -46,28 +47,42 @@ import {
   createEncounterFromAppointmentSchema,
   encounterEffectiveTimeZonesQuerySchema,
   encounterIdSchema,
+  createEncounterAmendmentSchema,
+  finalizeEncounterAmendmentSchema,
   listEncountersQuerySchema,
+  replaceEncounterDiagnosesSchema,
+  replaceEncounterServiceRecordsSchema,
+  updateEncounterAmendmentSchema,
   updateEncounterSchema,
 } from './encounter.dto';
 import type {
   CancelEncounterInput,
   CompleteEncounterInput,
+  CreateEncounterAmendmentInput,
   CreateDirectEncounterInput,
   CreateEncounterFromAppointmentInput,
   EncounterEffectiveTimeZonesQuery,
+  FinalizeEncounterAmendmentInput,
   ListEncountersQuery,
+  ReplaceEncounterDiagnosesInput,
+  ReplaceEncounterServiceRecordsInput,
+  UpdateEncounterAmendmentInput,
   UpdateEncounterInput,
 } from './encounter.dto';
 import { EncounterService } from './encounter.service';
 import {
   CancelEncounterRequestDto,
   CreateDirectEncounterRequestDto,
+  CreateEncounterAmendmentRequestDto,
   CreateEncounterFromAppointmentRequestDto,
   EncounterErrorResponseDto,
   EncounterListResponseDto,
   EncounterResponseDto,
   PatientEncounterHistoryResponseDto,
+  ReplaceEncounterDiagnosesRequestDto,
+  ReplaceEncounterServiceRecordsRequestDto,
   UpdateEncounterRequestDto,
+  UpdateEncounterAmendmentRequestDto,
 } from './encounter.openapi';
 
 @ApiTags('Tenant Medical Encounters')
@@ -243,6 +258,187 @@ export class TenantEncounterController {
     return this.encounters.findById(context, encounterId);
   }
 
+  @Put('encounters/:encounterId/diagnoses')
+  @RequireTenantPermissions(
+    'tenant.encounters.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.services.read',
+    'tenant.encounters.diagnoses.write',
+  )
+  @ApiOperation({
+    summary: 'Replace structured diagnoses on an editable encounter',
+    description:
+      'A non-empty list must contain exactly one primary diagnosis. Descriptions are clinician-entered text; this API does not assign terminology codes.',
+  })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiBody({ type: ReplaceEncounterDiagnosesRequestDto })
+  @ApiOkResponse({ type: EncounterResponseDto })
+  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
+  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
+  @ApiConflictResponse({ type: EncounterErrorResponseDto })
+  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
+  replaceDiagnoses(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Body(new ZodValidationPipe(replaceEncounterDiagnosesSchema))
+    body: ReplaceEncounterDiagnosesInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['replaceDiagnoses']> {
+    return this.encounters.replaceDiagnoses(
+      context,
+      encounterId,
+      body,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
+  @Put('encounters/:encounterId/services')
+  @RequireTenantPermissions(
+    'tenant.encounters.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.services.read',
+    'tenant.encounters.services.write',
+  )
+  @ApiOperation({
+    summary: 'Replace clinical service and procedure records on an editable encounter',
+    description:
+      'References are resolved within the current tenant and encounter location. This endpoint does not create orders, charges, claims, or inventory movements.',
+  })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiBody({ type: ReplaceEncounterServiceRecordsRequestDto })
+  @ApiOkResponse({ type: EncounterResponseDto })
+  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
+  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
+  @ApiConflictResponse({ type: EncounterErrorResponseDto })
+  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
+  @ApiUnprocessableEntityResponse({ type: EncounterErrorResponseDto })
+  replaceServiceRecords(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Body(new ZodValidationPipe(replaceEncounterServiceRecordsSchema))
+    body: ReplaceEncounterServiceRecordsInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['replaceServiceRecords']> {
+    return this.encounters.replaceServiceRecords(
+      context,
+      encounterId,
+      body,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
+  @Post('encounters/:encounterId/amendments')
+  @RequireTenantPermissions(
+    'tenant.encounters.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.services.read',
+    'tenant.encounters.amendments.create',
+  )
+  @ApiOperation({
+    summary: 'Open a reasoned amendment draft for a completed encounter',
+    description:
+      'The original completed record remains preserved. The amendment is not effective until explicitly finalized.',
+  })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiBody({ type: CreateEncounterAmendmentRequestDto })
+  @ApiCreatedResponse({ type: EncounterResponseDto })
+  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
+  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
+  @ApiConflictResponse({ type: EncounterErrorResponseDto })
+  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
+  createAmendment(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Body(new ZodValidationPipe(createEncounterAmendmentSchema))
+    body: CreateEncounterAmendmentInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['createEncounterAmendment']> {
+    return this.encounters.createEncounterAmendment(
+      context,
+      encounterId,
+      body,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
+  @Patch('encounters/:encounterId/amendments/:amendmentId')
+  @RequireTenantPermissions(
+    'tenant.encounters.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.services.read',
+    'tenant.encounters.amendments.update',
+  )
+  @ApiOperation({ summary: 'Update an open encounter amendment draft' })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiParam({ name: 'amendmentId', schema: { type: 'string', format: 'uuid' } })
+  @ApiBody({ type: UpdateEncounterAmendmentRequestDto })
+  @ApiOkResponse({ type: EncounterResponseDto })
+  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
+  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
+  @ApiConflictResponse({ type: EncounterErrorResponseDto })
+  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
+  @ApiUnprocessableEntityResponse({ type: EncounterErrorResponseDto })
+  updateAmendment(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Param('amendmentId', new ZodValidationPipe(encounterIdSchema)) amendmentId: string,
+    @Body(new ZodValidationPipe(updateEncounterAmendmentSchema))
+    body: UpdateEncounterAmendmentInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['updateEncounterAmendment']> {
+    return this.encounters.updateEncounterAmendment(
+      context,
+      encounterId,
+      amendmentId,
+      body,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
+  @Post('encounters/:encounterId/amendments/:amendmentId/finalize')
+  @HttpCode(HttpStatus.OK)
+  @RequireTenantPermissions(
+    'tenant.encounters.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.services.read',
+    'tenant.encounters.amendments.finalize',
+  )
+  @ApiOperation({ summary: 'Finalize an open encounter amendment' })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiParam({ name: 'amendmentId', schema: { type: 'string', format: 'uuid' } })
+  @ApiBody({ schema: { type: 'object', required: ['expectedVersion'] } })
+  @ApiOkResponse({ type: EncounterResponseDto })
+  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
+  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
+  @ApiConflictResponse({ type: EncounterErrorResponseDto })
+  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
+  finalizeAmendment(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Param('amendmentId', new ZodValidationPipe(encounterIdSchema)) amendmentId: string,
+    @Body(new ZodValidationPipe(finalizeEncounterAmendmentSchema))
+    body: FinalizeEncounterAmendmentInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['finalizeEncounterAmendment']> {
+    return this.encounters.finalizeEncounterAmendment(
+      context,
+      encounterId,
+      amendmentId,
+      body,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
   @Patch('encounters/:encounterId/clinical')
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.clinical.write')
   @ApiOperation({
@@ -278,7 +474,8 @@ export class TenantEncounterController {
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.complete')
   @ApiOperation({
     summary: 'Complete an editable draft encounter',
-    description: 'Completion is final in this phase. No reopen or amendment workflow is provided.',
+    description:
+      'Completion is final. Any later changes require a separately reasoned amendment draft and explicit finalization.',
   })
   @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
   @ApiBody({
@@ -348,7 +545,17 @@ export class TenantEncounterController {
               id: { type: 'string', format: 'uuid' },
               action: {
                 type: 'string',
-                enum: ['CREATED', 'CLINICAL_UPDATED', 'COMPLETED', 'CANCELLED'],
+                enum: [
+                  'CREATED',
+                  'CLINICAL_UPDATED',
+                  'DIAGNOSES_UPDATED',
+                  'SERVICE_RECORDS_UPDATED',
+                  'COMPLETED',
+                  'CANCELLED',
+                  'AMENDMENT_OPENED',
+                  'AMENDMENT_UPDATED',
+                  'AMENDMENT_FINALIZED',
+                ],
               },
               actorUserId: { type: 'string', format: 'uuid' },
               occurredAt: { type: 'string', format: 'date-time' },

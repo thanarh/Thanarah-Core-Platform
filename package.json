@@ -22,6 +22,7 @@
     "type-check:tenant-contracts": "tsc --noEmit -p tsconfig.tenant-contracts.json",
     "test": "vitest run",
     "test:phase30": "npm run build && DOCKER_HOST=unix:///var/run/docker.sock vitest run --config vitest.phase30.config.ts",
+    "test:phase42": "npm run build && DOCKER_HOST=unix:///var/run/docker.sock vitest run --config vitest.phase30.config.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "prepare": "husky || true"

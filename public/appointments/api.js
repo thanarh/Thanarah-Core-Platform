@@ -230,6 +230,47 @@
       );
     },
 
+    replaceEncounterDiagnoses(tenantId, encounterId, input) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/diagnoses`),
+        { method: 'PUT', body: input },
+      );
+    },
+
+    replaceEncounterServiceRecords(tenantId, encounterId, input) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/services`),
+        { method: 'PUT', body: input },
+      );
+    },
+
+    createEncounterAmendment(tenantId, encounterId, input) {
+      return request(
+        tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/amendments`),
+        { method: 'POST', body: input },
+      );
+    },
+
+    updateEncounterAmendment(tenantId, encounterId, amendmentId, input) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/encounters/${encodeURIComponent(encounterId)}/amendments/${encodeURIComponent(amendmentId)}`,
+        ),
+        { method: 'PATCH', body: input },
+      );
+    },
+
+    finalizeEncounterAmendment(tenantId, encounterId, amendmentId, expectedVersion) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/encounters/${encodeURIComponent(encounterId)}/amendments/${encodeURIComponent(amendmentId)}/finalize`,
+        ),
+        { method: 'POST', body: { expectedVersion } },
+      );
+    },
+
     completeEncounter(tenantId, encounterId, expectedVersion) {
       return request(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/complete`),

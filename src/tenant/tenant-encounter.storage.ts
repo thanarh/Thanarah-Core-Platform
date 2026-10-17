@@ -10,6 +10,9 @@ import type {
 
 export interface EncounterMutationPatch {
   clinical?: EncounterRecord['clinical'];
+  diagnoses?: EncounterRecord['diagnoses'];
+  serviceRecords?: EncounterRecord['serviceRecords'];
+  amendments?: EncounterRecord['amendments'];
   status?: EncounterStatus;
   updatedAt: Date;
   updatedBy: string;

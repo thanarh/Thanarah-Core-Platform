@@ -238,6 +238,7 @@ describe('TenantRoleRepository', () => {
       'prisma/migrations/20261015120000_tenant_appointment_scheduling/migration.sql',
       'prisma/migrations/20261015130000_facility_scheduling_policy/migration.sql',
       'prisma/migrations/20261017100000_tenant_medical_encounters/migration.sql',
+      'prisma/migrations/20261017110000_phase42_structured_encounters/migration.sql',
     ]
       .map((path) => readFileSync(path, 'utf8'))
       .join('\n');
@@ -251,5 +252,18 @@ describe('TenantRoleRepository', () => {
     expect(migration).toMatch(
       /FOREIGN KEY \(`tenantRoleId`, `tenantId`\) REFERENCES `TenantRole` \(`id`, `tenantId`\)/,
     );
+
+    const phase42Migration = readFileSync(
+      'prisma/migrations/20261017110000_phase42_structured_encounters/migration.sql',
+      'utf8',
+    );
+    const phase42PermissionCodes = TENANT_PERMISSION_DEFINITIONS.filter(({ code }) =>
+      /tenant\.encounters\.(diagnoses|services|amendments)\./u.test(code),
+    ).map(({ code }) => code);
+    for (const code of phase42PermissionCodes) {
+      expect(phase42Migration).toContain(`'${code}'`);
+    }
+    expect(phase42Migration).toMatch(/`role`\.`code` = 'OWNER'/u);
+    expect(phase42Migration).not.toMatch(/`role`\.`code` = '(ADMIN|MEMBER)'/u);
   });
 });

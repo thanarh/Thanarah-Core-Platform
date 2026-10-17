@@ -46,6 +46,13 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.encounters.complete',
   'tenant.encounters.cancel',
   'tenant.encounters.history.read',
+  'tenant.encounters.diagnoses.read',
+  'tenant.encounters.diagnoses.write',
+  'tenant.encounters.services.read',
+  'tenant.encounters.services.write',
+  'tenant.encounters.amendments.create',
+  'tenant.encounters.amendments.update',
+  'tenant.encounters.amendments.finalize',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -172,6 +179,34 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   {
     code: 'tenant.encounters.history.read',
     description: 'Read encounter lifecycle and clinical-change history metadata',
+  },
+  {
+    code: 'tenant.encounters.diagnoses.read',
+    description: 'Read structured encounter diagnoses within encounter access scope',
+  },
+  {
+    code: 'tenant.encounters.diagnoses.write',
+    description: 'Create, update, and remove diagnoses on editable encounters',
+  },
+  {
+    code: 'tenant.encounters.services.read',
+    description: 'Read clinical service and procedure records on encounters',
+  },
+  {
+    code: 'tenant.encounters.services.write',
+    description: 'Create, update, and remove clinical service records on editable encounters',
+  },
+  {
+    code: 'tenant.encounters.amendments.create',
+    description: 'Open a reasoned amendment draft for a finalized encounter',
+  },
+  {
+    code: 'tenant.encounters.amendments.update',
+    description: 'Edit an open encounter amendment draft',
+  },
+  {
+    code: 'tenant.encounters.amendments.finalize',
+    description: 'Finalize an explicitly reasoned encounter amendment',
   },
 ];
 

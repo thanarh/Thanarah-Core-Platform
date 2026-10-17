@@ -42,7 +42,71 @@ export interface EncounterClinicalRecord {
   internalNotes?: string;
 }
 
-export type EncounterHistoryAction = 'CREATED' | 'CLINICAL_UPDATED' | 'COMPLETED' | 'CANCELLED';
+export type EncounterDiagnosisPriority = 'PRIMARY' | 'SECONDARY';
+export type EncounterDiagnosisStatus = 'ACTIVE' | 'RESOLVED' | 'INACTIVE';
+
+export interface EncounterDiagnosis {
+  id: string;
+  description: string;
+  priority: EncounterDiagnosisPriority;
+  clinicalStatus: EncounterDiagnosisStatus;
+  onsetAt: Date | null;
+  recordedAt: Date;
+  recordedBy: string;
+  updatedAt: Date;
+  updatedBy: string;
+}
+
+export type EncounterServiceStatus = 'PLANNED' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED';
+
+export interface EncounterServiceRecord {
+  id: string;
+  serviceId: string;
+  serviceCode: string | null;
+  serviceName: string;
+  providerDoctorId: string;
+  status: EncounterServiceStatus;
+  note: string | null;
+  startedAt: Date | null;
+  completedAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+  createdBy: string;
+  updatedAt: Date;
+  updatedBy: string;
+}
+
+export type EncounterAmendmentStatus = 'OPEN' | 'FINALIZED';
+export type EncounterRevisionStatus = 'ORIGINAL' | 'AMENDMENT_DRAFT' | 'AMENDED';
+
+export interface EncounterAmendment {
+  id: string;
+  reason: string;
+  status: EncounterAmendmentStatus;
+  clinical: EncounterClinicalRecord;
+  diagnoses: EncounterDiagnosis[];
+  serviceRecords: EncounterServiceRecord[];
+  createdAt: Date;
+  createdBy: string;
+  finalizedAt: Date | null;
+  finalizedBy: string | null;
+}
+
+export type EncounterAmendmentSummary = Omit<
+  EncounterAmendment,
+  'clinical' | 'diagnoses' | 'serviceRecords'
+>;
+
+export type EncounterHistoryAction =
+  | 'CREATED'
+  | 'CLINICAL_UPDATED'
+  | 'DIAGNOSES_UPDATED'
+  | 'SERVICE_RECORDS_UPDATED'
+  | 'COMPLETED'
+  | 'CANCELLED'
+  | 'AMENDMENT_OPENED'
+  | 'AMENDMENT_UPDATED'
+  | 'AMENDMENT_FINALIZED';
 
 /** Metadata only: this trail must never contain clinical values or note text. */
 export interface EncounterHistoryEvent {
@@ -65,6 +129,9 @@ export interface EncounterRecord {
   encounterAt: Date;
   status: EncounterStatus;
   clinical: EncounterClinicalRecord;
+  diagnoses: EncounterDiagnosis[];
+  serviceRecords: EncounterServiceRecord[];
+  amendments: EncounterAmendment[];
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -78,8 +145,15 @@ export interface EncounterRecord {
   history: EncounterHistoryEvent[];
 }
 
-export type EncounterResponse = Omit<EncounterRecord, 'history'>;
-export type EncounterSummary = Omit<EncounterResponse, 'clinical'>;
+export type EncounterResponse = Omit<EncounterRecord, 'history' | 'amendments'> & {
+  amendments: EncounterAmendmentSummary[];
+  currentRevision: EncounterRevisionStatus;
+  activeAmendmentId: string | null;
+};
+export type EncounterSummary = Omit<
+  EncounterResponse,
+  'clinical' | 'diagnoses' | 'serviceRecords' | 'amendments' | 'activeAmendmentId'
+>;
 
 export interface EncounterListResponse extends Omit<EncounterListResult, 'items'> {
   items: EncounterSummary[];

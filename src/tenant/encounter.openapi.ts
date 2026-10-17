@@ -98,14 +98,6 @@ export class EncounterClinicalPatchRequestDto {
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 8_000 })
   assessment?: string | null;
 
-  @ApiPropertyOptional({
-    type: [String],
-    nullable: true,
-    maxItems: 20,
-    description: 'Free-text diagnoses; no code system is implied.',
-  })
-  diagnoses?: string[] | null;
-
   @ApiPropertyOptional({ type: String, nullable: true, maxLength: 8_000 })
   plan?: string | null;
 
@@ -132,6 +124,150 @@ export class EncounterLifecycleRequestDto {
 export class CancelEncounterRequestDto extends EncounterLifecycleRequestDto {
   @ApiPropertyOptional({ type: String, maxLength: 500 })
   reason?: string;
+}
+
+export class EncounterDiagnosisRequestDto {
+  @ApiPropertyOptional({ type: String, format: 'uuid' })
+  id?: string;
+
+  @ApiProperty({ type: String, maxLength: 2_000 })
+  description!: string;
+
+  @ApiProperty({ type: String, enum: ['PRIMARY', 'SECONDARY'] })
+  priority!: 'PRIMARY' | 'SECONDARY';
+
+  @ApiProperty({ type: String, enum: ['ACTIVE', 'RESOLVED', 'INACTIVE'] })
+  clinicalStatus!: 'ACTIVE' | 'RESOLVED' | 'INACTIVE';
+
+  @ApiPropertyOptional({ type: String, format: 'date-time', nullable: true })
+  onsetAt?: string | null;
+}
+
+export class EncounterServiceRecordRequestDto {
+  @ApiPropertyOptional({ type: String, format: 'uuid' })
+  id?: string;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  serviceId!: string;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid' })
+  providerDoctorId?: string;
+
+  @ApiPropertyOptional({
+    type: String,
+    enum: ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'],
+  })
+  status?: string;
+
+  @ApiPropertyOptional({ type: String, nullable: true, maxLength: 3_000 })
+  note?: string | null;
+}
+
+export class ReplaceEncounterDiagnosesRequestDto {
+  @ApiProperty({ type: Number, minimum: 1 })
+  expectedVersion!: number;
+
+  @ApiProperty({ type: [EncounterDiagnosisRequestDto], maxItems: 100 })
+  diagnoses!: EncounterDiagnosisRequestDto[];
+}
+
+export class ReplaceEncounterServiceRecordsRequestDto {
+  @ApiProperty({ type: Number, minimum: 1 })
+  expectedVersion!: number;
+
+  @ApiProperty({ type: [EncounterServiceRecordRequestDto], maxItems: 50 })
+  serviceRecords!: EncounterServiceRecordRequestDto[];
+}
+
+export class CreateEncounterAmendmentRequestDto extends EncounterLifecycleRequestDto {
+  @ApiProperty({ type: String, minLength: 1, maxLength: 1_000 })
+  reason!: string;
+}
+
+export class UpdateEncounterAmendmentRequestDto {
+  @ApiProperty({ type: Number, minimum: 1 })
+  expectedVersion!: number;
+
+  @ApiPropertyOptional({ type: EncounterClinicalPatchRequestDto })
+  clinical?: EncounterClinicalPatchRequestDto;
+
+  @ApiPropertyOptional({ type: [EncounterDiagnosisRequestDto], maxItems: 100 })
+  diagnoses?: EncounterDiagnosisRequestDto[];
+
+  @ApiPropertyOptional({ type: [EncounterServiceRecordRequestDto], maxItems: 50 })
+  serviceRecords?: EncounterServiceRecordRequestDto[];
+}
+
+export class EncounterDiagnosisResponseDto extends EncounterDiagnosisRequestDto {
+  @ApiProperty({ type: String, format: 'date-time' })
+  recordedAt!: Date;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  recordedBy!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  updatedAt!: Date;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  updatedBy!: string;
+}
+
+export class EncounterServiceRecordResponseDto extends EncounterServiceRecordRequestDto {
+  @ApiProperty({ type: String, nullable: true })
+  serviceCode!: string | null;
+
+  @ApiProperty({ type: String })
+  serviceName!: string;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  declare providerDoctorId: string;
+
+  @ApiProperty({ type: String, enum: ['PLANNED', 'IN_PROGRESS', 'COMPLETED', 'CANCELLED'] })
+  declare status: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  startedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  completedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  cancelledAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  createdAt!: Date;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  createdBy!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  updatedAt!: Date;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  updatedBy!: string;
+}
+
+export class EncounterAmendmentSummaryDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  id!: string;
+
+  @ApiProperty({ type: String, maxLength: 1_000 })
+  reason!: string;
+
+  @ApiProperty({ type: String, enum: ['OPEN', 'FINALIZED'] })
+  status!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  createdAt!: Date;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  createdBy!: string;
+
+  @ApiProperty({ type: String, format: 'date-time', nullable: true })
+  finalizedAt!: Date | null;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  finalizedBy!: string | null;
 }
 
 export class EncounterResponseDto {
@@ -161,6 +297,21 @@ export class EncounterResponseDto {
 
   @ApiProperty({ type: 'object', additionalProperties: true })
   clinical!: Record<string, unknown>;
+
+  @ApiProperty({ type: [EncounterDiagnosisResponseDto] })
+  diagnoses!: EncounterDiagnosisResponseDto[];
+
+  @ApiProperty({ type: [EncounterServiceRecordResponseDto] })
+  serviceRecords!: EncounterServiceRecordResponseDto[];
+
+  @ApiProperty({ type: [EncounterAmendmentSummaryDto] })
+  amendments!: EncounterAmendmentSummaryDto[];
+
+  @ApiProperty({ type: String, enum: ['ORIGINAL', 'AMENDMENT_DRAFT', 'AMENDED'] })
+  currentRevision!: string;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  activeAmendmentId!: string | null;
 
   @ApiProperty({ type: Number })
   version!: number;
@@ -195,6 +346,10 @@ export class EncounterResponseDto {
 
 export class EncounterSummaryResponseDto extends OmitType(EncounterResponseDto, [
   'clinical',
+  'diagnoses',
+  'serviceRecords',
+  'amendments',
+  'activeAmendmentId',
 ] as const) {}
 
 export class EncounterListResponseDto {
@@ -235,7 +390,20 @@ export class EncounterHistoryEventResponseDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
 
-  @ApiProperty({ type: String, enum: ['CREATED', 'CLINICAL_UPDATED', 'COMPLETED', 'CANCELLED'] })
+  @ApiProperty({
+    type: String,
+    enum: [
+      'CREATED',
+      'CLINICAL_UPDATED',
+      'DIAGNOSES_UPDATED',
+      'SERVICE_RECORDS_UPDATED',
+      'COMPLETED',
+      'CANCELLED',
+      'AMENDMENT_OPENED',
+      'AMENDMENT_UPDATED',
+      'AMENDMENT_FINALIZED',
+    ],
+  })
   action!: string;
 
   @ApiProperty({ type: String, format: 'uuid' })

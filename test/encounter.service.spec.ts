@@ -1,4 +1,4 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { EncounterService } from '../src/tenant/encounter.service';
 import {
@@ -22,6 +22,7 @@ const doctorId = '55555555-5555-4555-8555-555555555555';
 const facilityId = '66666666-6666-4666-8666-666666666666';
 const appointmentId = '77777777-7777-4777-8777-777777777777';
 const encounterId = '88888888-8888-4888-8888-888888888888';
+const serviceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
 const context = {
   tenantId,
@@ -51,6 +52,9 @@ function record(overrides: Partial<EncounterRecord> = {}): EncounterRecord {
     encounterAt: now,
     status: EncounterStatus.DRAFT,
     clinical: {},
+    diagnoses: [],
+    serviceRecords: [],
+    amendments: [],
     version: 1,
     createdAt: now,
     updatedAt: now,
@@ -85,11 +89,11 @@ const makeHarness = (() => {
         _context: TrustedTenantContext,
         _id: string,
         version: number,
-        _status: EncounterRecord['status'],
+        status: EncounterRecord['status'],
         patch: Partial<EncounterRecord>,
         event: EncounterHistoryEvent,
       ) => ({
-        ...record(),
+        ...record({ status }),
         ...patch,
         version: version + 1,
         history: [...record().history, event],
@@ -111,6 +115,12 @@ const makeHarness = (() => {
   const patients = { findById: vi.fn(async () => ({ status: 'ACTIVE' })) };
   const doctors = {
     findById: vi.fn(async () => ({ operationallyActive: true, staffId: actorId })),
+  };
+  const services = {
+    findById: vi.fn(async (inputContext: TrustedTenantContext, id: string) => {
+      void inputContext;
+      return { id, name: 'Radiology', code: 'XR', status: 'ACTIVE' };
+    }),
   };
   const facilities = { findById: vi.fn(async () => ({ status: 'ACTIVE' })) };
   const branches = { findById: vi.fn(async () => ({ facilityId, status: 'ACTIVE' })) };
@@ -134,6 +144,7 @@ const makeHarness = (() => {
     appointment as never,
     patients as never,
     doctors as never,
+    services as never,
     facilities as never,
     branches as never,
     staffScopes as never,
@@ -147,6 +158,7 @@ const makeHarness = (() => {
     appointment,
     patients,
     doctors,
+    services,
     facilities,
     branches,
     staffScopes,
@@ -333,6 +345,219 @@ describe('EncounterService', () => {
         actor,
       ),
     ).rejects.toBeInstanceOf(EncounterInputValidationError);
+  });
+
+  it('stores clinician-entered structured diagnoses with one primary and privacy-safe audit metadata', async () => {
+    const current = record();
+    harness.repository.findById.mockResolvedValueOnce(current);
+    const updated = await harness.service.replaceDiagnoses(
+      context,
+      encounterId,
+      {
+        expectedVersion: 1,
+        diagnoses: [
+          {
+            description: 'Acute headache',
+            priority: 'PRIMARY',
+            clinicalStatus: 'ACTIVE',
+            onsetAt: '2026-10-16T00:00:00.000Z',
+          },
+          {
+            description: 'Nausea',
+            priority: 'SECONDARY',
+            clinicalStatus: 'ACTIVE',
+          },
+        ],
+      },
+      actor,
+    );
+
+    expect(updated.diagnoses).toHaveLength(2);
+    expect(updated.diagnoses[0]?.priority).toBe('PRIMARY');
+    expect(updated.diagnoses[0]?.description).toBe('Acute headache');
+    expect(updated.diagnoses[0]).not.toHaveProperty('code');
+    const event = harness.repository.update.mock.calls[0]?.[5];
+    expect(event?.changedFields).toEqual(['diagnoses']);
+    expect(JSON.stringify(event)).not.toContain('Acute headache');
+    expect(JSON.stringify(harness.audit.recordAudit.mock.calls[0]?.[0])).not.toContain(
+      'Acute headache',
+    );
+  });
+
+  it('rejects empty, ambiguous-primary, and stale diagnosis replacements', async () => {
+    await expect(
+      harness.service.replaceDiagnoses(
+        context,
+        encounterId,
+        {
+          expectedVersion: 1,
+          diagnoses: [
+            {
+              description: 'First',
+              priority: 'PRIMARY',
+              clinicalStatus: 'ACTIVE',
+            },
+            {
+              description: 'Second',
+              priority: 'PRIMARY',
+              clinicalStatus: 'ACTIVE',
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(EncounterInputValidationError);
+
+    harness.repository.findById.mockResolvedValueOnce(record({ version: 2 }));
+    await expect(
+      harness.service.replaceDiagnoses(
+        context,
+        encounterId,
+        {
+          expectedVersion: 1,
+          diagnoses: [
+            {
+              description: 'Single primary',
+              priority: 'PRIMARY',
+              clinicalStatus: 'ACTIVE',
+            },
+          ],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(EncounterVersionConflictError);
+    expect(harness.repository.update).not.toHaveBeenCalled();
+  });
+
+  it('validates service catalog, active provider scope, and initial service state', async () => {
+    harness.repository.findById.mockResolvedValueOnce(record());
+    const updated = await harness.service.replaceServiceRecords(
+      context,
+      encounterId,
+      {
+        expectedVersion: 1,
+        serviceRecords: [{ serviceId, note: 'Imaging completed as planned.' }],
+      },
+      actor,
+    );
+    expect(updated.serviceRecords).toHaveLength(1);
+    expect(updated.serviceRecords[0]).toMatchObject({
+      serviceId,
+      serviceName: 'Radiology',
+      serviceCode: 'XR',
+      providerDoctorId: doctorId,
+      status: 'PLANNED',
+    });
+    expect(updated.serviceRecords[0]).not.toHaveProperty('price');
+
+    harness.services.findById.mockRejectedValueOnce(new NotFoundException());
+    harness.repository.findById.mockResolvedValueOnce(record());
+    await expect(
+      harness.service.replaceServiceRecords(
+        context,
+        encounterId,
+        { expectedVersion: 1, serviceRecords: [{ serviceId }] },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(EncounterReferenceInvalidError);
+    expect(harness.repository.update).toHaveBeenCalledOnce();
+
+    harness.repository.findById.mockResolvedValueOnce(record());
+    await expect(
+      harness.service.replaceServiceRecords(
+        context,
+        encounterId,
+        {
+          expectedVersion: 1,
+          serviceRecords: [{ serviceId, status: 'COMPLETED' }],
+        },
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(EncounterStateConflictError);
+  });
+
+  it('opens, edits, and finalizes explicit amendments without changing the completed original', async () => {
+    const completed = record({ status: EncounterStatus.COMPLETED, completedAt: new Date() });
+    harness.repository.findById.mockResolvedValueOnce(completed);
+    const opened = await harness.service.createEncounterAmendment(
+      context,
+      encounterId,
+      { expectedVersion: 1, reason: 'Correcting the documented assessment' },
+      actor,
+    );
+    const amendmentId = opened.activeAmendmentId!;
+    expect(opened.status).toBe('COMPLETED');
+    expect(opened.currentRevision).toBe('AMENDMENT_DRAFT');
+    expect(opened.amendments[0]?.reason).toBe('Correcting the documented assessment');
+    expect(JSON.stringify(harness.audit.recordAudit.mock.calls[0]?.[0])).not.toContain(
+      'Correcting the documented assessment',
+    );
+
+    harness.repository.findById.mockResolvedValueOnce(
+      record({
+        status: EncounterStatus.COMPLETED,
+        version: 2,
+        amendments: opened.amendments.length
+          ? [
+              {
+                id: amendmentId,
+                reason: 'Correcting the documented assessment',
+                status: 'OPEN',
+                clinical: {},
+                diagnoses: [],
+                serviceRecords: [],
+                createdAt: new Date(),
+                createdBy: actorId,
+                finalizedAt: null,
+                finalizedBy: null,
+              },
+            ]
+          : [],
+      }),
+    );
+    const edited = await harness.service.updateEncounterAmendment(
+      context,
+      encounterId,
+      amendmentId,
+      {
+        expectedVersion: 2,
+        diagnoses: [
+          {
+            description: 'Corrected diagnosis',
+            priority: 'PRIMARY',
+            clinicalStatus: 'ACTIVE',
+          },
+        ],
+      },
+      actor,
+    );
+    expect(edited.diagnoses[0]?.description).toBe('Corrected diagnosis');
+    expect(edited.status).toBe('COMPLETED');
+
+    harness.repository.findById.mockResolvedValueOnce(
+      record({
+        status: EncounterStatus.COMPLETED,
+        version: 3,
+        amendments: edited.amendments.map((item) => ({
+          ...item,
+          clinical: {},
+          diagnoses: edited.diagnoses,
+          serviceRecords: [],
+        })),
+      }),
+    );
+    const finalized = await harness.service.finalizeEncounterAmendment(
+      context,
+      encounterId,
+      amendmentId,
+      { expectedVersion: 3 },
+      actor,
+    );
+    expect(finalized.status).toBe('COMPLETED');
+    expect(finalized.currentRevision).toBe('AMENDED');
+    expect(finalized.activeAmendmentId).toBeNull();
+    expect(finalized.amendments[0]?.status).toBe('FINALIZED');
+    expect(finalized.diagnoses[0]?.description).toBe('Corrected diagnosis');
   });
 
   it('finalizes and cancels drafts through separate explicit transitions', async () => {

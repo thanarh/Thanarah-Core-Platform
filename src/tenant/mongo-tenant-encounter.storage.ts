@@ -93,6 +93,9 @@ interface EncounterMongoDocument extends Document {
   encounterAt: Date;
   status: EncounterRecord['status'];
   clinical: EncounterRecord['clinical'];
+  diagnoses: EncounterRecord['diagnoses'];
+  serviceRecords: EncounterRecord['serviceRecords'];
+  amendments: EncounterRecord['amendments'];
   version: number;
   createdAt: Date;
   updatedAt: Date;
@@ -381,6 +384,39 @@ function toEncounterRecord(document: EncounterMongoDocument): EncounterRecord {
     encounterAt: new Date(document.encounterAt),
     status: document.status,
     clinical: document.clinical ?? {},
+    diagnoses: (document.diagnoses ?? []).map((diagnosis) => ({
+      ...diagnosis,
+      onsetAt: diagnosis.onsetAt ? new Date(diagnosis.onsetAt) : null,
+      recordedAt: new Date(diagnosis.recordedAt),
+      updatedAt: new Date(diagnosis.updatedAt),
+    })),
+    serviceRecords: (document.serviceRecords ?? []).map((service) => ({
+      ...service,
+      startedAt: service.startedAt ? new Date(service.startedAt) : null,
+      completedAt: service.completedAt ? new Date(service.completedAt) : null,
+      cancelledAt: service.cancelledAt ? new Date(service.cancelledAt) : null,
+      createdAt: new Date(service.createdAt),
+      updatedAt: new Date(service.updatedAt),
+    })),
+    amendments: (document.amendments ?? []).map((amendment) => ({
+      ...amendment,
+      createdAt: new Date(amendment.createdAt),
+      finalizedAt: amendment.finalizedAt ? new Date(amendment.finalizedAt) : null,
+      diagnoses: (amendment.diagnoses ?? []).map((diagnosis) => ({
+        ...diagnosis,
+        onsetAt: diagnosis.onsetAt ? new Date(diagnosis.onsetAt) : null,
+        recordedAt: new Date(diagnosis.recordedAt),
+        updatedAt: new Date(diagnosis.updatedAt),
+      })),
+      serviceRecords: (amendment.serviceRecords ?? []).map((service) => ({
+        ...service,
+        startedAt: service.startedAt ? new Date(service.startedAt) : null,
+        completedAt: service.completedAt ? new Date(service.completedAt) : null,
+        cancelledAt: service.cancelledAt ? new Date(service.cancelledAt) : null,
+        createdAt: new Date(service.createdAt),
+        updatedAt: new Date(service.updatedAt),
+      })),
+    })),
     version: document.version,
     createdAt: new Date(document.createdAt),
     updatedAt: new Date(document.updatedAt),

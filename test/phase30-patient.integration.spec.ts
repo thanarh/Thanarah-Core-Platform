@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readdirSync, rmSync } from 'node:fs';
-import { execFileSync } from 'node:child_process';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import { execFileSync, spawn } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -9,12 +9,16 @@ import {
   PlatformAuditEventType,
   PlatformSessionStatus,
   PrismaClient,
+  FacilitySchedulingPolicyStatus,
+  StaffStatus,
   TenantMembershipStatus,
   TenantStatus,
   TenantStorageTargetStatus,
   UserStatus,
 } from '@prisma/client';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+import cookie from '@fastify/cookie';
+import fastifyStatic from '@fastify/static';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { MongoClient, type Db, type Document } from 'mongodb';
@@ -32,8 +36,10 @@ import type {
 const requireFromWorkspace = createRequire(
   resolve(process.cwd(), 'test/phase30-patient.integration.spec.ts'),
 );
-const { AccessTokenService } = requireFromWorkspace('../dist/auth/services/access-token.service');
 const { APP_CONSTANTS } = requireFromWorkspace('../dist/common/constants/app.constants');
+const { PasswordHasherService } = requireFromWorkspace(
+  '../dist/auth/security/password-hasher.service',
+);
 const { PrismaService } = requireFromWorkspace('../dist/database/prisma.service');
 const { MongoTenantPatientStorage } = requireFromWorkspace(
   '../dist/tenant/mongo-tenant-patient.storage',
@@ -128,6 +134,10 @@ let mysqlUri = '';
 let mongoPassword = '';
 let mysqlPassword = '';
 let accessToken = '';
+let testEmail = '';
+let testPassword = '';
+let refreshCookie = '';
+let browserBaseUrl = '';
 let targetA: TenantStorageTargetRecord;
 let targetB: TenantStorageTargetRecord;
 let contextA: TrustedTenantContext;
@@ -136,6 +146,16 @@ let platformUserId = '';
 let platformSessionId = '';
 let readPermissionId = '';
 let managePermissionId = '';
+let clinicalFacilityId = '';
+let clinicalBranchId = '';
+let unassignedBranchId = '';
+let clinicalDoctorId = '';
+let clinicalServiceId = '';
+let otherTenantDoctorId = '';
+let otherTenantServiceId = '';
+let clinicalPatientId = '';
+let apiEncounterId = '';
+let browserEncounterId = '';
 
 describe('Real tenant MongoDB Patient and Appointment runtime verification', () => {
   beforeAll(async () => {
@@ -212,8 +232,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
     platformUserId = randomUUID();
     platformSessionId = randomUUID();
+    testEmail = `phase42-${RUN_ID}@example.test`;
+    testPassword = randomBytes(24).toString('base64url');
 
     await seedControlPlane(prisma);
+    await seedClinicalFixtures(prisma);
     const membershipValidator = getApplication().get(TenantMembershipValidatorService);
     const contextFactory = getApplication().get(TrustedTenantContextFactoryService);
     const authUser = {
@@ -234,12 +257,16 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         tenantIdCandidate: tenantB.id,
       }),
     );
-    accessToken = await getApplication().get(AccessTokenService).sign({
-      sub: platformUserId,
-      sessionId: platformSessionId,
-      tokenVersion: 1,
-      platformRoleIds: [],
+    const loginResponse = await getApplication().inject({
+      method: 'POST',
+      url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth/login`,
+      payload: { email: testEmail, password: testPassword },
     });
+    if (loginResponse.statusCode !== 200) {
+      throw new Error(`Disposable user could not sign in: HTTP ${loginResponse.statusCode}`);
+    }
+    accessToken = loginResponse.json<{ accessToken: string }>().accessToken;
+    refreshCookie = cookiePair(loginResponse.headers['set-cookie']);
 
     await provisionTenantTarget(tenantA);
     await provisionTenantTarget(tenantB);
@@ -249,6 +276,12 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       .getPlacements(contextA);
     expect(placementsA).toHaveLength(1);
     expect(placementsA[0]?.placementId).toBe(targetA.id);
+    await getApplication().listen(0, '127.0.0.1');
+    const address = getApplication().getHttpAdapter().getInstance().server.address();
+    if (!address || typeof address === 'string') {
+      throw new Error('Disposable HTTP server did not report its assigned address');
+    }
+    browserBaseUrl = `http://127.0.0.1:${address.port}`;
   }, 180_000);
 
   afterAll(async () => {
@@ -270,6 +303,719 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await Promise.allSettled([mysqlContainer?.stop(), mongoContainer?.stop()]);
     }
   });
+
+  it('uses real password sign-in, cookie refresh, and authenticated workspace permissions', async () => {
+    const authRoot = `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth`;
+    const badLogin = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: `${testPassword}-incorrect` },
+    });
+    expect(badLogin.statusCode).toBe(401);
+
+    const login = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: testPassword },
+    });
+    expect(login.statusCode).toBe(200);
+    accessToken = login.json<{ accessToken: string }>().accessToken;
+    refreshCookie = cookiePair(login.headers['set-cookie']);
+    expect(refreshCookie).toMatch(/^phase30_refresh=/u);
+    expect(String(login.headers['set-cookie'])).toMatch(/HttpOnly/iu);
+
+    const refresh = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/refresh`,
+      headers: { cookie: refreshCookie },
+    });
+    expect(refresh.statusCode).toBe(200);
+    const refreshedAccessToken = refresh.json<{ accessToken: string }>().accessToken;
+    expect(refreshedAccessToken).toBeTruthy();
+    const rotatedCookie = cookiePair(refresh.headers['set-cookie']);
+    expect(rotatedCookie).not.toBe(refreshCookie);
+    accessToken = refreshedAccessToken;
+    refreshCookie = rotatedCookie;
+
+    const workspaces = await getApplication().inject({
+      method: 'GET',
+      url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+      headers: bearerHeaders(),
+    });
+    expect(workspaces.statusCode).toBe(200);
+    expect(
+      workspaces.json<{ items: Array<{ tenantId: string; permissionCodes: string[] }> }>().items,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          tenantId: tenantA.id,
+          permissionCodes: expect.arrayContaining([
+            'tenant.encounters.diagnoses.read',
+            'tenant.encounters.services.write',
+            'tenant.encounters.amendments.finalize',
+          ]),
+        }),
+      ]),
+    );
+  });
+
+  it('expires a real platform session and recovers through a fresh password sign-in', async () => {
+    const authRoot = `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth`;
+    const login = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: testPassword },
+    });
+    expect(login.statusCode).toBe(200);
+    const expiredAccessToken = login.json<{ accessToken: string }>().accessToken;
+    const expiredRefreshCookie = cookiePair(login.headers['set-cookie']);
+
+    const prisma = getApplication().get(PrismaService);
+    const session = await prisma.platformSession.findFirst({
+      where: { userId: platformUserId, status: PlatformSessionStatus.ACTIVE },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(session).not.toBeNull();
+    await prisma.platformSession.update({
+      where: { id: session!.id },
+      data: { expiresAt: new Date(Date.now() - 1_000) },
+    });
+
+    const expiredAccess = await getApplication().inject({
+      method: 'GET',
+      url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+      headers: { authorization: `Bearer ${expiredAccessToken}` },
+    });
+    expect(expiredAccess.statusCode).toBe(401);
+    const expiredRefresh = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/refresh`,
+      headers: { cookie: expiredRefreshCookie },
+    });
+    expect(expiredRefresh.statusCode).toBe(401);
+
+    const recoveryLogin = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: testPassword },
+    });
+    expect(recoveryLogin.statusCode).toBe(200);
+    const recoveredWorkspaces = await getApplication().inject({
+      method: 'GET',
+      url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+      headers: {
+        authorization: `Bearer ${recoveryLogin.json<{ accessToken: string }>().accessToken}`,
+      },
+    });
+    expect(recoveredWorkspaces.statusCode).toBe(200);
+  });
+
+  it('enforces scoped encounter access and completes an audited amendment workflow in disposable databases', async () => {
+    const unauthenticated = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters`,
+    });
+    expect(unauthenticated.statusCode).toBe(401);
+
+    const deniedTenant = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/encounters`,
+      headers: bearerHeaders(),
+    });
+    expect(deniedTenant.statusCode).toBe(403);
+
+    const patientResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P42-${RUN_ID}`),
+    });
+    expect(patientResponse.statusCode).toBe(201);
+    clinicalPatientId = patientResponse.json<{ id: string }>().id;
+
+    const createEncounter = async (): Promise<{ id: string }> => {
+      const response = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: bearerHeaders(),
+        payload: {
+          patientId: clinicalPatientId,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+      expect(response.statusCode).toBe(201);
+      return response.json<{ id: string }>();
+    };
+    const encounter = await createEncounter();
+    apiEncounterId = encounter.id;
+    browserEncounterId = (await createEncounter()).id;
+
+    const deniedMutation = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantB)}/encounters/${apiEncounterId}/diagnoses`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: 1, diagnoses: [] },
+    });
+    expect(deniedMutation.statusCode).toBe(403);
+
+    const detail = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
+      headers: bearerHeaders(),
+    });
+    expect(detail.statusCode).toBe(200);
+    expect(detail.json()).toMatchObject({
+      id: apiEncounterId,
+      status: 'DRAFT',
+      currentRevision: 'ORIGINAL',
+      diagnoses: [],
+      serviceRecords: [],
+    });
+
+    const listed = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}`,
+      headers: bearerHeaders(),
+    });
+    expect(listed.statusCode).toBe(200);
+    expect(listed.json<{ items: Array<{ id: string }> }>().items.map(({ id }) => id)).toContain(
+      apiEncounterId,
+    );
+
+    const outOfScopeList = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters?facilityId=${clinicalFacilityId}&branchId=${unassignedBranchId}`,
+      headers: bearerHeaders(),
+    });
+    expect(outOfScopeList.statusCode).toBe(403);
+    const outOfScopeCreate = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId: clinicalPatientId,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: unassignedBranchId,
+      },
+    });
+    expect(outOfScopeCreate.statusCode).toBe(403);
+
+    const clinicalText = 'Phase 42 authenticated draft note';
+    const clinicalUpdate = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/clinical`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: 1, clinical: { chiefComplaint: clinicalText } },
+    });
+    expect(clinicalUpdate.statusCode).toBe(200);
+    expect(clinicalUpdate.json()).toMatchObject({
+      version: 2,
+      clinical: { chiefComplaint: clinicalText },
+    });
+
+    const diagnosisUpdate = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 2,
+        diagnoses: [
+          {
+            description: 'Primary clinician-entered diagnosis',
+            priority: 'PRIMARY',
+            clinicalStatus: 'ACTIVE',
+            onsetAt: '2026-10-16T00:00:00.000Z',
+          },
+        ],
+      },
+    });
+    expect(diagnosisUpdate.statusCode, diagnosisUpdate.body).toBe(200);
+    const primaryDiagnosisId = diagnosisUpdate.json<{ diagnoses: Array<{ id: string }> }>()
+      .diagnoses[0]!.id;
+    expect(
+      (
+        await getApplication().inject({
+          method: 'PUT',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
+          headers: bearerHeaders(),
+          payload: {
+            expectedVersion: 2,
+            diagnoses: [
+              {
+                description: 'Primary clinician-entered diagnosis',
+                priority: 'PRIMARY',
+                clinicalStatus: 'ACTIVE',
+              },
+            ],
+          },
+        })
+      ).statusCode,
+    ).toBe(409);
+    expect(
+      (
+        await getApplication().inject({
+          method: 'PUT',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
+          headers: bearerHeaders(),
+          payload: {
+            expectedVersion: 3,
+            diagnoses: [
+              { description: 'One', priority: 'PRIMARY', clinicalStatus: 'ACTIVE' },
+              { description: 'Two', priority: 'PRIMARY', clinicalStatus: 'ACTIVE' },
+            ],
+          },
+        })
+      ).statusCode,
+    ).toBe(400);
+
+    const foreignService = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 3,
+        serviceRecords: [{ serviceId: otherTenantServiceId, providerDoctorId: clinicalDoctorId }],
+      },
+    });
+    expect(foreignService.statusCode).toBe(422);
+    const foreignDoctor = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 3,
+        serviceRecords: [{ serviceId: clinicalServiceId, providerDoctorId: otherTenantDoctorId }],
+      },
+    });
+    expect(foreignDoctor.statusCode).toBe(422);
+
+    const planned = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 3,
+        serviceRecords: [
+          {
+            serviceId: clinicalServiceId,
+            providerDoctorId: clinicalDoctorId,
+            status: 'PLANNED',
+            note: 'Clinician-entered service note',
+          },
+        ],
+      },
+    });
+    expect(planned.statusCode).toBe(200);
+    const serviceRecord = planned.json<{
+      version: number;
+      serviceRecords: Array<{ id: string }>;
+    }>();
+    expect(serviceRecord.version).toBe(4);
+    const serviceRecordId = serviceRecord.serviceRecords[0]!.id;
+    const illegalTransition = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 4,
+        serviceRecords: [
+          {
+            id: serviceRecordId,
+            serviceId: clinicalServiceId,
+            providerDoctorId: clinicalDoctorId,
+            status: 'COMPLETED',
+            note: 'Clinician-entered service note',
+          },
+        ],
+      },
+    });
+    expect(illegalTransition.statusCode).toBe(409);
+    const started = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 4,
+        serviceRecords: [
+          {
+            id: serviceRecordId,
+            serviceId: clinicalServiceId,
+            providerDoctorId: clinicalDoctorId,
+            status: 'IN_PROGRESS',
+            note: 'Clinician-entered service note',
+          },
+        ],
+      },
+    });
+    expect(started.statusCode).toBe(200);
+    expect(started.json()).toMatchObject({
+      serviceRecords: [{ status: 'IN_PROGRESS' }],
+    });
+    const completedService = await getApplication().inject({
+      method: 'PUT',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: 5,
+        serviceRecords: [
+          {
+            id: serviceRecordId,
+            serviceId: clinicalServiceId,
+            providerDoctorId: clinicalDoctorId,
+            status: 'COMPLETED',
+            note: 'Clinician-entered service note',
+          },
+        ],
+      },
+    });
+    expect(completedService.statusCode).toBe(200);
+    expect(completedService.json()).toMatchObject({
+      serviceRecords: [{ status: 'COMPLETED', completedAt: expect.any(String) }],
+    });
+
+    const completeEncounter = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/complete`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: 6 },
+    });
+    expect(completeEncounter.statusCode).toBe(200);
+    const completedVersion = completeEncounter.json<{ version: number }>().version;
+    const silentEdit = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/clinical`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: completedVersion, clinical: { assessment: 'Silent edit' } },
+    });
+    expect(silentEdit.statusCode).toBe(409);
+
+    const amendmentReason = 'Verified follow-up requires a correction';
+    const amendmentResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/amendments`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: completedVersion, reason: amendmentReason },
+    });
+    expect(amendmentResponse.statusCode).toBe(201);
+    const openedAmendment = amendmentResponse.json<{
+      version: number;
+      activeAmendmentId: string;
+      amendments: Array<{ reason: string }>;
+    }>();
+    expect(openedAmendment.amendments[0]?.reason).toBe(amendmentReason);
+    const amendmentId = openedAmendment.activeAmendmentId;
+    const amendmentUpdate = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/amendments/${amendmentId}`,
+      headers: bearerHeaders(),
+      payload: {
+        expectedVersion: openedAmendment.version,
+        diagnoses: [
+          {
+            id: primaryDiagnosisId,
+            description: 'Verified corrected diagnosis',
+            priority: 'PRIMARY',
+            clinicalStatus: 'ACTIVE',
+            onsetAt: '2026-10-16T00:00:00.000Z',
+          },
+        ],
+        serviceRecords: [
+          {
+            id: serviceRecordId,
+            serviceId: clinicalServiceId,
+            providerDoctorId: clinicalDoctorId,
+            status: 'COMPLETED',
+            note: 'Verified corrected service note',
+          },
+        ],
+      },
+    });
+    expect(amendmentUpdate.statusCode).toBe(200);
+    const updatedAmendmentVersion = amendmentUpdate.json<{ version: number }>().version;
+    const finalized = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/amendments/${amendmentId}/finalize`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: updatedAmendmentVersion },
+    });
+    expect(finalized.statusCode).toBe(200);
+    expect(finalized.json()).toMatchObject({
+      status: 'COMPLETED',
+      currentRevision: 'AMENDED',
+      activeAmendmentId: null,
+      diagnoses: [{ description: 'Verified corrected diagnosis' }],
+      serviceRecords: [{ note: 'Verified corrected service note' }],
+      amendments: [{ status: 'FINALIZED' }],
+    });
+
+    const originalDocument = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('encounters')
+      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+    expect(originalDocument?.clinical).toMatchObject({ chiefComplaint: clinicalText });
+    expect(originalDocument?.diagnoses).toMatchObject([
+      { description: 'Primary clinician-entered diagnosis' },
+    ]);
+    expect(originalDocument?.amendments).toMatchObject([
+      {
+        diagnoses: [{ description: 'Verified corrected diagnosis' }],
+        serviceRecords: [{ note: 'Verified corrected service note' }],
+      },
+    ]);
+    expect(originalDocument?.serviceRecords).toMatchObject([
+      { note: 'Clinician-entered service note' },
+    ]);
+    expect(JSON.stringify(originalDocument?.history)).not.toContain(clinicalText);
+    expect(JSON.stringify(originalDocument?.history)).not.toContain(
+      'Primary clinician-entered diagnosis',
+    );
+    expect(JSON.stringify(originalDocument?.history)).not.toContain(amendmentReason);
+    expect(JSON.stringify(originalDocument?.history)).not.toContain(
+      'Verified corrected service note',
+    );
+    const clinicalAudits = await getApplication()
+      .get(PrismaService)
+      .platformAuditLog.findMany({
+        where: {
+          subjectTenantId: tenantA.id,
+          eventType: PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+        },
+      });
+    expect(JSON.stringify(clinicalAudits)).not.toContain(clinicalText);
+    expect(JSON.stringify(clinicalAudits)).not.toContain('Primary clinician-entered diagnosis');
+    expect(JSON.stringify(clinicalAudits)).not.toContain(amendmentReason);
+  });
+
+  it('walks through the signed-in encounter UI in headless Chromium', async () => {
+    const browserProfile = mkdtempSync(join(tmpdir(), `phase42-chromium-${RUN_ID}-`));
+    const browser = spawn(
+      'chromium',
+      [
+        '--headless=new',
+        '--no-sandbox',
+        '--disable-gpu',
+        '--disable-dev-shm-usage',
+        '--remote-debugging-port=0',
+        '--remote-allow-origins=*',
+        `--user-data-dir=${browserProfile}`,
+        'about:blank',
+      ],
+      { stdio: 'ignore', detached: true },
+    );
+    let client: CdpClient | undefined;
+    try {
+      let devtoolsPort: string | undefined;
+      for (let attempt = 0; attempt < 100; attempt += 1) {
+        if (browser.exitCode !== null) {
+          throw new Error(`Headless Chromium exited before CDP started: ${browser.exitCode}`);
+        }
+        try {
+          devtoolsPort = readFileSync(join(browserProfile, 'DevToolsActivePort'), 'utf8')
+            .split(/\r?\n/u)[0]
+            ?.trim();
+        } catch {
+          await delay(100);
+        }
+        if (devtoolsPort) break;
+      }
+      if (!devtoolsPort) throw new Error('Headless Chromium did not expose a CDP port');
+
+      const devtoolsRoot = `http://127.0.0.1:${devtoolsPort}`;
+      const targetResponse = await fetch(
+        `${devtoolsRoot}/json/new?${encodeURIComponent('about:blank')}`,
+        { method: 'PUT' },
+      );
+      if (!targetResponse.ok) throw new Error('Headless Chromium could not create a page target');
+      const target = (await targetResponse.json()) as { webSocketDebuggerUrl?: string };
+      if (!target.webSocketDebuggerUrl) throw new Error('Chromium page target omitted its CDP URL');
+      client = await connectCdp(target.webSocketDebuggerUrl);
+      await client.send('Page.enable');
+      await client.send('Runtime.enable');
+      await client.send('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Riyadh' });
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
+
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        'sign-in form',
+      );
+      const submitLogin = `(() => {
+          const form = document.querySelector('form[data-form="signin"]');
+          if (!form) return false;
+          form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
+          form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
+          form.requestSubmit();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, submitLogin)).toBe(true);
+
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+            button.parentElement?.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'tenant workspace selection',
+      );
+      const chooseWorkspace = `(() => {
+          const button = Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+            .find((candidate) => candidate.parentElement?.textContent?.includes(${JSON.stringify(tenantA.slug)}));
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, chooseWorkspace)).toBe(true);
+
+      await waitForBrowserCondition(
+        client,
+        `Boolean(
+          document.querySelector('form[data-form="filters"] select[name="facilityId"]') &&
+          document.querySelector('form[data-form="filters"] select[name="branchId"]')
+        )`,
+        'facility and branch filters',
+      );
+      const selectAssignedBranch = `(() => {
+          const form = document.querySelector('form[data-form="filters"]');
+          const facility = form?.querySelector('select[name="facilityId"]');
+          const branch = form?.querySelector('select[name="branchId"]');
+          if (!form || !facility || !branch) return false;
+          facility.value = ${JSON.stringify(clinicalFacilityId)};
+          branch.value = ${JSON.stringify(clinicalBranchId)};
+          if (facility.value !== ${JSON.stringify(clinicalFacilityId)} ||
+              branch.value !== ${JSON.stringify(clinicalBranchId)}) return false;
+          form.requestSubmit();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, selectAssignedBranch)).toBe(true);
+
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]'))`,
+        'authorized encounter worklist',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+              document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]').click();
+              return true;
+            })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]'))`,
+        'encounter detail',
+      );
+
+      const browserClinicalText = 'Headless authenticated draft save';
+      const saveClinical = `(() => {
+          const form = document.querySelector('form[data-form="clinical"]');
+          const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
+          if (!form || !field) return false;
+          field.value = ${JSON.stringify(browserClinicalText)};
+          form.requestSubmit();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, saveClinical)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('الإصدار الحالي: 2')`,
+        'saved draft revision',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.querySelector('textarea[name="text.chiefComplaint"]')?.value`,
+        ),
+      ).toBe(browserClinicalText);
+
+      const addDiagnosis = `(() => {
+          const button = document.querySelector('button[data-action="add-diagnosis"]');
+          if (!button) return false;
+          button.click();
+          const form = document.querySelector('form[data-form="diagnoses"]');
+          const description = form?.querySelector('[name="description"]');
+          const priority = form?.querySelector('[name="priority"]');
+          const status = form?.querySelector('[name="clinicalStatus"]');
+          if (!form || !description || !priority || !status) return false;
+          description.value = 'Browser-verified diagnosis';
+          priority.value = 'PRIMARY';
+          status.value = 'ACTIVE';
+          form.requestSubmit();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, addDiagnosis)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('الإصدار الحالي: 3')`,
+        'saved structured diagnosis',
+      );
+
+      const addService = `(() => {
+          const button = document.querySelector('button[data-action="add-service-record"]');
+          if (!button) return false;
+          button.click();
+          const form = document.querySelector('form[data-form="services"]');
+          const service = form?.querySelector('[name="serviceId"]');
+          const provider = form?.querySelector('[name="providerDoctorId"]');
+          const note = form?.querySelector('[name="note"]');
+          if (!form || !service || !provider || !note) return false;
+          service.value = ${JSON.stringify(clinicalServiceId)};
+          provider.value = ${JSON.stringify(clinicalDoctorId)};
+          note.value = 'Browser-verified service record';
+          form.requestSubmit();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, addService)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('الإصدار الحالي: 4')`,
+        'saved service record',
+      );
+
+      const storedBrowserEncounter = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('encounters')
+        .findOne({ _id: browserEncounterId, _tenantId: tenantA.id });
+      expect(storedBrowserEncounter?.clinical).toMatchObject({
+        chiefComplaint: browserClinicalText,
+      });
+      expect(storedBrowserEncounter?.diagnoses).toMatchObject([
+        { description: 'Browser-verified diagnosis', priority: 'PRIMARY' },
+      ]);
+      expect(storedBrowserEncounter?.serviceRecords).toMatchObject([
+        { serviceId: clinicalServiceId, note: 'Browser-verified service record' },
+      ]);
+    } finally {
+      await Promise.race([client?.send('Browser.close').catch(() => undefined), delay(1_000)]);
+      client?.close();
+      if (browser.pid) {
+        const exited = new Promise<void>((resolvePromise) => {
+          if (browser.exitCode !== null) {
+            resolvePromise();
+          } else {
+            browser.once('exit', () => resolvePromise());
+          }
+        });
+        try {
+          process.kill(-browser.pid, 'SIGTERM');
+        } catch {
+          browser.kill('SIGTERM');
+        }
+        await Promise.race([exited, delay(5_000)]);
+        try {
+          process.kill(-browser.pid, 'SIGKILL');
+        } catch {
+          browser.kill('SIGKILL');
+        }
+        await Promise.race([exited, delay(5_000)]);
+      }
+      await delay(250);
+      rmSync(browserProfile, { recursive: true, force: true, maxRetries: 60, retryDelay: 100 });
+    }
+  }, 60_000);
 
   it('runs authenticated Patient CRUD and lifecycle operations against real tenant databases', async () => {
     const health = await getApplication().inject({
@@ -2257,6 +3003,12 @@ async function createApplication(): Promise<void> {
     .compile();
   application = testingModule.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
   application.setGlobalPrefix(APP_CONSTANTS.apiPrefix);
+  await application.register(cookie);
+  await application.register(fastifyStatic, {
+    root: join(process.cwd(), 'public'),
+    prefix: '/',
+    decorateReply: false,
+  });
   application.enableShutdownHooks();
   await application.init();
   await application.getHttpAdapter().getInstance().ready();
@@ -2273,8 +3025,8 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
   await prisma.user.create({
     data: {
       id: platformUserId,
-      email: `phase30-${RUN_ID}@example.test`,
-      passwordHash: randomBytes(32).toString('hex'),
+      email: testEmail,
+      passwordHash: await getApplication().get(PasswordHasherService).hash(testPassword),
       fullName: 'Phase 30 Integration Test',
       status: UserStatus.ACTIVE,
       tokenVersion: 1,
@@ -2321,6 +3073,42 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
     });
   }
 
+  const encounterPermissionCodes = [
+    'tenant.facilities.read',
+    'tenant.branches.read',
+    'tenant.doctors.read',
+    'tenant.services.read',
+    'tenant.appointments.read',
+    'tenant.encounters.create',
+    'tenant.encounters.create.direct',
+    'tenant.encounters.read',
+    'tenant.encounters.patient-history.read',
+    'tenant.encounters.clinical.write',
+    'tenant.encounters.complete',
+    'tenant.encounters.cancel',
+    'tenant.encounters.history.read',
+    'tenant.encounters.diagnoses.read',
+    'tenant.encounters.diagnoses.write',
+    'tenant.encounters.services.read',
+    'tenant.encounters.services.write',
+    'tenant.encounters.amendments.create',
+    'tenant.encounters.amendments.update',
+    'tenant.encounters.amendments.finalize',
+  ];
+  const encounterPermissions = await prisma.tenantPermission.findMany({
+    where: { code: { in: encounterPermissionCodes } },
+  });
+  if (encounterPermissions.length !== encounterPermissionCodes.length) {
+    throw new Error('Phase 42 encounter permission catalog is incomplete in disposable migrations');
+  }
+  await prisma.tenantRolePermission.createMany({
+    data: encounterPermissions.map(({ id }) => ({
+      tenantRoleId: tenantA.roleId,
+      tenantPermissionId: id,
+    })),
+    skipDuplicates: true,
+  });
+
   const readPermission = await prisma.tenantPermission.upsert({
     where: { code: 'tenant.patients.read' },
     create: {
@@ -2355,6 +3143,107 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
       },
     });
   }
+}
+
+async function seedClinicalFixtures(prisma: PrismaService): Promise<void> {
+  const facility = await prisma.facility.create({
+    data: { tenantId: tenantA.id, name: `Phase 42 Clinic ${RUN_ID}` },
+  });
+  clinicalFacilityId = facility.id;
+  const branch = await prisma.branch.create({
+    data: { facilityId: facility.id, name: `Assigned Branch ${RUN_ID}` },
+  });
+  clinicalBranchId = branch.id;
+  const unassignedBranch = await prisma.branch.create({
+    data: { facilityId: facility.id, name: `Unassigned Branch ${RUN_ID}` },
+  });
+  unassignedBranchId = unassignedBranch.id;
+
+  const staffA = await prisma.staff.create({
+    data: {
+      tenantId: tenantA.id,
+      userId: platformUserId,
+      membershipId: tenantA.membershipId,
+      displayName: 'Phase 42 Clinician A',
+      jobTitle: 'Clinician',
+    },
+  });
+  const doctorA = await prisma.doctor.create({
+    data: {
+      tenantId: tenantA.id,
+      staffId: staffA.id,
+      professionalDisplayName: 'Phase 42 Clinician A',
+      professionalTitle: 'Clinician',
+      status: StaffStatus.ACTIVE,
+    },
+  });
+  clinicalDoctorId = doctorA.id;
+  await prisma.staffBranchAssignment.create({
+    data: {
+      tenantId: tenantA.id,
+      staffId: staffA.id,
+      facilityId: facility.id,
+      branchId: branch.id,
+    },
+  });
+
+  const serviceA = await prisma.service.create({
+    data: {
+      tenantId: tenantA.id,
+      name: `Phase 42 Imaging ${RUN_ID}`,
+      code: `XR-${RUN_ID.slice(0, 8)}`,
+      description: 'Disposable integration catalog item',
+    },
+  });
+  clinicalServiceId = serviceA.id;
+  const serviceB = await prisma.service.create({
+    data: {
+      tenantId: tenantB.id,
+      name: `Other Tenant Service ${RUN_ID}`,
+      code: `OT-${RUN_ID.slice(0, 8)}`,
+    },
+  });
+  otherTenantServiceId = serviceB.id;
+
+  const staffB = await prisma.staff.create({
+    data: {
+      tenantId: tenantB.id,
+      userId: platformUserId,
+      membershipId: tenantB.membershipId,
+      displayName: 'Other Tenant Clinician',
+      jobTitle: 'Clinician',
+    },
+  });
+  const doctorB = await prisma.doctor.create({
+    data: {
+      tenantId: tenantB.id,
+      staffId: staffB.id,
+      professionalDisplayName: 'Other Tenant Clinician',
+      professionalTitle: 'Clinician',
+      status: StaffStatus.ACTIVE,
+    },
+  });
+  otherTenantDoctorId = doctorB.id;
+
+  await prisma.facilitySchedulingPolicy.create({
+    data: {
+      tenantId: tenantA.id,
+      facilityId: facility.id,
+      status: FacilitySchedulingPolicyStatus.ACTIVE,
+      timeZone: 'Asia/Riyadh',
+      rules: {
+        operatingHours: { saturday: [{ start: '00:00', end: '24:00' }] },
+        providerAvailability: [],
+        allowedDurationsMinutes: [15, 30],
+        serviceDurationRules: [],
+        bookingHorizonDays: null,
+        minimumAdvanceNoticeMinutes: null,
+        minimumCancellationNoticeMinutes: null,
+        minimumRescheduleNoticeMinutes: null,
+      },
+      version: 1,
+    },
+  });
 }
 
 async function provisionTenantTarget(tenant: TestTenant): Promise<void> {
@@ -2496,8 +3385,109 @@ function tenantRoot(tenant: TestTenant): string {
   return `/${APP_CONSTANTS.apiPrefix}/v1/tenants/${tenant.id}`;
 }
 
+function cookiePair(value: string | string[] | undefined): string {
+  const entries = Array.isArray(value) ? value : value ? [value] : [];
+  const refreshCookie = entries.find((entry) => entry.startsWith('phase30_refresh='));
+  if (!refreshCookie)
+    throw new Error('Disposable authentication response omitted its refresh cookie');
+  return refreshCookie.split(';', 1)[0]!;
+}
+
 function bearerHeaders(): { authorization: string } {
   return { authorization: `Bearer ${accessToken}` };
+}
+
+type CdpReply = {
+  id?: number;
+  result?: Record<string, unknown>;
+  error?: { message?: string };
+};
+
+type CdpClient = {
+  send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
+  close(): void;
+};
+
+async function connectCdp(url: string): Promise<CdpClient> {
+  const socket = new WebSocket(url);
+  await new Promise<void>((resolvePromise, rejectPromise) => {
+    socket.addEventListener('open', () => resolvePromise(), { once: true });
+    socket.addEventListener(
+      'error',
+      () => rejectPromise(new Error('Could not connect to Chromium CDP')),
+      {
+        once: true,
+      },
+    );
+  });
+
+  let nextId = 0;
+  const pending = new Map<
+    number,
+    { resolve: (reply: CdpReply) => void; reject: (error: Error) => void }
+  >();
+  socket.addEventListener('message', (event) => {
+    const reply = JSON.parse(String(event.data)) as CdpReply;
+    if (reply.id === undefined) return;
+    const request = pending.get(reply.id);
+    if (!request) return;
+    pending.delete(reply.id);
+    if (reply.error)
+      request.reject(new Error(reply.error.message ?? 'Chromium CDP request failed'));
+    else request.resolve(reply);
+  });
+
+  return {
+    send(method, params = {}) {
+      const id = ++nextId;
+      return new Promise<Record<string, unknown>>((resolvePromise, rejectPromise) => {
+        pending.set(id, {
+          resolve: (reply) => resolvePromise(reply.result ?? {}),
+          reject: rejectPromise,
+        });
+        socket.send(JSON.stringify({ id, method, params }));
+      });
+    },
+    close() {
+      socket.close();
+    },
+  };
+}
+
+async function evaluateBrowser(client: CdpClient, expression: string): Promise<unknown> {
+  const response = await client.send('Runtime.evaluate', {
+    expression,
+    returnByValue: true,
+    awaitPromise: true,
+  });
+  if (response.exceptionDetails) throw new Error('Chromium evaluation failed');
+  const remoteResult = response.result as { value?: unknown } | undefined;
+  return remoteResult?.value;
+}
+
+async function waitForBrowserCondition(
+  client: CdpClient,
+  expression: string,
+  description: string,
+): Promise<void> {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (await evaluateBrowser(client, expression)) return;
+    await delay(100);
+  }
+  const visibleText = await evaluateBrowser(client, 'document.body.innerText');
+  const worklistState = await evaluateBrowser(
+    client,
+    `JSON.stringify({
+      encounterButtons: document.querySelectorAll('button[data-action="open-encounter"]').length,
+      resultCount: document.querySelector('.encounter-workspace-name')?.textContent,
+      facilityId: document.querySelector('form[data-form="filters"] [name="facilityId"]')?.value,
+      branchId: document.querySelector('form[data-form="filters"] [name="branchId"]')?.value,
+      fromDate: document.querySelector('form[data-form="filters"] [name="date"]')?.value
+    })`,
+  );
+  throw new Error(
+    `Timed out waiting for ${description} in the signed-in browser. State: ${worklistState}. Visible text: ${String(visibleText).slice(0, 1_200)}`,
+  );
 }
 
 function patientPayload(patientNumber: string): {

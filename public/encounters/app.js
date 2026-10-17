@@ -10,6 +10,14 @@
     encounterRead: 'tenant.encounters.read',
     patientHistoryRead: 'tenant.encounters.patient-history.read',
     clinicalWrite: 'tenant.encounters.clinical.write',
+    diagnosesRead: 'tenant.encounters.diagnoses.read',
+    diagnosesWrite: 'tenant.encounters.diagnoses.write',
+    servicesRead: 'tenant.encounters.services.read',
+    servicesWrite: 'tenant.encounters.services.write',
+    amendmentsCreate: 'tenant.encounters.amendments.create',
+    amendmentsUpdate: 'tenant.encounters.amendments.update',
+    amendmentsFinalize: 'tenant.encounters.amendments.finalize',
+    serviceCatalogRead: 'tenant.services.read',
     encounterComplete: 'tenant.encounters.complete',
     encounterCancel: 'tenant.encounters.cancel',
     historyRead: 'tenant.encounters.history.read',
@@ -25,7 +33,6 @@
     ['historyOfPresentIllness', 'تاريخ الحالة الحالية', true],
     ['examinationFindings', 'نتائج الفحص السريري', true],
     ['assessment', 'التقييم والانطباع السريري', true],
-    ['diagnoses', 'التشخيصات النصية', true],
     ['plan', 'الخطة السريرية', true],
     ['followUp', 'توصيات المتابعة', true],
     ['internalNotes', 'ملاحظات سريرية داخلية', true],
@@ -56,17 +63,21 @@
     facilities: [],
     branches: [],
     doctors: [],
+    services: [],
     patients: [],
     appointments: [],
     list: [],
     listMeta: { total: 0, limit: 50, offset: 0, hasNext: false },
     listError: null,
     loadingList: false,
+    listRequestId: 0,
     appointmentError: null,
     patientHistory: null,
     patientHistoryError: null,
     patientHistoryOffset: 0,
     detail: null,
+    diagnosisDraft: null,
+    serviceDraft: null,
     detailError: null,
     detailLoading: false,
     history: null,
@@ -137,8 +148,7 @@
       }
       render();
     } catch (error) {
-      state.screen =
-        error && error.status === 401 ? 'signin' : 'screen-error';
+      state.screen = error && error.status === 401 ? 'signin' : 'screen-error';
       state.screenError = safeMessage(error);
       render();
     }
@@ -161,8 +171,8 @@
       ? 'worklist'
       : can(PERMISSIONS.patientHistoryRead)
         ? 'patient-history'
-          : can(PERMISSIONS.encounterCreate) &&
-              (can(PERMISSIONS.directCreate) || can(PERMISSIONS.appointmentsRead))
+        : can(PERMISSIONS.encounterCreate) &&
+            (can(PERMISSIONS.directCreate) || can(PERMISSIONS.appointmentsRead))
           ? 'create'
           : 'no-access';
     render();
@@ -185,18 +195,35 @@
           }),
       );
     };
-    load(can(PERMISSIONS.facilitiesRead), 'facilities', api.listFacilities(tenantId, {
-      limit: 100,
-      offset: 0,
-    }));
-    load(can(PERMISSIONS.doctorsRead), 'doctors', api.listDoctors(tenantId, {
-      limit: 100,
-      offset: 0,
-    }));
-    load(can(PERMISSIONS.patientsRead), 'patients', api.listPatients(tenantId, {
-      limit: 100,
-      offset: 0,
-    }));
+    load(
+      can(PERMISSIONS.facilitiesRead),
+      'facilities',
+      api.listFacilities(tenantId, {
+        limit: 100,
+        offset: 0,
+      }),
+    );
+    load(
+      can(PERMISSIONS.doctorsRead),
+      'doctors',
+      api.listDoctors(tenantId, {
+        limit: 100,
+        offset: 0,
+      }),
+    );
+    load(
+      can(PERMISSIONS.patientsRead),
+      'patients',
+      api.listPatients(tenantId, {
+        limit: 100,
+        offset: 0,
+      }),
+    );
+    load(
+      can(PERMISSIONS.servicesWrite) && can(PERMISSIONS.serviceCatalogRead),
+      'services',
+      api.listServices(tenantId, { limit: 100, offset: 0 }),
+    );
     await Promise.all(jobs);
     if (Object.values(state.resourceErrors).some((error) => error && error.status === 401)) {
       expireSession();
@@ -232,6 +259,7 @@
     state.facilities = [];
     state.branches = [];
     state.doctors = [];
+    state.services = [];
     state.patients = [];
     state.appointments = [];
     state.list = [];
@@ -243,6 +271,8 @@
     state.patientHistoryError = null;
     state.patientHistoryOffset = 0;
     state.detail = null;
+    state.diagnosisDraft = null;
+    state.serviceDraft = null;
     state.detailError = null;
     state.detailLoading = false;
     state.history = null;
@@ -292,27 +322,40 @@
   function render() {
     if (state.screen === 'signin') return renderSignIn();
     if (state.screen === 'workspace-loading' || state.screen === 'boot') {
-      app.innerHTML = screenCard('جارٍ تحميل مساحة العمل', 'نتحقق من جلسة الدخول وصلاحيات المساحة.', true);
+      app.innerHTML = screenCard(
+        'جارٍ تحميل مساحة العمل',
+        'نتحقق من جلسة الدخول وصلاحيات المساحة.',
+        true,
+      );
       return;
     }
     if (state.screen === 'workspace-select') return renderWorkspaceSelect();
     if (state.screen === 'no-workspaces') {
-      app.innerHTML = screenCard(
-        'لا توجد مساحة متاحة',
-        'لا توجد مساحة عمل مرتبطة بحسابك حاليًا.',
-      );
+      app.innerHTML = screenCard('لا توجد مساحة متاحة', 'لا توجد مساحة عمل مرتبطة بحسابك حاليًا.');
       return;
     }
     if (state.screen === 'screen-error') {
-      app.innerHTML = screenCard('تعذّر فتح مساحة العمل', state.screenError || 'حاول مرة أخرى.', false, true);
+      app.innerHTML = screenCard(
+        'تعذّر فتح مساحة العمل',
+        state.screenError || 'حاول مرة أخرى.',
+        false,
+        true,
+      );
       return;
     }
     if (state.screen !== 'workspace' || !state.workspace) {
-      app.innerHTML = screenCard('تعذّر فتح مساحة العمل', 'أعد المحاولة بعد التحقق من الاتصال.', false, true);
+      app.innerHTML = screenCard(
+        'تعذّر فتح مساحة العمل',
+        'أعد المحاولة بعد التحقق من الاتصال.',
+        false,
+        true,
+      );
       return;
     }
     if (state.view === 'no-access') {
-      app.innerHTML = shellStart() + `
+      app.innerHTML =
+        shellStart() +
+        `
         <section class="encounter-card">
           <h1>لا توجد صلاحية للسجلات الطبية</h1>
           <p>تحتاج إلى صلاحية سريرية محددة. صلاحية المواعيد وحدها لا تمنح الوصول إلى السجلات الطبية.</p>
@@ -486,10 +529,14 @@
             <label for="eligible-appointment">موعد مجدول</label>
             <select id="eligible-appointment">
               <option value="">اختر موعدًا محمّلًا</option>
-              ${state.appointments.map((appointment) => `
+              ${state.appointments
+                .map(
+                  (appointment) => `
                 <option value="${escapeHtml(appointment.id)}" ${state.selectedAppointmentId === appointment.id ? 'selected' : ''}>
                   ${escapeHtml(formatDateTime(appointment.startsAt, state.appointmentTimezone))} · ${escapeHtml(shortId(appointment.patientId))} · ${escapeHtml(shortId(appointment.id))}
-                </option>`).join('')}
+                </option>`,
+                )
+                .join('')}
             </select>
           </div>
           <div class="encounter-field" style="align-self:end">
@@ -506,9 +553,13 @@
         <div class="encounter-section-heading"><h2>إنشاء لقاء مباشر</h2></div>
         <p>إنشاء مسودة دون موعد. لا تُنسخ البيانات الديموغرافية إلى السجل السريري، ويجب أن تكون المراجع نشطة ضمن المنشأة.</p>
         ${state.screenError ? notice(state.screenError, true) : ''}
-        ${state.resourceErrors.facilities || state.resourceErrors.doctors || state.resourceErrors.patients
-          ? notice('تعذّر تحميل بعض القوائم. يمكن استخدام معرّفات UUID إذا كانت معروفة.', true)
-          : ''}
+        ${
+          state.resourceErrors.facilities ||
+          state.resourceErrors.doctors ||
+          state.resourceErrors.patients
+            ? notice('تعذّر تحميل بعض القوائم. يمكن استخدام معرّفات UUID إذا كانت معروفة.', true)
+            : ''
+        }
         <form class="encounter-form-grid" data-form="direct-create" autocomplete="off">
           ${patientField('direct-patient', 'patientId', '')}
           ${doctorField('direct-doctor', 'doctorId', '')}
@@ -549,28 +600,41 @@
       <section class="encounter-card">
         <h2>اللقاءات الموثقة</h2>
         ${state.busy ? loadingBlock('جارٍ تحميل التاريخ السريري…') : ''}
-        ${state.patientHistory === null && !state.patientHistoryError
-          ? `<div class="encounter-empty"><p>اختر مريضًا لعرض سجله السريري.</p></div>`
-          : ''}
-        ${state.patientHistory && !state.patientHistory.items.length
-          ? `<div class="encounter-empty"><p>لا توجد لقاءات موثقة لهذا المريض ضمن النطاق المصرح به.</p></div>`
-          : ''}
+        ${
+          state.patientHistory === null && !state.patientHistoryError
+            ? `<div class="encounter-empty"><p>اختر مريضًا لعرض سجله السريري.</p></div>`
+            : ''
+        }
+        ${
+          state.patientHistory && !state.patientHistory.items.length
+            ? `<div class="encounter-empty"><p>لا توجد لقاءات موثقة لهذا المريض ضمن النطاق المصرح به.</p></div>`
+            : ''
+        }
         <div class="encounter-list">${(state.patientHistory?.items || []).map(renderPatientHistoryItem).join('')}</div>
         ${state.patientHistory ? `<p class="form-note">إجمالي النتائج: ${state.patientHistory.total}</p>` : ''}
-        ${state.patientHistory ? `<div class="encounter-actions">
+        ${
+          state.patientHistory
+            ? `<div class="encounter-actions">
           <button class="btn btn-quiet" type="button" data-action="previous-patient-history" ${state.patientHistoryOffset === 0 || state.busy ? 'disabled' : ''}>السابق</button>
           <button class="btn btn-quiet" type="button" data-action="next-patient-history" ${!state.patientHistory.hasNext || state.busy ? 'disabled' : ''}>التالي</button>
-        </div>` : ''}
+        </div>`
+            : ''
+        }
       </section>`;
   }
 
   function renderDetail() {
     const encounter = state.detail;
-    if (state.detailLoading && !encounter) return `<section class="encounter-card">${loadingBlock('جارٍ تحميل اللقاء…')}</section>`;
+    if (state.detailLoading && !encounter)
+      return `<section class="encounter-card">${loadingBlock('جارٍ تحميل اللقاء…')}</section>`;
     if (!encounter) {
       return `<section class="encounter-card">${notice(state.detailError || 'تعذّر تحميل اللقاء.', true, 'back-to-worklist')}<button class="btn btn-quiet" type="button" data-action="back-to-worklist">العودة إلى القائمة</button></section>`;
     }
-    const editable = encounter.status === 'DRAFT' && can(PERMISSIONS.clinicalWrite);
+    const amendmentOpen =
+      encounter.status === 'COMPLETED' && encounter.currentRevision === 'AMENDMENT_DRAFT';
+    const editable =
+      (encounter.status === 'DRAFT' && can(PERMISSIONS.clinicalWrite)) ||
+      (amendmentOpen && can(PERMISSIONS.clinicalWrite) && can(PERMISSIONS.amendmentsUpdate));
     const clinical = encounter.clinical || {};
     return `
       <section class="encounter-card">
@@ -589,6 +653,7 @@
           ${detailItem('المنشأة', encounter.facilityId)}
           ${detailItem('الفرع', encounter.branchId || 'غير محدد')}
           ${detailItem('الإصدار', String(encounter.version))}
+          ${detailItem('نسخة التوثيق', revisionLabel(encounter.currentRevision))}
           ${detailItem('أنشأه', encounter.createdBy)}
           ${detailItem('آخر تحديث', formatDateTime(encounter.updatedAt, state.detailTimezone))}
         </div>
@@ -596,45 +661,60 @@
       </section>
       <section class="encounter-card">
         <div class="encounter-section-heading"><h2>التوثيق السريري</h2></div>
-        ${editable
-          ? renderClinicalForm(clinical)
-          : `${clinicalReadOnly(clinical)}
+        ${
+          editable
+            ? renderClinicalForm(clinical)
+            : `${clinicalReadOnly(clinical)}
              ${encounter.status === 'DRAFT' && !can(PERMISSIONS.clinicalWrite) ? notice('هذه المسودة للقراءة فقط؛ لا تملك صلاحية توثيقها.') : ''}
-             ${encounter.status !== 'DRAFT' ? notice('تم قفل التوثيق بعد إتمام اللقاء أو إلغائه. لا يوجد مسار لإعادة الفتح أو التعديل في هذه المرحلة.') : ''}`}
+             ${encounter.status === 'COMPLETED' && !amendmentOpen ? notice('تم إتمام اللقاء. النسخة الأصلية مقفلة؛ أي تغيير يتطلب مسودة تعديل مستقلة وسببًا موثقًا.') : ''}
+             ${encounter.status === 'CANCELLED' ? notice('تم إلغاء اللقاء وأُقفل التوثيق.') : ''}`
+        }
       </section>
+      ${renderDiagnosisSection(encounter, amendmentOpen)}
+      ${renderServiceRecordSection(encounter, amendmentOpen)}
       <section class="encounter-card">
         <div class="encounter-section-heading"><h2>إجراءات اللقاء</h2></div>
         <div class="encounter-actions">
           ${encounter.status === 'DRAFT' && can(PERMISSIONS.encounterComplete) ? `<button class="btn btn-primary" type="button" data-action="complete-encounter" ${state.busy ? 'disabled' : ''}>إتمام اللقاء</button>` : ''}
-          ${encounter.status === 'DRAFT' && can(PERMISSIONS.encounterCancel) ? `
+          ${encounter.status === 'COMPLETED' && !amendmentOpen && can(PERMISSIONS.amendmentsCreate) ? `<button class="btn btn-primary" type="button" data-action="create-amendment" ${state.busy ? 'disabled' : ''}>بدء تعديل موثق</button>` : ''}
+          ${amendmentOpen && can(PERMISSIONS.amendmentsFinalize) ? `<button class="btn btn-primary" type="button" data-action="finalize-amendment" ${state.busy ? 'disabled' : ''}>اعتماد التعديل</button>` : ''}
+          ${
+            encounter.status === 'DRAFT' && can(PERMISSIONS.encounterCancel)
+              ? `
             <form data-form="cancel-encounter" class="encounter-actions">
               <label class="encounter-visually-hidden" for="cancel-reason">سبب الإلغاء (اختياري)</label>
               <input id="cancel-reason" name="reason" maxlength="500" placeholder="سبب الإلغاء (اختياري)">
               <button class="btn btn-quiet" type="submit" ${state.busy ? 'disabled' : ''}>إلغاء اللقاء</button>
-            </form>` : ''}
+            </form>`
+              : ''
+          }
         </div>
-        ${can(PERMISSIONS.historyRead) ? `
+        ${amendmentOpen ? notice(`مسودة تعديل مفتوحة: ${encounter.amendments?.at(-1)?.reason || 'سبب التعديل غير متاح'}`) : ''}
+        ${
+          can(PERMISSIONS.historyRead)
+            ? `
           <button class="btn btn-quiet" type="button" data-action="load-history" ${state.busy ? 'disabled' : ''}>عرض سجل التغييرات</button>
           ${state.historyError ? notice(state.historyError, true, 'load-history') : ''}
-          ${state.history ? `<div class="encounter-list">${state.history.items.map(renderHistoryItem).join('')}</div>` : ''}` : ''}
+          ${state.history ? `<div class="encounter-list">${state.history.items.map(renderHistoryItem).join('')}</div>` : ''}`
+            : ''
+        }
       </section>`;
   }
 
   function renderClinicalForm(clinical) {
     const values = state.pendingDraft || {};
     const textField = (field, label, wide) => {
-      const stored = field === 'diagnoses'
-        ? (clinical.diagnoses || []).join('\n')
-        : (clinical[field] || '');
+      const stored = clinical[field] || '';
       const value = values[`text.${field}`] !== undefined ? values[`text.${field}`] : stored;
       const isTextarea = field !== 'reason';
       return `
         <div class="encounter-field ${wide ? 'wide' : ''}">
           <label for="clinical-${field}">${escapeHtml(label)}</label>
-          ${isTextarea
-            ? `<textarea id="clinical-${field}" name="text.${field}" maxlength="8000" rows="${field === 'diagnoses' ? 4 : 3}">${escapeHtml(value)}</textarea>`
-            : `<input id="clinical-${field}" name="text.${field}" maxlength="8000" value="${escapeHtml(value)}">`}
-          ${field === 'diagnoses' ? '<small class="form-note">أدخل تشخيصًا نصيًا في كل سطر. لا يفترض النظام استخدام مجموعة رموز معيارية.</small>' : ''}
+          ${
+            isTextarea
+              ? `<textarea id="clinical-${field}" name="text.${field}" maxlength="8000" rows="3">${escapeHtml(value)}</textarea>`
+              : `<input id="clinical-${field}" name="text.${field}" maxlength="8000" value="${escapeHtml(value)}">`
+          }
         </div>`;
     };
     return `
@@ -654,16 +734,266 @@
       </form>`;
   }
 
+  function renderDiagnosisSection(encounter, amendmentOpen) {
+    const editable =
+      (encounter.status === 'DRAFT' && can(PERMISSIONS.diagnosesWrite)) ||
+      (amendmentOpen && can(PERMISSIONS.diagnosesWrite) && can(PERMISSIONS.amendmentsUpdate));
+    const diagnoses =
+      state.diagnosisDraft ??
+      (encounter.diagnoses || []).map((item) => ({
+        id: item.id,
+        description: item.description,
+        priority: item.priority,
+        clinicalStatus: item.clinicalStatus,
+        onsetAt: item.onsetAt,
+      }));
+    const content = diagnoses.length
+      ? diagnoses
+          .map((item, index) =>
+            editable
+              ? `<div class="encounter-record-row" data-diagnosis-row>
+                  <input type="hidden" name="id" value="${escapeHtml(item.id || '')}">
+                  <div class="encounter-form-grid">
+                    <div class="encounter-field wide">
+                      <label for="diagnosis-description-${index}">وصف التشخيص</label>
+                      <textarea id="diagnosis-description-${index}" name="description" maxlength="2000" rows="2" required>${escapeHtml(item.description || '')}</textarea>
+                    </div>
+                    <div class="encounter-field">
+                      <label for="diagnosis-priority-${index}">الأولوية</label>
+                      <select id="diagnosis-priority-${index}" name="priority">
+                        <option value="PRIMARY" ${item.priority === 'PRIMARY' ? 'selected' : ''}>أساسي</option>
+                        <option value="SECONDARY" ${item.priority === 'SECONDARY' ? 'selected' : ''}>ثانوي</option>
+                      </select>
+                    </div>
+                    <div class="encounter-field">
+                      <label for="diagnosis-status-${index}">الحالة السريرية</label>
+                      <select id="diagnosis-status-${index}" name="clinicalStatus">
+                        ${diagnosisStatusOptions(item.clinicalStatus)}
+                      </select>
+                    </div>
+                    <div class="encounter-field">
+                      <label for="diagnosis-onset-${index}">تاريخ بدء التشخيص (اختياري)</label>
+                      <input id="diagnosis-onset-${index}" name="onsetDate" type="date" value="${escapeHtml(dateInputValue(item.onsetAt))}">
+                    </div>
+                  </div>
+                  <button class="btn btn-quiet btn-small" type="button" data-action="remove-diagnosis" data-index="${index}">حذف التشخيص</button>
+                </div>`
+              : `<article class="encounter-record-row">
+                  <div class="encounter-detail-grid">
+                    ${detailItem(item.priority === 'PRIMARY' ? 'تشخيص أساسي' : 'تشخيص ثانوي', item.description)}
+                    ${detailItem('الحالة السريرية', diagnosisStatusLabel(item.clinicalStatus))}
+                    ${item.onsetAt ? detailItem('تاريخ البدء', formatDateTime(item.onsetAt, null)) : ''}
+                  </div>
+                </article>`,
+          )
+          .join('')
+      : `<div class="encounter-empty"><p>لا توجد تشخيصات منظمة لهذا اللقاء.</p></div>`;
+
+    return `
+      <section class="encounter-card">
+        <div class="encounter-section-heading"><h2>التشخيصات المنظمة</h2></div>
+        ${
+          editable
+            ? `<form data-form="diagnoses">
+              <div class="encounter-record-list">${content}</div>
+              <p class="form-note">الوصف نص سريري يدخله الممارس. لا تُضاف رموز أو أنظمة ترميز ما لم يتوفر مصدر اصطلاحي معتمد.</p>
+              <div class="encounter-actions">
+                <button class="btn btn-quiet" type="button" data-action="add-diagnosis">إضافة تشخيص</button>
+                <button class="btn btn-primary" type="submit" ${state.saving ? 'disabled' : ''}>${state.saving ? 'جارٍ الحفظ…' : 'حفظ التشخيصات'}</button>
+              </div>
+            </form>`
+            : `${content}
+             ${(encounter.status === 'DRAFT' || amendmentOpen) && !can(PERMISSIONS.diagnosesWrite) ? notice('لا تملك صلاحية تعديل التشخيصات المنظمة.') : ''}`
+        }
+      </section>`;
+  }
+
+  function renderServiceRecordSection(encounter, amendmentOpen) {
+    const editable =
+      (encounter.status === 'DRAFT' && can(PERMISSIONS.servicesWrite)) ||
+      (amendmentOpen && can(PERMISSIONS.servicesWrite) && can(PERMISSIONS.amendmentsUpdate));
+    const records =
+      state.serviceDraft ??
+      (encounter.serviceRecords || []).map((item) => ({
+        id: item.id,
+        serviceId: item.serviceId,
+        providerDoctorId: item.providerDoctorId,
+        status: item.status,
+        note: item.note,
+        serviceName: item.serviceName,
+        serviceCode: item.serviceCode,
+      }));
+    const content = records.length
+      ? records
+          .map((item, index) =>
+            editable
+              ? renderServiceRecordFormRow(item, index, amendmentOpen)
+              : `<article class="encounter-record-row">
+                  <div class="encounter-detail-grid">
+                    ${detailItem('الخدمة أو الإجراء', item.serviceName || item.serviceId)}
+                    ${detailItem('الحالة', serviceStatusLabel(item.status))}
+                    ${detailItem('الممارس المسؤول', shortId(item.providerDoctorId))}
+                    ${item.note ? detailItem('ملاحظة سريرية', item.note) : ''}
+                    ${item.startedAt ? detailItem('وقت البدء', formatDateTime(item.startedAt, state.detailTimezone)) : ''}
+                    ${item.completedAt ? detailItem('وقت الإتمام', formatDateTime(item.completedAt, state.detailTimezone)) : ''}
+                    ${item.cancelledAt ? detailItem('وقت الإلغاء', formatDateTime(item.cancelledAt, state.detailTimezone)) : ''}
+                  </div>
+                </article>`,
+          )
+          .join('')
+      : `<div class="encounter-empty"><p>لا توجد خدمات أو إجراءات سريرية مسجلة.</p></div>`;
+
+    return `
+      <section class="encounter-card">
+        <div class="encounter-section-heading"><h2>الخدمات والإجراءات السريرية</h2></div>
+        ${
+          editable
+            ? `<form data-form="services">
+              <div class="encounter-record-list">${content}</div>
+              <p class="form-note">تُسجل هذه العناصر سريريًا فقط؛ لا تنشئ فوترة أو مطالبة أو حركة مخزون.</p>
+              ${state.resourceErrors.services ? notice(errorMessage(state.resourceErrors.services), true) : ''}
+              <div class="encounter-actions">
+                <button class="btn btn-quiet" type="button" data-action="add-service-record">إضافة خدمة أو إجراء</button>
+                <button class="btn btn-primary" type="submit" ${state.saving ? 'disabled' : ''}>${state.saving ? 'جارٍ الحفظ…' : 'حفظ الخدمات والإجراءات'}</button>
+              </div>
+            </form>`
+            : `${content}
+             ${(encounter.status === 'DRAFT' || amendmentOpen) && !can(PERMISSIONS.servicesWrite) ? notice('لا تملك صلاحية تعديل الخدمات والإجراءات السريرية.') : ''}`
+        }
+      </section>`;
+  }
+
+  function renderServiceRecordFormRow(item, index, amendmentOpen) {
+    const terminal = item.status === 'COMPLETED' || item.status === 'CANCELLED';
+    const amendmentCorrection = terminal && amendmentOpen;
+    const serviceOptions = state.services.map((service) => {
+      const label = service.code ? `${service.code} — ${service.name}` : service.name;
+      return `<option value="${escapeHtml(service.id)}" ${service.id === item.serviceId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    });
+    if (item.serviceId && !state.services.some((service) => service.id === item.serviceId)) {
+      serviceOptions.push(
+        `<option value="${escapeHtml(item.serviceId)}" selected>${escapeHtml(item.serviceName || 'خدمة محفوظة')}</option>`,
+      );
+    }
+    const knownDoctor = state.doctors.some((doctor) => doctor.id === item.providerDoctorId);
+    const providerOptions = [
+      `<option value="">مقدم اللقاء الحالي</option>`,
+      ...state.doctors.map(
+        (doctor) =>
+          `<option value="${escapeHtml(doctor.id)}" ${doctor.id === item.providerDoctorId ? 'selected' : ''}>${escapeHtml(humanName(doctor))}</option>`,
+      ),
+    ];
+    if (item.providerDoctorId && !knownDoctor) {
+      providerOptions.push(
+        `<option value="${escapeHtml(item.providerDoctorId)}" selected>الممارس الحالي (${escapeHtml(shortId(item.providerDoctorId))})</option>`,
+      );
+    }
+    return `<div class="encounter-record-row" data-service-row>
+      <input type="hidden" name="id" value="${escapeHtml(item.id || '')}">
+      <div class="encounter-form-grid">
+        <div class="encounter-field">
+          <label for="service-${index}">الخدمة أو الإجراء من دليل المنشأة</label>
+          <select id="service-${index}" name="serviceId" ${terminal && !amendmentCorrection ? 'disabled' : ''} required>
+            <option value="">اختر من الدليل</option>${serviceOptions.join('')}
+          </select>
+        </div>
+        <div class="encounter-field">
+          <label for="provider-${index}">الممارس المسؤول</label>
+          <select id="provider-${index}" name="providerDoctorId" ${terminal && !amendmentCorrection ? 'disabled' : ''}>${providerOptions.join('')}</select>
+        </div>
+        <div class="encounter-field">
+          <label for="service-status-${index}">الحالة</label>
+          <select id="service-status-${index}" name="status" ${terminal ? 'disabled' : ''}>
+            ${serviceStatusOptions(item.status)}
+          </select>
+        </div>
+        <div class="encounter-field wide">
+          <label for="service-note-${index}">ملاحظة سريرية (اختياري)</label>
+          <textarea id="service-note-${index}" name="note" maxlength="3000" rows="2" ${terminal && !amendmentCorrection ? 'disabled' : ''}>${escapeHtml(item.note || '')}</textarea>
+        </div>
+      </div>
+      ${!terminal || amendmentCorrection ? `<button class="btn btn-quiet btn-small" type="button" data-action="remove-service-record" data-index="${index}" ${item.status === 'IN_PROGRESS' ? 'disabled' : ''}>إزالة السجل</button>` : ''}
+    </div>`;
+  }
+
+  function diagnosisStatusOptions(selected) {
+    return [
+      ['ACTIVE', 'نشط'],
+      ['RESOLVED', 'تمت معالجته'],
+      ['INACTIVE', 'غير نشط'],
+    ]
+      .map(
+        ([value, label]) =>
+          `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`,
+      )
+      .join('');
+  }
+
+  function serviceStatusOptions(selected) {
+    const options =
+      selected === 'PLANNED'
+        ? [
+            ['PLANNED', 'مخطط'],
+            ['IN_PROGRESS', 'جارٍ التنفيذ'],
+            ['CANCELLED', 'ملغى'],
+          ]
+        : selected === 'IN_PROGRESS'
+          ? [
+              ['IN_PROGRESS', 'جارٍ التنفيذ'],
+              ['COMPLETED', 'مكتمل'],
+              ['CANCELLED', 'ملغى'],
+            ]
+          : [[selected || 'PLANNED', serviceStatusLabel(selected)]];
+    return options
+      .map(
+        ([value, label]) =>
+          `<option value="${escapeHtml(value)}" ${selected === value ? 'selected' : ''}>${escapeHtml(label)}</option>`,
+      )
+      .join('');
+  }
+
+  function diagnosisStatusLabel(status) {
+    return { ACTIVE: 'نشط', RESOLVED: 'تمت معالجته', INACTIVE: 'غير نشط' }[status] || status || '—';
+  }
+
+  function serviceStatusLabel(status) {
+    return (
+      { PLANNED: 'مخطط', IN_PROGRESS: 'جارٍ التنفيذ', COMPLETED: 'مكتمل', CANCELLED: 'ملغى' }[
+        status
+      ] ||
+      status ||
+      '—'
+    );
+  }
+
+  function revisionLabel(status) {
+    return (
+      { ORIGINAL: 'النسخة الأصلية', AMENDMENT_DRAFT: 'مسودة تعديل', AMENDED: 'نسخة معدّلة' }[
+        status
+      ] ||
+      status ||
+      '—'
+    );
+  }
+
+  function dateInputValue(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
+  }
+
   function renderFactField(field, label, stored) {
     const values = state.pendingDraft || {};
-    const selected = values[`fact.${field}.status`] !== undefined
-      ? values[`fact.${field}.status`]
-      : stored?.status || 'UNTOUCHED';
-    const text = values[`fact.${field}.text`] !== undefined
-      ? values[`fact.${field}.text`]
-      : stored?.status === 'DOCUMENTED'
-        ? stored.text
-        : '';
+    const selected =
+      values[`fact.${field}.status`] !== undefined
+        ? values[`fact.${field}.status`]
+        : stored?.status || 'UNTOUCHED';
+    const text =
+      values[`fact.${field}.text`] !== undefined
+        ? values[`fact.${field}.text`]
+        : stored?.status === 'DOCUMENTED'
+          ? stored.text
+          : '';
     return `
       <div class="encounter-field wide">
         <span class="encounter-label">${escapeHtml(label)}</span>
@@ -683,29 +1013,36 @@
 
   function renderVitalField(field, label, unit, stored) {
     const values = state.pendingDraft || {};
-    const fieldValue = values[`vital.${field}`] !== undefined
-      ? values[`vital.${field}`]
-      : stored?.value ?? '';
+    const fieldValue =
+      values[`vital.${field}`] !== undefined ? values[`vital.${field}`] : (stored?.value ?? '');
     const selectedUnit = values['vital.temperatureUnit'] || stored?.unit || '°C';
     return `
       <div class="encounter-field">
         <label for="vital-${field}">${escapeHtml(label)}</label>
         <div class="encounter-row">
           <input id="vital-${field}" name="vital.${field}" type="number" step="any" inputmode="decimal" value="${escapeHtml(String(fieldValue))}" aria-label="${escapeHtml(label)}">
-          ${unit === 'temperature'
-            ? `<select name="vital.temperatureUnit" aria-label="وحدة درجة الحرارة"><option value="°C" ${selectedUnit === '°C' ? 'selected' : ''}>°C</option><option value="°F" ${selectedUnit === '°F' ? 'selected' : ''}>°F</option></select>`
-            : `<span class="form-note">${escapeHtml(unit)}</span>`}
+          ${
+            unit === 'temperature'
+              ? `<select name="vital.temperatureUnit" aria-label="وحدة درجة الحرارة"><option value="°C" ${selectedUnit === '°C' ? 'selected' : ''}>°C</option><option value="°F" ${selectedUnit === '°F' ? 'selected' : ''}>°F</option></select>`
+              : `<span class="form-note">${escapeHtml(unit)}</span>`
+          }
         </div>
       </div>`;
   }
 
   function clinicalReadOnly(clinical) {
     const textItems = CLINICAL_TEXT_FIELDS.map(([field, label]) => {
-      const value = field === 'diagnoses'
-        ? (clinical.diagnoses || []).join('\n')
-        : clinical[field];
+      const value = clinical[field];
       return value ? detailItem(label, value) : '';
     }).join('');
+    const legacyDiagnoses = Array.isArray(clinical.diagnoses)
+      ? clinical.diagnoses.join('\n')
+      : typeof clinical.diagnoses === 'string'
+        ? clinical.diagnoses
+        : '';
+    const legacyItem = legacyDiagnoses
+      ? detailItem('تشخيصات نصية سابقة (غير مرمّزة)', legacyDiagnoses)
+      : '';
     const factItems = FACT_FIELDS.map(([field, label]) => {
       const value = clinical[field];
       if (!value) return '';
@@ -721,7 +1058,7 @@
       const value = clinical.vitalSigns?.[field];
       return value ? detailItem(label, `${value.value} ${value.unit}`) : '';
     }).join('');
-    const content = `${textItems}${factItems}${vitalItems}`;
+    const content = `${textItems}${legacyItem}${factItems}${vitalItems}`;
     return content
       ? `<div class="encounter-detail-grid">${content}</div>`
       : `<div class="encounter-empty"><p>لم يتم توثيق محتوى سريري في هذه المسودة.</p></div>`;
@@ -732,7 +1069,7 @@
     return `
       <article class="encounter-list-item">
         <div>
-          <strong>${escapeHtml(formatDateTime(encounter.encounterAt))} <span class="encounter-status" data-status="${escapeHtml(encounter.status)}">${escapeHtml(statusLabel(encounter.status))}</span></strong>
+          <strong>${escapeHtml(formatDateTime(encounter.encounterAt))} <span class="encounter-status" data-status="${escapeHtml(encounter.status)}">${escapeHtml(statusLabel(encounter.status))}</span> <span class="form-note">${escapeHtml(revisionLabel(encounter.currentRevision))}</span></strong>
           <small>المريض: ${escapeHtml(shortId(encounter.patientId))} · المقدم: ${escapeHtml(shortId(encounter.doctorId))} · المنشأة: ${escapeHtml(shortId(encounter.facilityId))}</small>
           <small>معرّف اللقاء: ${escapeHtml(encounter.id)}</small>
         </div>
@@ -742,13 +1079,32 @@
 
   function renderPatientHistoryItem(encounter) {
     const clinical = encounter.clinical || {};
+    const legacyDiagnoses = Array.isArray(clinical.diagnoses)
+      ? clinical.diagnoses.join('\n')
+      : typeof clinical.diagnoses === 'string'
+        ? clinical.diagnoses
+        : '';
     const details = [
       clinical.reason && detailItem('سبب الزيارة', clinical.reason),
       clinical.chiefComplaint && detailItem('الشكوى الرئيسية', clinical.chiefComplaint),
       clinical.assessment && detailItem('التقييم', clinical.assessment),
-      clinical.diagnoses?.length && detailItem('التشخيصات النصية', clinical.diagnoses.join('\n')),
+      legacyDiagnoses && detailItem('تشخيصات نصية سابقة (غير مرمّزة)', legacyDiagnoses),
+      ...(encounter.diagnoses || []).map((diagnosis) =>
+        detailItem(
+          diagnosis.priority === 'PRIMARY' ? 'تشخيص أساسي' : 'تشخيص ثانوي',
+          `${diagnosis.description} — ${diagnosisStatusLabel(diagnosis.clinicalStatus)}`,
+        ),
+      ),
+      ...(encounter.serviceRecords || []).map((service) =>
+        detailItem(
+          'الخدمة أو الإجراء',
+          `${service.serviceName} — ${serviceStatusLabel(service.status)}`,
+        ),
+      ),
       clinical.plan && detailItem('الخطة', clinical.plan),
-    ].filter(Boolean).join('');
+    ]
+      .filter(Boolean)
+      .join('');
     return `
       <article class="encounter-list-item" style="display:block">
         <div class="encounter-toolbar">
@@ -764,8 +1120,13 @@
     const actionLabels = {
       CREATED: 'إنشاء اللقاء',
       CLINICAL_UPDATED: 'تحديث التوثيق السريري',
+      DIAGNOSES_UPDATED: 'تحديث التشخيصات المنظمة',
+      SERVICE_RECORDS_UPDATED: 'تحديث الخدمات والإجراءات',
       COMPLETED: 'إتمام اللقاء',
       CANCELLED: 'إلغاء اللقاء',
+      AMENDMENT_OPENED: 'بدء تعديل موثق',
+      AMENDMENT_UPDATED: 'تحديث مسودة التعديل',
+      AMENDMENT_FINALIZED: 'اعتماد التعديل',
     };
     return `
       <article class="encounter-history-item">
@@ -780,6 +1141,28 @@
   }
 
   function branchFilter() {
+    if (state.branches.length) {
+      const options = [
+        `<option value="">كل الفروع المسموح بها</option>`,
+        ...state.branches.map(
+          (branch) =>
+            `<option value="${escapeHtml(branch.id)}" ${branch.id === state.filter.branchId ? 'selected' : ''}>${escapeHtml(branch.name || shortId(branch.id))}</option>`,
+        ),
+      ];
+      if (
+        state.filter.branchId &&
+        !state.branches.some((branch) => branch.id === state.filter.branchId)
+      ) {
+        options.push(
+          `<option value="${escapeHtml(state.filter.branchId)}" selected>الفرع المحدد (${escapeHtml(shortId(state.filter.branchId))})</option>`,
+        );
+      }
+      return `
+        <div class="encounter-field">
+          <label for="filter-branch">الفرع (اختياري)</label>
+          <select id="filter-branch" name="branchId">${options.join('')}</select>
+        </div>`;
+    }
     return `
       <div class="encounter-field">
         <label for="filter-branch">معرّف الفرع (اختياري)</label>
@@ -794,8 +1177,12 @@
           <label for="${escapeHtml(id)}">المنشأة</label>
           <select id="${escapeHtml(id)}" name="${escapeHtml(name)}" required>
             <option value="">اختر منشأة</option>
-            ${state.facilities.map((facility) => `
-              <option value="${escapeHtml(facility.id)}" ${selected === facility.id ? 'selected' : ''}>${escapeHtml(displayName(facility))}</option>`).join('')}
+            ${state.facilities
+              .map(
+                (facility) => `
+              <option value="${escapeHtml(facility.id)}" ${selected === facility.id ? 'selected' : ''}>${escapeHtml(displayName(facility))}</option>`,
+              )
+              .join('')}
           </select>
         </div>`;
     }
@@ -813,8 +1200,12 @@
           <label for="${escapeHtml(id)}">المريض</label>
           <select id="${escapeHtml(id)}" name="${escapeHtml(name)}" required>
             <option value="">اختر مريضًا</option>
-            ${state.patients.map((patient) => `
-              <option value="${escapeHtml(patient.id)}" ${selected === patient.id ? 'selected' : ''}>${escapeHtml(patientLabel(patient))}</option>`).join('')}
+            ${state.patients
+              .map(
+                (patient) => `
+              <option value="${escapeHtml(patient.id)}" ${selected === patient.id ? 'selected' : ''}>${escapeHtml(patientLabel(patient))}</option>`,
+              )
+              .join('')}
           </select>
         </div>`;
     }
@@ -832,8 +1223,12 @@
           <label for="${escapeHtml(id)}">المقدم السريري</label>
           <select id="${escapeHtml(id)}" name="${escapeHtml(name)}" required>
             <option value="">اختر مقدمًا</option>
-            ${state.doctors.map((doctor) => `
-              <option value="${escapeHtml(doctor.id)}" ${selected === doctor.id ? 'selected' : ''}>${escapeHtml(displayName(doctor))}</option>`).join('')}
+            ${state.doctors
+              .map(
+                (doctor) => `
+              <option value="${escapeHtml(doctor.id)}" ${selected === doctor.id ? 'selected' : ''}>${escapeHtml(displayName(doctor))}</option>`,
+              )
+              .join('')}
           </select>
         </div>`;
     }
@@ -881,6 +1276,7 @@
   }
 
   async function loadEncounters() {
+    const requestId = ++state.listRequestId;
     if (!can(PERMISSIONS.encounterRead)) return;
     const facilityId = state.filter.facilityId.trim();
     if (!facilityId) {
@@ -888,6 +1284,7 @@
       state.list = [];
       state.listMeta = { total: 0, limit: 50, offset: 0, hasNext: false };
       state.filter.offset = 0;
+      state.loadingList = false;
       state.listError = new Error('اختر منشأة لاستخدام نطاق التاريخ المحلي.');
       render();
       return;
@@ -898,6 +1295,7 @@
     render();
     try {
       const zones = await api.getEncounterTimeZones(state.workspace.tenantId, [facilityId]);
+      if (requestId !== state.listRequestId) return;
       const zoneItem = itemsOf(zones).find((item) => item.facilityId === facilityId);
       state.timezone = zoneItem?.timeZone || null;
       if (!state.timezone) throw { status: 422, message: 'لا توجد سياسة جدولة نشطة لهذه المنشأة.' };
@@ -917,6 +1315,7 @@
       if (state.filter.branchId) options.branchId = state.filter.branchId;
       if (state.filter.status) options.status = state.filter.status;
       const response = await api.listEncounters(state.workspace.tenantId, options);
+      if (requestId !== state.listRequestId) return;
       state.list = itemsOf(response);
       state.listMeta = {
         total: Number(response?.total) || 0,
@@ -926,12 +1325,15 @@
       };
       state.filter.offset = state.listMeta.offset;
     } catch (error) {
+      if (requestId !== state.listRequestId) return;
       if (handleUnauthorized(error)) return;
       state.list = [];
       state.listError = error;
     } finally {
-      state.loadingList = false;
-      render();
+      if (requestId === state.listRequestId) {
+        state.loadingList = false;
+        render();
+      }
     }
   }
 
@@ -968,7 +1370,9 @@
         limit: 100,
         offset: 0,
       });
-      state.appointments = itemsOf(response).filter((appointment) => appointment.status === 'SCHEDULED');
+      state.appointments = itemsOf(response).filter(
+        (appointment) => appointment.status === 'SCHEDULED',
+      );
       state.selectedAppointmentId = '';
     } catch (error) {
       if (handleUnauthorized(error)) return;
@@ -986,10 +1390,12 @@
       return;
     }
     try {
-      state.branches = itemsOf(await api.listBranches(state.workspace.tenantId, facilityId, {
-        limit: 100,
-        offset: 0,
-      }));
+      state.branches = itemsOf(
+        await api.listBranches(state.workspace.tenantId, facilityId, {
+          limit: 100,
+          offset: 0,
+        }),
+      );
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.resourceErrors.branches = error;
@@ -1031,6 +1437,8 @@
     state.detailTimezone = null;
     state.conflict = false;
     state.pendingDraft = null;
+    state.diagnosisDraft = null;
+    state.serviceDraft = null;
     render();
     try {
       state.detail = await api.getEncounter(state.workspace.tenantId, encounterId);
@@ -1068,11 +1476,17 @@
     state.conflict = false;
     render();
     try {
-      state.detail = await api.updateEncounterClinical(
-        state.workspace.tenantId,
-        state.detail.id,
-        { expectedVersion: state.detail.version, clinical },
-      );
+      state.detail = state.detail.activeAmendmentId
+        ? await api.updateEncounterAmendment(
+            state.workspace.tenantId,
+            state.detail.id,
+            state.detail.activeAmendmentId,
+            { expectedVersion: state.detail.version, clinical },
+          )
+        : await api.updateEncounterClinical(state.workspace.tenantId, state.detail.id, {
+            expectedVersion: state.detail.version,
+            clinical,
+          });
       state.pendingDraft = null;
       state.conflict = false;
       showToast('تم حفظ المسودة.');
@@ -1086,16 +1500,145 @@
     }
   }
 
+  async function saveDiagnoses(form) {
+    if (!state.detail || !can(PERMISSIONS.diagnosesWrite)) return;
+    const diagnoses = collectDiagnoses(form);
+    state.diagnosisDraft = diagnoses;
+    if (diagnoses.length && diagnoses.filter((item) => item.priority === 'PRIMARY').length !== 1) {
+      state.detailError = 'يجب تحديد تشخيص أساسي واحد بالضبط.';
+      render();
+      return;
+    }
+    const encounter = state.detail;
+    state.saving = true;
+    state.detailError = null;
+    state.conflict = false;
+    render();
+    try {
+      state.detail = encounter.activeAmendmentId
+        ? await api.updateEncounterAmendment(
+            state.workspace.tenantId,
+            encounter.id,
+            encounter.activeAmendmentId,
+            { expectedVersion: encounter.version, diagnoses },
+          )
+        : await api.replaceEncounterDiagnoses(state.workspace.tenantId, encounter.id, {
+            expectedVersion: encounter.version,
+            diagnoses,
+          });
+      state.diagnosisDraft = null;
+      showToast('تم حفظ التشخيصات المنظمة.');
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      state.detailError = errorMessage(error);
+      if (error && error.status === 409) state.conflict = true;
+    } finally {
+      state.saving = false;
+      render();
+    }
+  }
+
+  function collectDiagnoses(form) {
+    return Array.from(form.querySelectorAll('[data-diagnosis-row]')).map((row) => {
+      const id = row.querySelector('[name="id"]').value.trim();
+      const description = row.querySelector('[name="description"]').value.trim();
+      if (!description) throw new Error('اكتب وصفًا لكل تشخيص.');
+      const onsetDate = row.querySelector('[name="onsetDate"]').value;
+      return {
+        ...(id ? { id } : {}),
+        description,
+        priority: row.querySelector('[name="priority"]').value,
+        clinicalStatus: row.querySelector('[name="clinicalStatus"]').value,
+        onsetAt: onsetDate ? new Date(`${onsetDate}T00:00:00.000Z`).toISOString() : null,
+      };
+    });
+  }
+
+  function captureDiagnosisDraft() {
+    const form = app.querySelector('[data-form="diagnoses"]');
+    if (!form) return;
+    state.diagnosisDraft = Array.from(form.querySelectorAll('[data-diagnosis-row]')).map((row) => ({
+      id: row.querySelector('[name="id"]').value.trim() || undefined,
+      description: row.querySelector('[name="description"]').value,
+      priority: row.querySelector('[name="priority"]').value,
+      clinicalStatus: row.querySelector('[name="clinicalStatus"]').value,
+      onsetAt: row.querySelector('[name="onsetDate"]').value
+        ? `${row.querySelector('[name="onsetDate"]').value}T00:00:00.000Z`
+        : null,
+    }));
+  }
+
+  async function saveServiceRecords(form) {
+    if (!state.detail || !can(PERMISSIONS.servicesWrite)) return;
+    const serviceRecords = collectServiceRecords(form);
+    state.serviceDraft = serviceRecords;
+    const encounter = state.detail;
+    state.saving = true;
+    state.detailError = null;
+    state.conflict = false;
+    render();
+    try {
+      state.detail = encounter.activeAmendmentId
+        ? await api.updateEncounterAmendment(
+            state.workspace.tenantId,
+            encounter.id,
+            encounter.activeAmendmentId,
+            { expectedVersion: encounter.version, serviceRecords },
+          )
+        : await api.replaceEncounterServiceRecords(state.workspace.tenantId, encounter.id, {
+            expectedVersion: encounter.version,
+            serviceRecords,
+          });
+      state.serviceDraft = null;
+      showToast('تم حفظ الخدمات والإجراءات السريرية.');
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      state.detailError = errorMessage(error);
+      if (error && error.status === 409) state.conflict = true;
+    } finally {
+      state.saving = false;
+      render();
+    }
+  }
+
+  function collectServiceRecords(form) {
+    return Array.from(form.querySelectorAll('[data-service-row]')).map((row) => {
+      const id = row.querySelector('[name="id"]').value.trim();
+      const serviceId = row.querySelector('[name="serviceId"]').value.trim();
+      if (!serviceId) throw new Error('اختر خدمة أو إجراءً من الدليل.');
+      const providerDoctorId = row.querySelector('[name="providerDoctorId"]').value.trim();
+      const note = row.querySelector('[name="note"]').value.trim();
+      return {
+        ...(id ? { id } : {}),
+        serviceId,
+        ...(providerDoctorId ? { providerDoctorId } : {}),
+        status: row.querySelector('[name="status"]').value,
+        note: note || null,
+      };
+    });
+  }
+
+  function captureServiceDraft() {
+    const form = app.querySelector('[data-form="services"]');
+    if (!form) return;
+    state.serviceDraft = Array.from(form.querySelectorAll('[data-service-row]')).map((row) => ({
+      id: row.querySelector('[name="id"]').value.trim() || undefined,
+      serviceId: row.querySelector('[name="serviceId"]').value.trim(),
+      providerDoctorId: row.querySelector('[name="providerDoctorId"]').value.trim() || undefined,
+      status: row.querySelector('[name="status"]').value,
+      note: row.querySelector('[name="note"]').value,
+      serviceName: state.services.find(
+        (service) => service.id === row.querySelector('[name="serviceId"]').value,
+      )?.name,
+    }));
+  }
+
   function buildClinicalPatch(form, current) {
     const data = new FormData(form);
     const patch = {};
     for (const [field] of CLINICAL_TEXT_FIELDS) {
       const raw = String(data.get(`text.${field}`) || '');
-      if (field === 'diagnoses') {
-        const diagnoses = raw.split(/\r?\n/u).map((value) => value.trim()).filter(Boolean);
-        if (diagnoses.length) patch.diagnoses = diagnoses;
-        else if (current.diagnoses?.length) patch.diagnoses = null;
-      } else if (raw.trim()) {
+      if (raw.trim()) {
         patch[field] = raw;
       } else if (current[field] !== undefined) {
         patch[field] = null;
@@ -1125,9 +1668,8 @@
       }
       const value = Number(raw);
       if (!Number.isFinite(value)) throw new Error('أدخل قيمة رقمية صحيحة للعلامات الحيوية.');
-      const measurementUnit = unit === 'temperature'
-        ? String(data.get('vital.temperatureUnit') || '°C')
-        : unit;
+      const measurementUnit =
+        unit === 'temperature' ? String(data.get('vital.temperatureUnit') || '°C') : unit;
       vitalPatch[field] = { value, unit: measurementUnit };
     }
     if (Object.keys(vitalPatch).length) patch.vitalSigns = vitalPatch;
@@ -1165,9 +1707,94 @@
     }
   }
 
+  async function createAmendment() {
+    if (
+      !state.detail ||
+      state.detail.status !== 'COMPLETED' ||
+      !can(PERMISSIONS.amendmentsCreate) ||
+      state.busy
+    ) {
+      return;
+    }
+    const reason = window.prompt('اكتب سبب التعديل السريري. سيظهر السبب ضمن سجل التعديلات.');
+    if (reason === null) return;
+    if (!reason.trim()) {
+      showToast('سبب التعديل مطلوب.');
+      return;
+    }
+    const encounter = state.detail;
+    state.busy = true;
+    state.detailError = null;
+    render();
+    try {
+      state.detail = await api.createEncounterAmendment(state.workspace.tenantId, encounter.id, {
+        expectedVersion: encounter.version,
+        reason: reason.trim(),
+      });
+      state.history = null;
+      state.diagnosisDraft = null;
+      state.serviceDraft = null;
+      state.pendingDraft = null;
+      showToast('تم فتح مسودة تعديل مستقلة عن النسخة الأصلية.');
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      state.detailError = errorMessage(error);
+      if (error && error.status === 409) state.conflict = true;
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  async function finalizeAmendment() {
+    if (
+      !state.detail ||
+      !state.detail.activeAmendmentId ||
+      !can(PERMISSIONS.amendmentsFinalize) ||
+      state.busy
+    ) {
+      return;
+    }
+    if (
+      !window.confirm(
+        'سيصبح التعديل نسخة سريرية معتمدة، مع بقاء النسخة الأصلية محفوظة. هل تريد الاعتماد؟',
+      )
+    ) {
+      return;
+    }
+    const encounter = state.detail;
+    state.busy = true;
+    state.detailError = null;
+    render();
+    try {
+      state.detail = await api.finalizeEncounterAmendment(
+        state.workspace.tenantId,
+        encounter.id,
+        encounter.activeAmendmentId,
+        encounter.version,
+      );
+      state.history = null;
+      state.diagnosisDraft = null;
+      state.serviceDraft = null;
+      state.pendingDraft = null;
+      showToast('تم اعتماد التعديل مع الاحتفاظ بالنسخة الأصلية.');
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      state.detailError = errorMessage(error);
+      if (error && error.status === 409) state.conflict = true;
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
   async function reloadDetail() {
     if (!state.detail) return;
-    if (state.pendingDraft && !window.confirm('سيتم تجاهل التعديلات غير المحفوظة. هل تريد تحميل النسخة الحالية؟')) return;
+    if (
+      state.pendingDraft &&
+      !window.confirm('سيتم تجاهل التعديلات غير المحفوظة. هل تريد تحميل النسخة الحالية؟')
+    )
+      return;
     const id = state.detail.id;
     state.pendingDraft = null;
     state.conflict = false;
@@ -1218,10 +1845,7 @@
       render();
       void loadEncounters();
     } else if (action === 'previous-page' || action === 'next-page') {
-      state.filter.offset = Math.max(
-        0,
-        state.filter.offset + (action === 'next-page' ? 50 : -50),
-      );
+      state.filter.offset = Math.max(0, state.filter.offset + (action === 'next-page' ? 50 : -50));
       void loadEncounters();
     } else if (action === 'load-appointments') {
       void loadAppointments();
@@ -1229,16 +1853,59 @@
       void createFromAppointment();
     } else if (action === 'open-encounter') {
       void openEncounter(button.dataset.id);
+    } else if (action === 'add-diagnosis') {
+      captureDiagnosisDraft();
+      state.diagnosisDraft ||= [];
+      state.diagnosisDraft.push({
+        id: undefined,
+        description: '',
+        priority: state.diagnosisDraft.length ? 'SECONDARY' : 'PRIMARY',
+        clinicalStatus: 'ACTIVE',
+        onsetAt: null,
+      });
+      render();
+    } else if (action === 'remove-diagnosis') {
+      captureDiagnosisDraft();
+      const removed = state.diagnosisDraft?.splice(Number(button.dataset.index), 1)[0];
+      if (removed?.priority === 'PRIMARY' && state.diagnosisDraft.length) {
+        state.diagnosisDraft[0].priority = 'PRIMARY';
+      }
+      render();
+    } else if (action === 'add-service-record') {
+      captureServiceDraft();
+      state.serviceDraft ||= [];
+      state.serviceDraft.push({
+        id: undefined,
+        serviceId: '',
+        providerDoctorId: '',
+        status: 'PLANNED',
+        note: '',
+      });
+      render();
+    } else if (action === 'remove-service-record') {
+      captureServiceDraft();
+      state.serviceDraft?.splice(Number(button.dataset.index), 1);
+      render();
     } else if (action === 'back-to-worklist') {
       state.view = 'worklist';
       state.detail = null;
       state.pendingDraft = null;
+      state.diagnosisDraft = null;
+      state.serviceDraft = null;
       render();
       void loadEncounters();
     } else if (action === 'complete-encounter') {
-      if (window.confirm('سيؤدي إتمام اللقاء إلى قفل التوثيق. لا يتوفر مسار لإعادة فتحه في هذه المرحلة. هل تريد المتابعة؟')) {
+      if (
+        window.confirm(
+          'سيؤدي إتمام اللقاء إلى قفل النسخة الأصلية. يمكن لاحقًا إضافة تعديل منفصل بسبب موثق. هل تريد المتابعة؟',
+        )
+      ) {
         void performLifecycle('complete');
       }
+    } else if (action === 'create-amendment') {
+      void createAmendment();
+    } else if (action === 'finalize-amendment') {
+      void finalizeAmendment();
     } else if (action === 'load-history') {
       void loadHistory();
     } else if (action === 'reload-detail') {
@@ -1253,7 +1920,10 @@
       }
     } else if (action === 'previous-patient-history') {
       if (state.selectedPatientId) {
-        void loadPatientHistory(state.selectedPatientId, Math.max(0, state.patientHistoryOffset - 50));
+        void loadPatientHistory(
+          state.selectedPatientId,
+          Math.max(0, state.patientHistoryOffset - 50),
+        );
       }
     } else if (action === 'next-patient-history') {
       if (state.selectedPatientId) {
@@ -1327,9 +1997,29 @@
         state.pendingDraft = Object.fromEntries(new FormData(form).entries());
         render();
       }
+    } else if (kind === 'diagnoses') {
+      try {
+        await saveDiagnoses(form);
+      } catch (error) {
+        captureDiagnosisDraft();
+        state.detailError = errorMessage(error);
+        render();
+      }
+    } else if (kind === 'services') {
+      try {
+        await saveServiceRecords(form);
+      } catch (error) {
+        captureServiceDraft();
+        state.detailError = errorMessage(error);
+        render();
+      }
     } else if (kind === 'cancel-encounter') {
       const reason = String(new FormData(form).get('reason') || '').trim();
-      if (window.confirm('سيؤدي الإلغاء إلى الاحتفاظ باللقاء وسجله مع منع تعديل المسودة. هل تريد المتابعة؟')) {
+      if (
+        window.confirm(
+          'سيؤدي الإلغاء إلى الاحتفاظ باللقاء وسجله مع منع تعديل المسودة. هل تريد المتابعة؟',
+        )
+      ) {
         void performLifecycle('cancel', reason || undefined);
       }
     }
@@ -1435,7 +2125,10 @@
       ['COMPLETED', 'مكتمل'],
       ['CANCELLED', 'ملغى'],
     ]
-      .map(([value, label]) => `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`)
+      .map(
+        ([value, label]) =>
+          `<option value="${value}" ${selected === value ? 'selected' : ''}>${label}</option>`,
+      )
       .join('');
   }
 
@@ -1474,7 +2167,9 @@
   }
 
   function patientLabel(patient) {
-    const name = [patient.firstName, patient.middleName, patient.lastName].filter(Boolean).join(' ');
+    const name = [patient.firstName, patient.middleName, patient.lastName]
+      .filter(Boolean)
+      .join(' ');
     return [patient.patientNumber, name].filter(Boolean).join(' · ') || patient.id;
   }
 
@@ -1522,34 +2217,40 @@
   }
 
   function timeZoneLabel(timeZone) {
-    return timeZone
-      ? `توقيت المنشأة · ${timeZone}`
-      : `توقيت الجهاز · ${deviceTimeZone()}`;
+    return timeZone ? `توقيت المنشأة · ${timeZone}` : `توقيت الجهاز · ${deviceTimeZone()}`;
   }
 
   function errorMessage(error) {
     if (error && error.status === 401) return 'انتهت جلسة الدخول. سجّل الدخول مجددًا.';
     if (error && error.status === 403) return 'لا تملك الصلاحية المطلوبة لهذا الإجراء.';
     if (error && error.status === 404) return 'لم يُعثر على السجل ضمن مساحة العمل المصرح بها.';
-    if (error && error.status === 409) return 'تعارض في الحالة أو الإصدار. أعد تحميل السجل قبل المتابعة.';
-    if (error && error.status === 422) return 'تعذّر التحقق من المراجع أو سياسة المنطقة الزمنية. راجع المدخلات وإعداد المنشأة.';
-    if (error && (error.status === 503 || error.status === 502)) return 'التخزين السريري غير متاح حاليًا. لم يتم حفظ التغيير؛ حاول لاحقًا.';
+    if (error && error.status === 409)
+      return 'تعارض في الحالة أو الإصدار. أعد تحميل السجل قبل المتابعة.';
+    if (error && error.status === 422)
+      return 'تعذّر التحقق من المراجع أو سياسة المنطقة الزمنية. راجع المدخلات وإعداد المنشأة.';
+    if (error && (error.status === 503 || error.status === 502))
+      return 'التخزين السريري غير متاح حاليًا. لم يتم حفظ التغيير؛ حاول لاحقًا.';
     return safeMessage(error);
   }
 
   function safeMessage(error) {
-    if (error && typeof error.message === 'string' && error.message.length < 300) return error.message;
+    if (error && typeof error.message === 'string' && error.message.length < 300)
+      return error.message;
     return 'حدث خطأ غير متوقع. حاول مرة أخرى.';
   }
 
   function escapeHtml(value) {
-    return String(value).replace(/[&<>"']/gu, (character) => ({
-      '&': '&amp;',
-      '<': '&lt;',
-      '>': '&gt;',
-      '"': '&quot;',
-      "'": '&#39;',
-    })[character]);
+    return String(value).replace(
+      /[&<>"']/gu,
+      (character) =>
+        ({
+          '&': '&amp;',
+          '<': '&lt;',
+          '>': '&gt;',
+          '"': '&quot;',
+          "'": '&#39;',
+        })[character],
+    );
   }
 
   let toastTimer;

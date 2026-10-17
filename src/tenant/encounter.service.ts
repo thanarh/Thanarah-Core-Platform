@@ -9,24 +9,35 @@ import { BranchService } from './branch.service';
 import { DoctorService } from './doctor.service';
 import { FacilityService } from './facility.service';
 import { PatientService } from './patient.service';
+import { ServiceCatalogService } from './service-catalog.service';
 import {
   cancelEncounterSchema,
   completeEncounterSchema,
+  createEncounterAmendmentSchema,
   createDirectEncounterSchema,
   createEncounterFromAppointmentSchema,
   encounterEffectiveTimeZonesQuerySchema,
   encounterIdSchema,
+  finalizeEncounterAmendmentSchema,
   listEncountersQuerySchema,
+  replaceEncounterDiagnosesSchema,
+  replaceEncounterServiceRecordsSchema,
+  updateEncounterAmendmentSchema,
   updateEncounterSchema,
 } from './encounter.dto';
 import type {
   CancelEncounterInput,
   CompleteEncounterInput,
+  CreateEncounterAmendmentInput,
   CreateDirectEncounterInput,
   CreateEncounterFromAppointmentInput,
   EncounterClinicalPatch,
   EncounterEffectiveTimeZonesQuery,
+  FinalizeEncounterAmendmentInput,
   ListEncountersQuery,
+  ReplaceEncounterDiagnosesInput,
+  ReplaceEncounterServiceRecordsInput,
+  UpdateEncounterAmendmentInput,
   UpdateEncounterInput,
 } from './encounter.dto';
 import {
@@ -43,7 +54,9 @@ import {
 import { EncounterStatus } from './encounter.model';
 import type {
   EncounterAccessScope,
+  EncounterAmendment,
   EncounterClinicalRecord,
+  EncounterDiagnosis,
   EncounterHistoryAction,
   EncounterHistoryEvent,
   EncounterListFilter,
@@ -51,6 +64,8 @@ import type {
   EncounterRecord,
   EncounterResponse,
   EncounterSummary,
+  EncounterServiceRecord,
+  EncounterServiceStatus,
   PatientEncounterHistoryResponse,
 } from './encounter.model';
 import type { EncounterRepository } from './encounter.repository';
@@ -79,6 +94,7 @@ export class EncounterService {
     private readonly appointments: AppointmentService,
     private readonly patients: PatientService,
     private readonly doctors: DoctorService,
+    private readonly services: ServiceCatalogService,
     private readonly facilities: FacilityService,
     private readonly branches: BranchService,
     private readonly staffScopes: TenantStaffScopeService,
@@ -195,6 +211,7 @@ export class EncounterService {
     query: ListEncountersQuery,
   ): Promise<PatientEncounterHistoryResponse> {
     await this.authorization.authorize(context, 'tenant.encounters.patient-history.read');
+    await this.authorizeEncounterDetailReads(context);
     const parsedPatientId = encounterIdSchema.safeParse(patientId);
     if (!parsedPatientId.success) throw new EncounterInputValidationError();
     const parsed = listEncountersQuerySchema.safeParse(query);
@@ -213,6 +230,7 @@ export class EncounterService {
 
   async findById(context: TrustedTenantContext, encounterId: string): Promise<EncounterResponse> {
     await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
     const record = await this.findInScope(context, encounterId);
     return this.present(record);
   }
@@ -226,6 +244,7 @@ export class EncounterService {
   ): Promise<EncounterResponse> {
     this.assertActor(context, actor);
     await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
     await this.authorization.authorize(context, 'tenant.encounters.clinical.write');
     const parsedId = encounterIdSchema.safeParse(encounterId);
     const parsed = updateEncounterSchema.safeParse(input);
@@ -268,6 +287,320 @@ export class EncounterService {
     return this.present(updated!);
   }
 
+  async replaceDiagnoses(
+    context: TrustedTenantContext,
+    encounterId: string,
+    input: ReplaceEncounterDiagnosesInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext = {},
+  ): Promise<EncounterResponse> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
+    await this.authorization.authorize(context, 'tenant.encounters.diagnoses.write');
+    const parsedId = encounterIdSchema.safeParse(encounterId);
+    const parsed = replaceEncounterDiagnosesSchema.safeParse(input);
+    if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
+    const current = await this.findInScope(context, parsedId.data);
+    if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
+    this.assertExpectedVersion(current, parsed.data.expectedVersion);
+    this.assertHistoryCapacity(current);
+
+    const occurredAt = new Date();
+    const diagnoses = buildDiagnosisRecords(
+      parsed.data.diagnoses,
+      current.diagnoses,
+      actor.userId,
+      occurredAt,
+    );
+    const event = this.historyEvent(actor, 'DIAGNOSES_UPDATED', occurredAt, current.version, [
+      'diagnoses',
+    ]);
+    const updated = await this.encounters.update(
+      context,
+      current.id,
+      current.version,
+      EncounterStatus.DRAFT,
+      { diagnoses, updatedAt: occurredAt, updatedBy: actor.userId },
+      event,
+    );
+    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    await this.recordAudit(
+      context,
+      actor,
+      updated!,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'diagnoses_updated',
+      ['diagnoses'],
+      requestContext,
+    );
+    return this.present(updated!);
+  }
+
+  async replaceServiceRecords(
+    context: TrustedTenantContext,
+    encounterId: string,
+    input: ReplaceEncounterServiceRecordsInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext = {},
+  ): Promise<EncounterResponse> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
+    await this.authorization.authorize(context, 'tenant.encounters.services.write');
+    const parsedId = encounterIdSchema.safeParse(encounterId);
+    const parsed = replaceEncounterServiceRecordsSchema.safeParse(input);
+    if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
+    const current = await this.findInScope(context, parsedId.data);
+    if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
+    this.assertExpectedVersion(current, parsed.data.expectedVersion);
+    this.assertHistoryCapacity(current);
+
+    const occurredAt = new Date();
+    const serviceRecords = await this.buildServiceRecords(
+      context,
+      current,
+      parsed.data.serviceRecords,
+      current.serviceRecords,
+      actor.userId,
+      occurredAt,
+    );
+    const event = this.historyEvent(actor, 'SERVICE_RECORDS_UPDATED', occurredAt, current.version, [
+      'serviceRecords',
+    ]);
+    const updated = await this.encounters.update(
+      context,
+      current.id,
+      current.version,
+      EncounterStatus.DRAFT,
+      { serviceRecords, updatedAt: occurredAt, updatedBy: actor.userId },
+      event,
+    );
+    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    await this.recordAudit(
+      context,
+      actor,
+      updated!,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'service_records_updated',
+      ['serviceRecords'],
+      requestContext,
+    );
+    return this.present(updated!);
+  }
+
+  async createEncounterAmendment(
+    context: TrustedTenantContext,
+    encounterId: string,
+    input: CreateEncounterAmendmentInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext = {},
+  ): Promise<EncounterResponse> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
+    await this.authorization.authorize(context, 'tenant.encounters.amendments.create');
+    const parsedId = encounterIdSchema.safeParse(encounterId);
+    const parsed = createEncounterAmendmentSchema.safeParse(input);
+    if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
+    const current = await this.findInScope(context, parsedId.data);
+    if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
+    this.assertExpectedVersion(current, parsed.data.expectedVersion);
+    this.assertHistoryCapacity(current);
+    const amendments = current.amendments ?? [];
+    if (amendments.at(-1)?.status === 'OPEN' || amendments.length >= 100) {
+      throw new EncounterStateConflictError();
+    }
+
+    const occurredAt = new Date();
+    const snapshot = effectiveClinicalSnapshot(current);
+    const amendment: EncounterAmendment = {
+      id: randomUUID(),
+      reason: parsed.data.reason,
+      status: 'OPEN',
+      clinical: structuredClone(snapshot.clinical),
+      diagnoses: structuredClone(snapshot.diagnoses),
+      serviceRecords: structuredClone(snapshot.serviceRecords),
+      createdAt: occurredAt,
+      createdBy: actor.userId,
+      finalizedAt: null,
+      finalizedBy: null,
+    };
+    const event = this.historyEvent(actor, 'AMENDMENT_OPENED', occurredAt, current.version, [
+      'amendment',
+    ]);
+    const updated = await this.encounters.update(
+      context,
+      current.id,
+      current.version,
+      EncounterStatus.COMPLETED,
+      {
+        amendments: [...amendments, amendment],
+        updatedAt: occurredAt,
+        updatedBy: actor.userId,
+      },
+      event,
+    );
+    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    await this.recordAudit(
+      context,
+      actor,
+      updated!,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_opened',
+      ['amendment'],
+      requestContext,
+    );
+    return this.present(updated!);
+  }
+
+  async updateEncounterAmendment(
+    context: TrustedTenantContext,
+    encounterId: string,
+    amendmentId: string,
+    input: UpdateEncounterAmendmentInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext = {},
+  ): Promise<EncounterResponse> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
+    await this.authorization.authorize(context, 'tenant.encounters.amendments.update');
+    const parsedId = encounterIdSchema.safeParse(encounterId);
+    const parsedAmendmentId = encounterIdSchema.safeParse(amendmentId);
+    const parsed = updateEncounterAmendmentSchema.safeParse(input);
+    if (!parsedId.success || !parsedAmendmentId.success || !parsed.success) {
+      throw new EncounterInputValidationError();
+    }
+    if (parsed.data.clinical) {
+      await this.authorization.authorize(context, 'tenant.encounters.clinical.write');
+    }
+    if (parsed.data.diagnoses) {
+      await this.authorization.authorize(context, 'tenant.encounters.diagnoses.write');
+    }
+    if (parsed.data.serviceRecords) {
+      await this.authorization.authorize(context, 'tenant.encounters.services.write');
+    }
+    const current = await this.findInScope(context, parsedId.data);
+    if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
+    this.assertExpectedVersion(current, parsed.data.expectedVersion);
+    this.assertHistoryCapacity(current);
+    const amendments = [...(current.amendments ?? [])];
+    const amendment = amendments.at(-1);
+    if (!amendment || amendment.id !== parsedAmendmentId.data || amendment.status !== 'OPEN') {
+      throw new EncounterStateConflictError();
+    }
+
+    const occurredAt = new Date();
+    const changedFields: string[] = [];
+    if (parsed.data.clinical) {
+      amendment.clinical = applyClinicalPatch(amendment.clinical, parsed.data.clinical);
+      changedFields.push(
+        ...changedClinicalFields(parsed.data.clinical).map((field) => `clinical.${field}`),
+      );
+    }
+    if (parsed.data.diagnoses) {
+      amendment.diagnoses = buildDiagnosisRecords(
+        parsed.data.diagnoses,
+        amendment.diagnoses,
+        actor.userId,
+        occurredAt,
+      );
+      changedFields.push('diagnoses');
+    }
+    if (parsed.data.serviceRecords) {
+      amendment.serviceRecords = await this.buildServiceRecords(
+        context,
+        current,
+        parsed.data.serviceRecords,
+        amendment.serviceRecords,
+        actor.userId,
+        occurredAt,
+        true,
+      );
+      changedFields.push('serviceRecords');
+    }
+    const event = this.historyEvent(actor, 'AMENDMENT_UPDATED', occurredAt, current.version, [
+      'amendment',
+      ...changedFields,
+    ]);
+    const updated = await this.encounters.update(
+      context,
+      current.id,
+      current.version,
+      EncounterStatus.COMPLETED,
+      { amendments, updatedAt: occurredAt, updatedBy: actor.userId },
+      event,
+    );
+    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    await this.recordAudit(
+      context,
+      actor,
+      updated!,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_updated',
+      ['amendment', ...changedFields],
+      requestContext,
+    );
+    return this.present(updated!);
+  }
+
+  async finalizeEncounterAmendment(
+    context: TrustedTenantContext,
+    encounterId: string,
+    amendmentId: string,
+    input: FinalizeEncounterAmendmentInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext = {},
+  ): Promise<EncounterResponse> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
+    await this.authorization.authorize(context, 'tenant.encounters.amendments.finalize');
+    const parsedId = encounterIdSchema.safeParse(encounterId);
+    const parsedAmendmentId = encounterIdSchema.safeParse(amendmentId);
+    const parsed = finalizeEncounterAmendmentSchema.safeParse(input);
+    if (!parsedId.success || !parsedAmendmentId.success || !parsed.success) {
+      throw new EncounterInputValidationError();
+    }
+    const current = await this.findInScope(context, parsedId.data);
+    if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
+    this.assertExpectedVersion(current, parsed.data.expectedVersion);
+    this.assertHistoryCapacity(current);
+    const amendments = [...(current.amendments ?? [])];
+    const amendment = amendments.at(-1);
+    if (!amendment || amendment.id !== parsedAmendmentId.data || amendment.status !== 'OPEN') {
+      throw new EncounterStateConflictError();
+    }
+
+    const occurredAt = new Date();
+    amendment.status = 'FINALIZED';
+    amendment.finalizedAt = occurredAt;
+    amendment.finalizedBy = actor.userId;
+    const event = this.historyEvent(actor, 'AMENDMENT_FINALIZED', occurredAt, current.version, [
+      'amendment.status',
+    ]);
+    const updated = await this.encounters.update(
+      context,
+      current.id,
+      current.version,
+      EncounterStatus.COMPLETED,
+      { amendments, updatedAt: occurredAt, updatedBy: actor.userId },
+      event,
+    );
+    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    await this.recordAudit(
+      context,
+      actor,
+      updated!,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_finalized',
+      ['amendment.status'],
+      requestContext,
+    );
+    return this.present(updated!);
+  }
+
   async complete(
     context: TrustedTenantContext,
     encounterId: string,
@@ -277,6 +610,7 @@ export class EncounterService {
   ): Promise<EncounterResponse> {
     this.assertActor(context, actor);
     await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
     await this.authorization.authorize(context, 'tenant.encounters.complete');
     const parsedId = encounterIdSchema.safeParse(encounterId);
     const parsed = completeEncounterSchema.safeParse(input);
@@ -326,6 +660,7 @@ export class EncounterService {
   ): Promise<EncounterResponse> {
     this.assertActor(context, actor);
     await this.authorization.authorize(context, 'tenant.encounters.read');
+    await this.authorizeEncounterDetailReads(context);
     await this.authorization.authorize(context, 'tenant.encounters.cancel');
     const parsedId = encounterIdSchema.safeParse(encounterId);
     const parsed = cancelEncounterSchema.safeParse(input);
@@ -526,6 +861,146 @@ export class EncounterService {
     if (!assignedToFacility && !assignedToBranch) throw new EncounterReferenceInvalidError();
   }
 
+  private async buildServiceRecords(
+    context: TrustedTenantContext,
+    encounter: EncounterRecord,
+    inputs: ReplaceEncounterServiceRecordsInput['serviceRecords'],
+    existing: EncounterServiceRecord[],
+    actorUserId: string,
+    occurredAt: Date,
+    allowAmendmentCorrections = false,
+  ): Promise<EncounterServiceRecord[]> {
+    const existingById = new Map(existing.map((item) => [item.id, item]));
+    const submittedIds = new Set<string>();
+    const next: EncounterServiceRecord[] = [];
+
+    for (const input of inputs) {
+      const previous = input.id ? existingById.get(input.id) : undefined;
+      if (
+        (input.id && !previous) ||
+        (input.id && submittedIds.has(input.id)) ||
+        (previous && previous.serviceId !== input.serviceId && !allowAmendmentCorrections)
+      ) {
+        throw new EncounterInputValidationError();
+      }
+      if (input.id) submittedIds.add(input.id);
+
+      const status = input.status ?? previous?.status ?? 'PLANNED';
+      const note = input.note === undefined ? (previous?.note ?? null) : input.note;
+      const providerDoctorId =
+        input.providerDoctorId ?? previous?.providerDoctorId ?? encounter.doctorId;
+      if (previous && (previous.status === 'COMPLETED' || previous.status === 'CANCELLED')) {
+        if (previous.status !== status) throw new EncounterStateConflictError();
+        if (!allowAmendmentCorrections) {
+          if (
+            previous.note !== note ||
+            previous.serviceId !== input.serviceId ||
+            previous.providerDoctorId !== providerDoctorId
+          ) {
+            throw new EncounterStateConflictError();
+          }
+          next.push(structuredClone(previous));
+          continue;
+        }
+        if (
+          previous.serviceId === input.serviceId &&
+          previous.providerDoctorId === providerDoctorId
+        ) {
+          next.push(
+            previous.note === note
+              ? structuredClone(previous)
+              : { ...previous, note, updatedAt: occurredAt, updatedBy: actorUserId },
+          );
+          continue;
+        }
+      }
+
+      const service = await this.reference(() => this.services.findById(context, input.serviceId));
+      if (service.status !== 'ACTIVE') throw new EncounterReferenceInvalidError();
+      const doctor = await this.reference(() => this.doctors.findById(context, providerDoctorId));
+      if (!doctor.operationallyActive) throw new EncounterReferenceInvalidError();
+      await this.assertDoctorAssignedToEncounter(context, doctor.staffId, encounter);
+
+      if (!previous && status !== 'PLANNED') throw new EncounterStateConflictError();
+      if (previous && !canTransitionServiceStatus(previous.status, status)) {
+        throw new EncounterStateConflictError();
+      }
+      if (
+        previous &&
+        !allowAmendmentCorrections &&
+        previous.status !== 'PLANNED' &&
+        previous.providerDoctorId !== providerDoctorId
+      ) {
+        throw new EncounterStateConflictError();
+      }
+      const id = previous?.id ?? randomUUID();
+      next.push({
+        id,
+        serviceId: service.id,
+        serviceCode: service.code ?? null,
+        serviceName: service.name,
+        providerDoctorId: doctor.id,
+        status,
+        note,
+        startedAt:
+          status === 'IN_PROGRESS'
+            ? (previous?.startedAt ?? occurredAt)
+            : (previous?.startedAt ?? null),
+        completedAt:
+          status === 'COMPLETED'
+            ? (previous?.completedAt ?? occurredAt)
+            : (previous?.completedAt ?? null),
+        cancelledAt:
+          status === 'CANCELLED'
+            ? (previous?.cancelledAt ?? occurredAt)
+            : (previous?.cancelledAt ?? null),
+        createdAt: previous?.createdAt ?? occurredAt,
+        createdBy: previous?.createdBy ?? actorUserId,
+        updatedAt: occurredAt,
+        updatedBy: actorUserId,
+      });
+    }
+
+    for (const previous of existing) {
+      if (submittedIds.has(previous.id) || next.some((item) => item.id === previous.id)) continue;
+      if (
+        previous.status !== 'PLANNED' &&
+        !(
+          allowAmendmentCorrections &&
+          (previous.status === 'COMPLETED' || previous.status === 'CANCELLED')
+        )
+      ) {
+        throw new EncounterStateConflictError();
+      }
+    }
+    return next;
+  }
+
+  private async assertDoctorAssignedToEncounter(
+    context: TrustedTenantContext,
+    staffId: string,
+    encounter: Pick<EncounterRecord, 'facilityId' | 'branchId'>,
+  ): Promise<void> {
+    const [facilityAssignments, branchAssignments] = await Promise.all([
+      this.staffScopes.listFacilities(context, staffId),
+      this.staffScopes.listBranches(context, staffId),
+    ]);
+    const assignedToFacility = facilityAssignments.items.some(
+      (assignment) =>
+        assignment.facilityId === encounter.facilityId && assignment.facilityStatus === 'ACTIVE',
+    );
+    const assignedToBranch =
+      encounter.branchId !== null &&
+      branchAssignments.items.some(
+        (assignment) =>
+          assignment.branchId === encounter.branchId &&
+          assignment.facility.id === encounter.facilityId &&
+          assignment.branchStatus === 'ACTIVE' &&
+          assignment.facility.status === 'ACTIVE',
+      );
+    if (!assignedToFacility && !assignedToBranch) throw new EncounterReferenceInvalidError();
+  }
+
   private async reference<T>(lookup: () => Promise<T>): Promise<T> {
     try {
       return await lookup();
@@ -592,6 +1067,21 @@ export class EncounterService {
     throw new EncounterStateConflictError();
   }
 
+  private async authorizeEncounterDetailReads(context: TrustedTenantContext): Promise<void> {
+    await this.authorization.authorize(context, 'tenant.encounters.diagnoses.read');
+    await this.authorization.authorize(context, 'tenant.encounters.services.read');
+  }
+
+  private assertExpectedVersion(record: EncounterRecord, expectedVersion: number): void {
+    if (record.version !== expectedVersion) throw new EncounterVersionConflictError();
+  }
+
+  private assertHistoryCapacity(record: EncounterRecord): void {
+    if (record.history.length >= MAX_ENCOUNTER_HISTORY_EVENTS) {
+      throw new EncounterHistoryLimitError();
+    }
+  }
+
   private newRecord(
     actor: AuthenticatedPlatformUser,
     references: {
@@ -618,6 +1108,9 @@ export class EncounterService {
       encounterAt: now,
       status: EncounterStatus.DRAFT,
       clinical: {},
+      diagnoses: [],
+      serviceRecords: [],
+      amendments: [],
       version: 1,
       createdAt: now,
       updatedAt: now,
@@ -691,14 +1184,96 @@ export class EncounterService {
   private present(record: EncounterRecord): EncounterResponse {
     const { history: ignoredHistory, ...response } = record;
     void ignoredHistory;
-    return response;
+    const amendments = record.amendments ?? [];
+    const currentAmendment = amendments.at(-1);
+    const snapshot = effectiveClinicalSnapshot(record);
+    return {
+      ...response,
+      clinical: snapshot.clinical,
+      diagnoses: snapshot.diagnoses,
+      serviceRecords: snapshot.serviceRecords,
+      amendments: amendments.map(
+        ({ clinical: _clinical, diagnoses: _diagnoses, serviceRecords: _services, ...item }) =>
+          item,
+      ),
+      currentRevision:
+        currentAmendment?.status === 'OPEN'
+          ? 'AMENDMENT_DRAFT'
+          : currentAmendment
+            ? 'AMENDED'
+            : 'ORIGINAL',
+      activeAmendmentId: currentAmendment?.status === 'OPEN' ? currentAmendment.id : null,
+    };
   }
 
   private presentSummary(record: EncounterRecord): EncounterSummary {
-    const { clinical: ignoredClinical, ...response } = this.present(record);
-    void ignoredClinical;
+    const {
+      clinical: _clinical,
+      diagnoses: _diagnoses,
+      serviceRecords: _serviceRecords,
+      amendments: _amendments,
+      activeAmendmentId: _activeAmendmentId,
+      ...response
+    } = this.present(record);
     return response;
   }
+}
+
+function buildDiagnosisRecords(
+  inputs: ReplaceEncounterDiagnosesInput['diagnoses'],
+  existing: EncounterDiagnosis[],
+  actorUserId: string,
+  occurredAt: Date,
+): EncounterDiagnosis[] {
+  const existingById = new Map(existing.map((diagnosis) => [diagnosis.id, diagnosis]));
+  const submittedIds = new Set<string>();
+  return inputs.map((input) => {
+    const previous = input.id ? existingById.get(input.id) : undefined;
+    if ((input.id && !previous) || (input.id && submittedIds.has(input.id))) {
+      throw new EncounterInputValidationError();
+    }
+    if (input.id) submittedIds.add(input.id);
+    return {
+      id: previous?.id ?? randomUUID(),
+      description: input.description,
+      priority: input.priority,
+      clinicalStatus: input.clinicalStatus,
+      onsetAt: input.onsetAt === undefined ? (previous?.onsetAt ?? null) : input.onsetAt,
+      recordedAt: previous?.recordedAt ?? occurredAt,
+      recordedBy: previous?.recordedBy ?? actorUserId,
+      updatedAt: occurredAt,
+      updatedBy: actorUserId,
+    };
+  });
+}
+
+function effectiveClinicalSnapshot(record: EncounterRecord): {
+  clinical: EncounterClinicalRecord;
+  diagnoses: EncounterDiagnosis[];
+  serviceRecords: EncounterServiceRecord[];
+} {
+  const latestAmendment = (record.amendments ?? []).at(-1);
+  return latestAmendment
+    ? {
+        clinical: latestAmendment.clinical,
+        diagnoses: latestAmendment.diagnoses ?? [],
+        serviceRecords: latestAmendment.serviceRecords ?? [],
+      }
+    : {
+        clinical: record.clinical,
+        diagnoses: record.diagnoses ?? [],
+        serviceRecords: record.serviceRecords ?? [],
+      };
+}
+
+function canTransitionServiceStatus(
+  previous: EncounterServiceStatus,
+  next: EncounterServiceStatus,
+): boolean {
+  if (previous === next) return true;
+  if (previous === 'PLANNED') return next === 'IN_PROGRESS' || next === 'CANCELLED';
+  if (previous === 'IN_PROGRESS') return next === 'COMPLETED' || next === 'CANCELLED';
+  return false;
 }
 
 function changedClinicalFields(patch: EncounterClinicalPatch): string[] {

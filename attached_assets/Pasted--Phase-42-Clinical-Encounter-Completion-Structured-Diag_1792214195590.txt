@@ -1,0 +1,103 @@
+# Phase 42 — Clinical Encounter Completion, Structured Diagnoses & Service Records
+
+## Mission
+
+Extend the existing Thanarah encounter module into a coherent clinical workflow by implementing structured encounter diagnoses and clinical service/procedure records, while verifying the authenticated encounter experience using an isolated test environment.
+
+Inspect the actual repository first. Reuse existing Phase 37–41 APIs, tenant storage, clinical permissions, audit infrastructure, and Arabic RTL frontend. Implement the work end-to-end in one pass.
+
+### Stage 1 — Close the authenticated verification gap
+
+Set up or reuse an isolated local test environment with disposable central MySQL and tenant MongoDB databases.
+
+Create fixtures through supported test setup or seed mechanisms, not production accounts. Verify the real authentication flow and signed-in encounter workspace using an authorized test user.
+
+Test:
+- Sign-in and session handling.
+- Authorized encounter listing and details.
+- Saving a draft clinical record.
+- Permission-denied behavior.
+- Tenant and facility/branch scope restrictions.
+- Session expiration and safe recovery.
+
+Do not bypass guards or weaken authentication. If browser automation is available, perform a signed-in browser walkthrough. If the environment cannot support it, document the precise blocker rather than claiming success.
+
+### Stage 2 — Structured clinical diagnoses
+
+Implement encounter-linked diagnoses using the existing clinical domain and tenant MongoDB storage.
+
+Support:
+- Primary and secondary diagnoses.
+- Clinician-entered diagnosis descriptions.
+- Diagnosis code and code-system fields only when explicitly identified and validated.
+- Clinical status and relevant timestamps.
+- Authorized creation, update, and removal from an editable encounter.
+- Auditable changes and appropriate concurrency protection.
+
+Do not invent standardized medical codes, automatically diagnose patients, or present free text as a validated clinical terminology code.
+
+Finalized encounters must follow an explicit amendment workflow; do not allow silent edits.
+
+### Stage 3 — Clinical services and procedures
+
+Implement encounter-linked service/procedure records only to the extent supported by the existing domain.
+
+Support a tenant-managed catalog or reuse an existing service catalog if one exists. Validate tenant, facility, branch, provider, and service references server-side.
+
+Record appropriate operational details, such as service reference, status, responsible clinician, timestamps, and clinician-entered notes when necessary.
+
+Do not implement medication ordering, prescriptions, billing, insurance claims, payment collection, or inventory deductions in this phase. Do not infer prices or automatically charge patients.
+
+### Stage 4 — API, persistence, and authorization
+
+Implement versioned APIs using established repository conventions.
+
+- Keep all clinical records in tenant MongoDB.
+- Enforce tenant and facility/branch scope on every request.
+- Introduce granular permissions for diagnosis and clinical service access.
+- Validate lifecycle transitions and prevent mass assignment.
+- Preserve optimistic concurrency and audit requirements.
+- Add suitable indexes and safe handling for missing indexes.
+- Prevent cross-tenant reference injection.
+- Document consistency boundaries and recovery behavior.
+
+If new central permission metadata requires a migration, add a follow-on migration consistent with the current migration catalog. Do not run production migrations.
+
+### Stage 5 — Arabic RTL UI
+
+Extend the existing encounter UI with:
+- Structured diagnosis entry and editing.
+- Primary/secondary diagnosis designation.
+- Clinical service/procedure selection and status.
+- Permission-aware controls.
+- Clear draft, saved, completed, and amended states.
+- Validation, loading, empty, forbidden, and recoverable error states.
+- Version-conflict handling.
+- Responsive Arabic RTL layout.
+
+Use real APIs and actual persisted data. No fabricated clinical content or fake success messages.
+
+### Stage 6 — Tests and final verification
+
+Add tests for:
+- Tenant isolation and facility/branch scope.
+- Diagnosis validation and primary-diagnosis rules.
+- Clinical service reference validation.
+- Unauthorized access and mutation.
+- Finalized encounter amendment rules.
+- Concurrent edits and duplicate submissions.
+- Audit privacy.
+- Missing indexes and database failures.
+- Signed-in UI behavior when the available test infrastructure supports it.
+
+Run the full test suite, disposable MongoDB/MySQL integration tests, type-check, lint, formatting, Prisma validation, build, JavaScript syntax checks, and `git diff --check` as applicable.
+
+Restart the development application and verify both signed-out and authenticated flows when possible.
+
+### Restrictions
+
+No production database connections, production deployment, production migrations, authentication bypass, secrets in logs, automatic staging, commits, or history rewriting. Preserve existing changes and specification attachments. Do not claim tests or browser walkthroughs that were not executed.
+
+### Final report
+
+Report exact test counts, actual implemented features, authenticated verification results, permissions and isolation coverage, any environment blockers, and unresolved risks. Proceed through all safely executable stages without stopping at an audit-only report.
