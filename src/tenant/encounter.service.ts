@@ -1215,6 +1215,7 @@ export class EncounterService {
       activeAmendmentId: _activeAmendmentId,
       ...response
     } = this.present(record);
+    void [_clinical, _diagnoses, _serviceRecords, _amendments, _activeAmendmentId];
     return response;
   }
 }

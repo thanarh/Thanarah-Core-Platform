@@ -114,7 +114,7 @@ const makeHarness = (() => {
   };
   const patients = { findById: vi.fn(async () => ({ status: 'ACTIVE' })) };
   const doctors = {
-    findById: vi.fn(async () => ({ operationallyActive: true, staffId: actorId })),
+    findById: vi.fn(async () => ({ id: doctorId, operationallyActive: true, staffId: actorId })),
   };
   const services = {
     findById: vi.fn(async (inputContext: TrustedTenantContext, id: string) => {

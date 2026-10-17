@@ -6,3 +6,4 @@
 - [Additive scheduling migrations](appointment-scheduling-migrations.md) — add policy schema and permission grants in a follow-on migration; test the cumulative migration catalog.
 - [MySQL index names](mysql-index-names.md) — explicitly map verbose Prisma composite index names to concise MySQL identifiers and test against MySQL.
 - [Appointment timezone contract](appointment-timezone-contract.md) — date-only filters require the active facility policy timezone; browser timezone is a labeled UI fallback, not API semantics.
+- [Headless Chromium cleanup](headless-chromium-cleanup.md) — terminate the isolated browser process group before deleting its temporary profile.

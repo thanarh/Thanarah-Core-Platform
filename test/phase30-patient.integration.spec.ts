@@ -484,6 +484,27 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       apiEncounterId,
     );
 
+    const clinicDateParts = new Map(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Riyadh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+        .formatToParts(new Date())
+        .map(({ type, value }) => [type, value]),
+    );
+    const clinicDate = `${clinicDateParts.get('year')}-${clinicDateParts.get('month')}-${clinicDateParts.get('day')}`;
+    const dateScopedList = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}&fromDate=${clinicDate}&toDate=${clinicDate}`,
+      headers: bearerHeaders(),
+    });
+    expect(dateScopedList.statusCode, dateScopedList.body).toBe(200);
+    expect(
+      dateScopedList.json<{ items: Array<{ id: string }> }>().items.map(({ id }) => id),
+    ).toEqual(expect.arrayContaining([apiEncounterId, browserEncounterId]));
+
     const outOfScopeList = await getApplication().inject({
       method: 'GET',
       url: `${tenantRoot(tenantA)}/encounters?facilityId=${clinicalFacilityId}&branchId=${unassignedBranchId}`,
@@ -842,6 +863,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `Boolean(document.querySelector('form[data-form="signin"]'))`,
         'sign-in form',
       );
+      expect(
+        await evaluateBrowser(client, `!document.body.innerText.includes('انتهت جلسة الدخول')`),
+      ).toBe(true);
       const submitLogin = `(() => {
           const form = document.querySelector('form[data-form="signin"]');
           if (!form) return false;
@@ -955,20 +979,31 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
       const addService = `(() => {
           const button = document.querySelector('button[data-action="add-service-record"]');
-          if (!button) return false;
+          if (!button) return 'missing-add-button';
           button.click();
           const form = document.querySelector('form[data-form="services"]');
           const service = form?.querySelector('[name="serviceId"]');
           const provider = form?.querySelector('[name="providerDoctorId"]');
           const note = form?.querySelector('[name="note"]');
-          if (!form || !service || !provider || !note) return false;
+          if (!form) return 'missing-service-form';
+          if (!service || !provider || !note) {
+            return \`missing-fields:\${Array.from(form.querySelectorAll('input,select,textarea')).map((field) => field.name).join(',')}\`;
+          }
           service.value = ${JSON.stringify(clinicalServiceId)};
           provider.value = ${JSON.stringify(clinicalDoctorId)};
           note.value = 'Browser-verified service record';
           form.requestSubmit();
-          return true;
+          return 'submitted';
         })()`;
-      expect(await evaluateBrowser(client, addService)).toBe(true);
+      const serviceSubmitResult = await evaluateBrowser(client, addService);
+      const browserExceptions = client.events
+        .filter((event) => event.method === 'Runtime.exceptionThrown')
+        .map((event) => {
+          const details = event.params?.exceptionDetails as
+            { text?: string; exception?: { description?: string } } | undefined;
+          return details?.exception?.description || details?.text || 'Uncaught browser exception';
+        });
+      expect(serviceSubmitResult, browserExceptions.join('\n')).toBe('submitted');
       await waitForBrowserCondition(
         client,
         `document.body.innerText.includes('الإصدار الحالي: 4')`,
@@ -3399,11 +3434,14 @@ function bearerHeaders(): { authorization: string } {
 
 type CdpReply = {
   id?: number;
+  method?: string;
+  params?: Record<string, unknown>;
   result?: Record<string, unknown>;
   error?: { message?: string };
 };
 
 type CdpClient = {
+  events: CdpReply[];
   send(method: string, params?: Record<string, unknown>): Promise<Record<string, unknown>>;
   close(): void;
 };
@@ -3426,9 +3464,13 @@ async function connectCdp(url: string): Promise<CdpClient> {
     number,
     { resolve: (reply: CdpReply) => void; reject: (error: Error) => void }
   >();
+  const events: CdpReply[] = [];
   socket.addEventListener('message', (event) => {
     const reply = JSON.parse(String(event.data)) as CdpReply;
-    if (reply.id === undefined) return;
+    if (reply.id === undefined) {
+      events.push(reply);
+      return;
+    }
     const request = pending.get(reply.id);
     if (!request) return;
     pending.delete(reply.id);
@@ -3438,7 +3480,8 @@ async function connectCdp(url: string): Promise<CdpClient> {
   });
 
   return {
-    send(method, params = {}) {
+    events,
+    send(method: string, params: Record<string, unknown> = {}): Promise<Record<string, unknown>> {
       const id = ++nextId;
       return new Promise<Record<string, unknown>>((resolvePromise, rejectPromise) => {
         pending.set(id, {
@@ -3448,7 +3491,7 @@ async function connectCdp(url: string): Promise<CdpClient> {
         socket.send(JSON.stringify({ id, method, params }));
       });
     },
-    close() {
+    close(): void {
       socket.close();
     },
   };
@@ -3479,7 +3522,9 @@ async function waitForBrowserCondition(
     client,
     `JSON.stringify({
       encounterButtons: document.querySelectorAll('button[data-action="open-encounter"]').length,
-      resultCount: document.querySelector('.encounter-workspace-name')?.textContent,
+      resultCount: document.querySelector('.encounter-card .encounter-workspace-name')?.textContent,
+      emptyNotice: document.querySelector('.encounter-empty')?.innerText,
+      listText: document.querySelector('.encounter-list')?.innerText,
       facilityId: document.querySelector('form[data-form="filters"] [name="facilityId"]')?.value,
       branchId: document.querySelector('form[data-form="filters"] [name="branchId"]')?.value,
       fromDate: document.querySelector('form[data-form="filters"] [name="date"]')?.value

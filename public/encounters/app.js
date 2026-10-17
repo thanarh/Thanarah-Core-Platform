@@ -119,7 +119,12 @@
 
   async function bootstrap() {
     try {
-      await api.restoreSession();
+      const restored = await api.restoreSession();
+      if (!restored) {
+        state.screen = 'signin';
+        render();
+        return;
+      }
       await loadWorkspaces();
     } catch (error) {
       if (error && error.status === 401) {
@@ -880,7 +885,7 @@
       `<option value="">مقدم اللقاء الحالي</option>`,
       ...state.doctors.map(
         (doctor) =>
-          `<option value="${escapeHtml(doctor.id)}" ${doctor.id === item.providerDoctorId ? 'selected' : ''}>${escapeHtml(humanName(doctor))}</option>`,
+          `<option value="${escapeHtml(doctor.id)}" ${doctor.id === item.providerDoctorId ? 'selected' : ''}>${escapeHtml(displayName(doctor))}</option>`,
       ),
     ];
     if (item.providerDoctorId && !knownDoctor) {
