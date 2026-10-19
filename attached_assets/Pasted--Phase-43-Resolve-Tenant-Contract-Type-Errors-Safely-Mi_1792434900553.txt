@@ -1,0 +1,66 @@
+# Phase 43 — Resolve Tenant Contract Type Errors Safely
+
+## Mission
+
+Resolve all 11 errors currently reported by `npm run type-check:tenant-contracts`, across the four affected test files, without weakening tenant isolation, authorization, storage contracts, or existing test coverage.
+
+The main `npm run type-check` currently passes. Preserve that result while fixing the separate tenant-contract check.
+
+## Stage 1 — Diagnose the exact failures
+
+Run `npm run type-check:tenant-contracts` and inspect all 11 errors in context.
+
+For each error, identify:
+- The exact file, line, and TypeScript diagnostic.
+- The contract or type definition involved.
+- Whether the issue is an outdated test fixture, a genuinely incompatible contract, an incorrect mock, or a production-code defect.
+- The smallest correct fix.
+
+Inspect relevant Git changes and existing user modifications before editing. Do not assume that the tests are wrong simply because production code compiles.
+
+## Stage 2 — Fix the underlying causes
+
+Apply minimal, type-safe fixes.
+
+Requirements:
+- Keep tenant identifiers, trusted tenant context, storage resolution, and authorization contracts explicit.
+- Do not introduce `any`, broad type assertions, `@ts-ignore`, `@ts-expect-error` without a proven compiler requirement, or disabled compiler checks to suppress errors.
+- Do not weaken validation, make required fields optional solely to satisfy fixtures, or replace meaningful types with permissive interfaces.
+- Update test fixtures and mocks only when they no longer accurately represent the intended contract.
+- If a diagnostic reveals a real production contract defect, fix the implementation and add regression coverage.
+- Preserve the semantics of all existing tests.
+
+## Stage 3 — Regression verification
+
+Run and report the actual results of:
+
+1. `npm run type-check:tenant-contracts`
+2. `npm run type-check`
+3. The four affected test files.
+4. The full test suite.
+5. Disposable MongoDB/MySQL integration tests relevant to tenant contracts, if available.
+6. Lint, formatting, and `git diff --check`.
+
+If a command is unavailable or fails for an unrelated reason, report the exact limitation instead of claiming success.
+
+## Stage 4 — Review
+
+Inspect the final diff for:
+- Weakened tenant isolation or authorization.
+- Tests that were deleted, skipped, or made less meaningful.
+- Unsafe type assertions.
+- Unrelated modifications.
+- Changes to user-owned files or specification attachments.
+
+Preserve all existing modifications and untracked files. Do not stage, commit, rewrite history, deploy, connect to production, or run production migrations.
+
+## Final report
+
+Provide:
+- The root cause of each category of error.
+- The files changed and why.
+- Exact before/after type-check results.
+- Test and integration counts.
+- Any unresolved errors or risks.
+
+Do not report this phase complete until the tenant-contract type-check passes and the regression checks have been executed.

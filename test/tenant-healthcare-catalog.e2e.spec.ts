@@ -426,7 +426,9 @@ describe('Tenant healthcare catalog HTTP authorization and routing', () => {
         },
       },
     });
-    expect(createSpecialty?.responses?.['409']?.description).toContain('normalized name');
+    expect(createSpecialty?.responses?.['409']).toMatchObject({
+      description: expect.stringContaining('normalized name'),
+    });
     expect(listDepartment?.parameters).toEqual(
       expect.arrayContaining([
         expect.objectContaining({
@@ -469,7 +471,9 @@ describe('Tenant healthcare catalog HTTP authorization and routing', () => {
       const operation = document.paths[path]?.[method];
       expect(operation).toBeDefined();
       expect(operation?.security).toEqual([{ bearer: [] }]);
-      expect(operation?.responses?.['400']?.description).toBeTruthy();
+      expect(operation?.responses?.['400']).toMatchObject({
+        description: expect.stringMatching(/\S/),
+      });
     }
 
     expect(document.paths[`${departmentsPath}/{departmentId}`]?.delete).toBeUndefined();

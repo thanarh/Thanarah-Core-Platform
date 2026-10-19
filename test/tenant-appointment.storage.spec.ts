@@ -4,7 +4,10 @@ import { InMemoryTenantAppointmentStorage } from '../src/tenant/in-memory-tenant
 import { AppointmentScheduleConflictError } from '../src/tenant/appointment.errors';
 import { UnconfiguredTenantAppointmentStorage } from '../src/tenant/unconfigured-tenant-appointment.storage';
 import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
-import type { TenantStorageRoute } from '../src/tenant/tenant-storage.contract';
+import type {
+  TenantStoragePlacementId,
+  TenantStorageRoute,
+} from '../src/tenant/tenant-storage.contract';
 import { TenantStorageNotConfiguredError } from '../src/tenant/tenant-storage.errors';
 
 const tenantA = '11111111-1111-4111-8111-111111111111';
@@ -22,9 +25,9 @@ const context = (tenantId: string): TrustedTenantContext =>
     platformUserId: '88888888-8888-4888-8888-888888888888',
   }) as TrustedTenantContext;
 
-const route = {
-  placements: [{ placementId: placement }],
-} as TenantStorageRoute;
+const route: TenantStorageRoute = {
+  placements: [{ placementId: placement as TenantStoragePlacementId }],
+};
 
 function record(overrides: Partial<AppointmentRecord> = {}): AppointmentRecord {
   const startsAt = new Date('2026-10-15T09:00:00.000Z');

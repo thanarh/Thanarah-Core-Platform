@@ -31,7 +31,7 @@ const actor: AuthenticatedPlatformUser = {
   platformRoleIds: [],
 };
 
-const record = (status = StaffStatus.ACTIVE): TenantStaffRecord => ({
+const record = (status: StaffStatus = StaffStatus.ACTIVE): TenantStaffRecord => ({
   id: staffId,
   tenantId,
   userId: targetUserId,

@@ -429,7 +429,7 @@ describe('Tenant Staff HTTP authorization and routing', () => {
       permission: 'tenant.staff.roles.manage',
       action: 'assign',
     },
-  ])(
+  ] as const)(
     'does not let a platform role bypass missing $permission',
     async ({ method, url, permission, action }) => {
       tenantAuthorization.authorize.mockRejectedValueOnce(new ForbiddenException());
