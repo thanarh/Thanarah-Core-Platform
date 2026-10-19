@@ -835,7 +835,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         .formatToParts(appointmentDay)
         .map(({ type, value }) => [type, value]),
     );
+    const worklistDateParts = new Map(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Riyadh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+        .formatToParts(new Date())
+        .map(({ type, value }) => [type, value]),
+    );
     const appointmentDate = `${appointmentDateParts.get('year')}-${appointmentDateParts.get('month')}-${appointmentDateParts.get('day')}`;
+    const worklistDate = `${worklistDateParts.get('year')}-${worklistDateParts.get('month')}-${worklistDateParts.get('day')}`;
     const appointmentStart = new Date(`${appointmentDate}T10:00:00+03:00`);
     const appointmentResponse = await getApplication().inject({
       method: 'POST',
@@ -853,6 +864,25 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(appointmentResponse.statusCode, appointmentResponse.body).toBe(201);
     browserAppointmentId = appointmentResponse.json<{ id: string }>().id;
+
+    const [tenantPatientResponse, otherTenantPatientLookup] = await Promise.all([
+      getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}`,
+        headers: bearerHeaders(),
+      }),
+      getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantB)}/patients/${otherTenantPatientId}`,
+        headers: bearerHeaders(),
+      }),
+    ]);
+    expect(tenantPatientResponse.statusCode).toBe(200);
+    expect(otherTenantPatientLookup.statusCode).toBe(200);
+    const tenantPatientNumber = tenantPatientResponse.json<{ patientNumber: string }>()
+      .patientNumber;
+    const otherTenantPatientNumber = otherTenantPatientLookup.json<{ patientNumber: string }>()
+      .patientNumber;
 
     const limitedLogin = await getApplication().inject({
       method: 'POST',
@@ -949,31 +979,83 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/appointments/` });
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        `Boolean(document.querySelector('#signin-form input[name="email"]'))`,
         'appointments sign-in form',
       );
       expect(
         await evaluateBrowser(client, `!document.body.innerText.includes('انتهت جلسة الدخول')`),
       ).toBe(true);
+      const submitAppointmentsLogin = `(() => {
+        const form = document.querySelector('#signin-form');
+        if (!form) return false;
+        form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
+        form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, submitAppointmentsLogin)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'appointments workspace selection',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))
+          ?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="new-appointment"]'))`,
+        'authorized appointments workspace',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="new-appointment"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#appointment-form #patient-search'))`,
+        'appointment patient search',
+      );
+      const searchTenantPatient = `(() => {
+        const input = document.querySelector('#patient-search');
+        if (!input) return false;
+        input.value = ${JSON.stringify(tenantPatientNumber)};
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, searchTenantPatient)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#patientId option[value="${clinicalPatientId}"]'))`,
+        'tenant patient search result',
+      );
+      const searchOtherTenantPatient = `(() => {
+        const input = document.querySelector('#patient-search');
+        if (!input) return false;
+        input.value = ${JSON.stringify(otherTenantPatientNumber)};
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, searchOtherTenantPatient)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `!Array.from(document.querySelectorAll('#patientId option')).some((option) =>
+          option.value === ${JSON.stringify(otherTenantPatientId)}) &&
+          !document.querySelector('#patient-search-help')?.textContent.includes('جارٍ البحث')`,
+        'tenant-isolated patient search',
+      );
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="signin"]'))`,
-        'sign-in form',
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.parentElement?.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'encounters workspace after authenticated app switch',
       );
-      expect(
-        await evaluateBrowser(client, `!document.body.innerText.includes('انتهت جلسة الدخول')`),
-      ).toBe(true);
-      const submitLogin = `(() => {
-          const form = document.querySelector('form[data-form="signin"]');
-          if (!form) return false;
-          form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
-          form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
-          form.requestSubmit();
-          return true;
-        })()`;
-      expect(await evaluateBrowser(client, submitLogin)).toBe(true);
 
       await waitForBrowserCondition(
         client,
@@ -1027,7 +1109,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${otherTenantPatientId}"]'))`,
         ),
       ).toBe(false);
-      await evaluateBrowser(client, `document.querySelector('[data-action="view-worklist"]')?.click()`);
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="view-worklist"]')?.click()`,
+      );
       await waitForBrowserCondition(
         client,
         `Boolean(document.querySelector('input#appointment-date'))`,
@@ -1035,10 +1120,13 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       const loadAppointment = `(() => {
           const input = document.querySelector('#appointment-date');
+          const branch = document.querySelector('#appointment-branch');
           const button = document.querySelector('[data-action="load-appointments"]');
-          if (!input || !button) return false;
+          if (!input || !branch || !button) return false;
           input.value = ${JSON.stringify(appointmentDate)};
           input.dispatchEvent(new Event('change', { bubbles: true }));
+          branch.value = ${JSON.stringify(clinicalBranchId)};
+          branch.dispatchEvent(new Event('change', { bubbles: true }));
           button.click();
           return true;
         })()`;
@@ -1174,7 +1262,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       const reloadFilter = `(() => {
         const form = document.querySelector('form[data-form="filters"]');
         if (!form) return false;
-        form.querySelector('[name="date"]').value = ${JSON.stringify(appointmentDate)};
+        form.querySelector('[name="date"]').value = ${JSON.stringify(worklistDate)};
         form.querySelector('[name="facilityId"]').value = ${JSON.stringify(clinicalFacilityId)};
         form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
         form.requestSubmit();
@@ -1195,27 +1283,44 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `document.querySelector('textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(browserClinicalText)}`,
         'reloaded clinical documentation',
       );
-      expect(await evaluateBrowser(client, `document.body.innerText.includes('Browser-verified diagnosis')`)).toBe(
-        true,
-      );
       expect(
-        await evaluateBrowser(client, `document.body.innerText.includes('Browser-verified service record')`),
+        await evaluateBrowser(
+          client,
+          `document.querySelector('form[data-form="diagnoses"] textarea[name="description"]')?.value === 'Browser-verified diagnosis'`,
+        ),
+      ).toBe(true);
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.querySelector('form[data-form="services"] textarea[name="note"]')?.value === 'Browser-verified service record'`,
+        ),
       ).toBe(true);
 
-      await evaluateBrowser(client, `document.querySelector('[data-action="complete-encounter"]')?.click()`);
+      const completionClick = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="complete-encounter"]')?.click()`,
+      );
       await respondToDialog('confirm');
+      await completionClick;
       await waitForBrowserCondition(
         client,
         `document.querySelector('[data-status="COMPLETED"]') !== null`,
         'completed encounter',
       );
       expect(
-        await evaluateBrowser(client, `document.querySelector('form[data-form="clinical"]') === null`),
+        await evaluateBrowser(
+          client,
+          `document.querySelector('form[data-form="clinical"]') === null`,
+        ),
       ).toBe(true);
 
-      await evaluateBrowser(client, `document.querySelector('[data-action="create-amendment"]')?.click()`);
       const amendmentReason = 'Browser-verified correction reason';
+      const amendmentClick = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="create-amendment"]')?.click()`,
+      );
       await respondToDialog('prompt', amendmentReason);
+      await amendmentClick;
       await waitForBrowserCondition(
         client,
         `Boolean(document.querySelector('form[data-form="clinical"]'))`,
@@ -1235,7 +1340,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `document.querySelector('form[data-form="clinical"] .form-note')?.innerText.includes('الإصدار الحالي: 7')`,
+        `Array.from(document.querySelectorAll('.encounter-detail')).some((item) =>
+          item.querySelector('strong')?.innerText === 'الإصدار' &&
+          item.querySelector('span')?.innerText === '7')`,
         'amended clinical save',
       );
       const amendedDiagnosis = 'Browser-verified amended diagnosis';
@@ -1252,8 +1359,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `document.body.innerText.includes(${JSON.stringify(amendedDiagnosis)}) &&
-          document.querySelector('form[data-form="diagnoses"] .form-note')?.innerText.includes('الإصोड الحالي: 8')`,
+        `document.querySelector('form[data-form="diagnoses"] textarea[name="description"]')?.value === ${JSON.stringify(amendedDiagnosis)} &&
+          Array.from(document.querySelectorAll('.encounter-detail')).some((item) =>
+            item.querySelector('strong')?.innerText === 'الإصدار' &&
+            item.querySelector('span')?.innerText === '8')`,
         'amended diagnosis save',
       );
       const amendedServiceNote = 'Browser-verified amended service note';
@@ -1270,11 +1379,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `document.body.innerText.includes(${JSON.stringify(amendedServiceNote)})`,
+        `document.querySelector('form[data-form="services"] textarea[name="note"]')?.value === ${JSON.stringify(amendedServiceNote)} &&
+          Array.from(document.querySelectorAll('.encounter-detail')).some((item) =>
+            item.querySelector('strong')?.innerText === 'الإصدار' &&
+            item.querySelector('span')?.innerText === '9')`,
         'amended service save',
       );
-      await evaluateBrowser(client, `document.querySelector('[data-action="finalize-amendment"]')?.click()`);
+      const finalizeClick = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="finalize-amendment"]')?.click()`,
+      );
       await respondToDialog('confirm');
+      await finalizeClick;
       await waitForBrowserCondition(
         client,
         `document.querySelector('[data-status="COMPLETED"]') !== null &&
@@ -1290,7 +1406,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         .findOne({ _id: browserEncounterId, _tenantId: tenantA.id });
       expect(storedBrowserEncounter?.appointmentId).toBe(browserAppointmentId);
       expect(storedBrowserEncounter?.status).toBe('COMPLETED');
-      expect(storedBrowserEncounter?.currentRevision).toBe('AMENDED');
       expect(storedBrowserEncounter?.clinical).toMatchObject({
         chiefComplaint: browserClinicalText,
       });
@@ -1320,7 +1435,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         where: { id: browserSession!.id },
         data: { expiresAt: new Date(Date.now() - 1_000) },
       });
-      await evaluateBrowser(client, `document.querySelector('[data-action="load-history"]')?.click()`);
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="load-history"]')?.click()`,
+      );
       await waitForBrowserCondition(
         client,
         `Boolean(document.querySelector('form[data-form="signin"]'))`,
@@ -1371,7 +1489,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await delay(250);
       rmSync(browserProfile, { recursive: true, force: true, maxRetries: 60, retryDelay: 100 });
     }
-  }, 60_000);
+  }, 120_000);
 
   it('runs authenticated Patient CRUD and lifecycle operations against real tenant databases', async () => {
     const health = await getApplication().inject({

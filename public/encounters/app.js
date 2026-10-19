@@ -95,6 +95,7 @@
     filterDateSetByUser: false,
     appointmentDate: localDateString(new Date()),
     appointmentDateSetByUser: false,
+    appointmentBranchId: '',
     timezone: null,
     appointmentTimezone: null,
     detailTimezone: null,
@@ -299,6 +300,7 @@
     state.appointmentTimezone = null;
     state.detailTimezone = null;
     state.appointmentFacilityId = '';
+    state.appointmentBranchId = '';
     state.directFacilityId = '';
     state.directBranchId = '';
     state.selectedAppointmentId = '';
@@ -513,6 +515,7 @@
   function renderAppointmentCreation() {
     if (!can(PERMISSIONS.encounterCreate) || !can(PERMISSIONS.appointmentsRead)) return '';
     const facilityId = state.appointmentFacilityId || state.filter.facilityId;
+    const branchId = state.appointmentBranchId || state.filter.branchId;
     return `
       <section class="encounter-card">
         <div class="encounter-section-heading">
@@ -522,6 +525,7 @@
         ${state.appointmentError ? notice(errorMessage(state.appointmentError), true, 'load-appointments') : ''}
         <div class="encounter-form-grid">
           ${facilitySelector('appointment-facility', 'appointmentFacilityId', facilityId)}
+          ${branchField('appointment-branch', 'branchId', state.branches, branchId)}
           <p class="form-note wide">وقت العرض: ${escapeHtml(timeZoneLabel(state.appointmentTimezone))}</p>
           <div class="encounter-field">
             <label for="appointment-date">تاريخ المواعيد</label>
@@ -1369,6 +1373,9 @@
       }
       const response = await api.listAppointments(state.workspace.tenantId, {
         facilityId,
+        ...(state.appointmentBranchId || state.filter.branchId
+          ? { branchId: state.appointmentBranchId || state.filter.branchId }
+          : {}),
         fromDate: state.appointmentDate,
         toDate: state.appointmentDate,
         status: 'SCHEDULED',
@@ -1948,11 +1955,17 @@
       state.filterDateSetByUser = true;
     } else if (target.id === 'appointment-facility') {
       state.appointmentFacilityId = target.value;
+      state.appointmentBranchId = '';
       state.appointments = [];
       state.selectedAppointmentId = '';
       state.appointmentTimezone = null;
       state.appointmentError = null;
       void loadBranches(target.value).then(render);
+    } else if (target.id === 'appointment-branch') {
+      state.appointmentBranchId = target.value;
+      state.appointments = [];
+      state.selectedAppointmentId = '';
+      state.appointmentError = null;
     } else if (target.id === 'appointment-date') {
       state.appointmentDate = target.value;
       state.appointmentDateSetByUser = true;

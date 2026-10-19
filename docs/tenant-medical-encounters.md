@@ -253,6 +253,20 @@ headless Chromium, signs in through the real password endpoint, and never
 targets production. No production migration or deployment is performed from
 this workspace.
 
+The Phase 44 browser journey runs as part of that suite (the script name is
+retained for compatibility). It uses synthetic users and two disposable
+tenants to verify signed-out access to both workspaces, real sign-in and
+workspace selection, tenant-scoped patient search, branch-scoped appointment
+listing, appointment-to-encounter creation, clinical/diagnosis/service saves,
+reload persistence, completion, reasoned amendment, and clinical-data clearing
+after session expiry. The appointments-only user can list appointments but is
+denied encounter details. No production patient data is used.
+
+The suite does not currently inject a central-MySQL outage during
+authentication/permission resolution, browser API timeouts and retries, or
+partial failures between MySQL and MongoDB. These failure modes remain outside
+the verified browser coverage.
+
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or
 regulatory-compliance claim is included.
