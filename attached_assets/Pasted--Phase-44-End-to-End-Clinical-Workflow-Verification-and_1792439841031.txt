@@ -1,0 +1,168 @@
+# Phase 44 — End-to-End Clinical Workflow Verification and Hardening
+
+## Mission
+
+Implement and execute comprehensive browser-based end-to-end tests for Thanarah's existing appointment, patient, encounter, diagnosis, and clinical service workflows.
+
+The goal is to prove that authenticated users can complete the supported clinical workflow through the real UI and APIs, that changes persist in isolated test databases, and that authorization and tenant isolation remain enforced.
+
+This is an implementation and verification task, not an audit-only report. Inspect the actual repository, complete the test infrastructure, fix genuine defects discovered, and rerun all relevant checks.
+
+## Stage 1 — Inspect the Existing Application
+
+Inspect:
+- Authentication and session/refresh behavior.
+- Tenant membership and active-tenant resolution.
+- Facility and branch authorization.
+- Patient search and patient clinical history.
+- Appointment creation and management.
+- Encounter lifecycle and clinical documentation.
+- Structured diagnoses and service/procedure records.
+- Audit history and amendment behavior.
+- Existing browser automation, API test utilities, and disposable MySQL/MongoDB setup.
+- Existing test scripts and migration catalog.
+
+Reuse existing architecture and test infrastructure. Do not create a parallel application or duplicate the clinical domain.
+
+## Stage 2 — Isolated Test Environment
+
+Create or reuse a fully isolated test environment with disposable central MySQL and tenant MongoDB databases.
+
+Requirements:
+- Never connect to production databases or external production tenant storage.
+- Never use production patient information.
+- Use clearly synthetic test identities and records.
+- Create required platform roles, tenant memberships, facility/branch assignments, and permission fixtures through supported test setup.
+- Apply only the migrations required by the disposable test environment.
+- Ensure test data is isolated and safely cleaned up.
+- Do not bypass authentication guards, tenant context, authorization policies, or session validation.
+- Do not hardcode production secrets or print credentials in logs.
+
+If the existing environment cannot provision a required dependency, identify the exact blocker and complete all remaining safely executable checks.
+
+## Stage 3 — Real Authenticated Browser Walkthrough
+
+Use the repository's existing browser automation if available. Implement reusable end-to-end fixtures and tests.
+
+Verify the actual browser experience:
+
+1. Signed-out users opening `/appointments/` or `/encounters/` see the expected sign-in experience without a misleading expired-session warning.
+2. A synthetic authorized user signs in through the real authentication flow.
+3. The authenticated user accesses only their authorized tenant and facility/branch.
+4. The encounter workspace loads actual API data.
+5. Patient search returns only authorized tenant records.
+6. An eligible appointment can be opened as an encounter.
+7. Clinical documentation can be entered and saved.
+8. Structured diagnoses and supported clinical services/procedures can be added.
+9. The saved encounter can be reopened and the persisted data verified.
+10. Encounter completion follows the actual lifecycle rules.
+11. Any amendment to a completed encounter uses the supported reasoned amendment workflow and preserves the completed original.
+12. Unauthorized actions produce safe, clear errors.
+13. Session expiration or refresh failure returns the user to an appropriate signed-out state without exposing clinical data.
+14. Reloading the browser preserves correctly persisted server-side data.
+
+Use actual UI interactions and real API requests. Do not simulate success by mocking the application APIs in the primary end-to-end tests.
+
+## Stage 4 — Security and Tenant Isolation
+
+Use at least two synthetic tenants and users with different permissions and scopes.
+
+Verify:
+- Tenant A cannot list, read, modify, or enumerate Tenant B's patients, appointments, encounters, diagnoses, or clinical services.
+- A user assigned to one facility/branch cannot access records outside their authorized scope.
+- Appointment access does not automatically grant clinical-record permissions.
+- Read, edit, complete, cancel, and amend permissions are enforced server-side.
+- Client-supplied tenant, facility, branch, provider, or patient identifiers cannot override trusted server context.
+- Unauthorized requests do not leak clinical content through error messages.
+- Clinical notes and sensitive patient information are not written to ordinary application logs or audit metadata.
+- Browser URLs and frontend storage do not unnecessarily contain sensitive clinical data.
+
+Test both UI behavior and direct API access. Hiding a button alone is not authorization.
+
+## Stage 5 — Persistence and Failure Scenarios
+
+Verify real persistence using the disposable databases.
+
+Cover:
+- Draft save followed by reload.
+- Concurrent updates and version conflicts.
+- Duplicate encounter creation attempts for the same appointment.
+- Invalid lifecycle transitions.
+- Unauthorized clinical edits.
+- Tenant MongoDB unavailable.
+- Required index missing.
+- Central database unavailable during authentication or permission resolution.
+- API timeouts and safe retry behavior.
+- Session expiration while a clinical form is open.
+- Partial failures between central metadata and tenant clinical storage.
+
+Do not assume transactions span MySQL and MongoDB. Validate the actual consistency and recovery behavior.
+
+Do not introduce automatic retries for non-idempotent clinical writes unless the operation is safely idempotent.
+
+## Stage 6 — Fix Genuine Defects
+
+When a test reveals a real application defect:
+- Fix the underlying cause using existing architecture.
+- Add a regression test.
+- Preserve tenant isolation and permission boundaries.
+- Avoid unrelated refactoring.
+- Do not weaken tests, skip failing cases, disable guards, or replace real integration with mocks to make the suite green.
+
+If a failure is caused by test infrastructure rather than application behavior, fix the infrastructure or document the precise limitation.
+
+## Stage 7 — Regression and Final Verification
+
+Run:
+- The new browser end-to-end suite.
+- Relevant disposable MongoDB/MySQL integration tests.
+- Full unit test suite.
+- `npm run type-check`
+- `npm run type-check:tenant-contracts`
+- Lint and formatting checks.
+- Prisma validation and applicable test migration checks.
+- Frontend JavaScript syntax/build checks.
+- `git diff --check`.
+
+Restart the development application and verify startup and the relevant routes.
+
+Report exact results for each command. Do not claim browser verification if only API tests ran.
+
+## Stage 8 — Documentation and Final Review
+
+Document:
+- How to start the isolated test environment.
+- How synthetic test users and permissions are provisioned.
+- How to run the browser workflow.
+- Which tests require disposable database services.
+- Any remaining blockers or known defects.
+
+Inspect the final diff for accidental secret exposure, production endpoints, test weakening, tenant-isolation regressions, unrelated changes, and generated artifacts.
+
+Preserve all existing modifications and untracked specification attachments.
+
+## Explicit Restrictions
+
+- No production database connections.
+- No production deployment.
+- No production migrations.
+- No authentication bypass.
+- No real patient data.
+- No secrets in output.
+- No skipped tests merely to achieve a passing result.
+- No automatic staging or committing.
+- No history rewriting.
+- No deleting user-owned files or specification attachments.
+
+## Final Report
+
+Provide:
+1. Browser walkthrough results.
+2. Exact workflows verified end to end.
+3. Tenant and permission isolation results.
+4. Persistence and failure-handling results.
+5. Exact test counts and command outcomes.
+6. Defects fixed and regression tests added.
+7. Remaining blockers and risks.
+
+Proceed through all safely executable stages and do not stop after producing an audit or implementation plan.

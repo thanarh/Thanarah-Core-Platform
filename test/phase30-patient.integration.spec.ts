@@ -154,8 +154,13 @@ let clinicalServiceId = '';
 let otherTenantDoctorId = '';
 let otherTenantServiceId = '';
 let clinicalPatientId = '';
+let otherTenantPatientId = '';
 let apiEncounterId = '';
 let browserEncounterId = '';
+let browserAppointmentId = '';
+let limitedUserId = '';
+let limitedUserEmail = '';
+let limitedUserPassword = '';
 
 describe('Real tenant MongoDB Patient and Appointment runtime verification', () => {
   beforeAll(async () => {
@@ -432,6 +437,14 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(patientResponse.statusCode).toBe(201);
     clinicalPatientId = patientResponse.json<{ id: string }>().id;
+    const otherTenantPatientResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantB)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P44-${RUN_ID}`),
+    });
+    expect(otherTenantPatientResponse.statusCode).toBe(201);
+    otherTenantPatientId = otherTenantPatientResponse.json<{ id: string }>().id;
 
     const createEncounter = async (): Promise<{ id: string }> => {
       const response = await getApplication().inject({
@@ -811,6 +824,62 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
   });
 
   it('walks through the signed-in encounter UI in headless Chromium', async () => {
+    const appointmentDay = new Date(Date.now() + 36 * 60 * 60 * 1_000);
+    const appointmentDateParts = new Map(
+      new Intl.DateTimeFormat('en-US', {
+        timeZone: 'Asia/Riyadh',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      })
+        .formatToParts(appointmentDay)
+        .map(({ type, value }) => [type, value]),
+    );
+    const appointmentDate = `${appointmentDateParts.get('year')}-${appointmentDateParts.get('month')}-${appointmentDateParts.get('day')}`;
+    const appointmentStart = new Date(`${appointmentDate}T10:00:00+03:00`);
+    const appointmentResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/appointments`,
+      headers: { ...bearerHeaders(), 'idempotency-key': `phase44-${RUN_ID}` },
+      payload: {
+        patientId: clinicalPatientId,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+        serviceId: clinicalServiceId,
+        startsAt: appointmentStart.toISOString(),
+        endsAt: new Date(appointmentStart.getTime() + 30 * 60 * 1_000).toISOString(),
+      },
+    });
+    expect(appointmentResponse.statusCode, appointmentResponse.body).toBe(201);
+    browserAppointmentId = appointmentResponse.json<{ id: string }>().id;
+
+    const limitedLogin = await getApplication().inject({
+      method: 'POST',
+      url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth/login`,
+      payload: { email: limitedUserEmail, password: limitedUserPassword },
+    });
+    expect(limitedLogin.statusCode).toBe(200);
+    const limitedHeaders = {
+      authorization: `Bearer ${limitedLogin.json<{ accessToken: string }>().accessToken}`,
+    };
+    const limitedAppointmentList = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/appointments?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}`,
+      headers: limitedHeaders,
+    });
+    expect(limitedAppointmentList.statusCode).toBe(200);
+    expect(limitedAppointmentList.json<{ items: Array<{ id: string }> }>().items).toEqual(
+      expect.arrayContaining([expect.objectContaining({ id: browserAppointmentId })]),
+    );
+    const deniedClinicalRead = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
+      headers: limitedHeaders,
+    });
+    expect(deniedClinicalRead.statusCode).toBe(403);
+    expect(deniedClinicalRead.body).not.toContain('Phase 42 authenticated draft note');
+
     const browserProfile = mkdtempSync(join(tmpdir(), `phase42-chromium-${RUN_ID}-`));
     const browser = spawn(
       'chromium',
@@ -853,9 +922,39 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       const target = (await targetResponse.json()) as { webSocketDebuggerUrl?: string };
       if (!target.webSocketDebuggerUrl) throw new Error('Chromium page target omitted its CDP URL');
       client = await connectCdp(target.webSocketDebuggerUrl);
+      let dialogCursor = 0;
+      const respondToDialog = async (type: string, promptText?: string): Promise<void> => {
+        for (let attempt = 0; attempt < 100; attempt += 1) {
+          const eventIndex = client!.events.findIndex(
+            (event, index) =>
+              index >= dialogCursor && event.method === 'Page.javascriptDialogOpening',
+          );
+          if (eventIndex >= 0) {
+            const event = client!.events[eventIndex]!;
+            dialogCursor = eventIndex + 1;
+            expect(event.params?.type).toBe(type);
+            await client!.send('Page.handleJavaScriptDialog', {
+              accept: true,
+              ...(promptText !== undefined ? { promptText } : {}),
+            });
+            return;
+          }
+          await delay(50);
+        }
+        throw new Error(`Chromium did not open the expected ${type} dialog`);
+      };
       await client.send('Page.enable');
       await client.send('Runtime.enable');
       await client.send('Emulation.setTimezoneOverride', { timezoneId: 'Asia/Riyadh' });
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/appointments/` });
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        'appointments sign-in form',
+      );
+      expect(
+        await evaluateBrowser(client, `!document.body.innerText.includes('انتهت جلسة الدخول')`),
+      ).toBe(true);
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
       await waitForBrowserCondition(
@@ -913,25 +1012,64 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         })()`;
       expect(await evaluateBrowser(client, selectAssignedBranch)).toBe(true);
 
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="view-patient-history"]')?.click()`,
+      );
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]'))`,
-        'authorized encounter worklist',
+        `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${clinicalPatientId}"]'))`,
+        'authorized tenant patient picker',
       );
       expect(
         await evaluateBrowser(
           client,
-          `(() => {
-              document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]').click();
-              return true;
-            })()`,
+          `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${otherTenantPatientId}"]'))`,
         ),
-      ).toBe(true);
+      ).toBe(false);
+      await evaluateBrowser(client, `document.querySelector('[data-action="view-worklist"]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('input#appointment-date'))`,
+        'appointment-to-encounter controls',
+      );
+      const loadAppointment = `(() => {
+          const input = document.querySelector('#appointment-date');
+          const button = document.querySelector('[data-action="load-appointments"]');
+          if (!input || !button) return false;
+          input.value = ${JSON.stringify(appointmentDate)};
+          input.dispatchEvent(new Event('change', { bubbles: true }));
+          button.click();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, loadAppointment)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#eligible-appointment option[value="${browserAppointmentId}"]'))`,
+        'eligible appointment',
+      );
+      const createFromAppointment = `(() => {
+          const select = document.querySelector('#eligible-appointment');
+          if (!select) return false;
+          select.value = ${JSON.stringify(browserAppointmentId)};
+          select.dispatchEvent(new Event('change', { bubbles: true }));
+          const button = document.querySelector('[data-action="create-from-appointment"]');
+          if (!button) return false;
+          button.click();
+          return true;
+        })()`;
+      expect(await evaluateBrowser(client, createFromAppointment)).toBe(true);
       await waitForBrowserCondition(
         client,
         `Boolean(document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]'))`,
-        'encounter detail',
+        'appointment-linked encounter detail',
       );
+      const browserEncounterDocument = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('encounters')
+        .findOne({ appointmentId: browserAppointmentId, _tenantId: tenantA.id });
+      expect(browserEncounterDocument).not.toBeNull();
+      browserEncounterId = String(browserEncounterDocument?._id);
 
       const browserClinicalText = 'Headless authenticated draft save';
       const saveClinical = `(() => {
@@ -1010,10 +1148,149 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         'saved service record',
       );
 
+      await client.send('Page.reload');
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.parentElement?.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'workspace selection after reload',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const button = Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+              .find((candidate) => candidate.parentElement?.textContent?.includes(${JSON.stringify(tenantA.slug)}));
+            button?.click();
+            return Boolean(button);
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="filters"]'))`,
+        'encounter worklist after reload',
+      );
+      const reloadFilter = `(() => {
+        const form = document.querySelector('form[data-form="filters"]');
+        if (!form) return false;
+        form.querySelector('[name="date"]').value = ${JSON.stringify(appointmentDate)};
+        form.querySelector('[name="facilityId"]').value = ${JSON.stringify(clinicalFacilityId)};
+        form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, reloadFilter)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]'))`,
+        'persisted appointment encounter in worklist',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('button[data-action="open-encounter"][data-id="${browserEncounterId}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(browserClinicalText)}`,
+        'reloaded clinical documentation',
+      );
+      expect(await evaluateBrowser(client, `document.body.innerText.includes('Browser-verified diagnosis')`)).toBe(
+        true,
+      );
+      expect(
+        await evaluateBrowser(client, `document.body.innerText.includes('Browser-verified service record')`),
+      ).toBe(true);
+
+      await evaluateBrowser(client, `document.querySelector('[data-action="complete-encounter"]')?.click()`);
+      await respondToDialog('confirm');
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-status="COMPLETED"]') !== null`,
+        'completed encounter',
+      );
+      expect(
+        await evaluateBrowser(client, `document.querySelector('form[data-form="clinical"]') === null`),
+      ).toBe(true);
+
+      await evaluateBrowser(client, `document.querySelector('[data-action="create-amendment"]')?.click()`);
+      const amendmentReason = 'Browser-verified correction reason';
+      await respondToDialog('prompt', amendmentReason);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="clinical"]'))`,
+        'reasoned amendment editor',
+      );
+      const amendedClinicalText = 'Browser-verified amended clinical note';
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="clinical"]');
+          const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
+          if (!form || !field) return false;
+          field.value = ${JSON.stringify(amendedClinicalText)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('form[data-form="clinical"] .form-note')?.innerText.includes('الإصدار الحالي: 7')`,
+        'amended clinical save',
+      );
+      const amendedDiagnosis = 'Browser-verified amended diagnosis';
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="diagnoses"]');
+          const field = form?.querySelector('textarea[name="description"]');
+          if (!form || !field) return false;
+          field.value = ${JSON.stringify(amendedDiagnosis)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(amendedDiagnosis)}) &&
+          document.querySelector('form[data-form="diagnoses"] .form-note')?.innerText.includes('الإصोड الحالي: 8')`,
+        'amended diagnosis save',
+      );
+      const amendedServiceNote = 'Browser-verified amended service note';
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="services"]');
+          const field = form?.querySelector('textarea[name="note"]');
+          if (!form || !field) return false;
+          field.value = ${JSON.stringify(amendedServiceNote)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(amendedServiceNote)})`,
+        'amended service save',
+      );
+      await evaluateBrowser(client, `document.querySelector('[data-action="finalize-amendment"]')?.click()`);
+      await respondToDialog('confirm');
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-status="COMPLETED"]') !== null &&
+          document.querySelector('form[data-form="clinical"]') === null &&
+          document.querySelector('form[data-form="diagnoses"]') === null &&
+          document.querySelector('form[data-form="services"]') === null`,
+        'finalized amended encounter',
+      );
+
       const storedBrowserEncounter = await mongoAdminClient!
         .db(tenantA.databaseName)
         .collection('encounters')
         .findOne({ _id: browserEncounterId, _tenantId: tenantA.id });
+      expect(storedBrowserEncounter?.appointmentId).toBe(browserAppointmentId);
+      expect(storedBrowserEncounter?.status).toBe('COMPLETED');
+      expect(storedBrowserEncounter?.currentRevision).toBe('AMENDED');
       expect(storedBrowserEncounter?.clinical).toMatchObject({
         chiefComplaint: browserClinicalText,
       });
@@ -1023,6 +1300,50 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(storedBrowserEncounter?.serviceRecords).toMatchObject([
         { serviceId: clinicalServiceId, note: 'Browser-verified service record' },
       ]);
+      expect(storedBrowserEncounter?.amendments).toMatchObject([
+        {
+          reason: amendmentReason,
+          status: 'FINALIZED',
+          clinical: { chiefComplaint: amendedClinicalText },
+          diagnoses: [{ description: amendedDiagnosis }],
+          serviceRecords: [{ note: amendedServiceNote }],
+        },
+      ]);
+
+      const prisma = getApplication().get(PrismaService);
+      const browserSession = await prisma.platformSession.findFirst({
+        where: { userId: platformUserId, status: PlatformSessionStatus.ACTIVE },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(browserSession).not.toBeNull();
+      await prisma.platformSession.update({
+        where: { id: browserSession!.id },
+        data: { expiresAt: new Date(Date.now() - 1_000) },
+      });
+      await evaluateBrowser(client, `document.querySelector('[data-action="load-history"]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        'signed-out state after expired session',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const visible = document.body.innerText;
+            const stored = JSON.stringify({
+              local: Object.values(localStorage),
+              session: Object.values(sessionStorage),
+            });
+            return !visible.includes(${JSON.stringify(browserClinicalText)}) &&
+              !visible.includes(${JSON.stringify(amendedClinicalText)}) &&
+              !visible.includes(${JSON.stringify(amendedDiagnosis)}) &&
+              !visible.includes(${JSON.stringify(amendedServiceNote)}) &&
+              !stored.includes(${JSON.stringify(browserClinicalText)}) &&
+              !stored.includes(${JSON.stringify(amendedClinicalText)});
+          })()`,
+        ),
+      ).toBe(true);
     } finally {
       await Promise.race([client?.send('Browser.close').catch(() => undefined), delay(1_000)]);
       client?.close();
@@ -3113,6 +3434,7 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
     'tenant.branches.read',
     'tenant.doctors.read',
     'tenant.services.read',
+    'tenant.appointments.create',
     'tenant.appointments.read',
     'tenant.encounters.create',
     'tenant.encounters.create.direct',
@@ -3142,6 +3464,57 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
       tenantPermissionId: id,
     })),
     skipDuplicates: true,
+  });
+
+  limitedUserId = randomUUID();
+  limitedUserEmail = `phase44-appointments-only-${RUN_ID}@example.test`;
+  limitedUserPassword = randomBytes(24).toString('base64url');
+  const limitedMembershipId = randomUUID();
+  const limitedRoleId = randomUUID();
+  await prisma.user.create({
+    data: {
+      id: limitedUserId,
+      email: limitedUserEmail,
+      passwordHash: await getApplication().get(PasswordHasherService).hash(limitedUserPassword),
+      fullName: 'Phase 44 Appointments-Only User',
+      status: UserStatus.ACTIVE,
+    },
+  });
+  await prisma.tenantMembership.create({
+    data: {
+      id: limitedMembershipId,
+      tenantId: tenantA.id,
+      platformUserId: limitedUserId,
+      status: TenantMembershipStatus.ACTIVE,
+      activatedAt: now,
+    },
+  });
+  await prisma.tenantRole.create({
+    data: {
+      id: limitedRoleId,
+      tenantId: tenantA.id,
+      code: `PHASE44_APPOINTMENTS_ONLY_${RUN_ID.toUpperCase()}`,
+      name: 'Phase 44 appointments-only role',
+    },
+  });
+  const appointmentsReadPermission = encounterPermissions.find(
+    ({ code }) => code === 'tenant.appointments.read',
+  );
+  if (!appointmentsReadPermission) {
+    throw new Error('Appointment-read permission is missing from disposable migrations');
+  }
+  await prisma.tenantRolePermission.create({
+    data: {
+      tenantRoleId: limitedRoleId,
+      tenantPermissionId: appointmentsReadPermission.id,
+    },
+  });
+  await prisma.tenantMembershipRole.create({
+    data: {
+      tenantId: tenantA.id,
+      membershipId: limitedMembershipId,
+      tenantRoleId: limitedRoleId,
+    },
   });
 
   const readPermission = await prisma.tenantPermission.upsert({
@@ -3267,7 +3640,7 @@ async function seedClinicalFixtures(prisma: PrismaService): Promise<void> {
       status: FacilitySchedulingPolicyStatus.ACTIVE,
       timeZone: 'Asia/Riyadh',
       rules: {
-        operatingHours: { saturday: [{ start: '00:00', end: '24:00' }] },
+        operatingHours: {},
         providerAvailability: [],
         allowedDurationsMinutes: [15, 30],
         serviceDurationRules: [],
