@@ -1,0 +1,234 @@
+# Phase 45 — Database Failure Resilience, Safe Retries & Cross-Store Recovery
+
+## Mission
+
+Harden Thanarah's existing authentication, authorization, appointment, and clinical encounter workflows against database outages, API timeouts, duplicate submissions, and partial failures across central MySQL and tenant MongoDB.
+
+Implement and test safe recovery behavior using the existing architecture. This is not an audit-only task. Inspect the repository, implement the necessary fixes, add regression tests, execute the tests, and provide one consolidated report.
+
+Production topology remains unchanged and unapproved infrastructure decisions must remain pending.
+
+## Stage 1 — Inspect the Existing Failure Boundaries
+
+Inspect the actual implementation of:
+
+- Prisma/MySQL connectivity, authentication, session refresh, and permission resolution.
+- Tenant storage resolution and MongoDB connectivity.
+- Appointment creation, rescheduling, cancellation, locks, and idempotency.
+- Encounter creation, clinical edits, completion, cancellation, diagnoses, services, and amendments.
+- Audit events and security events.
+- Existing timeouts, retry logic, error translation, and cleanup behavior.
+- Existing disposable MySQL/MongoDB integration tests and browser automation.
+
+Build a concrete list of cross-store operations and identify which operations can partially succeed. Reuse existing abstractions rather than creating a parallel resilience framework.
+
+## Stage 2 — Central MySQL Outages
+
+Using a disposable MySQL instance, test and harden behavior when the central database becomes unavailable during:
+
+- Sign-in.
+- Session refresh and logout.
+- Tenant membership resolution.
+- Permission checks.
+- Tenant storage registry resolution.
+- Operations requiring central metadata.
+
+Requirements:
+
+- Fail closed when authentication or authorization cannot be verified.
+- Never grant access using an unverified cached permission, membership, or tenant status.
+- Never return protected clinical data after required authorization infrastructure fails.
+- Return safe, consistent service-unavailable responses where appropriate.
+- Keep liveness separate from readiness.
+- Ensure readiness accurately reports central database availability.
+- Avoid exposing database credentials, SQL statements, connection strings, or internal stack traces.
+- Restore normal operation after connectivity returns without requiring an unsafe authentication bypass.
+
+Verify behavior with real disposable database connections rather than relying exclusively on mocked Prisma calls.
+
+## Stage 3 — Tenant MongoDB Outages
+
+Test behavior when tenant MongoDB is unavailable or the required collection/index cannot be accessed.
+
+Cover:
+- Patient search and history.
+- Appointment listing and writes.
+- Encounter reads and writes.
+- Clinical diagnosis and service records.
+- Completion and amendment workflows.
+
+Requirements:
+
+- Fail closed when the required tenant storage cannot be resolved or verified.
+- Do not silently return empty lists as if they represented valid empty datasets when the actual cause is a database outage.
+- Do not fall back to another tenant's database.
+- Do not redirect writes to central MySQL.
+- Return safe errors that distinguish unavailable storage from missing records without revealing infrastructure secrets.
+- Ensure failed writes are not reported as successful.
+- Verify that recovered connectivity permits subsequent valid operations.
+
+## Stage 4 — Timeouts, Retries and Idempotency
+
+Inspect existing retry and timeout policies before adding new ones.
+
+Implement bounded timeouts and safe retry behavior where justified.
+
+Requirements:
+- Retry only operations that are safe to repeat or have a reliable idempotency contract.
+- Preserve existing `Idempotency-Key` semantics.
+- Ensure concurrent duplicate submissions do not create duplicate appointments or encounters.
+- Do not automatically retry non-idempotent clinical writes after an ambiguous timeout unless the system can reliably determine whether the original write succeeded.
+- Handle client disconnects without falsely reporting rollback of an operation that may already have committed.
+- Prevent retry storms and unbounded waiting.
+- Use bounded exponential backoff with jitter only where retries are justified.
+- Respect cancellation signals where supported.
+- Ensure retries do not bypass authorization or tenant-context validation.
+- Document which errors are retryable and which require client or operator intervention.
+
+Add tests for timeouts before a write, after a write may have committed, and during a duplicate submission.
+
+## Stage 5 — Cross-Store Partial Failure Recovery
+
+Analyze every relevant operation that touches both central MySQL and tenant MongoDB.
+
+Do not assume that Prisma transactions and MongoDB operations form one atomic transaction.
+
+For each identified workflow, document:
+- The intended sequence of operations.
+- Which store is authoritative for each piece of data.
+- What can happen if the process crashes between steps.
+- How duplicate execution is prevented.
+- How incomplete operations are detected and reconciled.
+- Whether compensation is safe and reversible.
+
+Implement a minimal, durable recovery mechanism for actual cross-store inconsistencies discovered.
+
+Prefer established patterns appropriate to the current architecture, such as:
+- A durable operation record or outbox in the central database.
+- An idempotent tenant-side operation.
+- A bounded reconciliation worker or an explicit operator-recovery path.
+- Observable operation states and safe retries.
+
+Do not introduce all these mechanisms indiscriminately. Choose the smallest design that actually solves the identified failure modes.
+
+Important constraints:
+- Do not delete or reverse committed clinical records merely to simulate a distributed rollback.
+- Do not overwrite newer clinical changes during compensation.
+- Do not claim exactly-once execution across MySQL and MongoDB.
+- Do not silently lose failed audit records.
+- Do not create a new background worker that runs uncontrolled in every application instance.
+- Any recovery operation must be tenant-scoped, authenticated where applicable, auditable, and idempotent.
+- If a safe automated recovery is impossible, preserve enough durable state to detect the inconsistency and report it for operator intervention.
+
+Add deterministic tests that simulate process failure between the relevant operations.
+
+## Stage 6 — Locks and Incomplete Operations
+
+Inspect appointment locks and any existing clinical concurrency controls.
+
+Test:
+- Lock acquisition failures.
+- Exceptions after lock acquisition.
+- Duplicate requests.
+- Process termination while an operation is in progress.
+- Cleanup that accidentally removes another operation's lock.
+- Recovery from incomplete operation records.
+
+Preserve existing lock ownership tokens and cleanup guarantees.
+
+Do not add automatic lock expiry if doing so could permit overlapping bookings while a legitimate writer is still active. If lease-based recovery is needed, prove that stale owners cannot continue writing after lease loss.
+
+## Stage 7 — Observability and Safe Error Reporting
+
+Improve operational visibility without exposing clinical data.
+
+Where consistent with the existing infrastructure, provide:
+- Stable internal error codes.
+- Structured logs with request/correlation identifiers.
+- Database dependency health indicators.
+- Operation identifiers for recoverable partial failures.
+- Clear distinction between validation, authorization, not-found, conflict, timeout, and dependency-unavailable errors.
+
+Never log passwords, session tokens, connection strings, full clinical notes, or unnecessary patient demographics.
+
+Do not introduce an external monitoring service or paid dependency.
+
+## Stage 8 — Automated Verification
+
+Add or update tests covering:
+
+1. Central MySQL outage during authentication and authorization.
+2. MongoDB outage during tenant reads and writes.
+3. Recovery after each dependency returns.
+4. Missing required indexes.
+5. Timeouts and ambiguous write outcomes.
+6. Safe retries and idempotency.
+7. Concurrent duplicate appointment and encounter requests.
+8. Partial failure across central and tenant storage.
+9. Restart or process interruption during an incomplete operation.
+10. Audit integrity and sensitive-data redaction.
+11. Tenant isolation during all failure and recovery paths.
+12. Browser behavior when a dependency becomes unavailable.
+13. Prevention of misleading success messages and fabricated empty results.
+
+Use disposable MySQL and MongoDB instances. Do not substitute mocks for every integration test.
+
+Run existing browser tests where infrastructure permits.
+
+## Stage 9 — Regression and Final Verification
+
+Run the complete applicable verification set:
+
+- Full unit test suite.
+- Disposable MySQL/MongoDB integration suite.
+- Browser end-to-end suite.
+- `npm run type-check`
+- `npm run type-check:tenant-contracts`
+- Lint and formatting.
+- Prisma validation.
+- Frontend JavaScript syntax checks and build.
+- `git diff --check`.
+
+Restart the application and verify startup, health/readiness, and relevant routes.
+
+If a test requires infrastructure unavailable in the current environment, report the exact missing dependency and do not claim that test passed.
+
+## Stage 10 — Documentation and Final Review
+
+Document:
+- Failure behavior for each dependency.
+- Retryable versus non-retryable errors.
+- Idempotency guarantees and limitations.
+- Cross-store consistency boundaries.
+- Recovery and reconciliation procedures.
+- Operator actions required for unresolved inconsistencies.
+- Test commands and known limitations.
+
+Inspect the final diff for unsafe recovery logic, weakened authorization, duplicate writes, unbounded retries, secret leakage, and unrelated changes.
+
+Preserve existing modifications and untracked specification attachments.
+
+## Explicit Restrictions
+
+- No production database connections.
+- No production deployment or migrations.
+- No authentication or authorization bypass.
+- No real patient data in tests.
+- No secrets in logs.
+- No weakening or skipping tests to obtain a passing result.
+- No automatic staging or commits.
+- No history rewriting.
+- No deletion of user-owned files or specification attachments.
+
+## Final Report
+
+Provide:
+1. Actual outage scenarios tested.
+2. Defects discovered and fixes implemented.
+3. Retry and idempotency guarantees.
+4. Cross-store recovery design and its limitations.
+5. Exact test counts and command outcomes.
+6. Remaining failure modes requiring operator intervention.
+7. Runtime status and any environmental blockers.
+
+Proceed through all safely executable stages. Do not stop after an audit or plan, and do not claim completion for unexecuted tests.

@@ -63,9 +63,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
     }
 
     if (exception instanceof Error) {
-      this.logger.error({ requestId, stack: exception.stack }, exception.message);
+      const dependencyCode = databaseDependencyCode(exception);
+      if (dependencyCode) {
+        this.logger.warn({ requestId, code: dependencyCode }, 'Database dependency unavailable');
+        return {
+          status: HttpStatus.SERVICE_UNAVAILABLE,
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'A required database service is unavailable',
+        };
+      }
+
+      this.logger.error(
+        { requestId, errorType: safeErrorType(exception) },
+        'Unhandled request error',
+      );
     } else {
-      this.logger.error({ requestId, exception }, 'Non-error exception thrown');
+      this.logger.error({ requestId }, 'Non-error exception thrown');
     }
 
     return {
@@ -74,4 +87,22 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       message: 'An unexpected error occurred. Please try again later.',
     };
   }
+}
+
+const TRANSIENT_DATABASE_CODES = new Set([
+  'P1001', // Cannot reach database server
+  'P1002', // Database server timed out
+  'P1008', // Operation timed out
+  'P1017', // Database server closed the connection
+  'P2024', // Connection pool timeout
+]);
+
+function databaseDependencyCode(error: Error): string | null {
+  const code = (error as Error & { code?: unknown }).code;
+  return typeof code === 'string' && TRANSIENT_DATABASE_CODES.has(code) ? code : null;
+}
+
+function safeErrorType(error: Error): string {
+  const name = error.name;
+  return /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(name) ? name : 'Error';
 }

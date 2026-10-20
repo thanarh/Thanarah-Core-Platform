@@ -267,6 +267,52 @@ authentication/permission resolution, browser API timeouts and retries, or
 partial failures between MySQL and MongoDB. These failure modes remain outside
 the verified browser coverage.
 
+## Phase 45: database failures and safe retries
+
+Transient Prisma connection failures (`P1001`, `P1002`, `P1008`, `P1017`, and
+`P2024`) are returned as a generic `503 DATABASE_UNAVAILABLE`. Other unexpected
+exceptions remain generic `500` responses. The HTTP error filter logs only a
+request identifier and a safe error type/code; it does not log raw exception
+messages or stacks. Tenant MongoDB repositories and the client manager translate
+storage failures to the sanitized tenant-storage `503` responses. Liveness
+remains independent of central-database readiness.
+
+Appointment creation is retryable by a client only when it reuses the same
+`Idempotency-Key` and the same request payload. The tenant-scoped deterministic
+appointment identifier and Mongo schedule locks prevent a repeated/concurrent
+request from creating a second appointment. Reusing a key with different
+appointment data is a conflict. Without an idempotency key, a client must first
+check appointment state after a timeout instead of assuming the write failed.
+Appointment updates use expected versions. Encounter writes use
+MongoDB compare-and-set versions and append their metadata-only history in the
+same document update; after an ambiguous timeout, read the latest encounter
+before deciding whether to resubmit. Do not automatically replay non-idempotent
+clinical mutations.
+
+MongoDB driver retryable writes remain bounded by its configured connection and
+server-selection timeouts. The application does not add a second retry loop or
+retry authorization checks using cached state. A failed release of an appointment
+lock returns unavailable and does not remove locks owned by another request.
+Locks have no automatic expiry: if a process dies after acquisition, an operator
+must inspect the tenant-scoped lock before removing it, because an expiry could
+allow overlapping bookings while an old writer is still active.
+
+Cross-store sequences are not distributed transactions:
+
+| Workflow | Sequence and authority | Partial failure / safe recovery |
+| --- | --- | --- |
+| Appointment creation or mutation | Resolve authorization, catalog and scheduling policy in central MySQL; commit appointment state in tenant MongoDB; attempt a best-effort central audit event. MongoDB is authoritative for appointment state. | A central validation failure prevents the tenant write. A lost response after MongoDB commits is resolved by reading the appointment; creation can be retried with the identical idempotency key. Audit failure does not undo the appointment and is not automatically replayed. |
+| Encounter creation or mutation | Validate tenant/catalog/provider references in central MySQL; commit the encounter and its embedded history/version atomically in tenant MongoDB; attempt a best-effort central audit event. MongoDB is authoritative for clinical state. | A central validation failure prevents the tenant write. An ambiguous MongoDB result requires reading the encounter/version before retry. Audit persistence is independent and best-effort; embedded encounter history records the committed mutation. No distributed rollback is attempted. |
+| Patient write | Validate central references and authorization; commit patient data in tenant MongoDB with required tenant-scoped unique indexes; attempt central audit. MongoDB is authoritative for patient data. | A duplicate-key conflict is resolved by re-reading the scoped record; a storage outage is not treated as an empty result. Audit failure does not reverse patient data. |
+
+There is no durable cross-store outbox or reconciliation worker. The current
+design does not claim exactly-once audit delivery. Central audit persistence
+failures are visible only through a sanitized application warning and the
+authoritative tenant-side history where that workflow records one; operators
+must use infrastructure logs and existing tenant records to investigate. A
+durable audit outbox and deterministic outage injection across auth, browser,
+and both stores remain unverified and are not silently treated as completed.
+
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or
 regulatory-compliance claim is included.
