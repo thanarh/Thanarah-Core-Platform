@@ -309,9 +309,27 @@ There is no durable cross-store outbox or reconciliation worker. The current
 design does not claim exactly-once audit delivery. Central audit persistence
 failures are visible only through a sanitized application warning and the
 authoritative tenant-side history where that workflow records one; operators
-must use infrastructure logs and existing tenant records to investigate. A
-durable audit outbox and deterministic outage injection across auth, browser,
-and both stores remain unverified and are not silently treated as completed.
+must use infrastructure logs and existing tenant records to investigate. The
+system still cannot durably detect every missing central audit event.
+
+Phase 45B added a disposable MySQL outage test that enables MySQL `offline_mode`
+after creating a fresh authenticated session. Login, refresh, logout, workspace
+membership resolution, and a protected patient read return sanitized 503
+responses while MySQL is unavailable; refresh failure does not clear the
+session cookie. Liveness stays 200, readiness returns 503, and login plus
+workspace access succeed again after MySQL is restored. This test found and
+fixed a real defect: refresh transaction failures had previously been mapped
+to 401, which incorrectly presented a dependency outage as an invalid
+credential.
+
+The suite also exercises actual MongoDB authentication/configuration/connect
+failures through disposable clients, required-index failures, and normal
+tenant-isolated patient, appointment, and encounter operations. It does not yet
+interrupt the app's active MongoDB connection for HTTP coverage across every
+clinical endpoint. Timeouts before and after commit, browser behavior during an
+outage, process interruption between MySQL/MongoDB writes, and durable audit
+recovery remain unverified. No clinical record is rolled back to mimic a
+distributed transaction, and no exactly-once guarantee is claimed.
 
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or

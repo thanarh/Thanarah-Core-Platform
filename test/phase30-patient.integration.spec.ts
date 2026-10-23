@@ -2530,7 +2530,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       datasources: { db: { url: mysqlRootUri } },
     });
     const authRoot = `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth`;
-    const outageResponse = (response: { statusCode: number; json(): Record<string, unknown> }) => {
+    const outageResponse = (response: {
+      statusCode: number;
+      json(): Record<string, unknown>;
+    }): void => {
       expect(response.statusCode).toBe(503);
       expect(response.json()).toMatchObject({
         success: false,
@@ -2542,6 +2545,14 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     };
 
     await administrator.$connect();
+    const baselineLogin = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: testPassword },
+    });
+    expect(baselineLogin.statusCode).toBe(200);
+    accessToken = baselineLogin.json<{ accessToken: string }>().accessToken;
+    refreshCookie = cookiePair(baselineLogin.headers['set-cookie']);
     await prisma.$disconnect();
     try {
       await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = ON');
@@ -2564,6 +2575,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         url: `${authRoot}/refresh`,
         headers: { cookie: refreshCookie },
       });
+      const logout = await getApplication().inject({
+        method: 'POST',
+        url: `${authRoot}/logout`,
+        headers: bearerHeaders(),
+      });
       const membership = await getApplication().inject({
         method: 'GET',
         url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
@@ -2579,11 +2595,14 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(readiness.statusCode).toBe(503);
       outageResponse(login);
       outageResponse(refresh);
+      outageResponse(logout);
       outageResponse(membership);
       outageResponse(protectedPatientRead);
+      expect(refresh.headers['set-cookie']).toBeUndefined();
       const serialized = JSON.stringify([
         login.json(),
         refresh.json(),
+        logout.json(),
         membership.json(),
         protectedPatientRead.json(),
       ]);

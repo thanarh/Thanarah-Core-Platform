@@ -28,7 +28,6 @@ import {
   InvalidTokenSignatureError,
   MalformedTokenError,
   MissingTokenSecretError,
-  RefreshRotationFailedError,
   RefreshSessionCompromisedError,
   RefreshSessionRevokedError,
   RefreshTokenExpiredError,
@@ -251,7 +250,13 @@ describe('RefreshTokenService', () => {
       new TokenHasherService(),
     );
 
-    await expect(service.rotate('presented')).rejects.toBeInstanceOf(RefreshRotationFailedError);
+    await expect(service.rotate('presented')).rejects.toMatchObject({
+      status: 503,
+      response: {
+        code: 'DATABASE_UNAVAILABLE',
+        message: 'A required database service is unavailable',
+      },
+    });
     await expect(service.rotate('')).rejects.toBeInstanceOf(RefreshTokenInvalidError);
   });
 });

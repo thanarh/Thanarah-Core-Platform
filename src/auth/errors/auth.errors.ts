@@ -1,4 +1,9 @@
-import { HttpException, HttpStatus, UnauthorizedException } from '@nestjs/common';
+import {
+  HttpException,
+  HttpStatus,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 
 export class AuthenticationError extends UnauthorizedException {
   constructor(code: string, message: string) {
@@ -70,9 +75,12 @@ export class RefreshTokenReusedError extends AuthenticationError {
     super('AUTH_REFRESH_TOKEN_REUSED', 'Refresh token reuse detected');
   }
 }
-export class RefreshRotationFailedError extends AuthenticationError {
+export class RefreshRotationFailedError extends ServiceUnavailableException {
   constructor() {
-    super('AUTH_REFRESH_ROTATION_FAILED', 'Refresh token rotation failed');
+    super({
+      code: 'DATABASE_UNAVAILABLE',
+      message: 'A required database service is unavailable',
+    });
   }
 }
 
