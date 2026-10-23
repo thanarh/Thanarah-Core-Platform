@@ -13,6 +13,8 @@ export type SafeSecurityMetadata = Record<string, unknown>;
 
 export interface CreatePlatformAuditInput extends TrustedSecurityContext {
   eventType: PlatformAuditEventType;
+  /** Stable UUID from an immutable source event, when one exists. */
+  eventId?: string;
   subjectTenantId?: string | null;
   metadata?: SafeSecurityMetadata;
 }

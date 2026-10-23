@@ -1154,6 +1154,7 @@ export class EncounterService {
   ): Promise<void> {
     const auditInput: CreatePlatformAuditInput = {
       eventType,
+      eventId: record.history.at(-1)?.id,
       actorUserId: actor.userId,
       subjectTenantId: context.tenantId,
       requestId: requestContext.requestId,

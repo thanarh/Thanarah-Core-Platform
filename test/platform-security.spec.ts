@@ -128,6 +128,28 @@ describe('PlatformAuditService', () => {
     );
   });
 
+  it('uses only a valid immutable source event UUID as the audit row identifier', async () => {
+    const test = repository();
+    const service = new PlatformAuditService(test.repository, {
+      hasPermissions: vi.fn().mockResolvedValue(true),
+    } as never);
+    const eventId = 'd29556d1-36c6-48cc-9d2c-ea63a06ec2fb';
+
+    await service.recordAudit({
+      eventType: PlatformAuditEventType.ENCOUNTER_COMPLETED,
+      eventId,
+      metadata: { action: 'completed' },
+    });
+    await service.recordAudit({
+      eventType: PlatformAuditEventType.ENCOUNTER_COMPLETED,
+      eventId: 'not-a-uuid',
+      metadata: { action: 'completed' },
+    });
+
+    expect(test.createAuditLog.mock.calls[0][0]).toMatchObject({ id: eventId });
+    expect(test.createAuditLog.mock.calls[1][0]).not.toHaveProperty('id');
+  });
+
   it('records membership audit events with both platform-user and tenant subjects', async () => {
     const test = repository();
     const service = new PlatformAuditService(test.repository, {

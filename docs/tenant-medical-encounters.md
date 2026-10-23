@@ -305,11 +305,15 @@ Cross-store sequences are not distributed transactions:
 | Encounter creation or mutation | Validate tenant/catalog/provider references in central MySQL; commit the encounter and its embedded history/version atomically in tenant MongoDB; attempt a best-effort central audit event. MongoDB is authoritative for clinical state. | A central validation failure prevents the tenant write. An ambiguous MongoDB result requires reading the encounter/version before retry. Audit persistence is independent and best-effort; embedded encounter history records the committed mutation. No distributed rollback is attempted. |
 | Patient write | Validate central references and authorization; commit patient data in tenant MongoDB with required tenant-scoped unique indexes; attempt central audit. MongoDB is authoritative for patient data. | A duplicate-key conflict is resolved by re-reading the scoped record; a storage outage is not treated as an empty result. Audit failure does not reverse patient data. |
 
-There is no durable cross-store outbox or reconciliation worker. The current
-design does not claim exactly-once audit delivery. Central audit persistence
-failures are visible only through a sanitized application warning and the
-authoritative tenant-side history where that workflow records one; operators
-must use infrastructure logs and existing tenant records to investigate. The
+There is no durable cross-store operation ledger, audit outbox, or reconciliation
+worker. Encounter audit rows now use the UUID of the corresponding embedded
+history event as the MySQL primary key. This makes the source event identity
+stable and prevents duplicate rows if the same event is replayed, but it does
+not queue failed delivery; duplicate-key replay is not classified as successful
+delivery. Patient and appointment audit rows do not yet have a stable source
+event identity. Central audit failures remain visible only through a sanitized
+application warning and, for encounters, the authoritative tenant-side history.
+Operators must use infrastructure logs and tenant records to investigate; the
 system still cannot durably detect every missing central audit event.
 
 Phase 45B added a disposable MySQL outage test that enables MySQL `offline_mode`
@@ -359,15 +363,31 @@ integration command is `npm run test:phase42`; it requires Docker and runs the
 full MySQL/MongoDB integration scenario. No clinical record is rolled back to
 mimic a distributed transaction, and no exactly-once guarantee is claimed.
 
-There is still no safe shared transaction boundary for a generic audit outbox:
-clinical state is authoritative in tenant MongoDB, while platform audit rows
-are in central MySQL. A MySQL outbox cannot atomically represent whether an
-independent MongoDB write committed, and adding a replay worker without a
-MongoDB-side durable intent could create false or duplicate audit events.
-Accordingly, Phase 45C does not claim durable audit replay or detect every
-missing central audit event. Encounter documents retain their own
-metadata-only history, but other audit delivery gaps require a larger
+There is no shared transaction boundary for a generic audit outbox: clinical
+state is authoritative in tenant MongoDB, while platform audit rows are in
+central MySQL. A MySQL outbox cannot atomically represent whether an independent
+MongoDB write committed, and a replay worker without durable intent and
+MongoDB-side evidence could create false audit events. Encounter documents
+retain metadata-only history; other audit delivery gaps require a larger
 operation/recovery design before automation is safe.
+
+## Phase 46 status: stable encounter audit identity only
+
+This increment reuses each encounter's immutable embedded history-event UUID as
+the central audit row ID and verifies the relationship against disposable
+MongoDB and MySQL. The existing MySQL primary-key constraint is the deduplication
+mechanism; no migration was required. It is limited to encounter audit events.
+
+No operation-ledger table, pre-write marker, audit outbox, retry worker, batch
+reconciliation endpoint, or operator-review endpoint was implemented. Thus,
+this does not cover failures where the central database is unavailable before
+an operation marker could be recorded, does not make a missing audit row
+automatically discoverable, and does not prove whether a MongoDB mutation
+committed when its acknowledgement is lost. Patient and appointment failure
+windows, process interruption, ambiguous retries, concurrent reconciliation,
+and tenant-isolation tests for a reconciliation action remain unverified. Phase
+46 is not closed; the only added guarantee is deduplicable identity for an
+encounter history-backed audit replay.
 
 ## Phase 45D: critical failure windows
 
@@ -410,13 +430,22 @@ unverified.
 
 Audit delivery remains best-effort. Appointment and encounter state commits in
 tenant MongoDB before the central MySQL audit attempt; there is no durable
-pending marker, stable cross-store operation ID, automatic retry, or
-reconciliation worker. A crash or MySQL outage in that interval can lose the
-central audit row. Encounter embedded history is durable with its MongoDB
-mutation, but does not cover every workflow (including appointments), and
-cannot reconstruct whether an absent central event was never attempted or
-failed after an unknown commit. Operator investigation remains necessary; no
-exactly-once delivery is claimed.
+pending operation record, automatic retry, or reconciliation worker. Encounter
+audit rows now use the UUID of the corresponding embedded MongoDB history event
+as their MySQL primary key. If an audit write is deliberately replayed with the
+same source event ID, MySQL uniqueness prevents a duplicate row. This is an
+identity/deduplication aid, not a delivery queue: a crash or MySQL outage after
+the MongoDB mutation can still leave no central audit row, and a duplicate-key
+replay is not automatically classified as successful delivery.
+
+This stable identity currently applies only to encounter history-backed audit
+events. Patient, appointment, scheduling-policy, and other workflows are not
+connected to a durable cross-store operation ledger. There is no bounded
+reconciliation entry point, worker, or operator-review API. Encounter history
+can show that a represented MongoDB mutation occurred, but cannot by itself
+recover an absent central event or establish that an unrepresented workflow
+committed. No automatic replay, distributed atomicity, or exactly-once
+delivery is claimed; investigation remains manual.
 
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or

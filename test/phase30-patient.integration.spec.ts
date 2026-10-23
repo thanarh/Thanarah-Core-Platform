@@ -824,6 +824,22 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           eventType: PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
         },
       });
+    const encounterAuditIds = clinicalAudits
+      .filter(
+        (audit) =>
+          audit.metadata !== null &&
+          typeof audit.metadata === 'object' &&
+          !Array.isArray(audit.metadata) &&
+          audit.metadata.encounterId === apiEncounterId,
+      )
+      .map((audit) => audit.id);
+    const historyEventIds = new Set(
+      ((originalDocument?.history as Array<{ id: string }> | undefined) ?? []).map(
+        (event) => event.id,
+      ),
+    );
+    expect(encounterAuditIds.length).toBeGreaterThan(0);
+    expect(encounterAuditIds.every((id) => historyEventIds.has(id))).toBe(true);
     expect(JSON.stringify(clinicalAudits)).not.toContain(clinicalText);
     expect(JSON.stringify(clinicalAudits)).not.toContain('Primary clinician-entered diagnosis');
     expect(JSON.stringify(clinicalAudits)).not.toContain(amendmentReason);
