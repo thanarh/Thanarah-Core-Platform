@@ -2685,57 +2685,62 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     try {
       responses.push(
         ...(await Promise.all([
-        await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}`,
-          headers: bearerHeaders(),
-        }),
-        await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}/encounters`,
-          headers: bearerHeaders(),
-        }),
-        await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/appointments?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}`,
-          headers: bearerHeaders(),
-        }),
-        await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
-          headers: bearerHeaders(),
-        }),
-        await getApplication().inject({
-          method: 'PATCH',
-          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/clinical`,
-          headers: bearerHeaders(),
-          payload: { expectedVersion: 1, clinical: { assessment: 'outage probe' } },
-        }),
-        await getApplication().inject({
-          method: 'PUT',
-          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
-          headers: bearerHeaders(),
-          payload: { expectedVersion: 1, diagnoses: [] },
-        }),
-        await getApplication().inject({
-          method: 'PUT',
-          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
-          headers: bearerHeaders(),
-          payload: { expectedVersion: 1, serviceRecords: [] },
-        }),
-        await getApplication().inject({
-          method: 'POST',
-          url: `${tenantRoot(tenantA)}/patients`,
-          headers: bearerHeaders(),
-          payload: patientPayload(`PH45C-${RUN_ID}`),
-        }),
+          getApplication().inject({
+            method: 'GET',
+            url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}`,
+            headers: bearerHeaders(),
+          }),
+          getApplication().inject({
+            method: 'GET',
+            url: `${tenantRoot(tenantA)}/patients?search=phase45c`,
+            headers: bearerHeaders(),
+          }),
+          getApplication().inject({
+            method: 'GET',
+            url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}/encounters`,
+            headers: bearerHeaders(),
+          }),
+          getApplication().inject({
+            method: 'GET',
+            url: `${tenantRoot(tenantA)}/appointments?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}`,
+            headers: bearerHeaders(),
+          }),
+          getApplication().inject({
+            method: 'GET',
+            url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
+            headers: bearerHeaders(),
+          }),
+          getApplication().inject({
+            method: 'PATCH',
+            url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/clinical`,
+            headers: bearerHeaders(),
+            payload: { expectedVersion: 1, clinical: { assessment: 'outage probe' } },
+          }),
+          getApplication().inject({
+            method: 'PUT',
+            url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
+            headers: bearerHeaders(),
+            payload: { expectedVersion: 1, diagnoses: [] },
+          }),
+          getApplication().inject({
+            method: 'PUT',
+            url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+            headers: bearerHeaders(),
+            payload: { expectedVersion: 1, serviceRecords: [] },
+          }),
+          getApplication().inject({
+            method: 'POST',
+            url: `${tenantRoot(tenantA)}/patients`,
+            headers: bearerHeaders(),
+            payload: patientPayload(`PH45C-${RUN_ID}`),
+          }),
         ])),
       );
     } finally {
       await clearOutage();
     }
 
-    expect(responses).toHaveLength(8);
+    expect(responses).toHaveLength(9);
     for (const response of responses) {
       expect(response.statusCode, response.body).toBe(503);
       expect(response.body).toContain('TENANT_STORAGE_UNAVAILABLE');

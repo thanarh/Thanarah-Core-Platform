@@ -324,12 +324,37 @@ credential.
 
 The suite also exercises actual MongoDB authentication/configuration/connect
 failures through disposable clients, required-index failures, and normal
-tenant-isolated patient, appointment, and encounter operations. It does not yet
-interrupt the app's active MongoDB connection for HTTP coverage across every
-clinical endpoint. Timeouts before and after commit, browser behavior during an
-outage, process interruption between MySQL/MongoDB writes, and durable audit
-recovery remain unverified. No clinical record is rolled back to mimic a
-distributed transaction, and no exactly-once guarantee is claimed.
+tenant-isolated patient, appointment, and encounter operations.
+
+Phase 45C adds disposable MongoDB `failCommand` injection against real HTTP
+requests. Patient detail and search, patient encounter history, appointment
+listing, and encounter detail reads, plus clinical, diagnosis, service, and
+patient-create writes return sanitized `503 TENANT_STORAGE_UNAVAILABLE`
+responses when MongoDB rejects the relevant commands. Restoring the server
+failpoint returns patient listing to normal; the attempted patient create is
+not present. Appointment creation is also retried over HTTP with the same
+idempotency key and payload, which returns the same appointment ID; reusing
+that key with a different payload returns 409.
+
+This does not simulate a lost acknowledgement after a successful MongoDB
+commit, a client disconnect while a server operation continues, or a
+process-level crash between MySQL and MongoDB writes. Appointment creation or
+rescheduling, encounter completion or amendment during the injected outage,
+and browser behavior during a MongoDB outage remain unverified. The exact
+disposable integration command is `npm run test:phase42`; it requires Docker
+and runs the full MySQL/MongoDB integration scenario. No clinical record is
+rolled back to mimic a distributed transaction, and no exactly-once guarantee
+is claimed.
+
+There is still no safe shared transaction boundary for a generic audit outbox:
+clinical state is authoritative in tenant MongoDB, while platform audit rows
+are in central MySQL. A MySQL outbox cannot atomically represent whether an
+independent MongoDB write committed, and adding a replay worker without a
+MongoDB-side durable intent could create false or duplicate audit events.
+Accordingly, Phase 45C does not claim durable audit replay or detect every
+missing central audit event. Encounter documents retain their own
+metadata-only history, but other audit delivery gaps require a larger
+operation/recovery design before automation is safe.
 
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or

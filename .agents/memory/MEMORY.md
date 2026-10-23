@@ -9,3 +9,4 @@
 - [Appointment branch scope](appointment-branch-scope.md) — include the selected branch in appointment queries for branch-scoped staff.
 - [Headless Chromium cleanup](headless-chromium-cleanup.md) — terminate the isolated browser process group before deleting its temporary profile.
 - [Refresh outage semantics](auth-refresh-outage.md) — refresh database failures are dependency outages, not credential failures; preserve the refresh cookie.
+- [Failure-injection isolation](failure-injection-isolation.md) — bound injected-failure requests and always clear server failpoints so timed-out tests cannot contaminate later cases.
