@@ -133,6 +133,8 @@ let mongoUri = '';
 let mysqlUri = '';
 let mongoPassword = '';
 let mysqlPassword = '';
+let mysqlRootPassword = '';
+let mysqlRootUri = '';
 let accessToken = '';
 let testEmail = '';
 let testPassword = '';
@@ -170,6 +172,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
     mongoPassword = randomBytes(24).toString('hex');
     mysqlPassword = randomBytes(24).toString('hex');
+    mysqlRootPassword = randomBytes(24).toString('hex');
 
     mongoContainer = await new GenericContainer(MONGO_IMAGE)
       .withEnvironment({
@@ -183,7 +186,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
     mysqlContainer = await new GenericContainer(MYSQL_IMAGE)
       .withEnvironment({
-        MYSQL_ROOT_PASSWORD: randomBytes(24).toString('hex'),
+        MYSQL_ROOT_PASSWORD: mysqlRootPassword,
         MYSQL_DATABASE: TEST_MYSQL_DATABASE,
         MYSQL_USER: TEST_MYSQL_USER,
         MYSQL_PASSWORD: mysqlPassword,
@@ -206,6 +209,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     mysqlUri = `mysql://${encodeURIComponent(TEST_MYSQL_USER)}:${encodeURIComponent(
       mysqlPassword,
     )}@${mysqlHost}:${mysqlPort}/${TEST_MYSQL_DATABASE}`;
+    mysqlRootUri = `mysql://root:${encodeURIComponent(mysqlRootPassword)}@${mysqlHost}:${mysqlPort}/${TEST_MYSQL_DATABASE}`;
 
     // Replace, rather than inherit, all application connection and signing settings.
     Object.assign(process.env, {
@@ -2518,6 +2522,94 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     } finally {
       await restorePrimaryTargetA();
     }
+  });
+
+  it('fails closed during a real disposable MySQL outage and recovers after connectivity returns', async () => {
+    const prisma = getApplication().get(PrismaService) as InstanceType<typeof PrismaClient>;
+    const administrator = new PrismaClient({
+      datasources: { db: { url: mysqlRootUri } },
+    });
+    const authRoot = `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/auth`;
+    const outageResponse = (response: { statusCode: number; json(): Record<string, unknown> }) => {
+      expect(response.statusCode).toBe(503);
+      expect(response.json()).toMatchObject({
+        success: false,
+        error: {
+          code: 'DATABASE_UNAVAILABLE',
+          message: 'A required database service is unavailable',
+        },
+      });
+    };
+
+    await administrator.$connect();
+    await prisma.$disconnect();
+    try {
+      await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = ON');
+
+      const liveness = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/health`,
+      });
+      const readiness = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/ready`,
+      });
+      const login = await getApplication().inject({
+        method: 'POST',
+        url: `${authRoot}/login`,
+        payload: { email: testEmail, password: testPassword },
+      });
+      const refresh = await getApplication().inject({
+        method: 'POST',
+        url: `${authRoot}/refresh`,
+        headers: { cookie: refreshCookie },
+      });
+      const membership = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+        headers: bearerHeaders(),
+      });
+      const protectedPatientRead = await getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantA)}/patients`,
+        headers: bearerHeaders(),
+      });
+
+      expect(liveness.statusCode).toBe(200);
+      expect(readiness.statusCode).toBe(503);
+      outageResponse(login);
+      outageResponse(refresh);
+      outageResponse(membership);
+      outageResponse(protectedPatientRead);
+      const serialized = JSON.stringify([
+        login.json(),
+        refresh.json(),
+        membership.json(),
+        protectedPatientRead.json(),
+      ]);
+      expect(serialized).not.toMatch(/mysql:|phase30_test|password|SELECT|Prisma/u);
+    } finally {
+      await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = OFF').catch(() => undefined);
+      await prisma.$connect().catch(() => undefined);
+      await administrator.$disconnect();
+    }
+
+    expect(await prisma.isReady()).toBe(true);
+    const recoveredLogin = await getApplication().inject({
+      method: 'POST',
+      url: `${authRoot}/login`,
+      payload: { email: testEmail, password: testPassword },
+    });
+    expect(recoveredLogin.statusCode).toBe(200);
+    expect(
+      (
+        await getApplication().inject({
+          method: 'GET',
+          url: `${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+          headers: bearerHeaders(),
+        })
+      ).statusCode,
+    ).toBe(200);
   });
 
   it('fails closed for Mongo authentication, invalid configuration, and unavailable servers', async () => {

@@ -99,7 +99,8 @@ const TRANSIENT_DATABASE_CODES = new Set([
 
 function databaseDependencyCode(error: Error): string | null {
   const code = (error as Error & { code?: unknown }).code;
-  return typeof code === 'string' && TRANSIENT_DATABASE_CODES.has(code) ? code : null;
+  if (typeof code === 'string' && TRANSIENT_DATABASE_CODES.has(code)) return code;
+  return error.name === 'PrismaClientInitializationError' ? 'PRISMA_INITIALIZATION' : null;
 }
 
 function safeErrorType(error: Error): string {
