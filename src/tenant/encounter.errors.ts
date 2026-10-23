@@ -72,6 +72,24 @@ export class EncounterIdempotencyConflictError extends ConflictException {
   }
 }
 
+export class EncounterIdempotencyInProgressError extends ConflictException {
+  constructor() {
+    super({
+      code: 'ENCOUNTER_IDEMPOTENCY_IN_PROGRESS',
+      message: 'A request with this idempotency key is still being processed',
+    });
+  }
+}
+
+export class EncounterIdempotencyReviewError extends ConflictException {
+  constructor() {
+    super({
+      code: 'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED',
+      message: 'The previous request has an ambiguous outcome and requires review',
+    });
+  }
+}
+
 export class EncounterHistoryLimitError extends ConflictException {
   constructor() {
     super({

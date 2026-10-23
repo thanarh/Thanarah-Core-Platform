@@ -51,7 +51,9 @@ import {
   EncounterAppointmentConflictError,
   EncounterHistoryLimitError,
   EncounterIdempotencyConflictError,
+  EncounterIdempotencyInProgressError,
   EncounterInputValidationError,
+  EncounterIdempotencyReviewError,
   EncounterNotFoundError,
   EncounterReferenceInvalidError,
   EncounterScopeForbiddenError,
@@ -88,6 +90,17 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 
 const MAX_ENCOUNTER_HISTORY_EVENTS = 5_000;
+
+interface EncounterIdempotencyDescriptor {
+  operationId: string;
+  keyHash: string;
+  fingerprint: string;
+  route: string;
+}
+
+type EncounterCreateIdempotencyDescriptor = EncounterIdempotencyDescriptor & {
+  resourceId: string;
+};
 
 export interface EncounterAuditRequestContext {
   requestId?: string;
@@ -148,6 +161,7 @@ export class EncounterService {
       actor,
       'from-appointment',
       requestContext.idempotencyKey,
+      { appointmentId: appointment.id },
     );
     if (idempotency) {
       const existing = await this.encounters.findById(context, idempotency.resourceId);
@@ -162,7 +176,7 @@ export class EncounterService {
         ) {
           throw new EncounterIdempotencyConflictError();
         }
-        await this.assertCreationReplay(context, actor, existing, idempotency.operationId);
+        await this.assertCreationReplay(context, actor, existing, idempotency);
         await this.recordAudit(
           context,
           actor,
@@ -171,6 +185,7 @@ export class EncounterService {
           'created',
           ['appointmentId', 'patientId', 'doctorId', 'facilityId', 'branchId'],
           requestContext,
+          idempotency,
         );
         return this.present(existing);
       }
@@ -199,6 +214,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CREATED,
       'created',
       ['appointmentId', 'patientId', 'doctorId', 'facilityId', 'branchId'],
+      idempotency ?? undefined,
     );
     const created = await this.encounters.create(context, record);
     await this.recordAudit(
@@ -209,6 +225,7 @@ export class EncounterService {
       'created',
       ['appointmentId', 'patientId', 'doctorId', 'facilityId', 'branchId'],
       requestContext,
+      idempotency ?? undefined,
     );
     return this.present(created);
   }
@@ -238,6 +255,7 @@ export class EncounterService {
       actor,
       'direct',
       requestContext.idempotencyKey,
+      references,
     );
     if (idempotency) {
       const existing = await this.encounters.findById(context, idempotency.resourceId);
@@ -252,7 +270,7 @@ export class EncounterService {
         ) {
           throw new EncounterIdempotencyConflictError();
         }
-        await this.assertCreationReplay(context, actor, existing, idempotency.operationId);
+        await this.assertCreationReplay(context, actor, existing, idempotency);
         await this.recordAudit(
           context,
           actor,
@@ -261,6 +279,7 @@ export class EncounterService {
           'created_direct',
           ['patientId', 'doctorId', 'facilityId', 'branchId'],
           requestContext,
+          idempotency,
         );
         return this.present(existing);
       }
@@ -279,6 +298,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CREATED,
       'created_direct',
       ['patientId', 'doctorId', 'facilityId', 'branchId'],
+      idempotency ?? undefined,
     );
     const created = await this.encounters.create(context, record);
     await this.recordAudit(
@@ -289,6 +309,7 @@ export class EncounterService {
       'created_direct',
       ['patientId', 'doctorId', 'facilityId', 'branchId'],
       requestContext,
+      idempotency ?? undefined,
     );
     return this.present(created);
   }
@@ -352,6 +373,23 @@ export class EncounterService {
     const parsed = updateEncounterSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'clinical_updated',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
     if (current.version !== parsed.data.expectedVersion) throw new EncounterVersionConflictError();
     if (current.history.length >= MAX_ENCOUNTER_HISTORY_EVENTS) {
@@ -375,6 +413,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'clinical_updated',
       changedFields,
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -396,6 +435,7 @@ export class EncounterService {
       'clinical_updated',
       changedFields,
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -415,6 +455,23 @@ export class EncounterService {
     const parsed = replaceEncounterDiagnosesSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'diagnoses_updated',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
     this.assertExpectedVersion(current, parsed.data.expectedVersion);
     this.assertHistoryCapacity(current);
@@ -436,6 +493,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'diagnoses_updated',
       ['diagnoses'],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -457,6 +515,7 @@ export class EncounterService {
       'diagnoses_updated',
       ['diagnoses'],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -476,6 +535,23 @@ export class EncounterService {
     const parsed = replaceEncounterServiceRecordsSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'service_records_updated',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
     this.assertExpectedVersion(current, parsed.data.expectedVersion);
     this.assertHistoryCapacity(current);
@@ -499,6 +575,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'service_records_updated',
       ['serviceRecords'],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -520,6 +597,7 @@ export class EncounterService {
       'service_records_updated',
       ['serviceRecords'],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -539,6 +617,23 @@ export class EncounterService {
     const parsed = createEncounterAmendmentSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'amendment_opened',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
     this.assertExpectedVersion(current, parsed.data.expectedVersion);
     this.assertHistoryCapacity(current);
@@ -571,6 +666,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'amendment_opened',
       ['amendment'],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -596,6 +692,7 @@ export class EncounterService {
       'amendment_opened',
       ['amendment'],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -628,6 +725,23 @@ export class EncounterService {
       await this.authorization.authorize(context, 'tenant.encounters.services.write');
     }
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'amendment_updated',
+      current.id,
+      requestContext.idempotencyKey,
+      { amendmentId: parsedAmendmentId.data, input: parsed.data },
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
     this.assertExpectedVersion(current, parsed.data.expectedVersion);
     this.assertHistoryCapacity(current);
@@ -677,6 +791,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'amendment_updated',
       ['amendment', ...changedFields],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -698,6 +813,7 @@ export class EncounterService {
       'amendment_updated',
       ['amendment', ...changedFields],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -721,6 +837,23 @@ export class EncounterService {
       throw new EncounterInputValidationError();
     }
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'amendment_finalized',
+      current.id,
+      requestContext.idempotencyKey,
+      { amendmentId: parsedAmendmentId.data, input: parsed.data },
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.COMPLETED) throw new EncounterStateConflictError();
     this.assertExpectedVersion(current, parsed.data.expectedVersion);
     this.assertHistoryCapacity(current);
@@ -744,6 +877,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
       'amendment_finalized',
       ['amendment.status'],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -765,6 +899,7 @@ export class EncounterService {
       'amendment_finalized',
       ['amendment.status'],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -784,6 +919,23 @@ export class EncounterService {
     const parsed = completeEncounterSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'completed',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_COMPLETED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
     if (current.version !== parsed.data.expectedVersion) throw new EncounterVersionConflictError();
     if (current.history.length >= MAX_ENCOUNTER_HISTORY_EVENTS) {
@@ -799,6 +951,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_COMPLETED,
       'completed',
       ['status'],
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -826,6 +979,7 @@ export class EncounterService {
       'completed',
       ['status'],
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -845,6 +999,23 @@ export class EncounterService {
     const parsed = cancelEncounterSchema.safeParse(input);
     if (!parsedId.success || !parsed.success) throw new EncounterInputValidationError();
     const current = await this.findInScope(context, parsedId.data);
+    const idempotency = this.mutationIdempotency(
+      context,
+      actor,
+      'cancelled',
+      current.id,
+      requestContext.idempotencyKey,
+      parsed.data,
+    );
+    const replay = await this.replayMutation(
+      context,
+      actor,
+      requestContext,
+      current,
+      idempotency,
+      PlatformAuditEventType.ENCOUNTER_CANCELLED,
+    );
+    if (replay) return replay;
     if (current.status !== EncounterStatus.DRAFT) throw new EncounterStateConflictError();
     if (current.version !== parsed.data.expectedVersion) throw new EncounterVersionConflictError();
     if (current.history.length >= MAX_ENCOUNTER_HISTORY_EVENTS) {
@@ -861,6 +1032,7 @@ export class EncounterService {
       PlatformAuditEventType.ENCOUNTER_CANCELLED,
       'cancelled',
       changedFields,
+      idempotency,
     );
     const updated = await this.encounters.update(
       context,
@@ -889,6 +1061,7 @@ export class EncounterService {
       'cancelled',
       changedFields,
       requestContext,
+      idempotency,
     );
     return this.present(updated!);
   }
@@ -1470,7 +1643,8 @@ export class EncounterService {
     actor: AuthenticatedPlatformUser,
     route: 'direct' | 'from-appointment',
     key?: string,
-  ): { resourceId: string; operationId: string } | null {
+    payload?: unknown,
+  ): EncounterCreateIdempotencyDescriptor | null {
     if (key === undefined) return null;
     if (!this.prisma) {
       throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
@@ -1478,22 +1652,13 @@ export class EncounterService {
     if (key.length < 1 || key.length > 128 || !/^[\x21-\x7e]+$/u.test(key)) {
       throw new EncounterInputValidationError();
     }
-    const deterministicUuid = (kind: string): string => {
-      const hex = createHash('sha256')
-        .update(
-          `${kind}\u0000${context.tenantId.toLowerCase()}\u0000${actor.userId.toLowerCase()}\u0000${route}\u0000${key}`,
-        )
-        .digest('hex')
-        .slice(0, 32)
-        .split('');
-      hex[12] = '5';
-      hex[16] = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
-      const value = hex.join('');
-      return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
-    };
+    const scope = `${context.tenantId.toLowerCase()}\u0000${actor.userId.toLowerCase()}\u0000${route}\u0000${key}`;
     return {
-      resourceId: deterministicUuid('encounter-resource'),
-      operationId: deterministicUuid('encounter-operation'),
+      resourceId: this.deterministicUuid(`encounter-resource\u0000${scope}`),
+      operationId: this.deterministicUuid(`encounter-operation\u0000${scope}`),
+      keyHash: createHash('sha256').update(key).digest('hex'),
+      fingerprint: createHash('sha256').update(stableSerialize(payload)).digest('hex'),
+      route,
     };
   }
 
@@ -1501,9 +1666,9 @@ export class EncounterService {
     context: TrustedTenantContext,
     actor: AuthenticatedPlatformUser,
     record: EncounterRecord,
-    operationId: string,
+    idempotency: EncounterCreateIdempotencyDescriptor,
   ): Promise<void> {
-    const event = record.history.find((item) => item.id === operationId);
+    const event = record.history.find((item) => item.id === idempotency.operationId);
     if (
       !event ||
       event.actorUserId !== actor.userId ||
@@ -1516,7 +1681,7 @@ export class EncounterService {
     let operation: Awaited<ReturnType<PrismaService['encounterOperation']['findUnique']>>;
     try {
       operation = await this.prisma!.encounterOperation.findUnique({
-        where: { id: operationId },
+        where: { id: idempotency.operationId },
       });
     } catch {
       throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
@@ -1531,7 +1696,11 @@ export class EncounterService {
       operation.historyEventId !== event.id ||
       operation.expectedVersion !== 0 ||
       operation.operationType !== event.action ||
-      operation.mutationState === 'NOT_APPLIED'
+      operation.mutationState === 'NOT_APPLIED' ||
+      this.idempotencyMetadata(operation.auditMetadata)?.idempotencyKeyHash !==
+        idempotency.keyHash ||
+      this.idempotencyMetadata(operation.auditMetadata)?.requestFingerprint !==
+        idempotency.fingerprint
     ) {
       throw new EncounterIdempotencyConflictError();
     }
@@ -1562,15 +1731,24 @@ export class EncounterService {
     eventType: PlatformAuditEventType,
     action: string,
     changedFields: string[],
+    idempotency?: EncounterIdempotencyDescriptor,
   ): Promise<void> {
     const event = record.history.at(-1);
     if (!event || !this.prisma) return;
+    if (idempotency) event.id = idempotency.operationId;
     const auditMetadata = {
       resourceType: 'encounter',
       encounterId: record.id,
       facilityId: record.facilityId,
       action,
       changedFields: changedFields.join(',').slice(0, 512),
+      ...(idempotency
+        ? {
+            idempotencyKeyHash: idempotency.keyHash,
+            requestFingerprint: idempotency.fingerprint,
+            idempotencyRoute: idempotency.route,
+          }
+        : {}),
     };
     try {
       await this.prisma.encounterOperation.create({
@@ -1589,10 +1767,123 @@ export class EncounterService {
         },
       });
     } catch {
+      if (idempotency) {
+        try {
+          const existing = await this.prisma.encounterOperation.findUnique({
+            where: { id: idempotency.operationId },
+          });
+          if (existing) {
+            const metadata = this.idempotencyMetadata(existing.auditMetadata);
+            if (metadata?.requestFingerprint !== idempotency.fingerprint) {
+              throw new EncounterIdempotencyConflictError();
+            }
+            throw new EncounterIdempotencyInProgressError();
+          }
+        } catch (error) {
+          if (
+            error instanceof EncounterIdempotencyConflictError ||
+            error instanceof EncounterIdempotencyInProgressError
+          ) {
+            throw error;
+          }
+        }
+      }
       // The Mongo write must not start unless the durable marker is known to exist.
       this.logger.warn('Encounter pre-write operation marker persistence failed');
       throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
     }
+  }
+
+  private mutationIdempotency(
+    context: TrustedTenantContext,
+    actor: AuthenticatedPlatformUser,
+    route: string,
+    resourceId: string,
+    key: string | undefined,
+    payload: unknown,
+  ): EncounterIdempotencyDescriptor | undefined {
+    if (key === undefined) return undefined;
+    if (!this.prisma) {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (key.length < 1 || key.length > 128 || !/^[\x21-\x7e]+$/u.test(key)) {
+      throw new EncounterInputValidationError();
+    }
+    const scope = `${context.tenantId.toLowerCase()}\u0000${actor.userId.toLowerCase()}\u0000${route}\u0000${resourceId.toLowerCase()}`;
+    return {
+      operationId: this.deterministicUuid(`encounter-mutation\u0000${scope}\u0000${key}`),
+      keyHash: createHash('sha256').update(key).digest('hex'),
+      fingerprint: createHash('sha256').update(stableSerialize(payload)).digest('hex'),
+      route,
+    };
+  }
+
+  private deterministicUuid(value: string): string {
+    const hex = createHash('sha256').update(value).digest('hex').slice(0, 32).split('');
+    hex[12] = '5';
+    hex[16] = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+    const id = hex.join('');
+    return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
+  }
+
+  private idempotencyMetadata(value: Prisma.JsonValue): Record<string, unknown> | null {
+    return value && typeof value === 'object' && !Array.isArray(value)
+      ? (value as Record<string, unknown>)
+      : null;
+  }
+
+  private async replayMutation(
+    context: TrustedTenantContext,
+    actor: AuthenticatedPlatformUser,
+    requestContext: EncounterAuditRequestContext,
+    record: EncounterRecord,
+    idempotency: EncounterIdempotencyDescriptor | undefined,
+    eventType: PlatformAuditEventType,
+  ): Promise<EncounterResponse | null> {
+    if (!idempotency) return null;
+    let operation: Awaited<ReturnType<PrismaService['encounterOperation']['findUnique']>>;
+    try {
+      operation = await this.prisma!.encounterOperation.findUnique({
+        where: { id: idempotency.operationId },
+      });
+    } catch {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (!operation) return null;
+    const metadata = this.idempotencyMetadata(operation.auditMetadata);
+    if (
+      operation.tenantId !== context.tenantId ||
+      operation.actorUserId !== actor.userId ||
+      operation.resourceId !== record.id ||
+      operation.historyEventId !== idempotency.operationId ||
+      operation.auditEventType !== eventType ||
+      metadata?.idempotencyKeyHash !== idempotency.keyHash ||
+      metadata?.requestFingerprint !== idempotency.fingerprint ||
+      metadata?.idempotencyRoute !== idempotency.route
+    ) {
+      throw new EncounterIdempotencyConflictError();
+    }
+    const event = record.history.find((item) => item.id === idempotency.operationId);
+    if (
+      !event ||
+      event.actorUserId !== actor.userId ||
+      event.action !== operation.operationType ||
+      event.fromVersion !== operation.expectedVersion ||
+      operation.mutationState === 'NOT_APPLIED'
+    ) {
+      throw new EncounterIdempotencyReviewError();
+    }
+    await this.recordAudit(
+      context,
+      actor,
+      record,
+      eventType,
+      String(metadata.action ?? idempotency.route),
+      event.changedFields,
+      requestContext,
+      idempotency,
+    );
+    return this.present(record);
   }
 
   private async markOperationNotApplied(id: string, tenantId: string): Promise<void> {
@@ -1618,6 +1909,7 @@ export class EncounterService {
     action: string,
     changedFields: string[],
     requestContext: EncounterAuditRequestContext,
+    idempotency?: EncounterIdempotencyDescriptor,
   ): Promise<void> {
     const event = record.history.at(-1);
     const auditInput: CreatePlatformAuditInput = {
@@ -1634,6 +1926,13 @@ export class EncounterService {
         facilityId: record.facilityId,
         action,
         changedFields: changedFields.join(',').slice(0, 512),
+        ...(idempotency
+          ? {
+              idempotencyKeyHash: idempotency.keyHash,
+              requestFingerprint: idempotency.fingerprint,
+              idempotencyRoute: idempotency.route,
+            }
+          : {}),
       },
     };
     if (event && this.prisma) {
@@ -1818,6 +2117,17 @@ function applyClinicalPatch(
     }
   }
   return next;
+}
+
+function stableSerialize(value: unknown): string {
+  if (value === null || typeof value !== 'object') return JSON.stringify(value) ?? 'null';
+  if (value instanceof Date) return JSON.stringify(value.toISOString());
+  if (Array.isArray(value)) return `[${value.map(stableSerialize).join(',')}]`;
+  const object = value as Record<string, unknown>;
+  return `{${Object.keys(object)
+    .sort()
+    .map((key) => `${JSON.stringify(key)}:${stableSerialize(object[key])}`)
+    .join(',')}}`;
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {

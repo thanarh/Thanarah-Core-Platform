@@ -10,3 +10,4 @@
 - [Headless Chromium cleanup](headless-chromium-cleanup.md) — terminate the isolated browser process group before deleting its temporary profile.
 - [Refresh outage semantics](auth-refresh-outage.md) — refresh database failures are dependency outages, not credential failures; preserve the refresh cookie.
 - [Failure-injection isolation](failure-injection-isolation.md) — bound injected-failure requests and always clear server failpoints so timed-out tests cannot contaminate later cases.
+- [Disposable integration fixtures](disposable-integration-fixtures.md) — integration tests selected with `-t` must provision their own fixture data, not rely on state seeded by earlier tests.

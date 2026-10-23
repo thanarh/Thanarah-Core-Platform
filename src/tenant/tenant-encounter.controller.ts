@@ -268,6 +268,7 @@ export class TenantEncounterController {
   }
 
   @Put('encounters/:encounterId/diagnoses')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @RequireTenantPermissions(
     'tenant.encounters.read',
     'tenant.encounters.diagnoses.read',
@@ -304,6 +305,7 @@ export class TenantEncounterController {
   }
 
   @Put('encounters/:encounterId/services')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @RequireTenantPermissions(
     'tenant.encounters.read',
     'tenant.encounters.diagnoses.read',
@@ -341,6 +343,7 @@ export class TenantEncounterController {
   }
 
   @Post('encounters/:encounterId/amendments')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @RequireTenantPermissions(
     'tenant.encounters.read',
     'tenant.encounters.diagnoses.read',
@@ -377,6 +380,7 @@ export class TenantEncounterController {
   }
 
   @Patch('encounters/:encounterId/amendments/:amendmentId')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @RequireTenantPermissions(
     'tenant.encounters.read',
     'tenant.encounters.diagnoses.read',
@@ -413,6 +417,7 @@ export class TenantEncounterController {
   }
 
   @Post('encounters/:encounterId/amendments/:amendmentId/finalize')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @HttpCode(HttpStatus.OK)
   @RequireTenantPermissions(
     'tenant.encounters.read',
@@ -449,6 +454,7 @@ export class TenantEncounterController {
   }
 
   @Patch('encounters/:encounterId/clinical')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.clinical.write')
   @ApiOperation({
     summary: 'Update selected clinical fields on an editable draft encounter',
@@ -479,6 +485,7 @@ export class TenantEncounterController {
   }
 
   @Post('encounters/:encounterId/complete')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @HttpCode(HttpStatus.OK)
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.complete')
   @ApiOperation({
@@ -516,6 +523,7 @@ export class TenantEncounterController {
   }
 
   @Post('encounters/:encounterId/cancel')
+  @ApiHeader({ name: 'Idempotency-Key', required: false })
   @HttpCode(HttpStatus.OK)
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.cancel')
   @ApiOperation({ summary: 'Cancel an editable draft encounter without deleting it' })

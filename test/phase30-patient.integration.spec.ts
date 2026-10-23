@@ -1053,6 +1053,14 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const app = getApplication();
     const prisma = app.get(PrismaService);
     const mongoCollection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const patientResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46D-A-${RUN_ID}`),
+    });
+    expect(patientResponse.statusCode).toBe(201);
+    const patientId = patientResponse.json<{ id: string }>().id;
     const alternatePatientResponse = await app.inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/patients`,
@@ -1062,7 +1070,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(alternatePatientResponse.statusCode).toBe(201);
     const alternatePatientId = alternatePatientResponse.json<{ id: string }>().id;
     const payload = {
-      patientId: clinicalPatientId,
+      patientId,
       doctorId: clinicalDoctorId,
       facilityId: clinicalFacilityId,
       branchId: clinicalBranchId,
@@ -1079,7 +1087,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const key = `phase46d-create-${RUN_ID}`;
     const first = await send(key);
     const retry = await send(key);
-    expect(first.statusCode).toBe(201);
+    expect(first.statusCode, JSON.stringify(first.json())).toBe(201);
     expect(retry.statusCode).toBe(201);
     const encounterId = first.json<{ id: string }>().id;
     expect(retry.json<{ id: string }>().id).toBe(encounterId);
@@ -1105,6 +1113,42 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         _id: encounterId,
       }),
     ).toBe(1);
+
+    const mutationKey = `phase46d-clinical-${RUN_ID}`;
+    const clinicalPayload = {
+      expectedVersion: 1,
+      clinical: { assessment: 'Stable retry assessment' },
+    };
+    const update = (body: typeof clinicalPayload) =>
+      app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': mutationKey },
+        payload: body,
+      });
+    const mutation = await update(clinicalPayload);
+    const mutationReplay = await update(clinicalPayload);
+    expect(mutation.statusCode).toBe(200);
+    expect(mutationReplay.statusCode).toBe(200);
+    expect(mutationReplay.json<{ version: number }>().version).toBe(2);
+    const mutationConflict = await update({
+      expectedVersion: 1,
+      clinical: { assessment: 'Different assessment' },
+    });
+    expect(mutationConflict.statusCode).toBe(409);
+    const updatedDocument = await mongoCollection.findOne({
+      _id: encounterId,
+      _tenantId: tenantA.id,
+    });
+    expect(updatedDocument?.version).toBe(2);
+    expect((updatedDocument?.history as Array<{ id: string }>).length).toBe(2);
+    const mutationEventId = (updatedDocument?.history as Array<{ id: string }>)[1]!.id;
+    expect(
+      await prisma.encounterOperation.count({
+        where: { tenantId: tenantA.id, resourceId: encounterId },
+      }),
+    ).toBe(2);
+    expect(await prisma.platformAuditLog.count({ where: { id: mutationEventId } })).toBe(1);
 
     const concurrentKey = `phase46d-race-${RUN_ID}`;
     const concurrent = await Promise.all([send(concurrentKey), send(concurrentKey)]);

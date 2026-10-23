@@ -4,6 +4,7 @@
   const API_ROOT = '/api/v1';
   const AUTH_ROOT = `${API_ROOT}/auth`;
   let accessToken = null;
+  const pendingMutationKeys = new Map();
 
   const safeMessages = {
     APPOINTMENT_INPUT_INVALID: 'راجع بيانات الموعد ثم حاول مرة أخرى.',
@@ -13,6 +14,9 @@
     APPOINTMENT_SCHEDULE_CONFLICT: 'هذا الوقت لم يعد متاحًا. اختر وقتًا آخر.',
     APPOINTMENT_IDEMPOTENCY_CONFLICT: 'تعذّر تأكيد إعادة المحاولة. حدّث المواعيد قبل المتابعة.',
     ENCOUNTER_IDEMPOTENCY_CONFLICT: 'استُخدم مفتاح إعادة المحاولة لطلب مختلف. ابدأ إجراءً جديدًا.',
+    ENCOUNTER_IDEMPOTENCY_IN_PROGRESS: 'الطلب السابق ما زال قيد المعالجة. أعد المحاولة بعد قليل.',
+    ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED:
+      'تعذّر تحديد نتيجة الطلب السابق. أوقف المحاولة واطلب المراجعة.',
     ENCOUNTER_VERSION_CONFLICT: 'تغيّر اللقاء منذ تحميله. حدّث البيانات قبل الحفظ.',
     APPOINTMENT_POLICY_VIOLATION: 'الموعد لا يطابق سياسة الجدولة الحالية.',
     APPOINTMENT_STATE_CONFLICT: 'تغيّرت حالة الموعد. حدّث الصفحة قبل المتابعة.',
@@ -117,6 +121,29 @@
     const payload = await readPayload(response);
     if (!response.ok) throw responseError(response, payload);
     return payload;
+  }
+
+  async function mutationRequest(path, options) {
+    const fingerprint = JSON.stringify(options.body ?? null);
+    const previous = pendingMutationKeys.get(path);
+    const key = previous?.fingerprint === fingerprint ? previous.key : createIdempotencyKey();
+    pendingMutationKeys.set(path, { fingerprint, key });
+    try {
+      const result = await request(path, {
+        ...options,
+        headers: { ...(options.headers || {}), 'Idempotency-Key': key },
+      });
+      pendingMutationKeys.delete(path);
+      return result;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  function createIdempotencyKey() {
+    return root.crypto?.randomUUID
+      ? root.crypto.randomUUID()
+      : `enc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   function tenantPath(tenantId, suffix) {
@@ -225,35 +252,35 @@
     },
 
     updateEncounterClinical(tenantId, encounterId, input) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/clinical`),
         { method: 'PATCH', body: input },
       );
     },
 
     replaceEncounterDiagnoses(tenantId, encounterId, input) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/diagnoses`),
         { method: 'PUT', body: input },
       );
     },
 
     replaceEncounterServiceRecords(tenantId, encounterId, input) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/services`),
         { method: 'PUT', body: input },
       );
     },
 
     createEncounterAmendment(tenantId, encounterId, input) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/amendments`),
         { method: 'POST', body: input },
       );
     },
 
     updateEncounterAmendment(tenantId, encounterId, amendmentId, input) {
-      return request(
+      return mutationRequest(
         tenantPath(
           tenantId,
           `/encounters/${encodeURIComponent(encounterId)}/amendments/${encodeURIComponent(amendmentId)}`,
@@ -263,7 +290,7 @@
     },
 
     finalizeEncounterAmendment(tenantId, encounterId, amendmentId, expectedVersion) {
-      return request(
+      return mutationRequest(
         tenantPath(
           tenantId,
           `/encounters/${encodeURIComponent(encounterId)}/amendments/${encodeURIComponent(amendmentId)}/finalize`,
@@ -273,14 +300,14 @@
     },
 
     completeEncounter(tenantId, encounterId, expectedVersion) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/complete`),
         { method: 'POST', body: { expectedVersion } },
       );
     },
 
     cancelEncounter(tenantId, encounterId, expectedVersion, reason) {
-      return request(
+      return mutationRequest(
         tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}/cancel`),
         {
           method: 'POST',
