@@ -371,23 +371,40 @@ MongoDB-side evidence could create false audit events. Encounter documents
 retain metadata-only history; other audit delivery gaps require a larger
 operation/recovery design before automation is safe.
 
-## Phase 46 status: stable encounter audit identity only
+## Phase 46B: encounter audit operation ledger
 
-This increment reuses each encounter's immutable embedded history-event UUID as
-the central audit row ID and verifies the relationship against disposable
-MongoDB and MySQL. The existing MySQL primary-key constraint is the deduplication
-mechanism; no migration was required. It is limited to encounter audit events.
+Encounter mutation audit delivery now records a central `EncounterOperation`
+row keyed by the immutable MongoDB history-event UUID. It stores tenant,
+encounter, actor, event type, operation action, and sanitized audit metadata;
+clinical notes and patient demographics are excluded. State transitions are
+`PENDING` → `DELIVERED` or `FAILED`; reconciliation claims use a conditional
+attempt-count update, and successful evidence-backed delivery becomes
+`RECONCILED`. Identity mismatches and exhausted retries become
+`REVIEW_REQUIRED`. Reconciliation is tenant-scoped, requires
+`tenant.encounters.audit.reconcile`, and processes at most 25 rows per request.
+The tenant owner receives this permission through the additive Phase 46B
+migration.
 
-No operation-ledger table, pre-write marker, audit outbox, retry worker, batch
-reconciliation endpoint, or operator-review endpoint was implemented. Thus,
-this does not cover failures where the central database is unavailable before
-an operation marker could be recorded, does not make a missing audit row
-automatically discoverable, and does not prove whether a MongoDB mutation
-committed when its acknowledgement is lost. Patient and appointment failure
-windows, process interruption, ambiguous retries, concurrent reconciliation,
-and tenant-isolation tests for a reconciliation action remain unverified. Phase
-46 is not closed; the only added guarantee is deduplicable identity for an
-encounter history-backed audit replay.
+The `POST /api/v1/tenants/:tenantId/encounters/audit-reconciliation` endpoint
+never replays a clinical mutation. It reads the encounter through the trusted
+tenant storage resolver and requires the embedded event UUID, actor, event
+action, encounter identifier, and audit metadata resource identity to agree
+before delivering the audit row. The MySQL audit primary key is the event UUID;
+an existing row counts as delivered only when its type and tenant match.
+Attempts and outcomes are persisted on the operation row instead of generating
+one audit event per retry.
+
+The ledger entry is written after the MongoDB mutation and before the central
+audit delivery. This makes ordinary audit-write failures and interruption after
+ledger creation discoverable, but it does not close the crash window between
+MongoDB commit and ledger insertion. A MySQL outage that prevents ledger
+creation also leaves no queue entry. Missing history is never treated as proof
+of success, and the service does not decide ambiguous acknowledgements or
+resource mismatches automatically. This increment covers encounter audit
+delivery only; patient and appointment workflows are unsupported. Do not claim
+cross-store atomicity or exactly-once delivery. Disposable integration evidence
+and failure-injection coverage must be checked separately before treating the
+phase as complete.
 
 ## Phase 45D: critical failure windows
 

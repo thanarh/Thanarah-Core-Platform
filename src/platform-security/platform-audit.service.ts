@@ -45,18 +45,32 @@ export class PlatformAuditService {
     private readonly authorization: PlatformAuthorizationService,
   ) {}
 
-  async recordAudit(input: CreatePlatformAuditInput): Promise<void> {
-    if (!Object.values(PlatformAuditEventType).includes(input.eventType)) return;
+  async recordAudit(input: CreatePlatformAuditInput): Promise<boolean> {
+    if (!Object.values(PlatformAuditEventType).includes(input.eventType)) return false;
 
-    await this.tryPersist(() =>
-      this.repository.createAuditLog({
+    const data = {
         ...(isUuid(input.eventId) ? { id: input.eventId } : {}),
         eventType: input.eventType,
         ...this.context(input),
         subjectTenantId: this.safeIdentifier(input.subjectTenantId),
         metadata: this.metadata(input.metadata),
-      }),
-    );
+      };
+    try {
+      await this.repository.createAuditLog(data);
+      return true;
+    } catch {
+      this.logger.warn('Platform audit persistence failed');
+      if (!input.eventId || !isUuid(input.eventId)) return false;
+      try {
+        const existing = await this.repository.findAuditLog(input.eventId);
+        return (
+          existing?.eventType === input.eventType &&
+          existing.subjectTenantId === this.safeIdentifier(input.subjectTenantId)
+        );
+      } catch {
+        return false;
+      }
+    }
   }
 
   async recordSecurityEvent(input: CreatePlatformSecurityEventInput): Promise<void> {

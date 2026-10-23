@@ -214,6 +214,14 @@ enum PlatformSecurityEventStatus {
   RESOLVED
 }
 
+enum EncounterOperationStatus {
+  PENDING
+  FAILED
+  DELIVERED
+  RECONCILED
+  REVIEW_REQUIRED
+}
+
 model User {
   id                    String                  @id @default(uuid()) @db.Char(36)
   email                 String                  @unique @db.VarChar(254)
@@ -318,28 +326,28 @@ model PlatformRefreshTokenHistory {
 }
 
 model Tenant {
-  id              String                @id @default(uuid()) @db.Char(36)
-  slug            String                @unique @db.VarChar(64)
-  legalName       String                @db.VarChar(191)
-  displayName     String                @db.VarChar(191)
-  status          TenantStatus          @default(ACTIVE)
-  statusChangedAt DateTime              @default(now())
-  suspendedAt     DateTime?
-  deactivatedAt   DateTime?
-  createdAt       DateTime              @default(now())
-  updatedAt       DateTime              @updatedAt
-  auditEvents     PlatformAuditLog[]    @relation("TenantAuditSubject")
-  facilities      Facility[]
-  staff           Staff[]               @relation("TenantStaffTenant")
-  departments     Department[]
-  specialties     Specialty[]
-  services        Service[]
-  doctors         Doctor[]
-  patients        Patient[]
-  storageTargets  TenantStorageTarget[]
-  memberships     TenantMembership[]    @relation("TenantMembershipTenant")
-  roles           TenantRole[]
-  subscriptions   Subscription[]
+  id                         String                     @id @default(uuid()) @db.Char(36)
+  slug                       String                     @unique @db.VarChar(64)
+  legalName                  String                     @db.VarChar(191)
+  displayName                String                     @db.VarChar(191)
+  status                     TenantStatus               @default(ACTIVE)
+  statusChangedAt            DateTime                   @default(now())
+  suspendedAt                DateTime?
+  deactivatedAt              DateTime?
+  createdAt                  DateTime                   @default(now())
+  updatedAt                  DateTime                   @updatedAt
+  auditEvents                PlatformAuditLog[]         @relation("TenantAuditSubject")
+  facilities                 Facility[]
+  staff                      Staff[]                    @relation("TenantStaffTenant")
+  departments                Department[]
+  specialties                Specialty[]
+  services                   Service[]
+  doctors                    Doctor[]
+  patients                   Patient[]
+  storageTargets             TenantStorageTarget[]
+  memberships                TenantMembership[]         @relation("TenantMembershipTenant")
+  roles                      TenantRole[]
+  subscriptions              Subscription[]
   facilitySchedulingPolicies FacilitySchedulingPolicy[]
 
   @@index([status])
@@ -367,18 +375,18 @@ model Facility {
 }
 
 model FacilitySchedulingPolicy {
-  id        String                         @id @default(uuid()) @db.Char(36)
-  tenantId  String                         @db.Char(36)
-  facilityId String                        @db.Char(36)
-  status    FacilitySchedulingPolicyStatus @default(INACTIVE)
-  timeZone  String                         @db.VarChar(64)
-  rules     Json
-  version   Int                            @default(1)
-  createdAt DateTime                       @default(now())
-  updatedAt DateTime                       @updatedAt
-  tenant    Tenant                         @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  facility  Facility                       @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  revisions FacilitySchedulingPolicyRevision[]
+  id         String                             @id @default(uuid()) @db.Char(36)
+  tenantId   String                             @db.Char(36)
+  facilityId String                             @db.Char(36)
+  status     FacilitySchedulingPolicyStatus     @default(INACTIVE)
+  timeZone   String                             @db.VarChar(64)
+  rules      Json
+  version    Int                                @default(1)
+  createdAt  DateTime                           @default(now())
+  updatedAt  DateTime                           @updatedAt
+  tenant     Tenant                             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  facility   Facility                           @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  revisions  FacilitySchedulingPolicyRevision[]
 
   @@unique([facilityId, tenantId])
   @@unique([id, tenantId])
@@ -386,17 +394,17 @@ model FacilitySchedulingPolicy {
 }
 
 model FacilitySchedulingPolicyRevision {
-  id          String                                  @id @default(uuid()) @db.Char(36)
-  policyId    String                                  @db.Char(36)
-  tenantId    String                                  @db.Char(36)
-  facilityId  String                                  @db.Char(36)
+  id          String                                 @id @default(uuid()) @db.Char(36)
+  policyId    String                                 @db.Char(36)
+  tenantId    String                                 @db.Char(36)
+  facilityId  String                                 @db.Char(36)
   version     Int
   action      FacilitySchedulingPolicyRevisionAction
   status      FacilitySchedulingPolicyStatus
-  timeZone    String                                  @db.VarChar(64)
+  timeZone    String                                 @db.VarChar(64)
   rules       Json
-  actorUserId String                                  @db.Char(36)
-  createdAt   DateTime                                @default(now())
+  actorUserId String                                 @db.Char(36)
+  createdAt   DateTime                               @default(now())
   policy      FacilitySchedulingPolicy               @relation(fields: [policyId, tenantId], references: [id, tenantId], onDelete: Restrict)
 
   @@unique([policyId, version])
@@ -798,6 +806,28 @@ model PlatformAuditLog {
   @@index([subjectUserId, occurredAt])
   @@index([subjectTenantId, occurredAt])
   @@index([sessionId, occurredAt])
+}
+
+model EncounterOperation {
+  id                        String                   @id @db.Char(36)
+  tenantId                  String                   @db.Char(36)
+  resourceType              String                   @db.VarChar(32)
+  resourceId                String                   @db.Char(36)
+  operationType             String                   @db.VarChar(64)
+  actorUserId               String?                  @db.Char(36)
+  historyEventId            String                   @unique @db.Char(36)
+  auditEventType            String                   @db.VarChar(64)
+  auditMetadata             Json
+  auditDeliveryStatus       EncounterOperationStatus @default(PENDING)
+  attemptCount              Int                      @default(0)
+  lastAttemptAt             DateTime?
+  lastFailureClassification String?                  @db.VarChar(64)
+  reconciliationOutcome     String?                  @db.VarChar(64)
+  createdAt                 DateTime                 @default(now())
+  updatedAt                 DateTime                 @updatedAt
+
+  @@index([tenantId, auditDeliveryStatus, createdAt])
+  @@index([auditDeliveryStatus, createdAt])
 }
 
 model PlatformSecurityEvent {

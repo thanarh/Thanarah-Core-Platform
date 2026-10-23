@@ -10,6 +10,10 @@ export class PlatformAuditRepository {
     return this.prisma.platformAuditLog.create({ data });
   }
 
+  findAuditLog(id: string): Promise<PlatformAuditLog | null> {
+    return this.prisma.platformAuditLog.findUnique({ where: { id } });
+  }
+
   createSecurityEvent(
     data: Prisma.PlatformSecurityEventUncheckedCreateInput,
   ): Promise<PlatformSecurityEvent> {

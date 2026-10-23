@@ -53,6 +53,7 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.encounters.amendments.create',
   'tenant.encounters.amendments.update',
   'tenant.encounters.amendments.finalize',
+  'tenant.encounters.audit.reconcile',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -207,6 +208,10 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   {
     code: 'tenant.encounters.amendments.finalize',
     description: 'Finalize an explicitly reasoned encounter amendment',
+  },
+  {
+    code: 'tenant.encounters.audit.reconcile',
+    description: 'Reconcile failed encounter audit delivery within this tenant',
   },
 ];
 

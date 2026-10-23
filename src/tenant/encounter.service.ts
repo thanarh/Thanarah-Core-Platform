@@ -1,4 +1,4 @@
-import { Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PlatformAuditEventType } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -76,6 +76,8 @@ import { TenantStaffScopeService } from './tenant-staff-scope.service';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 import { localDateRangeToUtc } from './appointment-timezone';
 import type { CreatePlatformAuditInput } from '../platform-security/platform-security.types';
+import { Prisma } from '@prisma/client';
+import { PrismaService } from '../database/prisma.service';
 
 const MAX_ENCOUNTER_HISTORY_EVENTS = 5_000;
 
@@ -88,6 +90,8 @@ export interface EncounterAuditRequestContext {
 
 @Injectable()
 export class EncounterService {
+  private readonly logger = new Logger(EncounterService.name);
+
   constructor(
     @Inject(ENCOUNTER_REPOSITORY)
     private readonly encounters: EncounterRepository,
@@ -101,6 +105,7 @@ export class EncounterService {
     private readonly schedulingPolicies: FacilitySchedulingPolicyService,
     private readonly authorization: TenantAuthorizationService,
     private readonly audit: PlatformAuditService,
+    @Optional() private readonly prisma?: PrismaService,
   ) {}
 
   async createFromAppointment(
@@ -717,6 +722,120 @@ export class EncounterService {
     return { items: history };
   }
 
+  async reconcileAudit(
+    context: TrustedTenantContext,
+    requestedLimit: unknown,
+  ): Promise<{ items: Array<{ operationId: string; outcome: string }> }> {
+    await this.authorization.authorize(context, 'tenant.encounters.audit.reconcile');
+    const limit =
+      typeof requestedLimit === 'number' && Number.isInteger(requestedLimit)
+        ? Math.min(25, Math.max(1, requestedLimit))
+        : 10;
+    if (!this.prisma) return { items: [{ operationId: '', outcome: 'DEPENDENCY_UNAVAILABLE' }] };
+
+    let operations;
+    try {
+      operations = await this.prisma.encounterOperation.findMany({
+        where: {
+          tenantId: context.tenantId,
+          auditDeliveryStatus: { in: ['PENDING', 'FAILED'] },
+          attemptCount: { lt: 5 },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: limit,
+      });
+    } catch {
+      return { items: [{ operationId: '', outcome: 'DEPENDENCY_UNAVAILABLE' }] };
+    }
+    const items: Array<{ operationId: string; outcome: string }> = [];
+    for (const operation of operations) {
+      const claim = await this.prisma.encounterOperation.updateMany({
+        where: {
+          id: operation.id,
+          tenantId: context.tenantId,
+          auditDeliveryStatus: operation.auditDeliveryStatus,
+          attemptCount: operation.attemptCount,
+        },
+        data: { attemptCount: { increment: 1 }, lastAttemptAt: new Date() },
+      });
+      if (claim.count !== 1) {
+        items.push({ operationId: operation.id, outcome: 'REQUIRES_OPERATOR_REVIEW' });
+        continue;
+      }
+      try {
+        const record = await this.encounters.findById(context, operation.resourceId);
+        if (!record) {
+          await this.finishReconciliation(operation.id, 'MUTATION_EVIDENCE_NOT_FOUND');
+          items.push({ operationId: operation.id, outcome: 'MUTATION_EVIDENCE_NOT_FOUND' });
+          continue;
+        }
+        const event = record.history.find((candidate) => candidate.id === operation.historyEventId);
+        const auditMetadata = operation.auditMetadata as Record<string, unknown>;
+        if (
+          operation.resourceType !== 'encounter' ||
+          operation.resourceId !== record.id ||
+          auditMetadata.resourceType !== 'encounter' ||
+          auditMetadata.encounterId !== record.id ||
+          !event ||
+          event.actorUserId !== operation.actorUserId ||
+          event.action !== operation.operationType ||
+          event.toVersion !== event.fromVersion + 1
+        ) {
+          await this.finishReconciliation(operation.id, 'IDENTITY_MISMATCH');
+          items.push({ operationId: operation.id, outcome: 'REQUIRES_OPERATOR_REVIEW' });
+          continue;
+        }
+        const delivered = await this.audit.recordAudit({
+          eventId: operation.historyEventId,
+          eventType: operation.auditEventType as PlatformAuditEventType,
+          actorUserId: operation.actorUserId ?? undefined,
+          subjectTenantId: operation.tenantId,
+          metadata: operation.auditMetadata as Prisma.InputJsonObject,
+        });
+        if (!delivered) {
+          await this.finishReconciliation(operation.id, 'AUDIT_DELIVERY_FAILED');
+          items.push({ operationId: operation.id, outcome: 'MUTATION_EVIDENCE_FOUND_AUDIT_FAILED' });
+          continue;
+        }
+        await this.prisma.encounterOperation.updateMany({
+          where: { id: operation.id, tenantId: context.tenantId },
+          data: {
+            auditDeliveryStatus: 'RECONCILED',
+            reconciliationOutcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED',
+            lastFailureClassification: null,
+          },
+        });
+        items.push({ operationId: operation.id, outcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED' });
+      } catch {
+        await this.finishReconciliation(operation.id, 'DEPENDENCY_UNAVAILABLE');
+        items.push({ operationId: operation.id, outcome: 'DEPENDENCY_UNAVAILABLE' });
+      }
+    }
+    return { items };
+  }
+
+  private async finishReconciliation(id: string, failure: string): Promise<void> {
+    try {
+      const operation = await this.prisma?.encounterOperation.findUnique({
+        where: { id },
+        select: { attemptCount: true },
+      });
+      await this.prisma?.encounterOperation.updateMany({
+        where: { id },
+        data: {
+          auditDeliveryStatus:
+            failure === 'IDENTITY_MISMATCH' || (operation?.attemptCount ?? 0) >= 5
+              ? 'REVIEW_REQUIRED'
+              : 'FAILED',
+          lastFailureClassification: failure,
+          reconciliationOutcome: failure,
+        },
+      });
+    } catch {
+      this.logger.warn('Encounter audit reconciliation state update failed');
+    }
+  }
+
   async effectiveTimeZones(
     context: TrustedTenantContext,
     input: EncounterEffectiveTimeZonesQuery,
@@ -1152,9 +1271,10 @@ export class EncounterService {
     changedFields: string[],
     requestContext: EncounterAuditRequestContext,
   ): Promise<void> {
+    const event = record.history.at(-1);
     const auditInput: CreatePlatformAuditInput = {
       eventType,
-      eventId: record.history.at(-1)?.id,
+      eventId: event?.id,
       actorUserId: actor.userId,
       subjectTenantId: context.tenantId,
       requestId: requestContext.requestId,
@@ -1168,7 +1288,43 @@ export class EncounterService {
         changedFields: changedFields.join(',').slice(0, 512),
       },
     };
-    await this.audit.recordAudit(auditInput);
+    if (event && this.prisma) {
+      try {
+        await this.prisma.encounterOperation.create({
+          data: {
+            id: event.id,
+            historyEventId: event.id,
+            tenantId: context.tenantId,
+            resourceType: 'encounter',
+            resourceId: record.id,
+            operationType: event.action,
+            actorUserId: actor.userId,
+            auditEventType: eventType,
+            auditMetadata: auditInput.metadata as Prisma.InputJsonObject,
+          },
+        });
+      } catch {
+        // Mutation is already committed. Keep serving it; reconciliation is best-effort.
+        this.logger.warn('Encounter operation ledger insert failed');
+      }
+    }
+    const delivered = await this.audit.recordAudit(auditInput);
+    if (event && this.prisma) {
+      try {
+        await this.prisma.encounterOperation.updateMany({
+          where: { id: event.id, tenantId: context.tenantId, auditDeliveryStatus: 'PENDING' },
+          data: {
+            auditDeliveryStatus: delivered ? 'DELIVERED' : 'FAILED',
+            attemptCount: 1,
+            lastAttemptAt: new Date(),
+            lastFailureClassification: delivered ? null : 'AUDIT_DELIVERY_FAILED',
+            reconciliationOutcome: delivered ? 'AUDIT_DELIVERED' : null,
+          },
+        });
+      } catch {
+        this.logger.warn('Encounter operation audit state update failed');
+      }
+    }
   }
 
   private assertActor(context: TrustedTenantContext, actor: AuthenticatedPlatformUser): void {
