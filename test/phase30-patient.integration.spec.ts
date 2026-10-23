@@ -1,6 +1,7 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
+import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
@@ -1570,6 +1571,99 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       rmSync(browserProfile, { recursive: true, force: true, maxRetries: 60, retryDelay: 100 });
     }
   }, 120_000);
+
+  it('recovers an appointment after the committed HTTP acknowledgement is dropped', async () => {
+    const appointments = mongoAdminClient!.db(tenantA.databaseName).collection('appointments');
+    const baseline = await appointments.findOne({
+      _id: browserAppointmentId,
+      _tenantId: tenantA.id,
+    });
+    expect(baseline).not.toBeNull();
+    const startsAt = new Date(baseline!.startsAt);
+    startsAt.setTime(startsAt.getTime() + 60 * 60 * 1_000);
+    const endsAt = new Date(startsAt.getTime() + 30 * 60 * 1_000);
+    const payload = {
+      patientId: clinicalPatientId,
+      doctorId: clinicalDoctorId,
+      facilityId: clinicalFacilityId,
+      branchId: clinicalBranchId,
+      serviceId: clinicalServiceId,
+      startsAt: startsAt.toISOString(),
+      endsAt: endsAt.toISOString(),
+    };
+    const idempotencyKey = `phase45c-dropped-ack-${RUN_ID}`;
+    let resolveUpstreamStatus!: (status: number) => void;
+    const upstreamStatus = new Promise<number>((resolvePromise) => {
+      resolveUpstreamStatus = resolvePromise;
+    });
+    const proxy = createServer((incoming, outgoing) => {
+      void (async (): Promise<void> => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+        const headers: Record<string, string> = {
+          authorization: `Bearer ${accessToken}`,
+          'content-type': 'application/json',
+          'idempotency-key': idempotencyKey,
+        };
+        const upstream = await fetch(`${browserBaseUrl}${incoming.url}`, {
+          method: incoming.method,
+          headers,
+          body: Buffer.concat(chunks),
+        });
+        await upstream.arrayBuffer();
+        resolveUpstreamStatus(upstream.status);
+        outgoing.destroy();
+      })().catch(() => {
+        resolveUpstreamStatus(0);
+        outgoing.destroy();
+      });
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      proxy.once('error', reject);
+      proxy.listen(0, '127.0.0.1', () => resolvePromise());
+    });
+    const proxyAddress = proxy.address();
+    if (!proxyAddress || typeof proxyAddress === 'string') {
+      throw new Error('Acknowledgement-drop proxy did not report its assigned address');
+    }
+
+    try {
+      const clientReceivedResponse = await fetch(
+        `http://127.0.0.1:${proxyAddress.port}/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/tenants/${tenantA.id}/appointments`,
+        {
+          method: 'POST',
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            'content-type': 'application/json',
+            'idempotency-key': idempotencyKey,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15_000),
+        },
+      ).then(
+        () => true,
+        () => false,
+      );
+      expect(clientReceivedResponse).toBe(false);
+      expect(await upstreamStatus).toBe(201);
+
+      const retry = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/appointments`,
+        headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+        payload,
+      });
+      expect(retry.statusCode, retry.body).toBe(201);
+      const appointmentId = retry.json<{ id: string }>().id;
+      expect(await appointments.countDocuments({ _id: appointmentId, _tenantId: tenantA.id })).toBe(
+        1,
+      );
+    } finally {
+      await new Promise<void>((resolvePromise) => {
+        proxy.close(() => resolvePromise());
+      });
+    }
+  }, 60_000);
 
   it('runs authenticated Patient CRUD and lifecycle operations against real tenant databases', async () => {
     const health = await getApplication().inject({

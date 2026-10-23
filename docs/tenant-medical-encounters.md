@@ -336,15 +336,28 @@ not present. Appointment creation is also retried over HTTP with the same
 idempotency key and payload, which returns the same appointment ID; reusing
 that key with a different payload returns 409.
 
-This does not simulate a lost acknowledgement after a successful MongoDB
-commit, a client disconnect while a server operation continues, or a
-process-level crash between MySQL and MongoDB writes. Appointment creation or
-rescheduling, encounter completion or amendment during the injected outage,
-and browser behavior during a MongoDB outage remain unverified. The exact
-disposable integration command is `npm run test:phase42`; it requires Docker
-and runs the full MySQL/MongoDB integration scenario. No clinical record is
-rolled back to mimic a distributed transaction, and no exactly-once guarantee
-is claimed.
+An HTTP proxy test forwards an appointment creation to the real app and MongoDB,
+confirms the upstream request completed with 201, then drops the response before
+the client receives it. Retrying the same key and payload returns the same ID,
+and a tenant-scoped MongoDB count confirms one appointment. This proves safe
+recovery from a client-visible lost HTTP acknowledgement after the operation
+has completed; it does not simulate MongoDB losing its own write acknowledgement.
+
+The signed-in Chromium journey also injects a real MongoDB `findAndModify`
+failure while saving an encounter draft. The UI displays an error, preserves
+the unsent clinical text, and leaves the persisted encounter at version 1.
+After MongoDB recovers, an explicit user retry saves the draft as version 2.
+This covers a rejected write before commit.
+
+MongoDB-driver acknowledgement loss, a client disconnect while a server
+operation is still processing, and a process-level crash between MySQL and
+MongoDB writes remain unverified. Appointment creation or rescheduling,
+encounter completion or amendment during the injected outage, browser behavior
+for ambiguous post-commit results, and concurrent creation of the same
+appointment-linked encounter also remain unverified. The exact disposable
+integration command is `npm run test:phase42`; it requires Docker and runs the
+full MySQL/MongoDB integration scenario. No clinical record is rolled back to
+mimic a distributed transaction, and no exactly-once guarantee is claimed.
 
 There is still no safe shared transaction boundary for a generic audit outbox:
 clinical state is authoritative in tenant MongoDB, while platform audit rows
