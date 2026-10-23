@@ -402,9 +402,25 @@ creation also leaves no queue entry. Missing history is never treated as proof
 of success, and the service does not decide ambiguous acknowledgements or
 resource mismatches automatically. This increment covers encounter audit
 delivery only; patient and appointment workflows are unsupported. Do not claim
-cross-store atomicity or exactly-once delivery. Disposable integration evidence
-and failure-injection coverage must be checked separately before treating the
-phase as complete.
+cross-store atomicity or exactly-once delivery.
+
+The disposable MySQL/MongoDB integration suite independently inspected the
+encounter history and central audit row. It removed one existing audit row,
+marked its operation failed, and verified that the endpoint restored exactly
+one audit row and marked the operation reconciled. It also marked another
+operation failed while leaving its audit row present and verified idempotent
+delivery without increasing the audit-row count. These checks prove the
+evidence lookup and duplicate handling against real persisted state; they do
+not simulate a database failure during the original audit write. The suite
+passed 30/30 cases, and the full unit suite passed 899/899.
+
+Still unverified: injected audit-write failure after a real encounter mutation;
+two concurrent database-backed reconciliation requests; tenant A attempting
+tenant B's operation through HTTP; no-history and malformed-ledger cases in real
+databases; MySQL/MongoDB outage during reconciliation; an encounter version
+change between event creation and reconciliation; and process termination
+between MongoDB commit and ledger insertion. No operator interface exists to
+review `REVIEW_REQUIRED` records. These gaps keep Phase 46 open.
 
 ## Phase 45D: critical failure windows
 

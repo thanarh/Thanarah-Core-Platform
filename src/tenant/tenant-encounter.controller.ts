@@ -527,6 +527,20 @@ export class TenantEncounterController {
     return this.encounters.cancel(context, encounterId, body, actor, this.requestContext(request));
   }
 
+  @Post('encounters/audit-reconciliation')
+  @HttpCode(HttpStatus.OK)
+  @RequireTenantPermissions('tenant.encounters.audit.reconcile')
+  @ApiOperation({
+    summary: 'Reconcile pending encounter audit delivery for the authenticated tenant',
+  })
+  @ApiOkResponse({ description: 'Sanitized operation outcomes' })
+  reconcileAudit(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Body() body: { limit?: number },
+  ): ReturnType<EncounterService['reconcileAudit']> {
+    return this.encounters.reconcileAudit(context, body?.limit);
+  }
+
   @Get('encounters/:encounterId/history')
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.history.read')
   @ApiOperation({
@@ -568,23 +582,6 @@ export class TenantEncounterController {
       },
     },
   })
-  @ApiBadRequestResponse({ type: EncounterErrorResponseDto })
-  @ApiForbiddenResponse({ type: EncounterErrorResponseDto })
-  @ApiNotFoundResponse({ type: EncounterErrorResponseDto })
-  @Post('encounters/audit-reconciliation')
-  @HttpCode(HttpStatus.OK)
-  @RequireTenantPermissions('tenant.encounters.audit.reconcile')
-  @ApiOperation({
-    summary: 'Reconcile pending encounter audit delivery for the authenticated tenant',
-  })
-  @ApiOkResponse({ description: 'Sanitized operation outcomes' })
-  reconcileAudit(
-    @CurrentTenantContext() context: TrustedTenantContext,
-    @Body() body: { limit?: number },
-  ): ReturnType<EncounterService['reconcileAudit']> {
-    return this.encounters.reconcileAudit(context, body?.limit);
-  }
-
   history(
     @CurrentTenantContext() context: TrustedTenantContext,
     @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,

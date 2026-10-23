@@ -845,6 +845,85 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(JSON.stringify(clinicalAudits)).not.toContain(amendmentReason);
   });
 
+  it('reconciles only persisted encounter-history evidence and deduplicates existing audit rows', async () => {
+    const prisma = getApplication().get(PrismaService);
+    const firstOperation = await prisma.encounterOperation.findFirst({
+      where: {
+        tenantId: tenantA.id,
+        resourceId: apiEncounterId,
+        auditDeliveryStatus: 'DELIVERED',
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    expect(firstOperation).not.toBeNull();
+    const document = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('encounters')
+      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+    const persistedHistory = (document?.history ?? []) as Array<{ id: string }>;
+    expect(persistedHistory.some((event) => event.id === firstOperation!.historyEventId)).toBe(
+      true,
+    );
+
+    await prisma.platformAuditLog.deleteMany({ where: { id: firstOperation!.historyEventId } });
+    await prisma.encounterOperation.update({
+      where: { id: firstOperation!.id },
+      data: { auditDeliveryStatus: 'FAILED', attemptCount: 1 },
+    });
+    const recovered = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+      headers: bearerHeaders(),
+      payload: { limit: 1 },
+    });
+    expect(recovered.statusCode).toBe(200);
+    expect(recovered.json().items).toContainEqual(
+      expect.objectContaining({
+        operationId: firstOperation!.id,
+        outcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED',
+      }),
+    );
+    const recreatedAudit = await prisma.platformAuditLog.findUnique({
+      where: { id: firstOperation!.historyEventId },
+    });
+    const reconciledOperation = await prisma.encounterOperation.findUnique({
+      where: { id: firstOperation!.id },
+    });
+    expect(recreatedAudit?.subjectTenantId).toBe(tenantA.id);
+    expect(reconciledOperation?.auditDeliveryStatus).toBe('RECONCILED');
+
+    const alreadyAudited = await prisma.encounterOperation.findFirst({
+      where: {
+        tenantId: tenantA.id,
+        resourceId: apiEncounterId,
+        auditDeliveryStatus: 'DELIVERED',
+        historyEventId: { not: firstOperation!.historyEventId },
+      },
+    });
+    expect(alreadyAudited).not.toBeNull();
+    const existingAuditCountBefore = await prisma.platformAuditLog.count({
+      where: { id: alreadyAudited!.historyEventId },
+    });
+    await prisma.encounterOperation.update({
+      where: { id: alreadyAudited!.id },
+      data: { auditDeliveryStatus: 'FAILED' },
+    });
+    const idempotent = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+      headers: bearerHeaders(),
+      payload: { limit: 1 },
+    });
+    expect(idempotent.statusCode).toBe(200);
+    expect(
+      await prisma.platformAuditLog.count({ where: { id: alreadyAudited!.historyEventId } }),
+    ).toBe(existingAuditCountBefore);
+    expect(
+      (await prisma.encounterOperation.findUnique({ where: { id: alreadyAudited!.id } }))
+        ?.auditDeliveryStatus,
+    ).toBe('RECONCILED');
+  });
+
   it('walks through the signed-in encounter UI in headless Chromium', async () => {
     const appointmentDay = new Date(Date.now() + 36 * 60 * 60 * 1_000);
     const appointmentDateParts = new Map(
@@ -4248,6 +4327,7 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
     'tenant.encounters.amendments.create',
     'tenant.encounters.amendments.update',
     'tenant.encounters.amendments.finalize',
+    'tenant.encounters.audit.reconcile',
   ];
   const encounterPermissions = await prisma.tenantPermission.findMany({
     where: { code: { in: encounterPermissionCodes } },

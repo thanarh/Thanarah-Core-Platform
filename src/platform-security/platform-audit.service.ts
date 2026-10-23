@@ -48,13 +48,14 @@ export class PlatformAuditService {
   async recordAudit(input: CreatePlatformAuditInput): Promise<boolean> {
     if (!Object.values(PlatformAuditEventType).includes(input.eventType)) return false;
 
+    const metadata = this.metadata(input.metadata);
     const data = {
-        ...(isUuid(input.eventId) ? { id: input.eventId } : {}),
-        eventType: input.eventType,
-        ...this.context(input),
-        subjectTenantId: this.safeIdentifier(input.subjectTenantId),
-        metadata: this.metadata(input.metadata),
-      };
+      ...(isUuid(input.eventId) ? { id: input.eventId } : {}),
+      eventType: input.eventType,
+      ...this.context(input),
+      subjectTenantId: this.safeIdentifier(input.subjectTenantId),
+      metadata,
+    };
     try {
       await this.repository.createAuditLog(data);
       return true;
@@ -65,7 +66,9 @@ export class PlatformAuditService {
         const existing = await this.repository.findAuditLog(input.eventId);
         return (
           existing?.eventType === input.eventType &&
-          existing.subjectTenantId === this.safeIdentifier(input.subjectTenantId)
+          existing.subjectTenantId === this.safeIdentifier(input.subjectTenantId) &&
+          existing.actorUserId === this.safeIdentifier(input.actorUserId) &&
+          stableJsonStringify(existing.metadata ?? {}) === stableJsonStringify(metadata)
         );
       } catch {
         return false;
@@ -177,6 +180,17 @@ function isUuid(value: string | undefined): value is string {
     typeof value === 'string' &&
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)
   );
+}
+
+function stableJsonStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJsonStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const entries = Object.entries(value).sort(([a], [b]) => a.localeCompare(b));
+    return `{${entries
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableJsonStringify(item)}`)
+      .join(',')}}`;
+  }
+  return JSON.stringify(value);
 }
 
 export { PlatformAuditEventType, PlatformSecurityEventStatus, PlatformSecurityEventType };

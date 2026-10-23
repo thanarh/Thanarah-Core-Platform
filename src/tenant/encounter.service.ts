@@ -770,10 +770,11 @@ export class EncounterService {
           continue;
         }
         const event = record.history.find((candidate) => candidate.id === operation.historyEventId);
-        const auditMetadata = operation.auditMetadata as Record<string, unknown>;
+        const auditMetadata = operation.auditMetadata;
         if (
           operation.resourceType !== 'encounter' ||
           operation.resourceId !== record.id ||
+          !isPlainRecord(auditMetadata) ||
           auditMetadata.resourceType !== 'encounter' ||
           auditMetadata.encounterId !== record.id ||
           !event ||
@@ -793,8 +794,15 @@ export class EncounterService {
           metadata: operation.auditMetadata as Prisma.InputJsonObject,
         });
         if (!delivered) {
-          await this.finishReconciliation(operation.id, 'AUDIT_DELIVERY_FAILED');
-          items.push({ operationId: operation.id, outcome: 'MUTATION_EVIDENCE_FOUND_AUDIT_FAILED' });
+          const dependencyReady = await this.prisma.isReady().catch(() => false);
+          const failure = dependencyReady ? 'AUDIT_DELIVERY_FAILED' : 'DEPENDENCY_UNAVAILABLE';
+          await this.finishReconciliation(operation.id, failure);
+          items.push({
+            operationId: operation.id,
+            outcome: dependencyReady
+              ? 'MUTATION_EVIDENCE_FOUND_AUDIT_FAILED'
+              : 'DEPENDENCY_UNAVAILABLE',
+          });
           continue;
         }
         await this.prisma.encounterOperation.updateMany({
@@ -1471,4 +1479,8 @@ function applyClinicalPatch(
     }
   }
   return next;
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value);
 }
