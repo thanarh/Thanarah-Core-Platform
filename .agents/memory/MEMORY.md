@@ -11,3 +11,4 @@
 - [Refresh outage semantics](auth-refresh-outage.md) — refresh database failures are dependency outages, not credential failures; preserve the refresh cookie.
 - [Failure-injection isolation](failure-injection-isolation.md) — bound injected-failure requests and always clear server failpoints so timed-out tests cannot contaminate later cases.
 - [Disposable integration fixtures](disposable-integration-fixtures.md) — integration tests selected with `-t` must provision their own fixture data, not rely on state seeded by earlier tests.
+- [Encounter uncertain-mutation UI](encounter-uncertain-mutation-ui.md) — every clinical mutation error path must preserve the operation reference as well as the draft so status recovery remains available.

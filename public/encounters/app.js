@@ -1510,6 +1510,7 @@
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.detailError = errorMessage(error);
+      rememberMutationReview(error, 'clinical');
       if (error && error.status === 409) state.conflict = true;
     } finally {
       state.saving = false;

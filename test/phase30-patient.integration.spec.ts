@@ -889,7 +889,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     await prisma.platformAuditLog.deleteMany({ where: { id: firstOperation!.historyEventId } });
     await prisma.encounterOperation.update({
       where: { id: firstOperation!.id },
-      data: { auditDeliveryStatus: 'FAILED', attemptCount: 1 },
+      data: {
+        auditDeliveryStatus: 'FAILED',
+        attemptCount: 1,
+        lastAttemptAt: new Date(Date.now() - 120_000),
+      },
     });
     const recovered = await getApplication().inject({
       method: 'POST',
@@ -927,7 +931,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     await prisma.encounterOperation.update({
       where: { id: alreadyAudited!.id },
-      data: { auditDeliveryStatus: 'FAILED' },
+      data: {
+        auditDeliveryStatus: 'FAILED',
+        lastAttemptAt: new Date(Date.now() - 120_000),
+      },
     });
     const idempotent = await getApplication().inject({
       method: 'POST',
@@ -943,6 +950,155 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       (await prisma.encounterOperation.findUnique({ where: { id: alreadyAudited!.id } }))
         ?.auditDeliveryStatus,
     ).toBe('RECONCILED');
+
+    const concurrentOperations = await prisma.encounterOperation.findMany({
+      where: {
+        tenantId: tenantA.id,
+        resourceId: apiEncounterId,
+        auditDeliveryStatus: 'DELIVERED',
+      },
+      orderBy: { createdAt: 'asc' },
+      take: 2,
+    });
+    expect(concurrentOperations).toHaveLength(2);
+    const beforeConcurrentHistory = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('encounters')
+      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+    const historyCountBeforeConcurrent = (
+      (beforeConcurrentHistory?.history ?? []) as Array<{ id: string }>
+    ).length;
+    for (const operation of concurrentOperations) {
+      await prisma.encounterOperation.update({
+        where: { id: operation.id },
+        data: {
+          auditDeliveryStatus: 'FAILED',
+          lastAttemptAt: new Date(Date.now() - 120_000),
+        },
+      });
+    }
+
+    const crossTenantReconciliation = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantB)}/encounters/audit-reconciliation`,
+      headers: bearerHeaders(),
+      payload: { limit: 25 },
+    });
+    expect(crossTenantReconciliation.statusCode).toBe(403);
+    expect(crossTenantReconciliation.body).not.toContain(concurrentOperations[0]!.id);
+    for (const operation of concurrentOperations) {
+      const unchanged = await prisma.encounterOperation.findUnique({
+        where: { id: operation.id },
+      });
+      expect(unchanged?.tenantId).toBe(tenantA.id);
+      expect(unchanged?.auditDeliveryStatus).toBe('FAILED');
+      expect(unchanged?.attemptCount).toBe(operation.attemptCount);
+    }
+
+    const simultaneousReconciliations = await Promise.all([
+      getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+        headers: bearerHeaders(),
+        payload: { limit: 25 },
+      }),
+      getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+        headers: bearerHeaders(),
+        payload: { limit: 25 },
+      }),
+    ]);
+    expect(simultaneousReconciliations.every((response) => response.statusCode === 200)).toBe(true);
+    for (const operation of concurrentOperations) {
+      const finalOperation = await prisma.encounterOperation.findUnique({
+        where: { id: operation.id },
+      });
+      expect(finalOperation?.auditDeliveryStatus).toBe('RECONCILED');
+      expect(finalOperation?.attemptCount).toBe(operation.attemptCount + 1);
+      expect(await prisma.platformAuditLog.count({ where: { id: operation.historyEventId } })).toBe(
+        1,
+      );
+    }
+    const afterConcurrentHistory = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('encounters')
+      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+    expect(((afterConcurrentHistory?.history ?? []) as Array<unknown>).length).toBe(
+      historyCountBeforeConcurrent,
+    );
+
+    const auditService = getApplication().get(PlatformAuditService);
+    const staleWorkerOperation = concurrentOperations[0]!;
+    const staleWorkerBase = await prisma.encounterOperation.findUnique({
+      where: { id: staleWorkerOperation.id },
+    });
+    expect(staleWorkerBase?.auditDeliveryStatus).toBe('RECONCILED');
+    await prisma.encounterOperation.update({
+      where: { id: staleWorkerOperation.id },
+      data: {
+        auditDeliveryStatus: 'FAILED',
+        lastAttemptAt: new Date(Date.now() - 120_000),
+      },
+    });
+    let releaseStaleWorker!: () => void;
+    let signalStaleWorkerStarted!: () => void;
+    const staleWorkerGate = new Promise<void>((resolve) => {
+      releaseStaleWorker = resolve;
+    });
+    const staleWorkerStarted = new Promise<void>((resolve) => {
+      signalStaleWorkerStarted = resolve;
+    });
+    let holdFirstAuditDelivery = true;
+    const recordAudit = auditService.recordAudit.bind(auditService);
+    const delayedAudit = vi.spyOn(auditService, 'recordAudit').mockImplementation(async (input) => {
+      if (holdFirstAuditDelivery) {
+        holdFirstAuditDelivery = false;
+        signalStaleWorkerStarted();
+        await staleWorkerGate;
+      }
+      return recordAudit(input);
+    });
+    const postReconciliation = (): ReturnType<typeof getApplication>['inject'] =>
+      getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+        headers: bearerHeaders(),
+        payload: { limit: 25 },
+      });
+    let staleRequestPromise: ReturnType<typeof postReconciliation> | undefined;
+    try {
+      staleRequestPromise = postReconciliation();
+      const started = await Promise.race([
+        staleWorkerStarted.then(() => true),
+        delay(10_000).then(() => false),
+      ]);
+      expect(started).toBe(true);
+      if (!started) throw new Error('Stale reconciliation worker did not reach audit delivery');
+      const firstClaim = await prisma.encounterOperation.findUnique({
+        where: { id: staleWorkerOperation.id },
+      });
+      expect(firstClaim?.attemptCount).toBe(staleWorkerBase!.attemptCount + 1);
+      await prisma.encounterOperation.update({
+        where: { id: staleWorkerOperation.id },
+        data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+      });
+      const newerWorkerResponse = await postReconciliation();
+      expect(newerWorkerResponse.statusCode).toBe(200);
+    } finally {
+      releaseStaleWorker();
+      delayedAudit.mockRestore();
+    }
+    const staleRequest = await staleRequestPromise!;
+    expect(staleRequest.statusCode).toBe(200);
+    const staleWorkerFinal = await prisma.encounterOperation.findUnique({
+      where: { id: staleWorkerOperation.id },
+    });
+    expect(staleWorkerFinal?.auditDeliveryStatus).toBe('RECONCILED');
+    expect(staleWorkerFinal?.attemptCount).toBe(staleWorkerBase!.attemptCount + 2);
+    expect(
+      await prisma.platformAuditLog.count({ where: { id: staleWorkerOperation.historyEventId } }),
+    ).toBe(1);
   });
 
   it('requires a persisted pre-write marker and recovers delivery interruptions from disposable databases', async () => {
@@ -1003,6 +1159,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       auditDeliveryStatus: 'FAILED',
     });
     expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(0);
+    await prisma.encounterOperation.update({
+      where: { id: committedEvent.id },
+      data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+    });
 
     const deliverAudit = auditService.recordAudit.bind(auditService);
     const outcomeFailure = vi
@@ -1023,6 +1183,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       orderBy: { createdAt: 'desc' },
     });
     expect(interruptedOperation).not.toBeNull();
+    await prisma.encounterOperation.update({
+      where: { id: interruptedOperation!.id },
+      data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+    });
     const interruptedDocument = await mongoCollection.findOne({
       _id: interruptedOperation!.resourceId,
       _tenantId: tenantA.id,
@@ -1629,60 +1793,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           form.requestSubmit();
           return true;
         })()`;
-      await mongoAdminClient!.db('admin').command({
-        configureFailPoint: 'failCommand',
-        mode: 'alwaysOn',
-        data: { failCommands: ['findAndModify'], errorCode: 91 },
-      });
-      const outageClinicalText = 'Draft retained while clinical storage is unavailable';
-      const submitDuringOutage = `(() => {
-        const form = document.querySelector('form[data-form="clinical"]');
-        const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
-        if (!form || !field) return false;
-        field.value = ${JSON.stringify(outageClinicalText)};
-        form.requestSubmit();
-        return true;
-      })()`;
-      try {
-        expect(await evaluateBrowser(client, submitDuringOutage)).toBe(true);
-        await waitForBrowserCondition(
-          client,
-          `Boolean(document.querySelector('.encounter-notice.encounter-error'))`,
-          'visible clinical save failure during MongoDB outage',
-        );
-        expect(
-          await evaluateBrowser(
-            client,
-            `document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(outageClinicalText)} &&
-              document.querySelector('.encounter-notice.encounter-error')?.innerText.includes('التخزين السريري غير متاح')`,
-          ),
-        ).toBe(true);
-        expect(
-          await mongoAdminClient!
-            .db(tenantA.databaseName)
-            .collection('encounters')
-            .findOne({ _id: browserEncounterId, _tenantId: tenantA.id }),
-        ).toMatchObject({ version: 1 });
-      } finally {
-        await mongoAdminClient!.db('admin').command({
-          configureFailPoint: 'failCommand',
-          mode: 'off',
-        });
-      }
-      let completionStorageRecovered = false;
-      for (let attempt = 0; attempt < 4; attempt += 1) {
-        const recoveryProbe = await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/encounters/${browserEncounterId}`,
-          headers: bearerHeaders(),
-        });
-        if (recoveryProbe.statusCode === 200) {
-          completionStorageRecovered = true;
-          break;
-        }
-        await delay(500);
-      }
-      expect(completionStorageRecovered).toBe(true);
       expect(await evaluateBrowser(client, saveClinical)).toBe(true);
       await waitForBrowserCondition(
         client,
@@ -1939,6 +2049,143 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           serviceRecords: [{ note: amendedServiceNote }],
         },
       ]);
+
+      const uncertainEncounterResponse = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: bearerHeaders(),
+        payload: {
+          patientId: clinicalPatientId,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+      expect(uncertainEncounterResponse.statusCode).toBe(201);
+      const uncertainEncounterId = uncertainEncounterResponse.json<{ id: string }>().id;
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="back-to-worklist"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="filters"]'))`,
+        'worklist before checking uncertain mutation',
+      );
+      const filterUncertainEncounter = `(() => {
+        const form = document.querySelector('form[data-form="filters"]');
+        if (!form) return false;
+        form.querySelector('[name="date"]').value = ${JSON.stringify(worklistDate)};
+        form.querySelector('[name="facilityId"]').value = ${JSON.stringify(clinicalFacilityId)};
+        form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, filterUncertainEncounter)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('button[data-action="open-encounter"][data-id="${uncertainEncounterId}"]'))`,
+        'new draft in the encounter worklist',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('button[data-action="open-encounter"][data-id="${uncertainEncounterId}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]'))`,
+        'uncertain mutation encounter editor',
+      );
+      const uncertainClinicalText = 'Draft retained while clinical storage is unavailable';
+      const submitUncertainMutation = `(() => {
+        const form = document.querySelector('form[data-form="clinical"]');
+        const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
+        if (!form || !field) return false;
+        field.value = ${JSON.stringify(uncertainClinicalText)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      await mongoAdminClient!.db('admin').command({
+        configureFailPoint: 'failCommand',
+        mode: 'alwaysOn',
+        data: { failCommands: ['findAndModify'], errorCode: 91 },
+      });
+      try {
+        expect(await evaluateBrowser(client, submitUncertainMutation)).toBe(true);
+        await waitForBrowserCondition(
+          client,
+          `Boolean(document.querySelector('button[data-action="check-mutation-status"]'))`,
+          'status refresh after uncertain clinical save',
+        );
+        expect(
+          await evaluateBrowser(
+            client,
+            `document.querySelector('textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(uncertainClinicalText)}`,
+          ),
+        ).toBe(true);
+      } finally {
+        await mongoAdminClient!.db('admin').command({
+          configureFailPoint: 'failCommand',
+          mode: 'off',
+        });
+      }
+      let uncertainStorageRecovered = false;
+      for (let attempt = 0; attempt < 20; attempt += 1) {
+        const recoveryProbe = await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/encounters/${uncertainEncounterId}`,
+          headers: bearerHeaders(),
+        });
+        if (recoveryProbe.statusCode === 200) {
+          uncertainStorageRecovered = true;
+          break;
+        }
+        await delay(250);
+      }
+      expect(uncertainStorageRecovered).toBe(true);
+      const uncertainDocument = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('encounters')
+        .findOne({ _id: uncertainEncounterId, _tenantId: tenantA.id });
+      expect(uncertainDocument).toMatchObject({ version: 1 });
+      const statusRefresh = evaluateBrowser(
+        client,
+        `document.querySelector('button[data-action="check-mutation-status"]')?.click()`,
+      );
+      await statusRefresh;
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('ما زالت نتيجة التغيير غير مؤكدة') ||
+          document.body.innerText.includes('تأكد أن التغيير لم يُطبّق')`,
+        'server-resolved uncertain mutation state',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.querySelector('textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(uncertainClinicalText)}`,
+        ),
+      ).toBe(true);
+      const resolvedUncertainStatus = await evaluateBrowser(
+        client,
+        `document.body.innerText.includes('ما زالت نتيجة التغيير غير مؤكدة') ? 'REVIEW_REQUIRED' :
+          document.body.innerText.includes('تأكد أن التغيير لم يُطبّق') ? 'RETRY_SAFE' : 'UNKNOWN'`,
+      );
+      expect(['REVIEW_REQUIRED', 'RETRY_SAFE']).toContain(resolvedUncertainStatus);
+      if (resolvedUncertainStatus === 'RETRY_SAFE') {
+        expect(await evaluateBrowser(client, submitUncertainMutation)).toBe(true);
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes('الإصدار الحالي: 2')`,
+          'safe retry after server-confirmed non-application',
+        );
+      } else {
+        expect(
+          await mongoAdminClient!
+            .db(tenantA.databaseName)
+            .collection('encounters')
+            .findOne({ _id: uncertainEncounterId, _tenantId: tenantA.id }),
+        ).toMatchObject({ version: 1 });
+      }
 
       const prisma = getApplication().get(PrismaService);
       const browserSession = await prisma.platformSession.findFirst({
