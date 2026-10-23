@@ -1194,6 +1194,60 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           form.requestSubmit();
           return true;
         })()`;
+      await mongoAdminClient!.db('admin').command({
+        configureFailPoint: 'failCommand',
+        mode: 'alwaysOn',
+        data: { failCommands: ['findAndModify'], errorCode: 91 },
+      });
+      const outageClinicalText = 'Draft retained while clinical storage is unavailable';
+      const submitDuringOutage = `(() => {
+        const form = document.querySelector('form[data-form="clinical"]');
+        const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
+        if (!form || !field) return false;
+        field.value = ${JSON.stringify(outageClinicalText)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      try {
+        expect(await evaluateBrowser(client, submitDuringOutage)).toBe(true);
+        await waitForBrowserCondition(
+          client,
+          `Boolean(document.querySelector('.encounter-notice.encounter-error'))`,
+          'visible clinical save failure during MongoDB outage',
+        );
+        expect(
+          await evaluateBrowser(
+            client,
+            `document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(outageClinicalText)} &&
+              document.querySelector('.encounter-notice.encounter-error')?.innerText.includes('التخزين السريري غير متاح')`,
+          ),
+        ).toBe(true);
+        expect(
+          await mongoAdminClient!
+            .db(tenantA.databaseName)
+            .collection('encounters')
+            .findOne({ _id: browserEncounterId, _tenantId: tenantA.id }),
+        ).toMatchObject({ version: 1 });
+      } finally {
+        await mongoAdminClient!.db('admin').command({
+          configureFailPoint: 'failCommand',
+          mode: 'off',
+        });
+      }
+      let storageRecovered = false;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
+        const recoveryProbe = await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/encounters/${browserEncounterId}`,
+          headers: bearerHeaders(),
+        });
+        if (recoveryProbe.statusCode === 200) {
+          storageRecovered = true;
+          break;
+        }
+        await delay(500);
+      }
+      expect(storageRecovered).toBe(true);
       expect(await evaluateBrowser(client, saveClinical)).toBe(true);
       await waitForBrowserCondition(
         client,
