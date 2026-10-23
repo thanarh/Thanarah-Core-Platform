@@ -369,6 +369,55 @@ missing central audit event. Encounter documents retain their own
 metadata-only history, but other audit delivery gaps require a larger
 operation/recovery design before automation is safe.
 
+## Phase 45D: critical failure windows
+
+The disposable suite now covers additional failure windows:
+
+- An authenticated appointment create receives a test-only MongoDB
+  `writeConcernError` on the first tenant `insert` command. That command is the
+  schedule-lock insert, not the later appointment-document insert. The request
+  returns 503; an independent query before retry finds no appointment. The
+  same-key retry creates one appointment, a changed payload returns 409, and
+  no tenant schedule locks remain. The storage code tracks the exact lock owner
+  before sending the insert so cleanup also covers a write that may have
+  persisted before its acknowledgement failed. This is a server failpoint
+  simulation, not a network-level lost acknowledgement on the appointment
+  document.
+- Two simultaneous authenticated HTTP requests create an encounter from the
+  same eligible appointment. One returns 201 and one 409; an independent
+  MongoDB count finds one active linked encounter. A later retry returns 409
+  without creating a duplicate. The unique partial index remains the final
+  persistence guard.
+- MongoDB `findAndModify` failures during encounter completion and amendment
+  opening return 503. Independent reads confirm the completion remains a draft
+  at version 1 and the failed amendment opening leaves the completed revision
+  and empty amendment list unchanged. After recovery, explicit retries complete
+  the encounter and open one amendment while preserving the original clinical,
+  diagnosis, and service snapshots.
+- The signed-in browser journey injects a completion write failure. It verifies
+  an error is shown and the record remains a draft, then probes the authorized
+  read route after recovery and explicitly retries completion. The earlier
+  clinical-save outage case still verifies unsent text retention and explicit
+  retry from version 1 to version 2.
+
+The schedule-lock failpoint does not prove that an appointment-document insert
+committed while its MongoDB acknowledgement was lost. A client disconnect while
+the application is still processing, appointment rescheduling/cancellation
+outages, and failure-interrupted concurrent encounter creation remain
+unverified. Encounter amendment content updates and finalization under outage,
+and browser behavior for an ambiguous post-commit response, also remain
+unverified.
+
+Audit delivery remains best-effort. Appointment and encounter state commits in
+tenant MongoDB before the central MySQL audit attempt; there is no durable
+pending marker, stable cross-store operation ID, automatic retry, or
+reconciliation worker. A crash or MySQL outage in that interval can lose the
+central audit row. Encounter embedded history is durable with its MongoDB
+mutation, but does not cover every workflow (including appointments), and
+cannot reconstruct whether an absent central event was never attempted or
+failed after an unknown commit. Operator investigation remains necessary; no
+exactly-once delivery is claimed.
+
 Known limitations: production MongoDB topology remains an operator decision.
 No automated database provisioning, standardized diagnosis coding, or
 regulatory-compliance claim is included.

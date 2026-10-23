@@ -339,7 +339,12 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
             acquiredAt: new Date(),
           });
         } catch (error) {
-          if (isDuplicateKeyError(error)) throw new AppointmentScheduleLockConflictError();
+          if (isDuplicateKeyError(error)) {
+            // This insert is known not to have acquired the lock; do not try
+            // to release a token owned by another operation.
+            acquired.pop();
+            throw new AppointmentScheduleLockConflictError();
+          }
           throw error;
         }
       }

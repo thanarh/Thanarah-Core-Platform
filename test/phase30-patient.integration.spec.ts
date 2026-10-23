@@ -1235,7 +1235,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           mode: 'off',
         });
       }
-      let storageRecovered = false;
+      let completionStorageRecovered = false;
       for (let attempt = 0; attempt < 4; attempt += 1) {
         const recoveryProbe = await getApplication().inject({
           method: 'GET',
@@ -1243,12 +1243,12 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           headers: bearerHeaders(),
         });
         if (recoveryProbe.statusCode === 200) {
-          storageRecovered = true;
+          completionStorageRecovered = true;
           break;
         }
         await delay(500);
       }
-      expect(storageRecovered).toBe(true);
+      expect(completionStorageRecovered).toBe(true);
       expect(await evaluateBrowser(client, saveClinical)).toBe(true);
       await waitForBrowserCondition(
         client,
@@ -1377,6 +1377,49 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         ),
       ).toBe(true);
 
+      const admin = mongoAdminClient?.db('admin');
+      if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+      await admin.command({
+        configureFailPoint: 'failCommand',
+        mode: { times: 1 },
+        data: { failCommands: ['findAndModify'], errorCode: 91 },
+      });
+      try {
+        const failedCompletion = evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="complete-encounter"]')?.click()`,
+        );
+        await respondToDialog('confirm');
+        await failedCompletion;
+        await waitForBrowserCondition(
+          client,
+          `Boolean(document.querySelector('.encounter-notice.encounter-error')) &&
+            document.querySelector('[data-status="DRAFT"]') !== null`,
+          'visible completion failure while the encounter remains a draft',
+        );
+        expect(
+          await mongoAdminClient!
+            .db(tenantA.databaseName)
+            .collection('encounters')
+            .findOne({ _id: browserEncounterId, _tenantId: tenantA.id }),
+        ).toMatchObject({ status: 'DRAFT' });
+      } finally {
+        await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+      }
+      let storageRecovered = false;
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const probe = await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/encounters/${browserEncounterId}`,
+          headers: bearerHeaders(),
+        });
+        if (probe.statusCode === 200) {
+          storageRecovered = true;
+          break;
+        }
+        await delay(250);
+      }
+      expect(storageRecovered).toBe(true);
       const completionClick = evaluateBrowser(
         client,
         `document.querySelector('[data-action="complete-encounter"]')?.click()`,
@@ -2905,7 +2948,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     );
   }, 120_000);
 
-  it('recovers appointment creation from an injected MongoDB write-concern error without leaving locks', async () => {
+  it('cleans an ambiguously acknowledged schedule lock and retries appointment creation safely', async () => {
     const admin = mongoAdminClient?.db('admin');
     if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
     const existing = await mongoAdminClient!
@@ -2925,6 +2968,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     };
     const idempotencyKey = `phase45d-write-concern-${RUN_ID}`;
 
+    // The first MongoDB insert in appointment creation acquires a schedule
+    // lock. This server-injected write-concern error is not a network-level
+    // lost acknowledgement on the later appointment-document insert.
     await admin.command({
       configureFailPoint: 'failCommand',
       mode: { times: 1 },
@@ -2953,6 +2999,20 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     // write as unavailable. Both outcomes must be safe to reconcile by key.
     expect([201, 503]).toContain(first.statusCode);
     if (first.statusCode === 503) expect(first.body).toContain('TENANT_STORAGE_UNAVAILABLE');
+    const appointmentCollection = mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('appointments');
+    const persistedAfterFirstAttempt = await appointmentCollection.findOne({
+      _tenantId: tenantA.id,
+      patientId: clinicalPatientId,
+      doctorId: clinicalDoctorId,
+      startsAt,
+    });
+    console.info('Phase 45D synthetic write-concern outcome', {
+      responseStatus: first.statusCode,
+      persistedBeforeRetry: persistedAfterFirstAttempt !== null,
+    });
+    if (first.statusCode === 201) expect(persistedAfterFirstAttempt).not.toBeNull();
     const retry = await getApplication().inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/appointments`,
@@ -2961,11 +3021,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(retry.statusCode, retry.body).toBe(201);
     const appointmentId = retry.json<{ id: string }>().id;
+    if (persistedAfterFirstAttempt) expect(appointmentId).toBe(persistedAfterFirstAttempt._id);
     expect(
-      await mongoAdminClient!
-        .db(tenantA.databaseName)
-        .collection('appointments')
-        .countDocuments({ _id: appointmentId, _tenantId: tenantA.id }),
+      await appointmentCollection.countDocuments({ _id: appointmentId, _tenantId: tenantA.id }),
     ).toBe(1);
     const createEncounterFromAppointment = (): ReturnType<NestFastifyApplication['inject']> =>
       getApplication().inject({
@@ -3049,6 +3107,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const clearFailure = async (): Promise<void> => {
       await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
     };
+    const waitForStorageRecovery = async (): Promise<void> => {
+      for (let attempt = 0; attempt < 5; attempt += 1) {
+        const probe = await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/encounters/${encounterId}`,
+          headers: bearerHeaders(),
+        });
+        if (probe.statusCode === 200) return;
+        await delay(250);
+      }
+      throw new Error('Disposable MongoDB client did not recover after clearing failCommand');
+    };
 
     await failOneWrite();
     let completion;
@@ -3068,6 +3138,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       version: 1,
       history: [{ action: 'CREATED' }],
     });
+    await waitForStorageRecovery();
     const completed = await getApplication().inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/encounters/${encounterId}/complete`,
@@ -3096,6 +3167,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       version: completedVersion,
       amendments: [],
     });
+    await waitForStorageRecovery();
     const amendment = await getApplication().inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/encounters/${encounterId}/amendments`,
@@ -4144,6 +4216,7 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
     'tenant.services.read',
     'tenant.appointments.create',
     'tenant.appointments.read',
+    'tenant.appointments.reschedule',
     'tenant.encounters.create',
     'tenant.encounters.create.direct',
     'tenant.encounters.read',
