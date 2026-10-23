@@ -371,16 +371,21 @@ MongoDB-side evidence could create false audit events. Encounter documents
 retain metadata-only history; other audit delivery gaps require a larger
 operation/recovery design before automation is safe.
 
-## Phase 46B: encounter audit operation ledger
+## Phase 46B/46C: encounter audit operation ledger and recovery
 
-Encounter mutation audit delivery now records a central `EncounterOperation`
-row keyed by the immutable MongoDB history-event UUID. It stores tenant,
-encounter, actor, event type, operation action, and sanitized audit metadata;
-clinical notes and patient demographics are excluded. State transitions are
-`PENDING` → `DELIVERED` or `FAILED`; reconciliation claims use a conditional
-attempt-count update, and successful evidence-backed delivery becomes
-`RECONCILED`. Identity mismatches and exhausted retries become
-`REVIEW_REQUIRED`. Reconciliation is tenant-scoped, requires
+Before an encounter mutation starts, the service creates a central
+`EncounterOperation` row keyed by the immutable MongoDB history-event UUID. It
+stores tenant, encounter, actor, operation, expected version, and sanitized
+audit metadata; clinical notes and patient demographics are excluded. The
+additive Phase 46C migration adds `mutationState`: new operations begin as
+`PREPARED`, become `CONFIRMED` after matching MongoDB history is available, or
+`NOT_APPLIED` when the Mongo conditional update definitively returns no match.
+An operation without sufficient evidence becomes `AMBIGUOUS` and requires
+review. Audit-delivery status remains `PENDING` → `DELIVERED` or `FAILED`;
+successful evidence-backed recovery becomes `RECONCILED`. Identity mismatches
+and exhausted retries become `REVIEW_REQUIRED`. Reconciliation claims use a
+conditional attempt-count and mutation-state update. Reconciliation is
+tenant-scoped, requires
 `tenant.encounters.audit.reconcile`, and processes at most 25 rows per request.
 The tenant owner receives this permission through the additive Phase 46B
 migration.
@@ -394,33 +399,53 @@ an existing row counts as delivered only when its type and tenant match.
 Attempts and outcomes are persisted on the operation row instead of generating
 one audit event per retry.
 
-The ledger entry is written after the MongoDB mutation and before the central
-audit delivery. This makes ordinary audit-write failures and interruption after
-ledger creation discoverable, but it does not close the crash window between
-MongoDB commit and ledger insertion. A MySQL outage that prevents ledger
-creation also leaves no queue entry. Missing history is never treated as proof
-of success, and the service does not decide ambiguous acknowledgements or
-resource mismatches automatically. This increment covers encounter audit
-delivery only; patient and appointment workflows are unsupported. Do not claim
-cross-store atomicity or exactly-once delivery.
+The pre-write marker closes the original post-Mongo/pre-ledger discovery gap
+when central MySQL is available: if the Mongo write commits and the process
+stops before audit delivery or the ledger outcome update, reconciliation can
+use the marker and matching embedded Mongo history to deliver the audit row
+idempotently. A central MySQL outage before marker creation prevents the Mongo
+mutation from starting. Mongo encounter fields and their history event are
+updated together in one conditional Mongo document update; this does not provide
+a transaction across MongoDB and MySQL.
 
-The disposable MySQL/MongoDB integration suite independently inspected the
-encounter history and central audit row. It removed one existing audit row,
-marked its operation failed, and verified that the endpoint restored exactly
-one audit row and marked the operation reconciled. It also marked another
-operation failed while leaving its audit row present and verified idempotent
-delivery without increasing the audit-row count. These checks prove the
-evidence lookup and duplicate handling against real persisted state; they do
-not simulate a database failure during the original audit write. The suite
-passed 30/30 cases, and the full unit suite passed 899/899.
+An absent event for a `PREPARED` marker is not proof of non-application. The
+service marks it ambiguous for operator review, rather than replaying the
+clinical write or claiming it never occurred. A conditional Mongo update that
+returns no matching version/status marks that operation `NOT_APPLIED`; the
+service does not retry that mutation automatically. The API does not yet accept
+a client idempotency key, so a caller retry is not guaranteed to reuse the
+original logical operation ID. Process termination, true acknowledgement-loss
+faults, database outages during reconciliation, and multi-request concurrency
+remain separate verification scenarios.
 
-Still unverified: injected audit-write failure after a real encounter mutation;
-two concurrent database-backed reconciliation requests; tenant A attempting
-tenant B's operation through HTTP; no-history and malformed-ledger cases in real
+This increment covers encounter audit delivery only; patient and appointment
+workflows are unsupported. Do not claim cross-store atomicity or exactly-once
+delivery.
+
+The disposable MySQL/MongoDB integration suite independently inspects the
+encounter history, operation marker, and central audit rows. Its Phase 46B test
+removed one existing audit row, marked its operation failed, and verified that
+the endpoint restored exactly one audit row and marked the operation
+reconciled. Phase 46C injects failure at the pre-write helper and verifies that
+no encounter mutation or marker row is created; it injects an audit repository
+failure after Mongo commit and recovers from persisted history; and it
+interrupts the service after audit insertion but before the ledger outcome
+update, then verifies idempotent reconciliation without a duplicate audit row.
+The injected faults are in-process service-boundary failures; they do not prove
+behavior under actual process termination or lost network acknowledgements.
+The suite passed 31/31 cases, and the full unit suite passed 899/899.
+
+Still unverified: an actual central database failure during marker insertion
+(the marker test injects at the service helper boundary) or audit insertion
+(the audit test injects at the repository boundary); two concurrent
+database-backed reconciliation requests; tenant A attempting tenant B's
+operation through HTTP; no-history and malformed-ledger cases in real
 databases; MySQL/MongoDB outage during reconciliation; an encounter version
 change between event creation and reconciliation; and process termination
-between MongoDB commit and ledger insertion. No operator interface exists to
-review `REVIEW_REQUIRED` records. These gaps keep Phase 46 open.
+between MongoDB commit and ledger insertion. Encounter requests also do not
+have a client idempotency key, so retries cannot yet guarantee reuse of the
+original operation ID. No operator interface exists to review
+`REVIEW_REQUIRED` records. These gaps keep Phase 46 open.
 
 ## Phase 45D: critical failure windows
 

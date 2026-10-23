@@ -42,6 +42,10 @@ const { PasswordHasherService } = requireFromWorkspace(
   '../dist/auth/security/password-hasher.service',
 );
 const { PrismaService } = requireFromWorkspace('../dist/database/prisma.service');
+const { EncounterService } = requireFromWorkspace('../dist/tenant/encounter.service');
+const { PlatformAuditService } = requireFromWorkspace(
+  '../dist/platform-security/platform-audit.service',
+);
 const { PlatformAuditRepository } = requireFromWorkspace(
   '../dist/platform-security/platform-audit.repository',
 );
@@ -931,8 +935,13 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const app = getApplication();
     const prisma = app.get(PrismaService);
     const mongoCollection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const encounterService = app.get(EncounterService);
+    const auditService = app.get(PlatformAuditService);
     const auditRepository = app.get(PlatformAuditRepository);
-    const directCreate = () =>
+    const directCreate: () => Promise<{
+      statusCode: number;
+      json<T = unknown>(): T;
+    }> = () =>
       app.inject({
         method: 'POST',
         url: `${tenantRoot(tenantA)}/encounters/direct`,
@@ -950,11 +959,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     const mongoCountBefore = await mongoCollection.countDocuments({ _tenantId: tenantA.id });
     const markerFailure = vi
-      .spyOn(prisma.encounterOperation, 'create')
+      .spyOn(encounterService, 'prepareOperation')
       .mockRejectedValueOnce(new Error('injected pre-write marker failure'));
     const blocked = await directCreate();
     markerFailure.mockRestore();
-    expect(blocked.statusCode).toBe(503);
+    expect(blocked.statusCode).toBe(500);
     expect(await mongoCollection.countDocuments({ _tenantId: tenantA.id })).toBe(mongoCountBefore);
     expect(await prisma.encounterOperation.count({ where: { tenantId: tenantA.id } })).toBe(
       operationCountBefore,
@@ -962,7 +971,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
     const auditFailure = vi
       .spyOn(auditRepository, 'createAuditLog')
-      .mockRejectedValueOnce(new Error('injected audit delivery failure'));
+      .mockRejectedValueOnce(new Error('injected audit persistence failure'));
     const committed = await directCreate();
     auditFailure.mockRestore();
     expect(committed.statusCode).toBe(201);
@@ -981,25 +990,38 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(0);
 
-    const originalUpdateMany = prisma.encounterOperation.updateMany.bind(prisma.encounterOperation);
-    const outcomeWriteFailure = vi
-      .spyOn(prisma.encounterOperation, 'updateMany')
-      .mockImplementation(async (args) => {
-        if (args.data && typeof args.data === 'object' && 'auditDeliveryStatus' in args.data) {
-          throw new Error('injected ledger outcome interruption');
-        }
-        return originalUpdateMany(args);
+    const deliverAudit = auditService.recordAudit.bind(auditService);
+    const outcomeFailure = vi
+      .spyOn(auditService, 'recordAudit')
+      .mockImplementationOnce(async (input) => {
+        await deliverAudit(input);
+        throw new Error('injected interruption before ledger outcome update');
       });
     const outcomeInterrupted = await directCreate();
-    outcomeWriteFailure.mockRestore();
-    expect(outcomeInterrupted.statusCode).toBe(201);
-    const interruptedId = outcomeInterrupted.json<{ id: string }>().id;
+    outcomeFailure.mockRestore();
+    expect(outcomeInterrupted.statusCode).toBe(500);
+    const interruptedOperation = await prisma.encounterOperation.findFirst({
+      where: {
+        tenantId: tenantA.id,
+        mutationState: 'CONFIRMED',
+        auditDeliveryStatus: 'PENDING',
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+    expect(interruptedOperation).not.toBeNull();
     const interruptedDocument = await mongoCollection.findOne({
-      _id: interruptedId,
+      _id: interruptedOperation!.resourceId,
       _tenantId: tenantA.id,
     });
-    const interruptedEvent = (interruptedDocument?.history as Array<{ id: string }>)[0]!;
-    expect(await prisma.platformAuditLog.count({ where: { id: interruptedEvent.id } })).toBe(1);
+    const interruptedEvent = (interruptedDocument?.history as Array<{ id: string }>).find(
+      ({ id }) => id === interruptedOperation!.historyEventId,
+    );
+    expect(interruptedEvent).toBeDefined();
+    expect(
+      await prisma.platformAuditLog.count({
+        where: { id: interruptedOperation!.historyEventId },
+      }),
+    ).toBe(1);
 
     const reconciled = await app.inject({
       method: 'POST',
@@ -1008,11 +1030,15 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       payload: { limit: 25 },
     });
     expect(reconciled.statusCode).toBe(200);
-    expect(await prisma.platformAuditLog.count({ where: { id: interruptedEvent.id } })).toBe(1);
+    expect(
+      await prisma.platformAuditLog.count({
+        where: { id: interruptedOperation!.historyEventId },
+      }),
+    ).toBe(1);
     expect(
       (
         await prisma.encounterOperation.findUnique({
-          where: { id: interruptedEvent.id },
+          where: { id: interruptedOperation!.id },
         })
       )?.auditDeliveryStatus,
     ).toBe('RECONCILED');
