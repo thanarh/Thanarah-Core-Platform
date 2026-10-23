@@ -79,6 +79,7 @@
     diagnosisDraft: null,
     serviceDraft: null,
     detailError: null,
+    pendingMutationReview: null,
     detailLoading: false,
     history: null,
     historyError: null,
@@ -659,7 +660,7 @@
           </div>
           <span class="encounter-status" data-status="${escapeHtml(encounter.status)}">${escapeHtml(statusLabel(encounter.status))}</span>
         </div>
-        ${state.detailError ? notice(state.detailError, true) : ''}
+        ${state.detailError ? notice(state.detailError, true, state.pendingMutationReview ? 'check-mutation-status' : undefined) : ''}
         ${state.conflict ? notice('تغيّر هذا السجل منذ تحميله. لم تُحفظ تعديلاتك. أعد تحميل النسخة الحالية بعد مراجعة ما ستفقده.', true, 'reload-detail') : ''}
         <div class="encounter-detail-grid">
           ${detailItem('وقت إنشاء اللقاء', formatDateTime(encounter.encounterAt, state.detailTimezone))}
@@ -1716,7 +1717,51 @@
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.detailError = errorMessage(error);
+      rememberMutationReview(error, action);
       if (error && error.status === 409) state.conflict = true;
+    } finally {
+      state.busy = false;
+      render();
+    }
+  }
+
+  function rememberMutationReview(error, action) {
+    if (!error?.idempotencyKey || !error?.idempotencyRoute || !state.detail) return;
+    state.pendingMutationReview = {
+      encounterId: state.detail.id,
+      route: error.idempotencyRoute,
+      key: error.idempotencyKey,
+      action,
+    };
+  }
+
+  async function checkMutationStatus() {
+    const pending = state.pendingMutationReview;
+    if (!pending || !state.workspace || state.busy) return;
+    state.busy = true;
+    render();
+    try {
+      const result = await api.getEncounterMutationStatus(
+        state.workspace.tenantId,
+        pending.encounterId,
+        pending.route,
+        pending.key,
+      );
+      if (result.status === 'APPLIED') {
+        state.pendingMutationReview = null;
+        state.detailError = null;
+        await openEncounter(pending.encounterId);
+        return;
+      }
+      state.detailError =
+        result.status === 'RETRY_SAFE'
+          ? 'تأكد أن التغيير لم يُطبّق. يمكنك إعادة حفظ النموذج الحالي؛ سيُستخدم مفتاح المحاولة الأصلي.'
+          : result.status === 'REVIEW_REQUIRED'
+            ? 'ما زالت نتيجة التغيير غير مؤكدة. لا ترسله كعملية جديدة؛ يلزم التحقق أو مراجعة مسؤول.'
+            : 'لم يُعثر على عملية مطابقة في هذا السجل. لم تُرسل أي تغييرات.';
+    } catch (error) {
+      if (handleUnauthorized(error)) return;
+      state.detailError = errorMessage(error);
     } finally {
       state.busy = false;
       render();
@@ -1755,6 +1800,7 @@
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.detailError = errorMessage(error);
+      rememberMutationReview(error, 'amendment_opened');
       if (error && error.status === 409) state.conflict = true;
     } finally {
       state.busy = false;
@@ -1797,6 +1843,7 @@
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.detailError = errorMessage(error);
+      rememberMutationReview(error, 'amendment_finalized');
       if (error && error.status === 409) state.conflict = true;
     } finally {
       state.busy = false;
@@ -1926,6 +1973,8 @@
       void loadHistory();
     } else if (action === 'reload-detail') {
       void reloadDetail();
+    } else if (action === 'check-mutation-status') {
+      void checkMutationStatus();
     } else if (action === 'retry-list') {
       void loadEncounters();
     } else if (action === 'retry-workspaces') {
@@ -2027,6 +2076,14 @@
       } catch (error) {
         state.detailError = errorMessage(error);
         state.pendingDraft = Object.fromEntries(new FormData(form).entries());
+        if (error?.idempotencyKey && error?.idempotencyRoute) {
+          state.pendingMutationReview = {
+            encounterId: state.detail?.id,
+            route: error.idempotencyRoute,
+            key: error.idempotencyKey,
+            action: 'clinical',
+          };
+        }
         render();
       }
     } else if (kind === 'diagnoses') {
@@ -2035,6 +2092,7 @@
       } catch (error) {
         captureDiagnosisDraft();
         state.detailError = errorMessage(error);
+        rememberMutationReview(error, 'diagnoses_updated');
         render();
       }
     } else if (kind === 'services') {
@@ -2043,6 +2101,7 @@
       } catch (error) {
         captureServiceDraft();
         state.detailError = errorMessage(error);
+        rememberMutationReview(error, 'service_records_updated');
         render();
       }
     } else if (kind === 'cancel-encounter') {
@@ -2196,7 +2255,7 @@
     return `
       <div class="encounter-notice ${isError ? 'encounter-error' : ''}" role="${isError ? 'alert' : 'status'}">
         ${escapeHtml(message)}
-        ${action ? ` <button class="btn btn-quiet btn-small" type="button" data-action="${escapeHtml(action)}">إعادة المحاولة</button>` : ''}
+        ${action ? ` <button class="btn btn-quiet btn-small" type="button" data-action="${escapeHtml(action)}">${action === 'check-mutation-status' ? 'التحقق من الحالة' : 'إعادة المحاولة'}</button>` : ''}
       </div>`;
   }
 

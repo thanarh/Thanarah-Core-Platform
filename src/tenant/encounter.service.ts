@@ -1080,6 +1080,61 @@ export class EncounterService {
     return { items: history };
   }
 
+  async mutationStatus(
+    context: TrustedTenantContext,
+    encounterId: string,
+    route: string,
+    actor: AuthenticatedPlatformUser,
+    key: string | undefined,
+  ): Promise<{ status: 'NOT_FOUND' | 'RETRY_SAFE' | 'APPLIED' | 'REVIEW_REQUIRED' }> {
+    this.assertActor(context, actor);
+    await this.authorization.authorize(context, 'tenant.encounters.read');
+    const allowedRoutes = new Set([
+      'clinical_updated',
+      'diagnoses_updated',
+      'service_records_updated',
+      'amendment_opened',
+      'amendment_updated',
+      'amendment_finalized',
+      'completed',
+      'cancelled',
+    ]);
+    if (!allowedRoutes.has(route) || key === undefined) {
+      throw new EncounterInputValidationError();
+    }
+    const record = await this.findInScope(context, encounterId);
+    const idempotency = this.mutationIdempotency(context, actor, route, record.id, key, null);
+    if (!idempotency) throw new EncounterInputValidationError();
+    let operation;
+    try {
+      operation = await this.prisma!.encounterOperation.findUnique({
+        where: { id: idempotency.operationId },
+      });
+    } catch {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (!operation) return { status: 'NOT_FOUND' };
+    const metadata = this.idempotencyMetadata(operation.auditMetadata);
+    if (
+      operation.tenantId !== context.tenantId ||
+      operation.actorUserId !== actor.userId ||
+      operation.resourceId !== record.id ||
+      operation.historyEventId !== idempotency.operationId ||
+      metadata?.idempotencyKeyHash !== idempotency.keyHash ||
+      metadata?.idempotencyRoute !== route
+    ) {
+      return { status: 'NOT_FOUND' };
+    }
+    const event = record.history.find((item) => item.id === operation.historyEventId);
+    if (operation.mutationState === 'NOT_APPLIED' && !event) {
+      return { status: 'RETRY_SAFE' };
+    }
+    if (operation.mutationState === 'CONFIRMED' && event?.action === operation.operationType) {
+      return { status: 'APPLIED' };
+    }
+    return { status: 'REVIEW_REQUIRED' };
+  }
+
   async reconcileAudit(
     context: TrustedTenantContext,
     requestedLimit: unknown,
@@ -1091,6 +1146,8 @@ export class EncounterService {
         : 10;
     if (!this.prisma) return { items: [{ operationId: '', outcome: 'DEPENDENCY_UNAVAILABLE' }] };
 
+    const claimTime = new Date();
+    const staleClaimBefore = new Date(claimTime.getTime() - 60_000);
     let operations;
     try {
       operations = await this.prisma.encounterOperation.findMany({
@@ -1098,6 +1155,7 @@ export class EncounterService {
           tenantId: context.tenantId,
           auditDeliveryStatus: { in: ['PENDING', 'FAILED'] },
           attemptCount: { lt: 5 },
+          OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lt: staleClaimBefore } }],
         },
         orderBy: { createdAt: 'asc' },
         take: limit,
@@ -1114,24 +1172,35 @@ export class EncounterService {
           auditDeliveryStatus: operation.auditDeliveryStatus,
           attemptCount: operation.attemptCount,
           mutationState: operation.mutationState,
+          lastAttemptAt: operation.lastAttemptAt,
+          OR: [{ lastAttemptAt: null }, { lastAttemptAt: { lt: staleClaimBefore } }],
         },
-        data: { attemptCount: { increment: 1 }, lastAttemptAt: new Date() },
+        data: { attemptCount: { increment: 1 }, lastAttemptAt: claimTime },
       });
       if (claim.count !== 1) {
         items.push({ operationId: operation.id, outcome: 'REQUIRES_OPERATOR_REVIEW' });
         continue;
       }
+      const claimedAttempt = operation.attemptCount + 1;
       try {
         const record = await this.encounters.findById(context, operation.resourceId);
         if (!record) {
-          await this.finishAmbiguousReconciliation(operation.id, 'HISTORY_EVIDENCE_MISSING');
+          await this.finishAmbiguousReconciliation(
+            operation.id,
+            claimedAttempt,
+            'HISTORY_EVIDENCE_MISSING',
+          );
           items.push({ operationId: operation.id, outcome: 'AMBIGUOUS_REQUIRES_REVIEW' });
           continue;
         }
         const event = record.history.find((candidate) => candidate.id === operation.historyEventId);
         const auditMetadata = operation.auditMetadata;
         if (!event) {
-          await this.finishAmbiguousReconciliation(operation.id, 'HISTORY_EVIDENCE_MISSING');
+          await this.finishAmbiguousReconciliation(
+            operation.id,
+            claimedAttempt,
+            'HISTORY_EVIDENCE_MISSING',
+          );
           items.push({ operationId: operation.id, outcome: 'AMBIGUOUS_REQUIRES_REVIEW' });
           continue;
         }
@@ -1146,7 +1215,7 @@ export class EncounterService {
           event.id !== operation.id ||
           event.toVersion !== event.fromVersion + 1
         ) {
-          await this.finishReconciliation(operation.id, 'IDENTITY_MISMATCH');
+          await this.finishReconciliation(operation.id, claimedAttempt, 'IDENTITY_MISMATCH');
           items.push({ operationId: operation.id, outcome: 'REQUIRES_OPERATOR_REVIEW' });
           continue;
         }
@@ -1157,14 +1226,22 @@ export class EncounterService {
           subjectTenantId: operation.tenantId,
           metadata: operation.auditMetadata as Prisma.InputJsonObject,
         });
-        await this.prisma.encounterOperation.updateMany({
-          where: { id: operation.id, tenantId: context.tenantId },
+        const confirmed = await this.prisma.encounterOperation.updateMany({
+          where: {
+            id: operation.id,
+            tenantId: context.tenantId,
+            attemptCount: claimedAttempt,
+          },
           data: { mutationState: 'CONFIRMED' },
         });
+        if (confirmed.count !== 1) {
+          items.push({ operationId: operation.id, outcome: 'REQUIRES_OPERATOR_REVIEW' });
+          continue;
+        }
         if (!delivered) {
           const dependencyReady = await this.prisma.isReady().catch(() => false);
           const failure = dependencyReady ? 'AUDIT_DELIVERY_FAILED' : 'DEPENDENCY_UNAVAILABLE';
-          await this.finishReconciliation(operation.id, failure);
+          await this.finishReconciliation(operation.id, claimedAttempt, failure);
           items.push({
             operationId: operation.id,
             outcome: dependencyReady
@@ -1173,8 +1250,12 @@ export class EncounterService {
           });
           continue;
         }
-        await this.prisma.encounterOperation.updateMany({
-          where: { id: operation.id, tenantId: context.tenantId },
+        const finalized = await this.prisma.encounterOperation.updateMany({
+          where: {
+            id: operation.id,
+            tenantId: context.tenantId,
+            attemptCount: claimedAttempt,
+          },
           data: {
             auditDeliveryStatus: 'RECONCILED',
             mutationState: 'CONFIRMED',
@@ -1182,28 +1263,32 @@ export class EncounterService {
             lastFailureClassification: null,
           },
         });
-        items.push({ operationId: operation.id, outcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED' });
+        items.push({
+          operationId: operation.id,
+          outcome:
+            finalized.count === 1
+              ? 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED'
+              : 'REQUIRES_OPERATOR_REVIEW',
+        });
       } catch {
-        await this.finishReconciliation(operation.id, 'DEPENDENCY_UNAVAILABLE');
+        await this.finishReconciliation(operation.id, claimedAttempt, 'DEPENDENCY_UNAVAILABLE');
         items.push({ operationId: operation.id, outcome: 'DEPENDENCY_UNAVAILABLE' });
       }
     }
     return { items };
   }
 
-  private async finishReconciliation(id: string, failure: string): Promise<void> {
+  private async finishReconciliation(
+    id: string,
+    attemptCount: number,
+    failure: string,
+  ): Promise<void> {
     try {
-      const operation = await this.prisma?.encounterOperation.findUnique({
-        where: { id },
-        select: { attemptCount: true },
-      });
       await this.prisma?.encounterOperation.updateMany({
-        where: { id },
+        where: { id, attemptCount },
         data: {
           auditDeliveryStatus:
-            failure === 'IDENTITY_MISMATCH' || (operation?.attemptCount ?? 0) >= 5
-              ? 'REVIEW_REQUIRED'
-              : 'FAILED',
+            failure === 'IDENTITY_MISMATCH' || attemptCount >= 5 ? 'REVIEW_REQUIRED' : 'FAILED',
           lastFailureClassification: failure,
           reconciliationOutcome: failure,
         },
@@ -1213,10 +1298,14 @@ export class EncounterService {
     }
   }
 
-  private async finishAmbiguousReconciliation(id: string, reason: string): Promise<void> {
+  private async finishAmbiguousReconciliation(
+    id: string,
+    attemptCount: number,
+    reason: string,
+  ): Promise<void> {
     try {
       await this.prisma?.encounterOperation.updateMany({
-        where: { id, mutationState: 'PREPARED' },
+        where: { id, attemptCount, mutationState: 'PREPARED' },
         data: {
           mutationState: 'AMBIGUOUS',
           auditDeliveryStatus: 'REVIEW_REQUIRED',
@@ -1777,6 +1866,29 @@ export class EncounterService {
             if (metadata?.requestFingerprint !== idempotency.fingerprint) {
               throw new EncounterIdempotencyConflictError();
             }
+            if (
+              existing.mutationState === 'NOT_APPLIED' &&
+              existing.expectedVersion === event.fromVersion
+            ) {
+              const rearmed = await this.prisma.encounterOperation.updateMany({
+                where: {
+                  id: existing.id,
+                  tenantId: context.tenantId,
+                  attemptCount: existing.attemptCount,
+                  mutationState: 'NOT_APPLIED',
+                },
+                data: {
+                  mutationState: 'PREPARED',
+                  auditDeliveryStatus: 'PENDING',
+                  auditMetadata: auditMetadata as Prisma.InputJsonObject,
+                  expectedVersion: event.fromVersion,
+                  lastFailureClassification: null,
+                  reconciliationOutcome: null,
+                  lastAttemptAt: null,
+                },
+              });
+              if (rearmed.count === 1) return;
+            }
             throw new EncounterIdempotencyInProgressError();
           }
         } catch (error) {
@@ -1864,6 +1976,7 @@ export class EncounterService {
       throw new EncounterIdempotencyConflictError();
     }
     const event = record.history.find((item) => item.id === idempotency.operationId);
+    if (operation.mutationState === 'NOT_APPLIED' && !event) return null;
     if (
       !event ||
       event.actorUserId !== actor.userId ||

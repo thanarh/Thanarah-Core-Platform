@@ -126,8 +126,16 @@
   async function mutationRequest(path, options) {
     const fingerprint = JSON.stringify(options.body ?? null);
     const previous = pendingMutationKeys.get(path);
+    if (previous?.uncertain && previous.fingerprint !== fingerprint) {
+      throw new ApiError(
+        409,
+        'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED',
+        safeMessages.ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED,
+      );
+    }
     const key = previous?.fingerprint === fingerprint ? previous.key : createIdempotencyKey();
-    pendingMutationKeys.set(path, { fingerprint, key });
+    const pending = { fingerprint, key, uncertain: previous?.uncertain || false };
+    pendingMutationKeys.set(path, pending);
     try {
       const result = await request(path, {
         ...options,
@@ -136,8 +144,33 @@
       pendingMutationKeys.delete(path);
       return result;
     } catch (error) {
+      if (error && typeof error === 'object') {
+        pending.uncertain =
+          error.status >= 500 ||
+          error.code === 'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED' ||
+          error.code === 'ENCOUNTER_IDEMPOTENCY_IN_PROGRESS';
+      }
+      if (error && typeof error === 'object') {
+        error.idempotencyKey = key;
+        error.idempotencyRoute = mutationRoute(path);
+      }
       throw error;
     }
+  }
+
+  function mutationRoute(path) {
+    const routes = [
+      ['/clinical', 'clinical_updated'],
+      ['/diagnoses', 'diagnoses_updated'],
+      ['/services', 'service_records_updated'],
+      ['/amendments/finalize', 'amendment_finalized'],
+      ['/amendments', 'amendment_opened'],
+      ['/complete', 'completed'],
+      ['/cancel', 'cancelled'],
+    ];
+    if (/\/amendments\/[^/]+$/u.test(path)) return 'amendment_updated';
+    if (/\/amendments\/[^/]+\/finalize$/u.test(path)) return 'amendment_finalized';
+    return routes.find(([suffix]) => path.endsWith(suffix))?.[1] || '';
   }
 
   function createIdempotencyKey() {
@@ -249,6 +282,23 @@
 
     getEncounter(tenantId, encounterId) {
       return request(tenantPath(tenantId, `/encounters/${encodeURIComponent(encounterId)}`));
+    },
+
+    getEncounterMutationStatus(tenantId, encounterId, route, idempotencyKey) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/encounters/${encodeURIComponent(encounterId)}/mutation-status/${encodeURIComponent(route)}`,
+        ),
+        { headers: { 'Idempotency-Key': idempotencyKey } },
+      ).then((result) => {
+        for (const [path, pending] of pendingMutationKeys) {
+          if (pending.key !== idempotencyKey) continue;
+          if (result.status === 'RETRY_SAFE') pending.uncertain = false;
+          if (result.status === 'APPLIED') pendingMutationKeys.delete(path);
+        }
+        return result;
+      });
     },
 
     updateEncounterClinical(tenantId, encounterId, input) {

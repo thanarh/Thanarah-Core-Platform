@@ -558,6 +558,41 @@ export class TenantEncounterController {
     return this.encounters.reconcileAudit(context, body?.limit);
   }
 
+  @Get('encounters/:encounterId/mutation-status/:route')
+  @ApiHeader({ name: 'Idempotency-Key', required: true })
+  @RequireTenantPermissions('tenant.encounters.read')
+  @ApiOperation({
+    summary: 'Read a minimally revealing status for the authenticated encounter mutation',
+  })
+  @ApiParam({ name: 'encounterId', schema: { type: 'string', format: 'uuid' } })
+  @ApiOkResponse({
+    schema: {
+      type: 'object',
+      required: ['status'],
+      properties: {
+        status: {
+          type: 'string',
+          enum: ['NOT_FOUND', 'RETRY_SAFE', 'APPLIED', 'REVIEW_REQUIRED'],
+        },
+      },
+    },
+  })
+  mutationStatus(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('encounterId', new ZodValidationPipe(encounterIdSchema)) encounterId: string,
+    @Param('route') route: string,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<EncounterService['mutationStatus']> {
+    return this.encounters.mutationStatus(
+      context,
+      encounterId,
+      route,
+      actor,
+      this.requestContext(request).idempotencyKey,
+    );
+  }
+
   @Get('encounters/:encounterId/history')
   @RequireTenantPermissions('tenant.encounters.read', 'tenant.encounters.history.read')
   @ApiOperation({

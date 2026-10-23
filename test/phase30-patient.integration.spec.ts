@@ -485,6 +485,20 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       payload: { expectedVersion: 1, diagnoses: [] },
     });
     expect(deniedMutation.statusCode).toBe(403);
+    const crossTenantEncounter = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/encounters/${apiEncounterId}`,
+      headers: bearerHeaders(),
+    });
+    expect(crossTenantEncounter.statusCode).toBe(403);
+    expect(JSON.stringify(crossTenantEncounter.json())).not.toContain(apiEncounterId);
+    const crossTenantReconciliation = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantB)}/encounters/audit-reconciliation`,
+      headers: bearerHeaders(),
+      payload: { limit: 25 },
+    });
+    expect(crossTenantReconciliation.statusCode).toBe(403);
 
     const detail = await getApplication().inject({
       method: 'GET',
@@ -1131,6 +1145,20 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(mutation.statusCode).toBe(200);
     expect(mutationReplay.statusCode).toBe(200);
     expect(mutationReplay.json<{ version: number }>().version).toBe(2);
+    const mutationStatus = await app.inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/encounters/${encounterId}/mutation-status/clinical_updated`,
+      headers: { ...bearerHeaders(), 'idempotency-key': mutationKey },
+    });
+    expect(mutationStatus.statusCode).toBe(200);
+    expect(mutationStatus.json<{ status: string }>().status).toBe('APPLIED');
+    const crossTenantMutationStatus = await app.inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/encounters/${encounterId}/mutation-status/clinical_updated`,
+      headers: { ...bearerHeaders(), 'idempotency-key': mutationKey },
+    });
+    expect(crossTenantMutationStatus.statusCode).toBe(403);
+    expect(JSON.stringify(crossTenantMutationStatus.json())).not.toContain(mutationKey);
     const mutationConflict = await update({
       expectedVersion: 1,
       clinical: { assessment: 'Different assessment' },
