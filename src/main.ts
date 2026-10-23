@@ -46,7 +46,12 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: config.isProduction ? false : true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', APP_CONSTANTS.headers.requestId],
+    allowedHeaders: [
+      'Content-Type',
+      'Authorization',
+      'Idempotency-Key',
+      APP_CONSTANTS.headers.requestId,
+    ],
     exposedHeaders: [APP_CONSTANTS.headers.requestId],
     credentials: true,
   });

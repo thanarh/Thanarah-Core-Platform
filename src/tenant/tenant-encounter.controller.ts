@@ -20,6 +20,7 @@ import {
   ApiConflictResponse,
   ApiCreatedResponse,
   ApiForbiddenResponse,
+  ApiHeader,
   ApiNotFoundResponse,
   ApiOkResponse,
   ApiOperation,
@@ -100,8 +101,12 @@ export class TenantEncounterController {
   @RequireTenantPermissions('tenant.encounters.create', 'tenant.appointments.read')
   @ApiOperation({
     summary: 'Create a draft encounter from a scheduled appointment',
-    description:
-      'Appointment access is required in addition to encounter creation. Only eligible scheduled appointments can be linked.',
+    description: 'Send Idempotency-Key to safely retry this logical creation request.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: '1–128 printable ASCII characters',
   })
   @ApiBody({ type: CreateEncounterFromAppointmentRequestDto })
   @ApiCreatedResponse({ type: EncounterResponseDto })
@@ -131,8 +136,12 @@ export class TenantEncounterController {
   @RequireTenantPermissions('tenant.encounters.create', 'tenant.encounters.create.direct')
   @ApiOperation({
     summary: 'Create a draft encounter without an appointment',
-    description:
-      'Direct creation requires a separate permission and active, tenant-owned patient, provider, and location references.',
+    description: 'Send Idempotency-Key to safely retry this logical creation request.',
+  })
+  @ApiHeader({
+    name: 'Idempotency-Key',
+    required: false,
+    description: '1–128 printable ASCII characters',
   })
   @ApiBody({ type: CreateDirectEncounterRequestDto })
   @ApiCreatedResponse({ type: EncounterResponseDto })
@@ -593,12 +602,20 @@ export class TenantEncounterController {
     requestId?: string;
     ipAddress?: string;
     userAgent?: string;
+    idempotencyKey?: string;
   } {
     const userAgent = request.headers['user-agent'];
+    const idempotencyHeader = request.headers['idempotency-key'];
     return {
       requestId: request.id,
       ipAddress: request.ip,
       userAgent: typeof userAgent === 'string' ? userAgent : undefined,
+      idempotencyKey:
+        typeof idempotencyHeader === 'string'
+          ? idempotencyHeader
+          : Array.isArray(idempotencyHeader)
+            ? ''
+            : undefined,
     };
   }
 }

@@ -1049,6 +1049,83 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(1);
   });
 
+  it('deduplicates encounter creation retries by tenant, actor, route, and idempotency key', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const mongoCollection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const alternatePatientResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46D-${RUN_ID}`),
+    });
+    expect(alternatePatientResponse.statusCode).toBe(201);
+    const alternatePatientId = alternatePatientResponse.json<{ id: string }>().id;
+    const payload = {
+      patientId: clinicalPatientId,
+      doctorId: clinicalDoctorId,
+      facilityId: clinicalFacilityId,
+      branchId: clinicalBranchId,
+    };
+    const send = (key: string, body = payload): ReturnType<typeof app.inject> =>
+      app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: { ...bearerHeaders(), 'idempotency-key': key },
+        payload: body,
+      });
+
+    expect((await send('phase 46d malformed')).statusCode).toBe(400);
+    const key = `phase46d-create-${RUN_ID}`;
+    const first = await send(key);
+    const retry = await send(key);
+    expect(first.statusCode).toBe(201);
+    expect(retry.statusCode).toBe(201);
+    const encounterId = first.json<{ id: string }>().id;
+    expect(retry.json<{ id: string }>().id).toBe(encounterId);
+    const document = await mongoCollection.findOne({
+      _id: encounterId,
+      _tenantId: tenantA.id,
+    });
+    const eventId = (document?.history as Array<{ id: string }>)[0]!.id;
+    expect((document?.history as Array<{ id: string }>).length).toBe(1);
+    expect(
+      await prisma.encounterOperation.count({
+        where: { tenantId: tenantA.id, resourceId: encounterId },
+      }),
+    ).toBe(1);
+    expect(await prisma.platformAuditLog.count({ where: { id: eventId } })).toBe(1);
+
+    const conflictingPayload = { ...payload, patientId: alternatePatientId };
+    const conflict = await send(key, conflictingPayload);
+    expect(conflict.statusCode).toBe(409);
+    expect(
+      await mongoCollection.countDocuments({
+        _tenantId: tenantA.id,
+        _id: encounterId,
+      }),
+    ).toBe(1);
+
+    const concurrentKey = `phase46d-race-${RUN_ID}`;
+    const concurrent = await Promise.all([send(concurrentKey), send(concurrentKey)]);
+    expect(concurrent.some((response) => response.statusCode === 201)).toBe(true);
+    const finalRetry = await send(concurrentKey);
+    expect(finalRetry.statusCode).toBe(201);
+    const concurrentEncounterId = finalRetry.json<{ id: string }>().id;
+    const concurrentDocument = await mongoCollection.findOne({
+      _id: concurrentEncounterId,
+      _tenantId: tenantA.id,
+    });
+    const concurrentEventId = (concurrentDocument?.history as Array<{ id: string }>)[0]!.id;
+    expect((concurrentDocument?.history as Array<{ id: string }>).length).toBe(1);
+    expect(
+      await prisma.encounterOperation.count({
+        where: { tenantId: tenantA.id, resourceId: concurrentEncounterId },
+      }),
+    ).toBe(1);
+    expect(await prisma.platformAuditLog.count({ where: { id: concurrentEventId } })).toBe(1);
+  });
+
   it('walks through the signed-in encounter UI in headless Chromium', async () => {
     const appointmentDay = new Date(Date.now() + 36 * 60 * 60 * 1_000);
     const appointmentDateParts = new Map(

@@ -6,7 +6,7 @@ import {
   Optional,
   ServiceUnavailableException,
 } from '@nestjs/common';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { PlatformAuditEventType } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
@@ -50,6 +50,7 @@ import type {
 import {
   EncounterAppointmentConflictError,
   EncounterHistoryLimitError,
+  EncounterIdempotencyConflictError,
   EncounterInputValidationError,
   EncounterNotFoundError,
   EncounterReferenceInvalidError,
@@ -93,6 +94,7 @@ export interface EncounterAuditRequestContext {
   sessionId?: string;
   ipAddress?: string;
   userAgent?: string;
+  idempotencyKey?: string;
 }
 
 @Injectable()
@@ -141,6 +143,38 @@ export class EncounterService {
       branchId: appointment.branchId,
     });
 
+    const idempotency = this.createIdempotency(
+      context,
+      actor,
+      'from-appointment',
+      requestContext.idempotencyKey,
+    );
+    if (idempotency) {
+      const existing = await this.encounters.findById(context, idempotency.resourceId);
+      if (existing) {
+        if (
+          existing.createdBy !== actor.userId ||
+          existing.appointmentId !== appointment.id ||
+          existing.patientId !== appointment.patientId ||
+          existing.doctorId !== appointment.doctorId ||
+          existing.facilityId !== appointment.facilityId ||
+          existing.branchId !== appointment.branchId
+        ) {
+          throw new EncounterIdempotencyConflictError();
+        }
+        await this.assertCreationReplay(context, actor, existing, idempotency.operationId);
+        await this.recordAudit(
+          context,
+          actor,
+          existing,
+          PlatformAuditEventType.ENCOUNTER_CREATED,
+          'created',
+          ['appointmentId', 'patientId', 'doctorId', 'facilityId', 'branchId'],
+          requestContext,
+        );
+        return this.present(existing);
+      }
+    }
     if (await this.encounters.findActiveByAppointment(context, appointment.id)) {
       throw new EncounterAppointmentConflictError();
     }
@@ -155,7 +189,9 @@ export class EncounterService {
         branchId: appointment.branchId,
       },
       new Date(),
+      idempotency?.resourceId,
     );
+    if (idempotency) record.history[0]!.id = idempotency.operationId;
     await this.prepareOperation(
       context,
       actor,
@@ -197,7 +233,45 @@ export class EncounterService {
     };
     await this.assertLocationScope(context, references.facilityId, references.branchId);
     await this.validateReferences(context, references);
-    const record = this.newRecord(actor, { appointmentId: null, ...references }, new Date());
+    const idempotency = this.createIdempotency(
+      context,
+      actor,
+      'direct',
+      requestContext.idempotencyKey,
+    );
+    if (idempotency) {
+      const existing = await this.encounters.findById(context, idempotency.resourceId);
+      if (existing) {
+        if (
+          existing.createdBy !== actor.userId ||
+          existing.appointmentId !== null ||
+          existing.patientId !== references.patientId ||
+          existing.doctorId !== references.doctorId ||
+          existing.facilityId !== references.facilityId ||
+          existing.branchId !== references.branchId
+        ) {
+          throw new EncounterIdempotencyConflictError();
+        }
+        await this.assertCreationReplay(context, actor, existing, idempotency.operationId);
+        await this.recordAudit(
+          context,
+          actor,
+          existing,
+          PlatformAuditEventType.ENCOUNTER_CREATED,
+          'created_direct',
+          ['patientId', 'doctorId', 'facilityId', 'branchId'],
+          requestContext,
+        );
+        return this.present(existing);
+      }
+    }
+    const record = this.newRecord(
+      actor,
+      { appointmentId: null, ...references },
+      new Date(),
+      idempotency?.resourceId,
+    );
+    if (idempotency) record.history[0]!.id = idempotency.operationId;
     await this.prepareOperation(
       context,
       actor,
@@ -1357,6 +1431,7 @@ export class EncounterService {
       branchId: string | null;
     },
     now: Date,
+    encounterId?: string,
   ): EncounterRecord {
     const event: EncounterHistoryEvent = {
       id: randomUUID(),
@@ -1368,7 +1443,7 @@ export class EncounterService {
       changedFields: Object.keys(references),
     };
     return {
-      id: randomUUID(),
+      id: encounterId ?? randomUUID(),
       ...references,
       encounterAt: now,
       status: EncounterStatus.DRAFT,
@@ -1388,6 +1463,78 @@ export class EncounterService {
       cancellationReason: null,
       history: [event],
     };
+  }
+
+  private createIdempotency(
+    context: TrustedTenantContext,
+    actor: AuthenticatedPlatformUser,
+    route: 'direct' | 'from-appointment',
+    key?: string,
+  ): { resourceId: string; operationId: string } | null {
+    if (key === undefined) return null;
+    if (!this.prisma) {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (key.length < 1 || key.length > 128 || !/^[\x21-\x7e]+$/u.test(key)) {
+      throw new EncounterInputValidationError();
+    }
+    const deterministicUuid = (kind: string): string => {
+      const hex = createHash('sha256')
+        .update(
+          `${kind}\u0000${context.tenantId.toLowerCase()}\u0000${actor.userId.toLowerCase()}\u0000${route}\u0000${key}`,
+        )
+        .digest('hex')
+        .slice(0, 32)
+        .split('');
+      hex[12] = '5';
+      hex[16] = ((Number.parseInt(hex[16]!, 16) & 0x3) | 0x8).toString(16);
+      const value = hex.join('');
+      return `${value.slice(0, 8)}-${value.slice(8, 12)}-${value.slice(12, 16)}-${value.slice(16, 20)}-${value.slice(20)}`;
+    };
+    return {
+      resourceId: deterministicUuid('encounter-resource'),
+      operationId: deterministicUuid('encounter-operation'),
+    };
+  }
+
+  private async assertCreationReplay(
+    context: TrustedTenantContext,
+    actor: AuthenticatedPlatformUser,
+    record: EncounterRecord,
+    operationId: string,
+  ): Promise<void> {
+    const event = record.history.find((item) => item.id === operationId);
+    if (
+      !event ||
+      event.actorUserId !== actor.userId ||
+      event.action !== 'CREATED' ||
+      event.fromVersion !== 0 ||
+      event.toVersion !== 1
+    ) {
+      throw new EncounterIdempotencyConflictError();
+    }
+    let operation: Awaited<ReturnType<PrismaService['encounterOperation']['findUnique']>>;
+    try {
+      operation = await this.prisma!.encounterOperation.findUnique({
+        where: { id: operationId },
+      });
+    } catch {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (!operation) {
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+    if (
+      operation.tenantId !== context.tenantId ||
+      operation.actorUserId !== actor.userId ||
+      operation.resourceId !== record.id ||
+      operation.historyEventId !== event.id ||
+      operation.expectedVersion !== 0 ||
+      operation.operationType !== event.action ||
+      operation.mutationState === 'NOT_APPLIED'
+    ) {
+      throw new EncounterIdempotencyConflictError();
+    }
   }
 
   private historyEvent(

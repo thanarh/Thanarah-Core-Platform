@@ -12,6 +12,8 @@
     APPOINTMENT_REFERENCE_INVALID: 'أحد الاختيارات لم يعد متاحًا. حدّث البيانات وحاول مرة أخرى.',
     APPOINTMENT_SCHEDULE_CONFLICT: 'هذا الوقت لم يعد متاحًا. اختر وقتًا آخر.',
     APPOINTMENT_IDEMPOTENCY_CONFLICT: 'تعذّر تأكيد إعادة المحاولة. حدّث المواعيد قبل المتابعة.',
+    ENCOUNTER_IDEMPOTENCY_CONFLICT: 'استُخدم مفتاح إعادة المحاولة لطلب مختلف. ابدأ إجراءً جديدًا.',
+    ENCOUNTER_VERSION_CONFLICT: 'تغيّر اللقاء منذ تحميله. حدّث البيانات قبل الحفظ.',
     APPOINTMENT_POLICY_VIOLATION: 'الموعد لا يطابق سياسة الجدولة الحالية.',
     APPOINTMENT_STATE_CONFLICT: 'تغيّرت حالة الموعد. حدّث الصفحة قبل المتابعة.',
     AUTH_INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
@@ -189,17 +191,19 @@
       return request(tenantPath(tenantId, `/appointments/${encodeURIComponent(appointmentId)}`));
     },
 
-    createEncounterFromAppointment(tenantId, input) {
+    createEncounterFromAppointment(tenantId, input, idempotencyKey) {
       return request(tenantPath(tenantId, '/encounters/from-appointment'), {
         method: 'POST',
         body: input,
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
       });
     },
 
-    createDirectEncounter(tenantId, input) {
+    createDirectEncounter(tenantId, input, idempotencyKey) {
       return request(tenantPath(tenantId, '/encounters/direct'), {
         method: 'POST',
         body: input,
+        headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
       });
     },
 
@@ -210,10 +214,7 @@
     listPatientEncounterHistory(tenantId, patientId, options = {}) {
       return request(
         withQuery(
-          tenantPath(
-            tenantId,
-            `/patients/${encodeURIComponent(patientId)}/encounters`,
-          ),
+          tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}/encounters`),
           options,
         ),
       );

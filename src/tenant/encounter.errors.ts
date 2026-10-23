@@ -63,6 +63,15 @@ export class EncounterAppointmentConflictError extends ConflictException {
   }
 }
 
+export class EncounterIdempotencyConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'ENCOUNTER_IDEMPOTENCY_CONFLICT',
+      message: 'This idempotency key was already used for a different encounter request',
+    });
+  }
+}
+
 export class EncounterHistoryLimitError extends ConflictException {
   constructor() {
     super({

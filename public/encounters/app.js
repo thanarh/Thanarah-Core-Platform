@@ -104,6 +104,9 @@
     directBranchId: '',
     selectedAppointmentId: '',
     selectedPatientId: '',
+    directCreateKey: '',
+    pendingDirectDraft: null,
+    appointmentCreateKey: '',
     saving: false,
     pendingDraft: null,
     conflict: false,
@@ -557,6 +560,7 @@
 
   function renderDirectCreation() {
     if (!can(PERMISSIONS.encounterCreate) || !can(PERMISSIONS.directCreate)) return '';
+    const draft = state.pendingDirectDraft || {};
     return `
       <section class="encounter-card">
         <div class="encounter-section-heading"><h2>إنشاء لقاء مباشر</h2></div>
@@ -570,10 +574,10 @@
             : ''
         }
         <form class="encounter-form-grid" data-form="direct-create" autocomplete="off">
-          ${patientField('direct-patient', 'patientId', '')}
-          ${doctorField('direct-doctor', 'doctorId', '')}
-          ${facilitySelector('direct-facility', 'facilityId', state.directFacilityId || state.filter.facilityId)}
-          ${branchField('direct-branch', 'branchId', state.branches, state.directBranchId)}
+          ${patientField('direct-patient', 'patientId', draft.patientId || '')}
+          ${doctorField('direct-doctor', 'doctorId', draft.doctorId || '')}
+          ${facilitySelector('direct-facility', 'facilityId', draft.facilityId || state.directFacilityId || state.filter.facilityId)}
+          ${branchField('direct-branch', 'branchId', state.branches, draft.branchId || state.directBranchId)}
           <div class="encounter-field" style="align-self:end">
             <button class="btn btn-primary" type="submit" ${state.busy ? 'disabled' : ''}>إنشاء مسودة</button>
           </div>
@@ -1947,7 +1951,14 @@
   function onChange(event) {
     const target = event.target;
     if (!(target instanceof HTMLSelectElement || target instanceof HTMLInputElement)) return;
+    if (target.closest('form[data-form="direct-create"]')) {
+      state.directCreateKey = '';
+      if (state.pendingDirectDraft && target.name) {
+        state.pendingDirectDraft[target.name] = target.value;
+      }
+    }
     if (target.id === 'eligible-appointment') {
+      if (state.selectedAppointmentId !== target.value) state.appointmentCreateKey = '';
       state.selectedAppointmentId = target.value;
       render();
     } else if (target.id === 'encounter-date') {
@@ -1970,10 +1981,13 @@
       state.appointmentDate = target.value;
       state.appointmentDateSetByUser = true;
     } else if (target.id === 'direct-facility') {
+      state.directCreateKey = '';
+      state.pendingDirectDraft = null;
       state.directFacilityId = target.value;
       state.directBranchId = '';
       void loadBranches(target.value).then(render);
     } else if (target.id === 'direct-branch') {
+      state.directCreateKey = '';
       state.directBranchId = target.value;
     }
   }
@@ -2076,13 +2090,19 @@
 
   async function createFromAppointment() {
     if (!state.selectedAppointmentId || !can(PERMISSIONS.encounterCreate)) return;
+    if (!state.appointmentCreateKey) state.appointmentCreateKey = createIdempotencyKey();
     state.busy = true;
     state.appointmentError = null;
     render();
     try {
-      const encounter = await api.createEncounterFromAppointment(state.workspace.tenantId, {
-        appointmentId: state.selectedAppointmentId,
-      });
+      const encounter = await api.createEncounterFromAppointment(
+        state.workspace.tenantId,
+        {
+          appointmentId: state.selectedAppointmentId,
+        },
+        state.appointmentCreateKey,
+      );
+      state.appointmentCreateKey = '';
       showToast('تم إنشاء مسودة اللقاء.');
       await openEncounter(encounter.id);
     } catch (error) {
@@ -2103,20 +2123,34 @@
     };
     const branchId = String(data.get('branchId') || '').trim();
     if (branchId) input.branchId = branchId;
+    if (!state.directCreateKey) state.directCreateKey = createIdempotencyKey();
     state.busy = true;
     state.screenError = null;
     render();
     try {
-      const encounter = await api.createDirectEncounter(state.workspace.tenantId, input);
+      const encounter = await api.createDirectEncounter(
+        state.workspace.tenantId,
+        input,
+        state.directCreateKey,
+      );
+      state.directCreateKey = '';
+      state.pendingDirectDraft = null;
       showToast('تم إنشاء مسودة اللقاء.');
       await openEncounter(encounter.id);
     } catch (error) {
       if (handleUnauthorized(error)) return;
       state.screenError = errorMessage(error);
+      state.pendingDirectDraft = Object.fromEntries(new FormData(form).entries());
       render();
     } finally {
       state.busy = false;
     }
+  }
+
+  function createIdempotencyKey() {
+    return window.crypto?.randomUUID
+      ? window.crypto.randomUUID()
+      : `enc-${Date.now()}-${Math.random().toString(36).slice(2)}`;
   }
 
   function workspacePickerButton() {
