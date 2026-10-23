@@ -175,6 +175,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     mysqlRootPassword = randomBytes(24).toString('hex');
 
     mongoContainer = await new GenericContainer(MONGO_IMAGE)
+      .withCommand(['mongod', '--setParameter', 'enableTestCommands=1'])
       .withEnvironment({
         MONGO_INITDB_ROOT_USERNAME: MONGO_ROOT_USER,
         MONGO_INITDB_ROOT_PASSWORD: mongoPassword,
@@ -852,22 +853,43 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const appointmentDate = `${appointmentDateParts.get('year')}-${appointmentDateParts.get('month')}-${appointmentDateParts.get('day')}`;
     const worklistDate = `${worklistDateParts.get('year')}-${worklistDateParts.get('month')}-${worklistDateParts.get('day')}`;
     const appointmentStart = new Date(`${appointmentDate}T10:00:00+03:00`);
+    const appointmentPayload = {
+      patientId: clinicalPatientId,
+      doctorId: clinicalDoctorId,
+      facilityId: clinicalFacilityId,
+      branchId: clinicalBranchId,
+      serviceId: clinicalServiceId,
+      startsAt: appointmentStart.toISOString(),
+      endsAt: new Date(appointmentStart.getTime() + 30 * 60 * 1_000).toISOString(),
+    };
+    const appointmentIdempotencyKey = `phase44-${RUN_ID}`;
     const appointmentResponse = await getApplication().inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/appointments`,
-      headers: { ...bearerHeaders(), 'idempotency-key': `phase44-${RUN_ID}` },
-      payload: {
-        patientId: clinicalPatientId,
-        doctorId: clinicalDoctorId,
-        facilityId: clinicalFacilityId,
-        branchId: clinicalBranchId,
-        serviceId: clinicalServiceId,
-        startsAt: appointmentStart.toISOString(),
-        endsAt: new Date(appointmentStart.getTime() + 30 * 60 * 1_000).toISOString(),
-      },
+      headers: { ...bearerHeaders(), 'idempotency-key': appointmentIdempotencyKey },
+      payload: appointmentPayload,
     });
     expect(appointmentResponse.statusCode, appointmentResponse.body).toBe(201);
     browserAppointmentId = appointmentResponse.json<{ id: string }>().id;
+    const idempotentRetry = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/appointments`,
+      headers: { ...bearerHeaders(), 'idempotency-key': appointmentIdempotencyKey },
+      payload: appointmentPayload,
+    });
+    expect(idempotentRetry.statusCode, idempotentRetry.body).toBe(201);
+    expect(idempotentRetry.json<{ id: string }>().id).toBe(browserAppointmentId);
+    const conflictingRetry = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/appointments`,
+      headers: { ...bearerHeaders(), 'idempotency-key': appointmentIdempotencyKey },
+      payload: {
+        ...appointmentPayload,
+        startsAt: new Date(appointmentStart.getTime() + 60 * 60 * 1_000).toISOString(),
+        endsAt: new Date(appointmentStart.getTime() + 90 * 60 * 1_000).toISOString(),
+      },
+    });
+    expect(conflictingRetry.statusCode, conflictingRetry.body).toBe(409);
 
     const [tenantPatientResponse, otherTenantPatientLookup] = await Promise.all([
       getApplication().inject({
@@ -2630,6 +2652,105 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       ).statusCode,
     ).toBe(200);
   });
+
+  it('returns unavailable for real tenant MongoDB HTTP reads and writes, then recovers', async () => {
+    const admin = mongoAdminClient?.db('admin');
+    if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+    const setOutage = async (): Promise<void> => {
+      await admin.command({
+        configureFailPoint: 'failCommand',
+        mode: 'alwaysOn',
+        data: {
+          failCommands: [
+            'find',
+            'aggregate',
+            'insert',
+            'update',
+            'findAndModify',
+            'delete',
+            'listIndexes',
+          ],
+          errorCode: 91,
+        },
+      });
+    };
+    const clearOutage = async (): Promise<void> => {
+      await admin.command({
+        configureFailPoint: 'failCommand',
+        mode: 'off',
+      });
+    };
+    const responses: Array<{ statusCode: number; body: string }> = [];
+    await setOutage();
+    try {
+      responses.push(
+        ...(await Promise.all([
+        await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}`,
+          headers: bearerHeaders(),
+        }),
+        await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}/encounters`,
+          headers: bearerHeaders(),
+        }),
+        await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/appointments?facilityId=${clinicalFacilityId}&branchId=${clinicalBranchId}`,
+          headers: bearerHeaders(),
+        }),
+        await getApplication().inject({
+          method: 'GET',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
+          headers: bearerHeaders(),
+        }),
+        await getApplication().inject({
+          method: 'PATCH',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/clinical`,
+          headers: bearerHeaders(),
+          payload: { expectedVersion: 1, clinical: { assessment: 'outage probe' } },
+        }),
+        await getApplication().inject({
+          method: 'PUT',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/diagnoses`,
+          headers: bearerHeaders(),
+          payload: { expectedVersion: 1, diagnoses: [] },
+        }),
+        await getApplication().inject({
+          method: 'PUT',
+          url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}/services`,
+          headers: bearerHeaders(),
+          payload: { expectedVersion: 1, serviceRecords: [] },
+        }),
+        await getApplication().inject({
+          method: 'POST',
+          url: `${tenantRoot(tenantA)}/patients`,
+          headers: bearerHeaders(),
+          payload: patientPayload(`PH45C-${RUN_ID}`),
+        }),
+        ])),
+      );
+    } finally {
+      await clearOutage();
+    }
+
+    expect(responses).toHaveLength(8);
+    for (const response of responses) {
+      expect(response.statusCode, response.body).toBe(503);
+      expect(response.body).toContain('TENANT_STORAGE_UNAVAILABLE');
+      expect(response.body).not.toContain('outage probe');
+    }
+    const recoveredList = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+    });
+    expect(recoveredList.statusCode, recoveredList.body).toBe(200);
+    expect(recoveredList.json<{ items: Array<{ patientNumber: string }> }>().items).not.toContain(
+      expect.objectContaining({ patientNumber: `PH45C-${RUN_ID}` }),
+    );
+  }, 120_000);
 
   it('fails closed for Mongo authentication, invalid configuration, and unavailable servers', async () => {
     expect(getApplication().get(TENANT_PATIENT_STORAGE)).toBeInstanceOf(MongoTenantPatientStorage);
