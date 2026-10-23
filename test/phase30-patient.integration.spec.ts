@@ -23,7 +23,7 @@ import fastifyStatic from '@fastify/static';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { MongoClient, type Db, type Document } from 'mongodb';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '../dist/config/config.service';
 import type { TenantMongoClientFactory } from '../dist/tenant/tenant-mongo-client.manager';
 import type { TenantStorageTargetRecord } from '../dist/tenant/tenant-storage.registry';
@@ -42,6 +42,9 @@ const { PasswordHasherService } = requireFromWorkspace(
   '../dist/auth/security/password-hasher.service',
 );
 const { PrismaService } = requireFromWorkspace('../dist/database/prisma.service');
+const { PlatformAuditRepository } = requireFromWorkspace(
+  '../dist/platform-security/platform-audit.repository',
+);
 const { MongoTenantPatientStorage } = requireFromWorkspace(
   '../dist/tenant/mongo-tenant-patient.storage',
 );
@@ -922,6 +925,102 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       (await prisma.encounterOperation.findUnique({ where: { id: alreadyAudited!.id } }))
         ?.auditDeliveryStatus,
     ).toBe('RECONCILED');
+  });
+
+  it('requires a persisted pre-write marker and recovers delivery interruptions from disposable databases', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const mongoCollection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const auditRepository = app.get(PlatformAuditRepository);
+    const directCreate = () =>
+      app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: bearerHeaders(),
+        payload: {
+          patientId: clinicalPatientId,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+
+    const operationCountBefore = await prisma.encounterOperation.count({
+      where: { tenantId: tenantA.id },
+    });
+    const mongoCountBefore = await mongoCollection.countDocuments({ _tenantId: tenantA.id });
+    const markerFailure = vi
+      .spyOn(prisma.encounterOperation, 'create')
+      .mockRejectedValueOnce(new Error('injected pre-write marker failure'));
+    const blocked = await directCreate();
+    markerFailure.mockRestore();
+    expect(blocked.statusCode).toBe(503);
+    expect(await mongoCollection.countDocuments({ _tenantId: tenantA.id })).toBe(mongoCountBefore);
+    expect(await prisma.encounterOperation.count({ where: { tenantId: tenantA.id } })).toBe(
+      operationCountBefore,
+    );
+
+    const auditFailure = vi
+      .spyOn(auditRepository, 'createAuditLog')
+      .mockRejectedValueOnce(new Error('injected audit delivery failure'));
+    const committed = await directCreate();
+    auditFailure.mockRestore();
+    expect(committed.statusCode).toBe(201);
+    const createdId = committed.json<{ id: string }>().id;
+    const committedDocument = await mongoCollection.findOne({
+      _id: createdId,
+      _tenantId: tenantA.id,
+    });
+    const committedEvent = (committedDocument?.history as Array<{ id: string }>)[0]!;
+    const failedOperation = await prisma.encounterOperation.findUnique({
+      where: { id: committedEvent.id },
+    });
+    expect(failedOperation).toMatchObject({
+      mutationState: 'CONFIRMED',
+      auditDeliveryStatus: 'FAILED',
+    });
+    expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(0);
+
+    const originalUpdateMany = prisma.encounterOperation.updateMany.bind(prisma.encounterOperation);
+    const outcomeWriteFailure = vi
+      .spyOn(prisma.encounterOperation, 'updateMany')
+      .mockImplementation(async (args) => {
+        if (args.data && typeof args.data === 'object' && 'auditDeliveryStatus' in args.data) {
+          throw new Error('injected ledger outcome interruption');
+        }
+        return originalUpdateMany(args);
+      });
+    const outcomeInterrupted = await directCreate();
+    outcomeWriteFailure.mockRestore();
+    expect(outcomeInterrupted.statusCode).toBe(201);
+    const interruptedId = outcomeInterrupted.json<{ id: string }>().id;
+    const interruptedDocument = await mongoCollection.findOne({
+      _id: interruptedId,
+      _tenantId: tenantA.id,
+    });
+    const interruptedEvent = (interruptedDocument?.history as Array<{ id: string }>)[0]!;
+    expect(await prisma.platformAuditLog.count({ where: { id: interruptedEvent.id } })).toBe(1);
+
+    const reconciled = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+      headers: bearerHeaders(),
+      payload: { limit: 25 },
+    });
+    expect(reconciled.statusCode).toBe(200);
+    expect(await prisma.platformAuditLog.count({ where: { id: interruptedEvent.id } })).toBe(1);
+    expect(
+      (
+        await prisma.encounterOperation.findUnique({
+          where: { id: interruptedEvent.id },
+        })
+      )?.auditDeliveryStatus,
+    ).toBe('RECONCILED');
+    const recoveredFailedOperation = await prisma.encounterOperation.findUnique({
+      where: { id: committedEvent.id },
+    });
+    expect(recoveredFailedOperation?.auditDeliveryStatus).toBe('RECONCILED');
+    expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(1);
   });
 
   it('walks through the signed-in encounter UI in headless Chromium', async () => {

@@ -240,6 +240,7 @@ describe('TenantRoleRepository', () => {
       'prisma/migrations/20261017100000_tenant_medical_encounters/migration.sql',
       'prisma/migrations/20261017110000_phase42_structured_encounters/migration.sql',
       'prisma/migrations/20261023100000_phase46b_encounter_operation_ledger/migration.sql',
+      'prisma/migrations/20261023110000_phase46c_encounter_prewrite_markers/migration.sql',
     ]
       .map((path) => readFileSync(path, 'utf8'))
       .join('\n');

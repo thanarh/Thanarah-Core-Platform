@@ -1,4 +1,11 @@
-import { Inject, Injectable, Logger, NotFoundException, Optional } from '@nestjs/common';
+import {
+  Inject,
+  Injectable,
+  Logger,
+  NotFoundException,
+  Optional,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import { randomUUID } from 'node:crypto';
 import { PlatformAuditEventType } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -149,6 +156,14 @@ export class EncounterService {
       },
       new Date(),
     );
+    await this.prepareOperation(
+      context,
+      actor,
+      record,
+      PlatformAuditEventType.ENCOUNTER_CREATED,
+      'created',
+      ['appointmentId', 'patientId', 'doctorId', 'facilityId', 'branchId'],
+    );
     const created = await this.encounters.create(context, record);
     await this.recordAudit(
       context,
@@ -183,6 +198,14 @@ export class EncounterService {
     await this.assertLocationScope(context, references.facilityId, references.branchId);
     await this.validateReferences(context, references);
     const record = this.newRecord(actor, { appointmentId: null, ...references }, new Date());
+    await this.prepareOperation(
+      context,
+      actor,
+      record,
+      PlatformAuditEventType.ENCOUNTER_CREATED,
+      'created_direct',
+      ['patientId', 'doctorId', 'facilityId', 'branchId'],
+    );
     const created = await this.encounters.create(context, record);
     await this.recordAudit(
       context,
@@ -271,6 +294,14 @@ export class EncounterService {
       current.version,
       changedFields,
     );
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'clinical_updated',
+      changedFields,
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -279,7 +310,10 @@ export class EncounterService {
       { clinical: nextClinical, updatedAt: occurredAt, updatedBy: actor.userId },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -321,6 +355,14 @@ export class EncounterService {
     const event = this.historyEvent(actor, 'DIAGNOSES_UPDATED', occurredAt, current.version, [
       'diagnoses',
     ]);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'diagnoses_updated',
+      ['diagnoses'],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -329,7 +371,10 @@ export class EncounterService {
       { diagnoses, updatedAt: occurredAt, updatedBy: actor.userId },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -373,6 +418,14 @@ export class EncounterService {
     const event = this.historyEvent(actor, 'SERVICE_RECORDS_UPDATED', occurredAt, current.version, [
       'serviceRecords',
     ]);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'service_records_updated',
+      ['serviceRecords'],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -381,7 +434,10 @@ export class EncounterService {
       { serviceRecords, updatedAt: occurredAt, updatedBy: actor.userId },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -434,6 +490,14 @@ export class EncounterService {
     const event = this.historyEvent(actor, 'AMENDMENT_OPENED', occurredAt, current.version, [
       'amendment',
     ]);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_opened',
+      ['amendment'],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -446,7 +510,10 @@ export class EncounterService {
       },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -529,6 +596,14 @@ export class EncounterService {
       'amendment',
       ...changedFields,
     ]);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_updated',
+      ['amendment', ...changedFields],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -537,7 +612,10 @@ export class EncounterService {
       { amendments, updatedAt: occurredAt, updatedBy: actor.userId },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -585,6 +663,14 @@ export class EncounterService {
     const event = this.historyEvent(actor, 'AMENDMENT_FINALIZED', occurredAt, current.version, [
       'amendment.status',
     ]);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CLINICAL_UPDATED,
+      'amendment_finalized',
+      ['amendment.status'],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -593,7 +679,10 @@ export class EncounterService {
       { amendments, updatedAt: occurredAt, updatedBy: actor.userId },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -629,6 +718,14 @@ export class EncounterService {
 
     const occurredAt = new Date();
     const event = this.historyEvent(actor, 'COMPLETED', occurredAt, current.version, ['status']);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_COMPLETED,
+      'completed',
+      ['status'],
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -643,7 +740,10 @@ export class EncounterService {
       },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -680,6 +780,14 @@ export class EncounterService {
     const occurredAt = new Date();
     const changedFields = parsed.data.reason ? ['status', 'cancellationReason'] : ['status'];
     const event = this.historyEvent(actor, 'CANCELLED', occurredAt, current.version, changedFields);
+    await this.prepareOperation(
+      context,
+      actor,
+      { ...current, history: [...current.history, event] },
+      PlatformAuditEventType.ENCOUNTER_CANCELLED,
+      'cancelled',
+      changedFields,
+    );
     const updated = await this.encounters.update(
       context,
       current.id,
@@ -695,7 +803,10 @@ export class EncounterService {
       },
       event,
     );
-    if (!updated) await this.throwWriteConflict(context, current.id, current.version);
+    if (!updated) {
+      await this.markOperationNotApplied(event.id, context.tenantId);
+      await this.throwWriteConflict(context, current.id, current.version);
+    }
     await this.recordAudit(
       context,
       actor,
@@ -755,6 +866,7 @@ export class EncounterService {
           tenantId: context.tenantId,
           auditDeliveryStatus: operation.auditDeliveryStatus,
           attemptCount: operation.attemptCount,
+          mutationState: operation.mutationState,
         },
         data: { attemptCount: { increment: 1 }, lastAttemptAt: new Date() },
       });
@@ -765,21 +877,26 @@ export class EncounterService {
       try {
         const record = await this.encounters.findById(context, operation.resourceId);
         if (!record) {
-          await this.finishReconciliation(operation.id, 'MUTATION_EVIDENCE_NOT_FOUND');
-          items.push({ operationId: operation.id, outcome: 'MUTATION_EVIDENCE_NOT_FOUND' });
+          await this.finishAmbiguousReconciliation(operation.id, 'HISTORY_EVIDENCE_MISSING');
+          items.push({ operationId: operation.id, outcome: 'AMBIGUOUS_REQUIRES_REVIEW' });
           continue;
         }
         const event = record.history.find((candidate) => candidate.id === operation.historyEventId);
         const auditMetadata = operation.auditMetadata;
+        if (!event) {
+          await this.finishAmbiguousReconciliation(operation.id, 'HISTORY_EVIDENCE_MISSING');
+          items.push({ operationId: operation.id, outcome: 'AMBIGUOUS_REQUIRES_REVIEW' });
+          continue;
+        }
         if (
           operation.resourceType !== 'encounter' ||
           operation.resourceId !== record.id ||
           !isPlainRecord(auditMetadata) ||
           auditMetadata.resourceType !== 'encounter' ||
           auditMetadata.encounterId !== record.id ||
-          !event ||
           event.actorUserId !== operation.actorUserId ||
           event.action !== operation.operationType ||
+          event.id !== operation.id ||
           event.toVersion !== event.fromVersion + 1
         ) {
           await this.finishReconciliation(operation.id, 'IDENTITY_MISMATCH');
@@ -792,6 +909,10 @@ export class EncounterService {
           actorUserId: operation.actorUserId ?? undefined,
           subjectTenantId: operation.tenantId,
           metadata: operation.auditMetadata as Prisma.InputJsonObject,
+        });
+        await this.prisma.encounterOperation.updateMany({
+          where: { id: operation.id, tenantId: context.tenantId },
+          data: { mutationState: 'CONFIRMED' },
         });
         if (!delivered) {
           const dependencyReady = await this.prisma.isReady().catch(() => false);
@@ -809,6 +930,7 @@ export class EncounterService {
           where: { id: operation.id, tenantId: context.tenantId },
           data: {
             auditDeliveryStatus: 'RECONCILED',
+            mutationState: 'CONFIRMED',
             reconciliationOutcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED',
             lastFailureClassification: null,
           },
@@ -841,6 +963,22 @@ export class EncounterService {
       });
     } catch {
       this.logger.warn('Encounter audit reconciliation state update failed');
+    }
+  }
+
+  private async finishAmbiguousReconciliation(id: string, reason: string): Promise<void> {
+    try {
+      await this.prisma?.encounterOperation.updateMany({
+        where: { id, mutationState: 'PREPARED' },
+        data: {
+          mutationState: 'AMBIGUOUS',
+          auditDeliveryStatus: 'REVIEW_REQUIRED',
+          lastFailureClassification: reason,
+          reconciliationOutcome: 'AMBIGUOUS_REQUIRES_REVIEW',
+        },
+      });
+    } catch {
+      this.logger.warn('Encounter ambiguous operation state update failed');
     }
   }
 
@@ -1270,6 +1408,61 @@ export class EncounterService {
     };
   }
 
+  private async prepareOperation(
+    context: TrustedTenantContext,
+    actor: AuthenticatedPlatformUser,
+    record: EncounterRecord,
+    eventType: PlatformAuditEventType,
+    action: string,
+    changedFields: string[],
+  ): Promise<void> {
+    const event = record.history.at(-1);
+    if (!event || !this.prisma) return;
+    const auditMetadata = {
+      resourceType: 'encounter',
+      encounterId: record.id,
+      facilityId: record.facilityId,
+      action,
+      changedFields: changedFields.join(',').slice(0, 512),
+    };
+    try {
+      await this.prisma.encounterOperation.create({
+        data: {
+          id: event.id,
+          historyEventId: event.id,
+          tenantId: context.tenantId,
+          resourceType: 'encounter',
+          resourceId: record.id,
+          operationType: event.action,
+          actorUserId: actor.userId,
+          auditEventType: eventType,
+          auditMetadata: auditMetadata as Prisma.InputJsonObject,
+          mutationState: 'PREPARED',
+          expectedVersion: event.fromVersion,
+        },
+      });
+    } catch {
+      // The Mongo write must not start unless the durable marker is known to exist.
+      this.logger.warn('Encounter pre-write operation marker persistence failed');
+      throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
+    }
+  }
+
+  private async markOperationNotApplied(id: string, tenantId: string): Promise<void> {
+    try {
+      await this.prisma?.encounterOperation.updateMany({
+        where: { id, tenantId, mutationState: 'PREPARED' },
+        data: {
+          mutationState: 'NOT_APPLIED',
+          auditDeliveryStatus: 'REVIEW_REQUIRED',
+          reconciliationOutcome: 'NOT_APPLIED_WITH_EVIDENCE',
+        },
+      });
+    } catch {
+      this.logger.warn('Encounter definite non-application state update failed');
+    }
+  }
+
   private async recordAudit(
     context: TrustedTenantContext,
     actor: AuthenticatedPlatformUser,
@@ -1298,22 +1491,21 @@ export class EncounterService {
     };
     if (event && this.prisma) {
       try {
-        await this.prisma.encounterOperation.create({
-          data: {
+        await this.prisma.encounterOperation.updateMany({
+          where: {
             id: event.id,
-            historyEventId: event.id,
             tenantId: context.tenantId,
-            resourceType: 'encounter',
-            resourceId: record.id,
-            operationType: event.action,
-            actorUserId: actor.userId,
+            mutationState: 'PREPARED',
+          },
+          data: {
+            mutationState: 'CONFIRMED',
             auditEventType: eventType,
             auditMetadata: auditInput.metadata as Prisma.InputJsonObject,
           },
         });
       } catch {
-        // Mutation is already committed. Keep serving it; reconciliation is best-effort.
-        this.logger.warn('Encounter operation ledger insert failed');
+        // The durable pre-write marker remains available for history-based reconciliation.
+        this.logger.warn('Encounter operation confirmation update failed');
       }
     }
     const delivered = await this.audit.recordAudit(auditInput);
