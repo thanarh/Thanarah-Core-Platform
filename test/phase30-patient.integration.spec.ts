@@ -1119,7 +1119,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expectedVersion: 1,
       clinical: { assessment: 'Stable retry assessment' },
     };
-    const update = (body: typeof clinicalPayload) =>
+    const update = (body: typeof clinicalPayload): ReturnType<typeof app.inject> =>
       app.inject({
         method: 'PATCH',
         url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
@@ -1149,6 +1149,71 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       }),
     ).toBe(2);
     expect(await prisma.platformAuditLog.count({ where: { id: mutationEventId } })).toBe(1);
+    const mutationMarker = await prisma.encounterOperation.findUnique({
+      where: { id: mutationEventId },
+    });
+    const mutationMetadata = mutationMarker?.auditMetadata as Record<string, unknown>;
+    expect(mutationMetadata.requestFingerprint).toMatch(/^[a-f\d]{64}$/u);
+    expect(mutationMetadata.idempotencyKeyHash).toMatch(/^[a-f\d]{64}$/u);
+    expect(JSON.stringify(mutationMetadata)).not.toContain('Stable retry assessment');
+
+    const admin = mongoAdminClient?.db('admin');
+    if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+    const completionKey = `phase46d-complete-outage-${RUN_ID}`;
+    const completionPayload = { expectedVersion: 2 };
+    await admin.command({
+      configureFailPoint: 'failCommand',
+      mode: { times: 1 },
+      data: { failCommands: ['findAndModify'], errorCode: 91 },
+    });
+    let failedCompletion;
+    try {
+      failedCompletion = await app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/complete`,
+        headers: { ...bearerHeaders(), 'idempotency-key': completionKey },
+        payload: completionPayload,
+      });
+    } finally {
+      await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+    }
+    expect(failedCompletion?.statusCode).not.toBe(200);
+    let storageRecovered = false;
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const probe = await app.inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}`,
+        headers: bearerHeaders(),
+      });
+      if (probe.statusCode === 200) {
+        storageRecovered = true;
+        break;
+      }
+      await delay(250);
+    }
+    expect(storageRecovered).toBe(true);
+    const uncertainRetry = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${encounterId}/complete`,
+      headers: { ...bearerHeaders(), 'idempotency-key': completionKey },
+      payload: completionPayload,
+    });
+    expect(uncertainRetry.statusCode).toBe(409);
+    expect(uncertainRetry.json<{ error: { code: string } }>().error.code).toBe(
+      'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED',
+    );
+    const unchangedAfterFailure = await mongoCollection.findOne({
+      _id: encounterId,
+      _tenantId: tenantA.id,
+    });
+    expect(unchangedAfterFailure?.status).toBe('DRAFT');
+    expect(unchangedAfterFailure?.version).toBe(2);
+    expect((unchangedAfterFailure?.history as Array<unknown>).length).toBe(2);
+    const completionMarker = await prisma.encounterOperation.findFirst({
+      where: { tenantId: tenantA.id, resourceId: encounterId, operationType: 'COMPLETED' },
+    });
+    expect(completionMarker?.mutationState).toBe('PREPARED');
+    expect(await prisma.platformAuditLog.count({ where: { id: completionMarker?.id } })).toBe(0);
 
     const concurrentKey = `phase46d-race-${RUN_ID}`;
     const concurrent = await Promise.all([send(concurrentKey), send(concurrentKey)]);
@@ -1718,49 +1783,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         ),
       ).toBe(true);
 
-      const admin = mongoAdminClient?.db('admin');
-      if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
-      await admin.command({
-        configureFailPoint: 'failCommand',
-        mode: { times: 1 },
-        data: { failCommands: ['findAndModify'], errorCode: 91 },
-      });
-      try {
-        const failedCompletion = evaluateBrowser(
-          client,
-          `document.querySelector('[data-action="complete-encounter"]')?.click()`,
-        );
-        await respondToDialog('confirm');
-        await failedCompletion;
-        await waitForBrowserCondition(
-          client,
-          `Boolean(document.querySelector('.encounter-notice.encounter-error')) &&
-            document.querySelector('[data-status="DRAFT"]') !== null`,
-          'visible completion failure while the encounter remains a draft',
-        );
-        expect(
-          await mongoAdminClient!
-            .db(tenantA.databaseName)
-            .collection('encounters')
-            .findOne({ _id: browserEncounterId, _tenantId: tenantA.id }),
-        ).toMatchObject({ status: 'DRAFT' });
-      } finally {
-        await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
-      }
-      let storageRecovered = false;
-      for (let attempt = 0; attempt < 5; attempt += 1) {
-        const probe = await getApplication().inject({
-          method: 'GET',
-          url: `${tenantRoot(tenantA)}/encounters/${browserEncounterId}`,
-          headers: bearerHeaders(),
-        });
-        if (probe.statusCode === 200) {
-          storageRecovered = true;
-          break;
-        }
-        await delay(250);
-      }
-      expect(storageRecovered).toBe(true);
       const completionClick = evaluateBrowser(
         client,
         `document.querySelector('[data-action="complete-encounter"]')?.click()`,
