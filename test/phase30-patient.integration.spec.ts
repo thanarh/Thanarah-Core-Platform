@@ -2905,6 +2905,211 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     );
   }, 120_000);
 
+  it('recovers appointment creation from an injected MongoDB write-concern error without leaving locks', async () => {
+    const admin = mongoAdminClient?.db('admin');
+    if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+    const existing = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('appointments')
+      .findOne({ _id: browserAppointmentId, _tenantId: tenantA.id });
+    if (!existing) throw new Error('Expected disposable appointment fixture is unavailable');
+    const startsAt = new Date(new Date(existing.startsAt).getTime() + 30 * 60 * 1_000);
+    const payload = {
+      patientId: clinicalPatientId,
+      doctorId: clinicalDoctorId,
+      facilityId: clinicalFacilityId,
+      branchId: clinicalBranchId,
+      serviceId: clinicalServiceId,
+      startsAt: startsAt.toISOString(),
+      endsAt: new Date(startsAt.getTime() + 30 * 60 * 1_000).toISOString(),
+    };
+    const idempotencyKey = `phase45d-write-concern-${RUN_ID}`;
+
+    await admin.command({
+      configureFailPoint: 'failCommand',
+      mode: { times: 1 },
+      data: {
+        failCommands: ['insert'],
+        appName: 'thanarah-tenant-storage',
+        writeConcernError: {
+          code: 64,
+          errmsg: 'Phase 45D synthetic write concern acknowledgement loss',
+        },
+      },
+    });
+    let first;
+    try {
+      first = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/appointments`,
+        headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+        payload,
+      });
+    } finally {
+      await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+    }
+
+    // A retryable write may return the original result or report the uncertain
+    // write as unavailable. Both outcomes must be safe to reconcile by key.
+    expect([201, 503]).toContain(first.statusCode);
+    if (first.statusCode === 503) expect(first.body).toContain('TENANT_STORAGE_UNAVAILABLE');
+    const retry = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/appointments`,
+      headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+      payload,
+    });
+    expect(retry.statusCode, retry.body).toBe(201);
+    const appointmentId = retry.json<{ id: string }>().id;
+    expect(
+      await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('appointments')
+        .countDocuments({ _id: appointmentId, _tenantId: tenantA.id }),
+    ).toBe(1);
+    const createEncounterFromAppointment = (): ReturnType<NestFastifyApplication['inject']> =>
+      getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/from-appointment`,
+        headers: bearerHeaders(),
+        payload: { appointmentId },
+      });
+    const [firstEncounter, secondEncounter] = await Promise.all([
+      createEncounterFromAppointment(),
+      createEncounterFromAppointment(),
+    ]);
+    const encounterResponses = [firstEncounter, secondEncounter];
+    expect(encounterResponses.filter(({ statusCode }) => statusCode === 201)).toHaveLength(1);
+    expect(encounterResponses.filter(({ statusCode }) => statusCode === 409)).toHaveLength(1);
+    const linkedEncounters = await mongoAdminClient!
+      .db(tenantA.databaseName)
+      .collection('encounters')
+      .countDocuments({
+        _tenantId: tenantA.id,
+        appointmentId,
+        status: { $in: ['DRAFT', 'COMPLETED'] },
+      });
+    expect(linkedEncounters).toBe(1);
+    const encounterRetry = await createEncounterFromAppointment();
+    expect(encounterRetry.statusCode).toBe(409);
+    expect(
+      await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('encounters')
+        .countDocuments({
+          _tenantId: tenantA.id,
+          appointmentId,
+          status: { $in: ['DRAFT', 'COMPLETED'] },
+        }),
+    ).toBe(1);
+    const changedPayload = {
+      ...payload,
+      startsAt: new Date(startsAt.getTime() + 60 * 60 * 1_000).toISOString(),
+      endsAt: new Date(startsAt.getTime() + 90 * 60 * 1_000).toISOString(),
+    };
+    const conflictingRetry = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/appointments`,
+      headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+      payload: changedPayload,
+    });
+    expect(conflictingRetry.statusCode).toBe(409);
+    expect(
+      await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('appointment_schedule_locks')
+        .countDocuments({ _tenantId: tenantA.id }),
+    ).toBe(0);
+  }, 60_000);
+
+  it('fails closed for encounter completion and amendment writes, then preserves and recovers state', async () => {
+    const admin = mongoAdminClient?.db('admin');
+    if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+    const created = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId: clinicalPatientId,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+      },
+    });
+    expect(created.statusCode, created.body).toBe(201);
+    const encounterId = created.json<{ id: string }>().id;
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const failOneWrite = async (): Promise<void> => {
+      await admin.command({
+        configureFailPoint: 'failCommand',
+        mode: { times: 1 },
+        data: { failCommands: ['findAndModify'], errorCode: 91 },
+      });
+    };
+    const clearFailure = async (): Promise<void> => {
+      await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+    };
+
+    await failOneWrite();
+    let completion;
+    try {
+      completion = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/complete`,
+        headers: bearerHeaders(),
+        payload: { expectedVersion: 1 },
+      });
+    } finally {
+      await clearFailure();
+    }
+    expect(completion.statusCode, completion.body).toBe(503);
+    expect(await collection.findOne({ _id: encounterId, _tenantId: tenantA.id })).toMatchObject({
+      status: 'DRAFT',
+      version: 1,
+      history: [{ action: 'CREATED' }],
+    });
+    const completed = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${encounterId}/complete`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: 1 },
+    });
+    expect(completed.statusCode, completed.body).toBe(200);
+    const completedVersion = completed.json<{ version: number }>().version;
+    const original = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+
+    await failOneWrite();
+    let opening;
+    try {
+      opening = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/amendments`,
+        headers: bearerHeaders(),
+        payload: { expectedVersion: completedVersion, reason: 'Phase 45D recovery check' },
+      });
+    } finally {
+      await clearFailure();
+    }
+    expect(opening.statusCode, opening.body).toBe(503);
+    expect(await collection.findOne({ _id: encounterId, _tenantId: tenantA.id })).toMatchObject({
+      status: 'COMPLETED',
+      version: completedVersion,
+      amendments: [],
+    });
+    const amendment = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/${encounterId}/amendments`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: completedVersion, reason: 'Phase 45D recovery check' },
+    });
+    expect(amendment.statusCode, amendment.body).toBe(201);
+    const amended = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+    expect(amended?.clinical).toEqual(original?.clinical);
+    expect(amended?.diagnoses).toEqual(original?.diagnoses);
+    expect(amended?.serviceRecords).toEqual(original?.serviceRecords);
+    expect(amended?.amendments).toHaveLength(1);
+  }, 60_000);
+
   it('fails closed for Mongo authentication, invalid configuration, and unavailable servers', async () => {
     expect(getApplication().get(TENANT_PATIENT_STORAGE)).toBeInstanceOf(MongoTenantPatientStorage);
     const invalidMongoUri = mongoUri.replace(mongoPassword, `${mongoPassword}incorrect`);

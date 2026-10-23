@@ -327,6 +327,9 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
     try {
       for (const lock of lockKeys) {
         const ownerToken = randomUUID();
+        // Track the owner before sending the write: a write-concern/network
+        // error can arrive after MongoDB has persisted the lock.
+        acquired.push({ ...lock, ownerToken });
         try {
           await lockCollection.insertOne({
             _tenantId: context.tenantId,
@@ -339,7 +342,6 @@ export class MongoTenantAppointmentStorage implements AppointmentStorage {
           if (isDuplicateKeyError(error)) throw new AppointmentScheduleLockConflictError();
           throw error;
         }
-        acquired.push({ ...lock, ownerToken });
       }
     } catch (error) {
       const releaseFailed = await this.releaseScheduleLocks(
