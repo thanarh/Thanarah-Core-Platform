@@ -868,10 +868,37 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
   it('reconciles only persisted encounter-history evidence and deduplicates existing audit rows', async () => {
     const prisma = getApplication().get(PrismaService);
+    const reconciliationPatient = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46F-RECON-${RUN_ID}`),
+    });
+    expect(reconciliationPatient.statusCode, reconciliationPatient.body).toBe(201);
+    const reconciliationEncounter = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId: reconciliationPatient.json<{ id: string }>().id,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+      },
+    });
+    expect(reconciliationEncounter.statusCode, reconciliationEncounter.body).toBe(201);
+    const reconciliationEncounterId = reconciliationEncounter.json<{ id: string }>().id;
+    const reconciliationMutation = await getApplication().inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/encounters/${reconciliationEncounterId}/clinical`,
+      headers: bearerHeaders(),
+      payload: { expectedVersion: 1, clinical: { assessment: 'Reconciliation fixture event' } },
+    });
+    expect(reconciliationMutation.statusCode, reconciliationMutation.body).toBe(200);
     const firstOperation = await prisma.encounterOperation.findFirst({
       where: {
         tenantId: tenantA.id,
-        resourceId: apiEncounterId,
+        resourceId: reconciliationEncounterId,
         auditDeliveryStatus: 'DELIVERED',
       },
       orderBy: { createdAt: 'asc' },
@@ -880,7 +907,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const document = await mongoAdminClient!
       .db(tenantA.databaseName)
       .collection('encounters')
-      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+      .findOne({ _id: reconciliationEncounterId, _tenantId: tenantA.id });
     const persistedHistory = (document?.history ?? []) as Array<{ id: string }>;
     expect(persistedHistory.some((event) => event.id === firstOperation!.historyEventId)).toBe(
       true,
@@ -920,7 +947,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const alreadyAudited = await prisma.encounterOperation.findFirst({
       where: {
         tenantId: tenantA.id,
-        resourceId: apiEncounterId,
+        resourceId: reconciliationEncounterId,
         auditDeliveryStatus: 'DELIVERED',
         historyEventId: { not: firstOperation!.historyEventId },
       },
@@ -954,8 +981,8 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const concurrentOperations = await prisma.encounterOperation.findMany({
       where: {
         tenantId: tenantA.id,
-        resourceId: apiEncounterId,
-        auditDeliveryStatus: 'DELIVERED',
+        resourceId: reconciliationEncounterId,
+        auditDeliveryStatus: 'RECONCILED',
       },
       orderBy: { createdAt: 'asc' },
       take: 2,
@@ -964,7 +991,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const beforeConcurrentHistory = await mongoAdminClient!
       .db(tenantA.databaseName)
       .collection('encounters')
-      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+      .findOne({ _id: reconciliationEncounterId, _tenantId: tenantA.id });
     const historyCountBeforeConcurrent = (
       (beforeConcurrentHistory?.history ?? []) as Array<{ id: string }>
     ).length;
@@ -986,6 +1013,58 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(crossTenantReconciliation.statusCode).toBe(403);
     expect(crossTenantReconciliation.body).not.toContain(concurrentOperations[0]!.id);
+
+    const tenantBPermissions = await prisma.tenantPermission.findMany({
+      where: { code: { in: ['tenant.encounters.read', 'tenant.encounters.audit.reconcile'] } },
+    });
+    expect(tenantBPermissions).toHaveLength(2);
+    const tenantBPermissionIds = tenantBPermissions.map(({ id }) => id);
+    await prisma.tenantRolePermission.createMany({
+      data: tenantBPermissionIds.map((tenantPermissionId) => ({
+        tenantRoleId: tenantB.roleId,
+        tenantPermissionId,
+      })),
+    });
+    try {
+      const dualTenantWorkspaces = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/${APP_CONSTANTS.apiVersion}/session/tenants`,
+        headers: bearerHeaders(),
+      });
+      expect(dualTenantWorkspaces.statusCode).toBe(200);
+      expect(
+        dualTenantWorkspaces
+          .json<{ items: Array<{ tenantId: string; permissionCodes: string[] }> }>()
+          .items.find(({ tenantId }) => tenantId === tenantB.id)?.permissionCodes,
+      ).toEqual(
+        expect.arrayContaining(['tenant.encounters.read', 'tenant.encounters.audit.reconcile']),
+      );
+
+      const authorizedTenantBReconciliation = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantB)}/encounters/audit-reconciliation`,
+        headers: bearerHeaders(),
+        payload: { limit: 25 },
+      });
+      expect(authorizedTenantBReconciliation.statusCode).toBe(200);
+      expect(authorizedTenantBReconciliation.body).not.toContain(concurrentOperations[0]!.id);
+      expect(authorizedTenantBReconciliation.body).not.toContain(reconciliationEncounterId);
+      const foreignStatus = await getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantB)}/encounters/${reconciliationEncounterId}/mutation-status/clinical_updated`,
+        headers: { ...bearerHeaders(), 'idempotency-key': `cross-tenant-${RUN_ID}` },
+      });
+      expect(foreignStatus.statusCode).toBe(404);
+      expect(foreignStatus.body).not.toContain(reconciliationEncounterId);
+      expect(foreignStatus.body).not.toContain(concurrentOperations[0]!.id);
+    } finally {
+      await prisma.tenantRolePermission.deleteMany({
+        where: {
+          tenantRoleId: tenantB.roleId,
+          tenantPermissionId: { in: tenantBPermissionIds },
+        },
+      });
+    }
     for (const operation of concurrentOperations) {
       const unchanged = await prisma.encounterOperation.findUnique({
         where: { id: operation.id },
@@ -1023,7 +1102,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const afterConcurrentHistory = await mongoAdminClient!
       .db(tenantA.databaseName)
       .collection('encounters')
-      .findOne({ _id: apiEncounterId, _tenantId: tenantA.id });
+      .findOne({ _id: reconciliationEncounterId, _tenantId: tenantA.id });
     expect(((afterConcurrentHistory?.history ?? []) as Array<unknown>).length).toBe(
       historyCountBeforeConcurrent,
     );
@@ -1232,26 +1311,21 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const prisma = app.get(PrismaService);
     const administrator = new PrismaClient({ datasources: { db: { url: mysqlRootUri } } });
     const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
-    const auditTrigger = `phase46_audit_insert_${RUN_ID}`;
-    const ledgerTrigger = `phase46_ledger_finalize_${RUN_ID}`;
-    const executeDisposableMysqlDdl = (statement: string): void => {
-      if (!mysqlContainer) throw new Error('Disposable MySQL container is unavailable');
-      execFileSync(
-        'docker',
-        [
-          'exec',
-          '-i',
-          '-e',
-          `MYSQL_PWD=${mysqlRootPassword}`,
-          mysqlContainer.getId(),
-          'mysql',
-          '-uroot',
-          TEST_MYSQL_DATABASE,
-        ],
-        { input: `${statement};\n`, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
-      );
+    let phasePatientId = '';
+    const withMysqlUnavailable = async <T>(operation: () => Promise<T>): Promise<T> => {
+      await prisma.$disconnect();
+      await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = ON');
+      try {
+        return await operation();
+      } finally {
+        await administrator
+          .$executeRawUnsafe('SET GLOBAL offline_mode = OFF')
+          .catch(() => undefined);
+        await prisma.$connect();
+        expect(await prisma.isReady()).toBe(true);
+      }
     };
-    const createDirect = (idempotencyKey?: string) =>
+    const createDirect = (idempotencyKey?: string): ReturnType<typeof app.inject> =>
       app.inject({
         method: 'POST',
         url: `${tenantRoot(tenantA)}/encounters/direct`,
@@ -1260,13 +1334,13 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
         },
         payload: {
-          patientId: clinicalPatientId,
+          patientId: phasePatientId,
           doctorId: clinicalDoctorId,
           facilityId: clinicalFacilityId,
           branchId: clinicalBranchId,
         },
       });
-    const reconcile = () =>
+    const reconcile = (): ReturnType<typeof app.inject> =>
       app.inject({
         method: 'POST',
         url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
@@ -1276,12 +1350,29 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
 
     await administrator.$connect();
     try {
-      // This trigger rejects the actual Prisma INSERT in MySQL, rather than
-      // replacing or mocking the repository call.
-      executeDisposableMysqlDdl(
-        `CREATE TRIGGER \`${auditTrigger}\` BEFORE INSERT ON \`PlatformAuditLog\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'disposable audit insert failure'`,
-      );
-      const failedInsertResponse = await createDirect();
+      const patientResponse = await app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/patients`,
+        headers: bearerHeaders(),
+        payload: patientPayload(`P46F-${RUN_ID}`),
+      });
+      expect(patientResponse.statusCode, patientResponse.body).toBe(201);
+      phasePatientId = patientResponse.json<{ id: string }>().id;
+
+      // The service spy only positions a real disposable-server outage at the
+      // audit boundary. The original audit implementation and Prisma INSERT
+      // run unchanged while MySQL refuses application connections.
+      const auditService = app.get(PlatformAuditService);
+      const recordAudit = auditService.recordAudit.bind(auditService);
+      const auditUnavailable = vi
+        .spyOn(auditService, 'recordAudit')
+        .mockImplementationOnce((input) => withMysqlUnavailable(() => recordAudit(input)));
+      let failedInsertResponse: Awaited<ReturnType<typeof createDirect>>;
+      try {
+        failedInsertResponse = await createDirect();
+      } finally {
+        auditUnavailable.mockRestore();
+      }
       expect(failedInsertResponse.statusCode, failedInsertResponse.body).toBe(201);
       const failedInsertEncounterId = failedInsertResponse.json<{ id: string }>().id;
       const failedInsertDocument = await collection.findOne({
@@ -1302,7 +1393,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(
         await prisma.platformAuditLog.count({ where: { id: failedInsertHistory[0]!.id } }),
       ).toBe(0);
-      executeDisposableMysqlDdl(`DROP TRIGGER \`${auditTrigger}\``);
       await prisma.encounterOperation.update({
         where: { id: failedInsertOperation!.id },
         data: { lastAttemptAt: new Date(Date.now() - 120_000) },
@@ -1325,7 +1415,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         _tenantId: tenantA.id,
       });
       expect(recoveredInsertDocument?.version).toBe(1);
-      expect((recoveredInsertDocument?.history as Array<unknown>)).toHaveLength(1);
+      expect(recoveredInsertDocument?.history as Array<unknown>).toHaveLength(1);
 
       // The audit INSERT is allowed here, but MySQL rejects the subsequent
       // operation-ledger status UPDATE. Repeating the same request/key must
@@ -1334,21 +1424,42 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(ledgerEncounter.statusCode, ledgerEncounter.body).toBe(201);
       const ledgerEncounterId = ledgerEncounter.json<{ id: string }>().id;
       const idempotencyKey = `phase46-ledger-finalize-${RUN_ID}`;
-      executeDisposableMysqlDdl(
-        `CREATE TRIGGER \`${ledgerTrigger}\` BEFORE UPDATE ON \`EncounterOperation\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'disposable ledger finalization failure'`,
-      );
       const clinicalPayload = {
         expectedVersion: 1,
         clinical: { assessment: 'Phase 46 disposable ledger boundary' },
       };
-      const mutate = () =>
+      const mutate = (): ReturnType<typeof app.inject> =>
         app.inject({
           method: 'PATCH',
           url: `${tenantRoot(tenantA)}/encounters/${ledgerEncounterId}/clinical`,
           headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
           payload: clinicalPayload,
         });
-      const firstMutation = await mutate();
+      let restoreLedgerOutage: Promise<void> | undefined;
+      const ledgerFinalizationOutage = vi
+        .spyOn(auditService, 'recordAudit')
+        .mockImplementationOnce(async (input): Promise<boolean> => {
+          const delivered = await recordAudit(input);
+          // The audit INSERT has committed. Keep the disposable server offline
+          // briefly after returning so the caller's subsequent ledger UPDATE
+          // is a real failed MySQL connection attempt.
+          await prisma.$disconnect();
+          await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = ON');
+          restoreLedgerOutage = (async (): Promise<void> => {
+            await delay(500);
+            await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = OFF');
+            await prisma.$connect();
+            expect(await prisma.isReady()).toBe(true);
+          })();
+          return delivered;
+        });
+      let firstMutation: Awaited<ReturnType<typeof mutate>>;
+      try {
+        firstMutation = await mutate();
+      } finally {
+        ledgerFinalizationOutage.mockRestore();
+        await restoreLedgerOutage;
+      }
       expect(firstMutation.statusCode, firstMutation.body).toBe(200);
       const ledgerDocument = await collection.findOne({
         _id: ledgerEncounterId,
@@ -1366,27 +1477,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       });
       expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
 
-      const sameKeyRetry = await mutate();
-      expect(sameKeyRetry.statusCode, sameKeyRetry.body).toBe(200);
-      const afterRetry = await collection.findOne({
-        _id: ledgerEncounterId,
-        _tenantId: tenantA.id,
-      });
-      expect(afterRetry?.version).toBe(2);
-      expect((afterRetry?.history as Array<unknown>)).toHaveLength(2);
-      expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
-
-      executeDisposableMysqlDdl(`DROP TRIGGER \`${ledgerTrigger}\``);
-      await prisma.encounterOperation.update({
-        where: { id: ledgerOperation!.id },
-        data: { lastAttemptAt: new Date(Date.now() - 120_000) },
-      });
       const ledgerRecovery = await reconcile();
       expect(ledgerRecovery.statusCode, ledgerRecovery.body).toBe(200);
       expect(
-        (
-          await prisma.encounterOperation.findUnique({ where: { id: ledgerOperation!.id } })
-        )?.auditDeliveryStatus,
+        (await prisma.encounterOperation.findUnique({ where: { id: ledgerOperation!.id } }))
+          ?.auditDeliveryStatus,
       ).toBe('RECONCILED');
       expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
       const afterRecovery = await collection.findOne({
@@ -1394,19 +1489,102 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         _tenantId: tenantA.id,
       });
       expect(afterRecovery?.version).toBe(2);
-      expect((afterRecovery?.history as Array<unknown>)).toHaveLength(2);
+      expect(afterRecovery?.history as Array<unknown>).toHaveLength(2);
+      const sameKeyRetry = await mutate();
+      expect(sameKeyRetry.statusCode, sameKeyRetry.body).toBe(200);
+      const afterRetry = await collection.findOne({
+        _id: ledgerEncounterId,
+        _tenantId: tenantA.id,
+      });
+      expect(afterRetry?.version).toBe(2);
+      expect(afterRetry?.history as Array<unknown>).toHaveLength(2);
+      expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
     } finally {
-      try {
-        executeDisposableMysqlDdl(`DROP TRIGGER IF EXISTS \`${auditTrigger}\``);
-      } catch {
-        // Container cleanup remains the final isolation boundary.
-      }
-      try {
-        executeDisposableMysqlDdl(`DROP TRIGGER IF EXISTS \`${ledgerTrigger}\``);
-      } catch {
-        // Container cleanup remains the final isolation boundary.
-      }
+      await administrator.$executeRawUnsafe('SET GLOBAL offline_mode = OFF').catch(() => undefined);
+      await prisma.$connect().catch(() => undefined);
       await administrator.$disconnect();
+    }
+  }, 120_000);
+
+  it('keeps encounter recovery safe after a MongoDB write-concern acknowledgement fault', async () => {
+    const app = getApplication();
+    const admin = mongoAdminClient?.db('admin');
+    if (!admin) throw new Error('Disposable MongoDB administrator client is unavailable');
+    const patientResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46F-ACK-${RUN_ID}`),
+    });
+    expect(patientResponse.statusCode, patientResponse.body).toBe(201);
+    const patientId = patientResponse.json<{ id: string }>().id;
+    const encounterResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+      },
+    });
+    expect(encounterResponse.statusCode, encounterResponse.body).toBe(201);
+    const encounterId = encounterResponse.json<{ id: string }>().id;
+    const key = `phase46-mongo-write-concern-${RUN_ID}`;
+    const payload = {
+      expectedVersion: 1,
+      clinical: { assessment: 'Ambiguous Mongo acknowledgement' },
+    };
+    await admin.command({
+      configureFailPoint: 'failCommand',
+      mode: { times: 1 },
+      data: {
+        failCommands: ['findAndModify'],
+        appName: 'thanarah-tenant-storage',
+        writeConcernError: {
+          code: 64,
+          errmsg: 'Phase 46 synthetic Mongo write concern acknowledgement fault',
+        },
+      },
+    });
+    let attemptedMutation: Awaited<ReturnType<typeof app.inject>>;
+    try {
+      attemptedMutation = await app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': key },
+        payload,
+      });
+    } finally {
+      await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+    }
+    expect([200, 503]).toContain(attemptedMutation.statusCode);
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const afterAttempt = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+    const persistedHistory = (afterAttempt?.history ?? []) as Array<{ id: string }>;
+    if (afterAttempt?.version === 2) {
+      expect(persistedHistory).toHaveLength(2);
+      const recoveredRetry = await app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': key },
+        payload,
+      });
+      expect(recoveredRetry.statusCode, recoveredRetry.body).toBe(200);
+      const afterRetry = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+      expect(afterRetry?.version).toBe(2);
+      expect(afterRetry?.history as Array<unknown>).toHaveLength(2);
+    } else {
+      expect(afterAttempt?.version).toBe(1);
+      expect(persistedHistory).toHaveLength(1);
+      const status = await app.inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/mutation-status/clinical_updated`,
+        headers: { ...bearerHeaders(), 'idempotency-key': key },
+      });
+      expect(status.statusCode).toBe(200);
+      expect(status.json<{ status: string }>().status).toBe('REVIEW_REQUIRED');
     }
   }, 120_000);
 
