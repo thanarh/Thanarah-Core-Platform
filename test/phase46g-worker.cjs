@@ -21,6 +21,36 @@ async function main() {
     return;
   }
 
+  if (action === 'ack-loss') {
+    const prepareOperation = service.prepareOperation.bind(service);
+    service.prepareOperation = async (...args) => {
+      await prepareOperation(...args);
+      if (process.send) process.send({ type: 'phase46g-marker-persisted' });
+      await new Promise((resolve) => {
+        process.once('message', (message) => {
+          if (message && message.type === 'phase46g-continue-mutation') resolve();
+        });
+      });
+    };
+    try {
+      const result = await service.updateClinical(context, encounterId, input, actor, {
+        idempotencyKey,
+      });
+      if (process.send) process.send({ type: 'phase46g-mutation-result', result });
+    } catch (error) {
+      if (process.send) {
+        process.send({
+          type: 'phase46g-mutation-error',
+          name: error && error.constructor ? error.constructor.name : 'Error',
+          message: String(error && error.message ? error.message : error),
+        });
+      }
+    } finally {
+      await app.close();
+    }
+    return;
+  }
+
   const blockAtBoundary = async () =>
     new Promise(() => {
       if (process.send) process.send({ type: 'phase46g-boundary-reached', boundary });

@@ -3,6 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync
 import { execFileSync, fork, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
+import { createServer, type Server, type Socket } from 'node:net';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
@@ -23,6 +24,7 @@ import fastifyStatic from '@fastify/static';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { MongoClient, type Db, type Document } from 'mongodb';
+import { BSON } from 'mongodb';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '../dist/config/config.service';
 import type { TenantMongoClientFactory } from '../dist/tenant/tenant-mongo-client.manager';
@@ -127,6 +129,146 @@ class TrackingRealMongoClientFactory implements TenantMongoClientFactory {
         await client.close(force);
       },
     };
+  }
+}
+
+class MongoFindAndModifyReplyDropProxy {
+  private readonly server: Server;
+  private readonly heldReplies = new Map<string, { client: Socket; response: Buffer }>();
+  private readonly waiters = new Map<
+    string,
+    { resolve: (reply: Document) => void; reject: (error: Error) => void; timer: NodeJS.Timeout }
+  >();
+  private nextId = 0;
+
+  private constructor(
+    private readonly targetHost: string,
+    private readonly targetPort: number,
+  ) {
+    this.server = createServer((client) => this.connect(client));
+  }
+
+  static async start(
+    targetHost: string,
+    targetPort: number,
+  ): Promise<MongoFindAndModifyReplyDropProxy> {
+    const proxy = new MongoFindAndModifyReplyDropProxy(targetHost, targetPort);
+    await new Promise<void>((resolveListen, rejectListen) => {
+      proxy.server.once('error', rejectListen);
+      proxy.server.listen(0, '127.0.0.1', resolveListen);
+    });
+    return proxy;
+  }
+
+  get port(): number {
+    const address = this.server.address();
+    if (!address || typeof address === 'string')
+      throw new Error('Mongo reply proxy is not listening');
+    return address.port;
+  }
+
+  waitForSuccessfulReply(timeoutMs = 20_000): Promise<{ id: string; reply: Document }> {
+    const id = String(++this.nextId);
+    return new Promise((resolveReply, rejectReply) => {
+      const timer = setTimeout(() => {
+        this.waiters.delete(id);
+        rejectReply(new Error('Proxy did not observe a successful findAndModify reply'));
+      }, timeoutMs);
+      this.waiters.set(id, {
+        resolve: (reply) => resolveReply({ id, reply }),
+        reject: rejectReply,
+        timer,
+      });
+    });
+  }
+
+  dropReplyAndResetClient(id: string): void {
+    const held = this.heldReplies.get(id);
+    if (!held) throw new Error('No MongoDB findAndModify reply is being held');
+    this.heldReplies.delete(id);
+    held.client.destroy(new Error('Test proxy suppressed the MongoDB acknowledgement'));
+  }
+
+  async close(): Promise<void> {
+    for (const held of this.heldReplies.values()) held.client.destroy();
+    this.heldReplies.clear();
+    for (const waiter of this.waiters.values()) {
+      clearTimeout(waiter.timer);
+      waiter.reject(new Error('Mongo reply proxy closed'));
+    }
+    this.waiters.clear();
+    await new Promise<void>((resolveClose, rejectClose) =>
+      this.server.close((error) => (error ? rejectClose(error) : resolveClose())),
+    );
+  }
+
+  private connect(client: Socket): void {
+    const upstream = new Socket();
+    let requestBuffer = Buffer.alloc(0);
+    let responseBuffer = Buffer.alloc(0);
+    const commandIds = new Set<number>();
+    upstream.connect(this.targetPort, this.targetHost);
+    client.on('data', (chunk) => {
+      requestBuffer = Buffer.concat([requestBuffer, chunk]);
+      while (requestBuffer.length >= 16) {
+        const length = requestBuffer.readInt32LE(0);
+        if (length < 16 || length > 48 * 1024 * 1024) {
+          client.destroy(new Error('Invalid MongoDB wire request frame'));
+          return;
+        }
+        if (requestBuffer.length < length) break;
+        const frame = requestBuffer.subarray(0, length);
+        requestBuffer = requestBuffer.subarray(length);
+        if (frame.readInt32LE(12) === 2013 && frame.length > 21 && frame[20] === 0) {
+          try {
+            const command = BSON.deserialize(frame.subarray(21));
+            if (Object.hasOwn(command, 'findAndModify')) {
+              commandIds.add(frame.readInt32LE(4));
+            }
+          } catch {
+            // Forward non-command frames unchanged; only a decoded target command is intercepted.
+          }
+        }
+        upstream.write(frame);
+      }
+    });
+    upstream.on('data', (chunk) => {
+      responseBuffer = Buffer.concat([responseBuffer, chunk]);
+      while (responseBuffer.length >= 16) {
+        const length = responseBuffer.readInt32LE(0);
+        if (length < 16 || length > 48 * 1024 * 1024) {
+          upstream.destroy(new Error('Invalid MongoDB wire response frame'));
+          return;
+        }
+        if (responseBuffer.length < length) break;
+        const frame = responseBuffer.subarray(0, length);
+        responseBuffer = responseBuffer.subarray(length);
+        const responseTo = frame.readInt32LE(8);
+        if (commandIds.delete(responseTo) && frame.readInt32LE(12) === 2013) {
+          try {
+            const response = BSON.deserialize(frame.subarray(21));
+            const waiterEntry = [...this.waiters.entries()].find(
+              ([id]) => !this.heldReplies.has(id),
+            );
+            if (response.ok === 1 && waiterEntry) {
+              const [id, waiter] = waiterEntry;
+              this.heldReplies.set(id, { client, response: Buffer.from(frame) });
+              clearTimeout(waiter.timer);
+              this.waiters.delete(id);
+              waiter.resolve(response);
+              continue;
+            }
+          } catch {
+            // Let malformed or non-success replies reach the application unchanged.
+          }
+        }
+        client.write(frame);
+      }
+    });
+    upstream.on('error', (error) => client.destroy(error));
+    client.on('error', () => upstream.destroy());
+    client.on('close', () => upstream.destroy());
+    upstream.on('close', () => client.destroy());
   }
 }
 
@@ -1818,6 +1960,238 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(afterRetry?.history as Array<unknown>).toHaveLength(2);
       expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(1);
     }
+  }, 180_000);
+
+  it('recovers an encounter when a disposable MongoDB proxy drops a proven committed write reply', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const patient = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46H-${RUN_ID}`),
+    });
+    expect(patient.statusCode, patient.body).toBe(201);
+    const encounter = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId: patient.json<{ id: string }>().id,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+      },
+    });
+    expect(encounter.statusCode, encounter.body).toBe(201);
+    const encounterId = encounter.json<{ id: string }>().id;
+    const idempotencyKey = `phase46h-ack-loss-${RUN_ID}`;
+    const clinicalInput = {
+      expectedVersion: 1,
+      clinical: { assessment: 'MongoDB acknowledgement lost after server commit' },
+    };
+    const proxy = await MongoFindAndModifyReplyDropProxy.start(
+      mongoContainer!.getHost(),
+      mongoContainer!.getMappedPort(27017),
+    );
+    const proxiedMongoUri = new URL(mongoUri);
+    proxiedMongoUri.hostname = '127.0.0.1';
+    proxiedMongoUri.port = String(proxy.port);
+    const child = fork(resolve(process.cwd(), 'test/phase46g-worker.cjs'), [], {
+      detached: true,
+      env: {
+        ...process.env,
+        TENANT_STORAGE_MONGO_URI: proxiedMongoUri.toString(),
+        PHASE46G_ACTION: 'ack-loss',
+        PHASE46G_BOUNDARY: 'after-marker',
+        PHASE46G_ENCOUNTER_ID: encounterId,
+        PHASE46G_CONTEXT: JSON.stringify(contextA),
+        PHASE46G_ACTOR: JSON.stringify({
+          userId: platformUserId,
+          sessionId: platformSessionId,
+          tokenVersion: 1,
+          platformRoleIds: [],
+        }),
+        PHASE46G_IDEMPOTENCY_KEY: idempotencyKey,
+        PHASE46G_INPUT: JSON.stringify(clinicalInput),
+      },
+      stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+    });
+    let workerOutput = '';
+    child.stdout?.on('data', (chunk: Buffer) => {
+      workerOutput += chunk.toString();
+    });
+    child.stderr?.on('data', (chunk: Buffer) => {
+      workerOutput += chunk.toString();
+    });
+    const waitForChildMessage = (
+      type: string,
+      timeoutMs = 30_000,
+    ): Promise<Record<string, unknown>> =>
+      new Promise((resolveMessage, rejectMessage) => {
+        const timeout = setTimeout(
+          () => rejectMessage(new Error(`Worker did not send ${type}: ${workerOutput}`)),
+          timeoutMs,
+        );
+        const onMessage = (message: unknown) => {
+          const candidate = message as Record<string, unknown>;
+          if (
+            candidate.type === 'phase46g-worker-error' ||
+            candidate.type === 'phase46g-mutation-error' ||
+            candidate.type === type
+          ) {
+            clearTimeout(timeout);
+            child.off('message', onMessage);
+            if (candidate.type === 'phase46g-worker-error') {
+              rejectMessage(new Error(`Worker sent ${String(candidate.type)}: ${workerOutput}`));
+            } else {
+              resolveMessage(candidate);
+            }
+          }
+        };
+        child.on('message', onMessage);
+        child.once('exit', (code, signal) => {
+          clearTimeout(timeout);
+          rejectMessage(
+            new Error(
+              `Worker exited before ${type} (code=${String(code)}, signal=${String(signal)}): ${workerOutput}`,
+            ),
+          );
+        });
+      });
+
+    let droppedReplyId: string | undefined;
+    try {
+      const markerMessage = await waitForChildMessage('phase46g-marker-persisted');
+      expect(markerMessage.type).toBe('phase46g-marker-persisted');
+      const operation = await prisma.encounterOperation.findFirst({
+        where: {
+          tenantId: tenantA.id,
+          resourceId: encounterId,
+          operationType: 'clinical_updated',
+        },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(operation).not.toBeNull();
+      expect(operation).toMatchObject({
+        mutationState: 'PREPARED',
+        auditDeliveryStatus: 'PENDING',
+        resourceId: encounterId,
+      });
+
+      const proxyReplyPromise = proxy.waitForSuccessfulReply();
+      const mutationResultPromise = waitForChildMessage('phase46g-mutation-result', 45_000);
+      child.send({ type: 'phase46g-continue-mutation' });
+      const { id: heldReplyId, reply } = await proxyReplyPromise;
+      droppedReplyId = heldReplyId;
+      expect(reply.ok).toBe(1);
+      expect(reply.value).toMatchObject({
+        _id: encounterId,
+        _tenantId: tenantA.id,
+        version: 2,
+      });
+
+      const committed = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+      expect(committed?.version).toBe(2);
+      const committedHistory = committed?.history as Array<{
+        id: string;
+        fromVersion: number;
+        toVersion: number;
+      }>;
+      expect(committedHistory).toHaveLength(2);
+      const committedEvent = committedHistory[1]!;
+      expect(committedEvent).toMatchObject({
+        id: operation!.id,
+        fromVersion: 1,
+        toVersion: 2,
+      });
+
+      proxy.dropReplyAndResetClient(heldReplyId);
+      droppedReplyId = undefined;
+      const mutationResult = await mutationResultPromise;
+      expect(mutationResult.type).toBe('phase46g-mutation-error');
+      expect(mutationResult.name).toBe('TenantStorageUnavailableError');
+    } finally {
+      if (droppedReplyId) {
+        try {
+          proxy.dropReplyAndResetClient(droppedReplyId);
+        } catch {
+          // The worker or proxy may already have closed the held connection.
+        }
+      }
+      if (child.exitCode === null && child.signalCode === null && child.pid) {
+        try {
+          process.kill(-child.pid, 'SIGKILL');
+        } catch {
+          child.kill('SIGKILL');
+        }
+      }
+      await new Promise<void>((resolveExit) => {
+        if (child.exitCode !== null || child.signalCode !== null) resolveExit();
+        else child.once('exit', () => resolveExit());
+      });
+      await proxy.close();
+    }
+
+    const afterLostReply = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+    expect(afterLostReply?.version).toBe(2);
+    const lostReplyHistory = afterLostReply?.history as Array<{ id: string }>;
+    expect(lostReplyHistory).toHaveLength(2);
+    const pendingOperation = await prisma.encounterOperation.findFirstOrThrow({
+      where: { tenantId: tenantA.id, resourceId: encounterId },
+    });
+    expect(pendingOperation).toMatchObject({
+      mutationState: 'PREPARED',
+      auditDeliveryStatus: 'PENDING',
+      idempotencyKeyHash: expect.any(String),
+    });
+    expect(lostReplyHistory[1]?.id).toBe(pendingOperation.id);
+    expect(await prisma.platformAuditLog.count({ where: { id: pendingOperation.id } })).toBe(0);
+
+    const crossTenantRead = await app.inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantB)}/encounters/${encounterId}`,
+      headers: bearerHeaders(),
+    });
+    expect(crossTenantRead.statusCode).toBe(404);
+
+    await prisma.encounterOperation.update({
+      where: { id: pendingOperation.id },
+      data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+    });
+    const recovery = await app.get(EncounterService).reconcileAudit(contextA, 25);
+    expect(recovery.items).toContainEqual(
+      expect.objectContaining({
+        operationId: pendingOperation.id,
+        outcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED',
+      }),
+    );
+    const recovered = await prisma.encounterOperation.findUniqueOrThrow({
+      where: { id: pendingOperation.id },
+    });
+    expect(recovered).toMatchObject({
+      mutationState: 'CONFIRMED',
+      auditDeliveryStatus: 'RECONCILED',
+    });
+    expect(await prisma.platformAuditLog.count({ where: { id: pendingOperation.id } })).toBe(1);
+
+    const retry = await app.inject({
+      method: 'PATCH',
+      url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+      headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+      payload: clinicalInput,
+    });
+    expect(retry.statusCode, retry.body).toBe(200);
+    expect(retry.json<{ id: string; version: number }>()).toMatchObject({
+      id: encounterId,
+      version: 2,
+    });
+    const afterRetry = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+    expect(afterRetry?.version).toBe(2);
+    expect(afterRetry?.history).toHaveLength(2);
+    expect((afterRetry?.history as Array<{ id: string }>)[1]?.id).toBe(pendingOperation.id);
+    expect(await prisma.platformAuditLog.count({ where: { id: pendingOperation.id } })).toBe(1);
   }, 180_000);
 
   it('deduplicates encounter creation retries by tenant, actor, route, and idempotency key', async () => {
