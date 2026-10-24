@@ -1227,6 +1227,189 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(await prisma.platformAuditLog.count({ where: { id: committedEvent.id } })).toBe(1);
   });
 
+  it('recovers audit insert and ledger finalization failures induced inside disposable MySQL', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const administrator = new PrismaClient({ datasources: { db: { url: mysqlRootUri } } });
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const auditTrigger = `phase46_audit_insert_${RUN_ID}`;
+    const ledgerTrigger = `phase46_ledger_finalize_${RUN_ID}`;
+    const executeDisposableMysqlDdl = (statement: string): void => {
+      if (!mysqlContainer) throw new Error('Disposable MySQL container is unavailable');
+      execFileSync(
+        'docker',
+        [
+          'exec',
+          '-i',
+          '-e',
+          `MYSQL_PWD=${mysqlRootPassword}`,
+          mysqlContainer.getId(),
+          'mysql',
+          '-uroot',
+          TEST_MYSQL_DATABASE,
+        ],
+        { input: `${statement};\n`, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'] },
+      );
+    };
+    const createDirect = (idempotencyKey?: string) =>
+      app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: {
+          ...bearerHeaders(),
+          ...(idempotencyKey ? { 'idempotency-key': idempotencyKey } : {}),
+        },
+        payload: {
+          patientId: clinicalPatientId,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+    const reconcile = () =>
+      app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/audit-reconciliation`,
+        headers: bearerHeaders(),
+        payload: { limit: 25 },
+      });
+
+    await administrator.$connect();
+    try {
+      // This trigger rejects the actual Prisma INSERT in MySQL, rather than
+      // replacing or mocking the repository call.
+      executeDisposableMysqlDdl(
+        `CREATE TRIGGER \`${auditTrigger}\` BEFORE INSERT ON \`PlatformAuditLog\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'disposable audit insert failure'`,
+      );
+      const failedInsertResponse = await createDirect();
+      expect(failedInsertResponse.statusCode, failedInsertResponse.body).toBe(201);
+      const failedInsertEncounterId = failedInsertResponse.json<{ id: string }>().id;
+      const failedInsertDocument = await collection.findOne({
+        _id: failedInsertEncounterId,
+        _tenantId: tenantA.id,
+      });
+      expect(failedInsertDocument?.version).toBe(1);
+      const failedInsertHistory = (failedInsertDocument?.history ?? []) as Array<{ id: string }>;
+      expect(failedInsertHistory).toHaveLength(1);
+      const failedInsertOperation = await prisma.encounterOperation.findUnique({
+        where: { id: failedInsertHistory[0]!.id },
+      });
+      expect(failedInsertOperation).toMatchObject({
+        resourceId: failedInsertEncounterId,
+        mutationState: 'CONFIRMED',
+        auditDeliveryStatus: 'FAILED',
+      });
+      expect(
+        await prisma.platformAuditLog.count({ where: { id: failedInsertHistory[0]!.id } }),
+      ).toBe(0);
+      executeDisposableMysqlDdl(`DROP TRIGGER \`${auditTrigger}\``);
+      await prisma.encounterOperation.update({
+        where: { id: failedInsertOperation!.id },
+        data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+      });
+
+      const auditRecovery = await reconcile();
+      expect(auditRecovery.statusCode, auditRecovery.body).toBe(200);
+      expect(
+        await prisma.platformAuditLog.count({ where: { id: failedInsertHistory[0]!.id } }),
+      ).toBe(1);
+      expect(
+        (
+          await prisma.encounterOperation.findUnique({
+            where: { id: failedInsertOperation!.id },
+          })
+        )?.auditDeliveryStatus,
+      ).toBe('RECONCILED');
+      const recoveredInsertDocument = await collection.findOne({
+        _id: failedInsertEncounterId,
+        _tenantId: tenantA.id,
+      });
+      expect(recoveredInsertDocument?.version).toBe(1);
+      expect((recoveredInsertDocument?.history as Array<unknown>)).toHaveLength(1);
+
+      // The audit INSERT is allowed here, but MySQL rejects the subsequent
+      // operation-ledger status UPDATE. Repeating the same request/key must
+      // reuse persisted history and must not repeat the clinical write.
+      const ledgerEncounter = await createDirect();
+      expect(ledgerEncounter.statusCode, ledgerEncounter.body).toBe(201);
+      const ledgerEncounterId = ledgerEncounter.json<{ id: string }>().id;
+      const idempotencyKey = `phase46-ledger-finalize-${RUN_ID}`;
+      executeDisposableMysqlDdl(
+        `CREATE TRIGGER \`${ledgerTrigger}\` BEFORE UPDATE ON \`EncounterOperation\` FOR EACH ROW SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'disposable ledger finalization failure'`,
+      );
+      const clinicalPayload = {
+        expectedVersion: 1,
+        clinical: { assessment: 'Phase 46 disposable ledger boundary' },
+      };
+      const mutate = () =>
+        app.inject({
+          method: 'PATCH',
+          url: `${tenantRoot(tenantA)}/encounters/${ledgerEncounterId}/clinical`,
+          headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+          payload: clinicalPayload,
+        });
+      const firstMutation = await mutate();
+      expect(firstMutation.statusCode, firstMutation.body).toBe(200);
+      const ledgerDocument = await collection.findOne({
+        _id: ledgerEncounterId,
+        _tenantId: tenantA.id,
+      });
+      const ledgerHistory = (ledgerDocument?.history ?? []) as Array<{ id: string }>;
+      expect(ledgerDocument?.version).toBe(2);
+      expect(ledgerHistory).toHaveLength(2);
+      const ledgerOperation = await prisma.encounterOperation.findUnique({
+        where: { id: ledgerHistory[1]!.id },
+      });
+      expect(ledgerOperation).toMatchObject({
+        mutationState: 'CONFIRMED',
+        auditDeliveryStatus: 'PENDING',
+      });
+      expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
+
+      const sameKeyRetry = await mutate();
+      expect(sameKeyRetry.statusCode, sameKeyRetry.body).toBe(200);
+      const afterRetry = await collection.findOne({
+        _id: ledgerEncounterId,
+        _tenantId: tenantA.id,
+      });
+      expect(afterRetry?.version).toBe(2);
+      expect((afterRetry?.history as Array<unknown>)).toHaveLength(2);
+      expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
+
+      executeDisposableMysqlDdl(`DROP TRIGGER \`${ledgerTrigger}\``);
+      await prisma.encounterOperation.update({
+        where: { id: ledgerOperation!.id },
+        data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+      });
+      const ledgerRecovery = await reconcile();
+      expect(ledgerRecovery.statusCode, ledgerRecovery.body).toBe(200);
+      expect(
+        (
+          await prisma.encounterOperation.findUnique({ where: { id: ledgerOperation!.id } })
+        )?.auditDeliveryStatus,
+      ).toBe('RECONCILED');
+      expect(await prisma.platformAuditLog.count({ where: { id: ledgerHistory[1]!.id } })).toBe(1);
+      const afterRecovery = await collection.findOne({
+        _id: ledgerEncounterId,
+        _tenantId: tenantA.id,
+      });
+      expect(afterRecovery?.version).toBe(2);
+      expect((afterRecovery?.history as Array<unknown>)).toHaveLength(2);
+    } finally {
+      try {
+        executeDisposableMysqlDdl(`DROP TRIGGER IF EXISTS \`${auditTrigger}\``);
+      } catch {
+        // Container cleanup remains the final isolation boundary.
+      }
+      try {
+        executeDisposableMysqlDdl(`DROP TRIGGER IF EXISTS \`${ledgerTrigger}\``);
+      } catch {
+        // Container cleanup remains the final isolation boundary.
+      }
+      await administrator.$disconnect();
+    }
+  }, 120_000);
+
   it('deduplicates encounter creation retries by tenant, actor, route, and idempotency key', async () => {
     const app = getApplication();
     const prisma = app.get(PrismaService);
