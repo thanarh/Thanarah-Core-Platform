@@ -1,9 +1,9 @@
-import { randomBytes, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { execFileSync, fork, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
-import { createServer, type Server, type Socket } from 'node:net';
+import { createServer as createNetServer, Socket, type Server } from 'node:net';
 import { tmpdir } from 'node:os';
 import { setTimeout as delay } from 'node:timers/promises';
 import { join, resolve } from 'node:path';
@@ -145,7 +145,7 @@ class MongoFindAndModifyReplyDropProxy {
     private readonly targetHost: string,
     private readonly targetPort: number,
   ) {
-    this.server = createServer((client) => this.connect(client));
+    this.server = createNetServer((client) => this.connect(client));
   }
 
   static async start(
@@ -2034,7 +2034,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           () => rejectMessage(new Error(`Worker did not send ${type}: ${workerOutput}`)),
           timeoutMs,
         );
-        const onMessage = (message: unknown) => {
+        const onMessage = (message: unknown): void => {
           const candidate = message as Record<string, unknown>;
           if (
             candidate.type === 'phase46g-worker-error' ||
@@ -2144,7 +2144,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(pendingOperation).toMatchObject({
       mutationState: 'PREPARED',
       auditDeliveryStatus: 'PENDING',
-      idempotencyKeyHash: expect.any(String),
+      auditMetadata: expect.objectContaining({
+        idempotencyKeyHash: createHash('sha256').update(idempotencyKey).digest('hex'),
+        requestFingerprint: expect.any(String),
+      }),
     });
     expect(lostReplyHistory[1]?.id).toBe(pendingOperation.id);
     expect(await prisma.platformAuditLog.count({ where: { id: pendingOperation.id } })).toBe(0);
@@ -2154,7 +2157,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       url: `${tenantRoot(tenantB)}/encounters/${encounterId}`,
       headers: bearerHeaders(),
     });
-    expect(crossTenantRead.statusCode).toBe(404);
+    expect(crossTenantRead.statusCode).toBe(403);
 
     await prisma.encounterOperation.update({
       where: { id: pendingOperation.id },
