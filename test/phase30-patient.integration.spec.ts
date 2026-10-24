@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from 'node:crypto';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
-import { execFileSync, spawn } from 'node:child_process';
+import { execFileSync, fork, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -1588,6 +1588,216 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     }
   }, 120_000);
 
+  it('recovers safely after disposable encounter workers are killed at persistence boundaries', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const actor = {
+      userId: platformUserId,
+      sessionId: platformSessionId,
+      tokenVersion: 1,
+      platformRoleIds: [],
+    };
+    const workerPath = resolve(process.cwd(), 'test/phase46g-worker.cjs');
+
+    const runWorker = async (input: {
+      action?: 'mutate' | 'recover';
+      boundary?: 'after-marker' | 'after-mongo' | 'after-audit';
+      encounterId: string;
+      idempotencyKey: string;
+      clinicalInput: { expectedVersion: number; clinical: { assessment: string } };
+    }): Promise<Record<string, unknown>> => {
+      const child = fork(workerPath, [], {
+        detached: true,
+        env: {
+          ...process.env,
+          PHASE46G_ACTION: input.action ?? 'mutate',
+          PHASE46G_BOUNDARY: input.boundary ?? '',
+          PHASE46G_ENCOUNTER_ID: input.encounterId,
+          PHASE46G_CONTEXT: JSON.stringify(contextA),
+          PHASE46G_ACTOR: JSON.stringify(actor),
+          PHASE46G_IDEMPOTENCY_KEY: input.idempotencyKey,
+          PHASE46G_INPUT: JSON.stringify(input.clinicalInput),
+        },
+        stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+      });
+      let output = '';
+      child.stdout?.on('data', (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+      child.stderr?.on('data', (chunk: Buffer) => {
+        output += chunk.toString();
+      });
+
+      const expectedMessage =
+        input.action === 'recover' ? 'phase46g-recovery-result' : 'phase46g-boundary-reached';
+      let message: Record<string, unknown>;
+      try {
+        message = await new Promise<Record<string, unknown>>((resolveMessage, rejectMessage) => {
+          const timeout = setTimeout(
+            () => rejectMessage(new Error(`Worker did not reach ${expectedMessage}: ${output}`)),
+            45_000,
+          );
+          child.on('message', (value: unknown) => {
+            const candidate = value as Record<string, unknown>;
+            if (candidate.type === 'phase46g-worker-error') {
+              clearTimeout(timeout);
+              rejectMessage(
+                new Error(`Worker failed before ${expectedMessage}: ${String(candidate.message)} ${output}`),
+              );
+            } else if (candidate.type === expectedMessage) {
+              clearTimeout(timeout);
+              resolveMessage(candidate);
+            }
+          });
+          child.once('error', (error) => {
+            clearTimeout(timeout);
+            rejectMessage(error);
+          });
+          child.once('exit', (code, signal) => {
+            clearTimeout(timeout);
+            rejectMessage(
+              new Error(
+                `Worker exited before ${expectedMessage} (code=${String(code)}, signal=${String(signal)}): ${output}`,
+              ),
+            );
+          });
+        });
+      } finally {
+        if (child.exitCode === null && child.signalCode === null && child.pid) {
+          try {
+            process.kill(-child.pid, 'SIGKILL');
+          } catch {
+            child.kill('SIGKILL');
+          }
+          await new Promise<void>((resolveExit) => {
+            if (child.exitCode !== null || child.signalCode !== null) {
+              resolveExit();
+            } else {
+              child.once('exit', () => resolveExit());
+            }
+          });
+        }
+      }
+      return message;
+    };
+
+    for (const boundary of ['after-marker', 'after-mongo', 'after-audit'] as const) {
+      const patient = await app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/patients`,
+        headers: bearerHeaders(),
+        payload: patientPayload(`P46G-${boundary}-${RUN_ID}`),
+      });
+      expect(patient.statusCode, patient.body).toBe(201);
+      const encounter = await app.inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: bearerHeaders(),
+        payload: {
+          patientId: patient.json<{ id: string }>().id,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+      expect(encounter.statusCode, encounter.body).toBe(201);
+      const encounterId = encounter.json<{ id: string }>().id;
+      const idempotencyKey = `phase46g-${boundary}-${RUN_ID}`;
+      const clinicalInput = {
+        expectedVersion: 1,
+        clinical: { assessment: `Worker crash boundary ${boundary}` },
+      };
+
+      const reached = await runWorker({
+        boundary,
+        encounterId,
+        idempotencyKey,
+        clinicalInput,
+      });
+      expect(reached.boundary).toBe(boundary);
+      const operation = await prisma.encounterOperation.findFirst({
+        where: { tenantId: tenantA.id, resourceId: encounterId },
+        orderBy: { createdAt: 'desc' },
+      });
+      expect(operation).not.toBeNull();
+      const beforeRecovery = await collection.findOne({
+        _id: encounterId,
+        _tenantId: tenantA.id,
+      });
+
+      if (boundary === 'after-marker') {
+        expect(operation).toMatchObject({
+          mutationState: 'PREPARED',
+          auditDeliveryStatus: 'PENDING',
+        });
+        expect(beforeRecovery?.version).toBe(1);
+        expect(beforeRecovery?.history as Array<unknown>).toHaveLength(1);
+      } else {
+        expect(operation).toMatchObject({
+          mutationState: 'PREPARED',
+          auditDeliveryStatus: 'PENDING',
+        });
+        expect(beforeRecovery?.version).toBe(2);
+        expect(beforeRecovery?.history as Array<{ id: string }>).toHaveLength(2);
+      }
+
+      await prisma.encounterOperation.update({
+        where: { id: operation!.id },
+        data: { lastAttemptAt: new Date(Date.now() - 120_000) },
+      });
+      const recovery = await runWorker({
+        action: 'recover',
+        encounterId,
+        idempotencyKey,
+        clinicalInput,
+      });
+      const recoveryItems = (recovery.result as { items: Array<{ outcome: string }> }).items;
+
+      if (boundary === 'after-marker') {
+        expect(recoveryItems).toContainEqual(
+          expect.objectContaining({ outcome: 'AMBIGUOUS_REQUIRES_REVIEW' }),
+        );
+        const unresolved = await prisma.encounterOperation.findUnique({
+          where: { id: operation!.id },
+        });
+        expect(unresolved).toMatchObject({
+          mutationState: 'AMBIGUOUS',
+          auditDeliveryStatus: 'REVIEW_REQUIRED',
+        });
+        expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(0);
+        expect(
+          await collection.findOne({ _id: encounterId, _tenantId: tenantA.id }),
+        ).toMatchObject({ version: 1 });
+        continue;
+      }
+
+      expect(recoveryItems).toContainEqual(
+        expect.objectContaining({ outcome: 'AUDIT_DELIVERED_OR_ALREADY_DELIVERED' }),
+      );
+      const recovered = await prisma.encounterOperation.findUnique({
+        where: { id: operation!.id },
+      });
+      expect(recovered).toMatchObject({
+        mutationState: 'CONFIRMED',
+        auditDeliveryStatus: 'RECONCILED',
+      });
+      expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(1);
+
+      const retry = await app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+        payload: clinicalInput,
+      });
+      expect(retry.statusCode, retry.body).toBe(200);
+      const afterRetry = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+      expect(afterRetry?.version).toBe(2);
+      expect(afterRetry?.history as Array<unknown>).toHaveLength(2);
+      expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(1);
+    }
+  }, 180_000);
+
   it('deduplicates encounter creation retries by tenant, actor, route, and idempotency key', async () => {
     const app = getApplication();
     const prisma = app.get(PrismaService);
@@ -2700,6 +2910,144 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(await appointments.countDocuments({ _id: appointmentId, _tenantId: tenantA.id })).toBe(
         1,
       );
+    } finally {
+      await new Promise<void>((resolvePromise) => {
+        proxy.close(() => resolvePromise());
+      });
+    }
+  }, 60_000);
+
+  it('recovers an encounter after a proxy drops the committed HTTP response', async () => {
+    const app = getApplication();
+    const prisma = app.get(PrismaService);
+    const collection = mongoAdminClient!.db(tenantA.databaseName).collection('encounters');
+    const patientResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P46G-HTTP-${RUN_ID}`),
+    });
+    expect(patientResponse.statusCode, patientResponse.body).toBe(201);
+    const encounterResponse = await app.inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/encounters/direct`,
+      headers: bearerHeaders(),
+      payload: {
+        patientId: patientResponse.json<{ id: string }>().id,
+        doctorId: clinicalDoctorId,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+      },
+    });
+    expect(encounterResponse.statusCode, encounterResponse.body).toBe(201);
+    const encounterId = encounterResponse.json<{ id: string }>().id;
+    const idempotencyKey = `phase46g-http-response-loss-${RUN_ID}`;
+    const payload = {
+      expectedVersion: 1,
+      clinical: { assessment: 'Committed before proxy response loss' },
+    };
+    let resolveUpstreamResult!: (result: { status: number; body: string }) => void;
+    const upstreamResult = new Promise<{ status: number; body: string }>((resolvePromise) => {
+      resolveUpstreamResult = resolvePromise;
+    });
+    const proxy = createServer((incoming, outgoing) => {
+      void (async (): Promise<void> => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of incoming) chunks.push(Buffer.from(chunk));
+        const upstream = await fetch(`${browserBaseUrl}${incoming.url}`, {
+          method: incoming.method,
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            'content-type': 'application/json',
+            'idempotency-key': idempotencyKey,
+          },
+          body: Buffer.concat(chunks),
+        });
+        resolveUpstreamResult({ status: upstream.status, body: await upstream.text() });
+        // The upstream request has completed; reset only the client-facing
+        // connection to model a lost response without killing the app worker.
+        outgoing.destroy();
+      })().catch((error: unknown) => {
+        resolveUpstreamResult({
+          status: 0,
+          body: error instanceof Error ? error.message : 'upstream request failed',
+        });
+        outgoing.destroy();
+      });
+    });
+    await new Promise<void>((resolvePromise, reject) => {
+      proxy.once('error', reject);
+      proxy.listen(0, '127.0.0.1', () => resolvePromise());
+    });
+    const proxyAddress = proxy.address();
+    if (!proxyAddress || typeof proxyAddress === 'string') {
+      throw new Error('Encounter response-loss proxy did not report its assigned address');
+    }
+
+    try {
+      const clientReceivedResponse = await fetch(
+        `http://127.0.0.1:${proxyAddress.port}${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        {
+          method: 'PATCH',
+          headers: {
+            authorization: `Bearer ${accessToken}`,
+            'content-type': 'application/json',
+            'idempotency-key': idempotencyKey,
+          },
+          body: JSON.stringify(payload),
+          signal: AbortSignal.timeout(15_000),
+        },
+      ).then(
+        () => true,
+        () => false,
+      );
+      expect(clientReceivedResponse).toBe(false);
+      const committedResponse = await upstreamResult;
+      expect(committedResponse.status).toBe(200);
+      expect(JSON.parse(committedResponse.body)).toMatchObject({ id: encounterId, version: 2 });
+
+      const persisted = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+      const history = (persisted?.history ?? []) as Array<{ id: string }>;
+      expect(persisted?.version).toBe(2);
+      expect(history).toHaveLength(2);
+      const mutationEventId = history[1]!.id;
+      const operation = await prisma.encounterOperation.findUnique({
+        where: { id: mutationEventId },
+      });
+      expect(operation).toMatchObject({
+        resourceId: encounterId,
+        mutationState: 'CONFIRMED',
+        auditDeliveryStatus: 'DELIVERED',
+      });
+      expect(await prisma.platformAuditLog.count({ where: { id: mutationEventId } })).toBe(1);
+
+      const retry = await app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+        payload,
+      });
+      expect(retry.statusCode, retry.body).toBe(200);
+      expect(retry.json<{ id: string; version: number }>()).toMatchObject({
+        id: encounterId,
+        version: 2,
+      });
+
+      const conflict = await app.inject({
+        method: 'PATCH',
+        url: `${tenantRoot(tenantA)}/encounters/${encounterId}/clinical`,
+        headers: { ...bearerHeaders(), 'idempotency-key': idempotencyKey },
+        payload: {
+          expectedVersion: 1,
+          clinical: { assessment: 'Different payload with original key' },
+        },
+      });
+      expect(conflict.statusCode).toBe(409);
+      const afterRetry = await collection.findOne({ _id: encounterId, _tenantId: tenantA.id });
+      expect(afterRetry?.version).toBe(2);
+      expect(afterRetry?.history as Array<unknown>).toHaveLength(2);
+      expect(await prisma.encounterOperation.count({ where: { resourceId: encounterId } })).toBe(2);
+      expect(await prisma.platformAuditLog.count({ where: { id: mutationEventId } })).toBe(1);
     } finally {
       await new Promise<void>((resolvePromise) => {
         proxy.close(() => resolvePromise());
