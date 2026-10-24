@@ -1643,7 +1643,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             if (candidate.type === 'phase46g-worker-error') {
               clearTimeout(timeout);
               rejectMessage(
-                new Error(`Worker failed before ${expectedMessage}: ${String(candidate.message)} ${output}`),
+                new Error(
+                  `Worker failed before ${expectedMessage}: ${String(candidate.message)} ${output}`,
+                ),
               );
             } else if (candidate.type === expectedMessage) {
               clearTimeout(timeout);
@@ -1665,10 +1667,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         });
       } finally {
         if (child.exitCode === null && child.signalCode === null && child.pid) {
-          try {
-            process.kill(-child.pid, 'SIGKILL');
-          } catch {
-            child.kill('SIGKILL');
+          if (input.action === 'recover') {
+            await Promise.race([
+              new Promise<void>((resolveExit) => child.once('exit', () => resolveExit())),
+              delay(10_000),
+            ]);
+          }
+          if (child.exitCode === null && child.signalCode === null) {
+            try {
+              process.kill(-child.pid, 'SIGKILL');
+            } catch {
+              child.kill('SIGKILL');
+            }
           }
           await new Promise<void>((resolveExit) => {
             if (child.exitCode !== null || child.signalCode !== null) {
@@ -1717,7 +1727,11 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       });
       expect(reached.boundary).toBe(boundary);
       const operation = await prisma.encounterOperation.findFirst({
-        where: { tenantId: tenantA.id, resourceId: encounterId },
+        where: {
+          tenantId: tenantA.id,
+          resourceId: encounterId,
+          operationType: 'clinical_updated',
+        },
         orderBy: { createdAt: 'desc' },
       });
       expect(operation).not.toBeNull();
@@ -1733,13 +1747,21 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         });
         expect(beforeRecovery?.version).toBe(1);
         expect(beforeRecovery?.history as Array<unknown>).toHaveLength(1);
-      } else {
+      } else if (boundary === 'after-mongo') {
         expect(operation).toMatchObject({
           mutationState: 'PREPARED',
           auditDeliveryStatus: 'PENDING',
         });
         expect(beforeRecovery?.version).toBe(2);
         expect(beforeRecovery?.history as Array<{ id: string }>).toHaveLength(2);
+      } else {
+        expect(operation).toMatchObject({
+          mutationState: 'CONFIRMED',
+          auditDeliveryStatus: 'PENDING',
+        });
+        expect(beforeRecovery?.version).toBe(2);
+        expect(beforeRecovery?.history as Array<{ id: string }>).toHaveLength(2);
+        expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(1);
       }
 
       await prisma.encounterOperation.update({
@@ -1766,9 +1788,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           auditDeliveryStatus: 'REVIEW_REQUIRED',
         });
         expect(await prisma.platformAuditLog.count({ where: { id: operation!.id } })).toBe(0);
-        expect(
-          await collection.findOne({ _id: encounterId, _tenantId: tenantA.id }),
-        ).toMatchObject({ version: 1 });
+        expect(await collection.findOne({ _id: encounterId, _tenantId: tenantA.id })).toMatchObject(
+          { version: 1 },
+        );
         continue;
       }
 
@@ -2758,7 +2780,120 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         ).toMatchObject({ version: 1 });
       }
 
+      const responseLossEncounterResponse = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/encounters/direct`,
+        headers: bearerHeaders(),
+        payload: {
+          patientId: clinicalPatientId,
+          doctorId: clinicalDoctorId,
+          facilityId: clinicalFacilityId,
+          branchId: clinicalBranchId,
+        },
+      });
+      expect(responseLossEncounterResponse.statusCode).toBe(201);
+      const responseLossEncounterId = responseLossEncounterResponse.json<{ id: string }>().id;
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="back-to-worklist"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="filters"]'))`,
+        'worklist before browser response-loss simulation',
+      );
+      expect(await evaluateBrowser(client, filterUncertainEncounter)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('button[data-action="open-encounter"][data-id="${responseLossEncounterId}"]'))`,
+        'new encounter for browser response-loss simulation',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('button[data-action="open-encounter"][data-id="${responseLossEncounterId}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="clinical"] textarea[name="text.chiefComplaint"]'))`,
+        'clinical editor before browser response-loss simulation',
+      );
+      const responseLossClinicalText = 'Draft retained after response suppression';
+      const installResponseLossFetch = `(() => {
+        const originalFetch = window.fetch.bind(window);
+        window.__phase46gResponseLoss = null;
+        window.__phase46gStatusKey = null;
+        let dropped = false;
+        window.fetch = async (input, init) => {
+          const request = input instanceof Request ? input : null;
+          const url = String(request?.url ?? input);
+          const method = String(init?.method ?? request?.method ?? 'GET').toUpperCase();
+          const headers = new Headers(init?.headers ?? request?.headers);
+          const response = await originalFetch(input, init);
+          if (!dropped && method === 'PATCH' && url.includes('/encounters/${responseLossEncounterId}/clinical')) {
+            dropped = true;
+            window.__phase46gResponseLoss = {
+              status: response.status,
+              key: headers.get('idempotency-key'),
+              body: await response.clone().json()
+            };
+            throw new TypeError('Simulated response suppression after server commit');
+          }
+          if (url.includes('/mutation-status/')) {
+            window.__phase46gStatusKey = headers.get('idempotency-key');
+          }
+          return response;
+        };
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, installResponseLossFetch)).toBe(true);
+      const submitResponseLossMutation = `(() => {
+        const form = document.querySelector('form[data-form="clinical"]');
+        const field = form?.querySelector('textarea[name="text.chiefComplaint"]');
+        if (!form || !field) return false;
+        field.value = ${JSON.stringify(responseLossClinicalText)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, submitResponseLossMutation)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('button[data-action="check-mutation-status"]'))`,
+        'status-check action after the browser loses a committed response',
+      );
+      const responseLossEvidence = await evaluateBrowser(client, `window.__phase46gResponseLoss`);
+      expect(responseLossEvidence).toMatchObject({
+        status: 200,
+        body: { id: responseLossEncounterId, version: 2 },
+      });
+      expect(responseLossEvidence.key).toMatch(/^.+$/u);
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.querySelector('textarea[name="text.chiefComplaint"]')?.value === ${JSON.stringify(responseLossClinicalText)}`,
+        ),
+      ).toBe(true);
+      await evaluateBrowser(
+        client,
+        `document.querySelector('button[data-action="check-mutation-status"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('الإصدار الحالي: 2')`,
+        'server confirmation after browser response loss',
+      );
+      expect(await evaluateBrowser(client, `window.__phase46gStatusKey`)).toBe(
+        responseLossEvidence.key,
+      );
       const prisma = getApplication().get(PrismaService);
+      const responseLossDocument = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('encounters')
+        .findOne({ _id: responseLossEncounterId, _tenantId: tenantA.id });
+      expect(responseLossDocument?.version).toBe(2);
+      expect(responseLossDocument?.history as Array<unknown>).toHaveLength(2);
+      const responseLossEventId = (responseLossDocument?.history as Array<{ id: string }>)[1]!.id;
+      expect(await prisma.platformAuditLog.count({ where: { id: responseLossEventId } })).toBe(1);
+
       const browserSession = await prisma.platformSession.findFirst({
         where: { userId: platformUserId, status: PlatformSessionStatus.ACTIVE },
         orderBy: { createdAt: 'desc' },
