@@ -65,6 +65,27 @@ export const envSchema = z
         message: 'DATABASE_URL is required in production',
       });
     }
+    if (
+      config.NODE_ENV === 'production' &&
+      ['disabled', 'memory'].includes(config.TENANT_STORAGE_PROVIDER)
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TENANT_STORAGE_PROVIDER'],
+        message: 'Persistent tenant storage is required in production',
+      });
+    }
+    if (
+      config.NODE_ENV === 'production' &&
+      config.TENANT_STORAGE_PROVIDER === 'mongodb' &&
+      !config.TENANT_STORAGE_MONGO_URI.trim()
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TENANT_STORAGE_MONGO_URI'],
+        message: 'TENANT_STORAGE_MONGO_URI is required in production',
+      });
+    }
     if (config.NODE_ENV === 'production' && config.JWT_ACCESS_SECRET.length < 32) {
       context.addIssue({
         code: z.ZodIssueCode.custom,

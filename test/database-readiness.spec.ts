@@ -7,6 +7,7 @@ import { GlobalExceptionFilter } from '../src/common/filters/global-exception.fi
 import type { ConfigService } from '../src/config/config.service';
 import { validateEnv } from '../src/config/env.schema';
 import { PrismaService } from '../src/database/prisma.service';
+import { TenantStorageReadinessService } from '../src/tenant/tenant-storage-readiness.service';
 
 const productionEnvironment = {
   NODE_ENV: 'production',
@@ -39,6 +40,33 @@ describe('central database production readiness', () => {
     expect(() => validateEnv(productionEnvironment)).toThrow(
       'DATABASE_URL is required in production',
     );
+  });
+
+  it('rejects disabled or in-memory tenant storage in production', () => {
+    expect(() =>
+      validateEnv({
+        ...productionEnvironment,
+        DATABASE_URL: 'mysql://configured-non-production-database',
+        TENANT_STORAGE_PROVIDER: 'disabled',
+      }),
+    ).toThrow('Persistent tenant storage is required in production');
+    expect(() =>
+      validateEnv({
+        ...productionEnvironment,
+        DATABASE_URL: 'mysql://configured-non-production-database',
+        TENANT_STORAGE_PROVIDER: 'memory',
+      }),
+    ).toThrow('Persistent tenant storage is required in production');
+  });
+
+  it('rejects production MongoDB storage without its connection configuration', () => {
+    expect(() =>
+      validateEnv({
+        ...productionEnvironment,
+        DATABASE_URL: 'mysql://configured-non-production-database',
+        TENANT_STORAGE_PROVIDER: 'mongodb',
+      }),
+    ).toThrow('TENANT_STORAGE_MONGO_URI is required in production');
   });
 
   it('allows development startup without attempting a database connection', async () => {
@@ -99,7 +127,13 @@ describe('central database production readiness', () => {
     };
     const module = await Test.createTestingModule({
       controllers: [AppController],
-      providers: [{ provide: PrismaService, useValue: prisma }],
+      providers: [
+        { provide: PrismaService, useValue: prisma },
+        {
+          provide: TenantStorageReadinessService,
+          useValue: { checkReadiness: vi.fn().mockResolvedValue(true) },
+        },
+      ],
     }).compile();
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.useGlobalFilters(new GlobalExceptionFilter());
@@ -131,9 +165,14 @@ describe('central database production readiness', () => {
   });
 
   it('keeps liveness independent of readiness', async () => {
-    const controller = new AppController({
-      isReady: vi.fn().mockResolvedValue(false),
-    } as unknown as PrismaService);
+    const controller = new AppController(
+      {
+        isReady: vi.fn().mockResolvedValue(false),
+      } as unknown as PrismaService,
+      {
+        checkReadiness: vi.fn().mockResolvedValue(false),
+      } as unknown as TenantStorageReadinessService,
+    );
 
     expect(controller.health().status).toBe('ok');
     await expect(controller.ready()).rejects.toBeInstanceOf(ServiceUnavailableException);

@@ -121,6 +121,12 @@ import { EncounterService } from './encounter.service';
     TenantService,
     TrustedTenantContextFactoryService,
   ],
-  exports: [TenantEntitlementModule, TenantQuotaModule, TenantMembershipService, TenantService],
+  exports: [
+    TenantEntitlementModule,
+    TenantQuotaModule,
+    TenantMembershipService,
+    TenantService,
+    TenantStorageModule,
+  ],
 })
 export class TenantModule {}

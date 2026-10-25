@@ -34,7 +34,7 @@ function createManager(uri = 'mongodb://fixture.invalid'): {
   factory: TenantMongoClientFactory;
   database: Db;
 } {
-  const database = {} as Db;
+  const database = { command: vi.fn().mockResolvedValue({ ok: 1 }) } as unknown as Db;
   const client: TenantMongoClient = {
     connect: vi.fn().mockResolvedValue(undefined),
     db: vi.fn().mockReturnValue(database),
@@ -104,6 +104,27 @@ describe('TenantMongoClientManager', () => {
       unknownReference.manager.getDatabase({ ...target, databaseName: 'admin' }),
     ).rejects.toBeInstanceOf(TenantStorageNotConfiguredError);
     expect(unknownReference.factory.create).not.toHaveBeenCalled();
+  });
+
+  it('checks only the shared Mongo service and recovers after a transient ping failure', async () => {
+    const { manager, client, database } = createManager();
+    vi.mocked(database.command)
+      .mockRejectedValueOnce(new Error('temporary tenant service outage'))
+      .mockResolvedValueOnce({ ok: 1 });
+
+    await expect(manager.checkReadiness()).resolves.toBe(false);
+    await expect(manager.checkReadiness()).resolves.toBe(true);
+
+    expect(client.db).toHaveBeenNthCalledWith(1, 'admin');
+    expect(client.db).toHaveBeenNthCalledWith(2, 'admin');
+    expect(database.command).toHaveBeenCalledWith({ ping: 1 });
+  });
+
+  it('reports unconfigured storage without creating a client', async () => {
+    const { manager, factory } = createManager('   ');
+
+    await expect(manager.checkReadiness()).resolves.toBe(false);
+    expect(factory.create).not.toHaveBeenCalled();
   });
 
   it('sanitizes connection failures and closes the failed client', async () => {

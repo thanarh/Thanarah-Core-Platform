@@ -3578,6 +3578,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     });
     expect(health.statusCode).toBe(200);
     expect(readiness.statusCode).toBe(200);
+    expect(readiness.json()).toMatchObject({
+      database: 'available',
+      tenantStorage: 'available',
+    });
 
     const unauthenticated = await getApplication().inject({
       method: 'GET',
@@ -4719,6 +4723,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             'findAndModify',
             'delete',
             'listIndexes',
+            'ping',
           ],
           errorCode: 91,
         },
@@ -4733,6 +4738,21 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const responses: Array<{ statusCode: number; body: string }> = [];
     await setOutage();
     try {
+      const readinessDuringOutage = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/ready`,
+      });
+      const livenessDuringOutage = await getApplication().inject({
+        method: 'GET',
+        url: `/${APP_CONSTANTS.apiPrefix}/health`,
+      });
+      expect(readinessDuringOutage.statusCode).toBe(503);
+      expect(readinessDuringOutage.body).toContain('TENANT_STORAGE_UNAVAILABLE');
+      expect(readinessDuringOutage.body).not.toContain(mongoUri);
+      expect(readinessDuringOutage.body).not.toContain(tenantA.id);
+      expect(readinessDuringOutage.body).not.toContain('patient');
+      expect(livenessDuringOutage.statusCode).toBe(200);
+
       responses.push(
         ...(await Promise.all([
           getApplication().inject({
@@ -4796,6 +4816,15 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(response.body).toContain('TENANT_STORAGE_UNAVAILABLE');
       expect(response.body).not.toContain('outage probe');
     }
+    const recoveredReadiness = await getApplication().inject({
+      method: 'GET',
+      url: `/${APP_CONSTANTS.apiPrefix}/ready`,
+    });
+    expect(recoveredReadiness.statusCode, recoveredReadiness.body).toBe(200);
+    expect(recoveredReadiness.json()).toMatchObject({
+      database: 'available',
+      tenantStorage: 'available',
+    });
     const recoveredList = await getApplication().inject({
       method: 'GET',
       url: `${tenantRoot(tenantA)}/patients`,

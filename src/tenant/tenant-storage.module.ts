@@ -37,6 +37,13 @@ import {
   TENANT_STORAGE_TARGET_RESOLVER,
 } from './tenant-storage.registry';
 import { effectiveTenantStorageProvider } from './tenant-storage.mode';
+import {
+  DevelopmentMemoryTenantStorageHealthProvider,
+  TENANT_STORAGE_HEALTH_PROVIDER,
+  TenantStorageReadinessService,
+  UnconfiguredTenantStorageHealthProvider,
+} from './tenant-storage-readiness.service';
+import type { TenantStorageHealthProvider } from './tenant-storage-readiness.service';
 import { InMemoryTenantEncounterStorage } from './in-memory-tenant-encounter.storage';
 import { UnconfiguredTenantEncounterStorage } from './unconfigured-tenant-encounter.storage';
 import { TenantStorageEncounterRepository } from './encounter.repository';
@@ -81,6 +88,32 @@ import type { EncounterStorage } from './tenant-encounter.storage';
       useExisting: OfficialTenantMongoClientFactory,
     },
     TenantMongoClientManager,
+    TenantStorageReadinessService,
+    DevelopmentMemoryTenantStorageHealthProvider,
+    UnconfiguredTenantStorageHealthProvider,
+    {
+      provide: TENANT_STORAGE_HEALTH_PROVIDER,
+      inject: [
+        ConfigService,
+        TenantMongoClientManager,
+        DevelopmentMemoryTenantStorageHealthProvider,
+        UnconfiguredTenantStorageHealthProvider,
+      ],
+      useFactory: (
+        config: ConfigService,
+        mongo: TenantMongoClientManager,
+        memory: DevelopmentMemoryTenantStorageHealthProvider,
+        unconfigured: UnconfiguredTenantStorageHealthProvider,
+      ): TenantStorageHealthProvider => {
+        const provider = effectiveTenantStorageProvider(
+          config.tenantStorageProvider,
+          config.isDevelopment,
+        );
+        if (provider === 'mongodb') return mongo;
+        if (provider === 'memory') return memory;
+        return unconfigured;
+      },
+    },
     MongoTenantPatientStorage,
     MongoTenantAppointmentStorage,
     MongoTenantEncounterStorage,
@@ -183,6 +216,7 @@ import type { EncounterStorage } from './tenant-encounter.storage';
     TENANT_STORAGE_RESOLVER,
     TenantStorageRegistryService,
     TenantStorageActivationService,
+    TenantStorageReadinessService,
     MongoTenantPatientStorage,
     MongoTenantAppointmentStorage,
     MongoTenantEncounterStorage,

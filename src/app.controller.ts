@@ -6,6 +6,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { PrismaService } from './database/prisma.service';
+import { TenantStorageReadinessService } from './tenant/tenant-storage-readiness.service';
 
 interface HealthResponse {
   status: string;
@@ -14,12 +15,17 @@ interface HealthResponse {
 
 interface ReadinessResponse extends HealthResponse {
   database: 'available';
+  tenantStorage: 'available';
 }
 
 @ApiTags('system')
 @Controller()
 export class AppController {
-  constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
+  constructor(
+    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(TenantStorageReadinessService)
+    private readonly tenantStorage: TenantStorageReadinessService,
+  ) {}
 
   @Get('health')
   @ApiOperation({ summary: 'Application liveness check' })
@@ -32,9 +38,9 @@ export class AppController {
   }
 
   @Get('ready')
-  @ApiOperation({ summary: 'Central database readiness check' })
-  @ApiOkResponse({ description: 'The application and central database are ready' })
-  @ApiServiceUnavailableResponse({ description: 'The central database is unavailable' })
+  @ApiOperation({ summary: 'Application and required storage readiness check' })
+  @ApiOkResponse({ description: 'The application and required storage are ready' })
+  @ApiServiceUnavailableResponse({ description: 'A required storage dependency is unavailable' })
   async ready(): Promise<ReadinessResponse> {
     if (!(await this.prisma.isReady())) {
       throw new ServiceUnavailableException({
@@ -42,10 +48,17 @@ export class AppController {
         message: 'Central database is unavailable',
       });
     }
+    if (!(await this.tenantStorage.checkReadiness())) {
+      throw new ServiceUnavailableException({
+        code: 'TENANT_STORAGE_UNAVAILABLE',
+        message: 'Required tenant storage is unavailable',
+      });
+    }
 
     return {
       status: 'ready',
       database: 'available',
+      tenantStorage: 'available',
       timestamp: new Date().toISOString(),
     };
   }

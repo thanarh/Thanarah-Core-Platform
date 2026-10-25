@@ -63,6 +63,19 @@ export class TenantMongoClientManager implements OnApplicationShutdown {
     }
   }
 
+  async checkReadiness(): Promise<boolean> {
+    const uri = this.config.tenantStorageMongoUri.trim();
+    if (!uri) return false;
+
+    try {
+      const client = await this.getClient('primary', uri);
+      await client.db('admin').command({ ping: 1 });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async onApplicationShutdown(): Promise<void> {
     const clients = [...this.clients.values()];
     this.clients.clear();

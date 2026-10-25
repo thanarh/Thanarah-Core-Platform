@@ -311,6 +311,8 @@ describe('authentication configuration', () => {
       validateEnv({
         NODE_ENV: 'production',
         DATABASE_URL: 'mysql://user:password@127.0.0.1:3306/thanarah',
+        TENANT_STORAGE_PROVIDER: 'mongodb',
+        TENANT_STORAGE_MONGO_URI: 'mongodb://configured-non-production-storage',
         JWT_ACCESS_SECRET: 'a'.repeat(48),
         AUTH_REFRESH_COOKIE_SECURE: 'true',
       }),
