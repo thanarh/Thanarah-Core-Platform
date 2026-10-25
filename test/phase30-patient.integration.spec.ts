@@ -3167,6 +3167,65 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         where: { id: phase55FacilityId, tenantId: tenantA.id },
       });
 
+      await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        'sign-out before permission-denied browser check',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="signin"]');
+          if (!form) return false;
+          form.querySelector('[name="email"]').value = ${JSON.stringify(limitedUserEmail)};
+          form.querySelector('[name="password"]').value = ${JSON.stringify(limitedUserPassword)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('الوصول محدود')`,
+        'visible permission denial for an appointments-only user',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.body.innerText.includes('tenant.facilities.read') &&
+            !document.querySelector('[data-action="new-facility"]')`,
+        ),
+      ).toBe(true);
+
+      await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        'sign-out after permission-denied browser check',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="signin"]');
+          if (!form) return false;
+          form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
+          form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'authorized workspace restoration after sign-in',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+      );
+
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
       await waitForBrowserCondition(
@@ -7031,6 +7090,16 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
   await prisma.tenantRolePermission.createMany({
     data: encounterPermissions.map(({ id }) => ({
       tenantRoleId: tenantA.roleId,
+      tenantPermissionId: id,
+    })),
+    skipDuplicates: true,
+  });
+  const crossTenantSetupPermissions = await prisma.tenantPermission.findMany({
+    where: { code: { in: ['tenant.facilities.read', 'tenant.branches.read'] } },
+  });
+  await prisma.tenantRolePermission.createMany({
+    data: crossTenantSetupPermissions.map(({ id }) => ({
+      tenantRoleId: tenantB.roleId,
       tenantPermissionId: id,
     })),
     skipDuplicates: true,

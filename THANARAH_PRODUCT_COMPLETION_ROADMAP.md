@@ -225,7 +225,7 @@ Sequence is ordered by prerequisite and risk. Backend APIs that already exist sh
 | Approved tenant storage and recovery | Owner/provider decisions; production-like configuration; isolated backups, restore, keys, alerts, ownership and activation controls | Written approvals; successful timed restore rehearsal for central and every registered tenant target; isolation and index verification; documented RPO/RTO and operator runbook; no production access required for rehearsal evidence. |
 | Dependency/security release gate | Compatible fixes or documented risk acceptance for remaining audit findings; explicit CORS origins | Current production/full audit outputs; compatible upgrade/build/test evidence; no resolver bypass; tested allowlist and rejected-origin cases. |
 | Production deployment operations | Staging-like host setup, dependency-aware readiness, monitoring, migration/rollback plan | Deployment rehearsal on approved staging; health/readiness and alert tests; validated config by name without exposing values; reviewed migration and rollback procedure. |
-| Tenant/facility/staff setup UI | Administrative frontend and any approved API additions | New synthetic tenant can be provisioned and scoped by an authorized operator entirely through supported UI/API flows; cross-tenant and out-of-scope controls tested. |
+| Tenant/facility/staff setup UI | Phase 55 delivers the authenticated facility/branch setup workflow. Tenant creation, memberships, staff scopes, role assignment, and catalogs still lack complete management screens. | Disposable authenticated browser flow creates and edits a facility and nested branch, changes lifecycle state, verifies persistence after reload, and checks permission denial and cross-tenant isolation. Remaining administration flows need their own acceptance evidence. |
 | Patient directory and registration UI | Core workflow implemented and verified in Phase 54; broader permission-denied browser, accessibility, and rollout acceptance remain | Authenticated Chromium flow covers create/search/read/update/lifecycle and persistence after reload. Unit/HTTP and disposable MongoDB tests cover validation, tenant isolation, duplicates/concurrent writes, and storage/index safeguards. |
 | Clinic operations workflow | Existing appointment and encounter surfaces require launch acceptance, policy decisions, and role/browser coverage | End-to-end authorized staff journey from patient and appointment through encounter; approved timezone/policy behavior; retry/conflict/session/storage-failure handling; no patient data leakage. |
 | Commercial billing boundary | Owner decision whether this is mandatory; no implementation assumed | Written manual-vs-automated SaaS billing and clinic payment/invoice scope decision. If mandatory, provider, pricing/tax, legal and lifecycle rules approved before implementation. |
@@ -254,7 +254,7 @@ Sequence is ordered by prerequisite and risk. Backend APIs that already exist sh
 
 ## 10. Verification and audit limits
 
-The latest Phase 51 verification recorded:
+The prior Phase 51 verification recorded:
 
 - Unit/HTTP suite: 103 files, 917 tests passed.
 - Disposable MySQL/MongoDB suite: 39/39 passed, including the authenticated browser recovery journey.
@@ -262,4 +262,13 @@ The latest Phase 51 verification recorded:
 - Local `/health` returned 200 and `/ready` returned sanitized 503 without a configured database.
 - Phase 51 npm audit: production tree 0 critical, 4 high, 2 moderate; full tree 2 critical, 4 high, 4 moderate. Replit dependency scan separately reported 2 critical, 2 high, 4 moderate; SAST and HoundDog returned no findings.
 
-Phase 52 did not access production, run migrations, deploy, or alter application behavior. Repository tests do not establish production provider approval, backup recoverability, legal compliance, performance capacity, or commercial acceptance. This document should be revised when the owner resolves scope decisions and new implementation evidence exists.
+The latest Phase 55 verification recorded:
+
+- Unit/HTTP suite: 103 files, 920/920 tests passed.
+- Disposable MySQL/MongoDB suite: 39/39 passed, including the authenticated clinic-setup and encounter browser journey. The setup portion exercised facility/branch create, edit, suspend/reactivate, reload persistence, visible permission denial, and cross-tenant isolation.
+- Shared browser API-client tests: 6/6 passed.
+- Main TypeScript check, tenant-contract TypeScript check, Nest build, JavaScript syntax checks, formatting, and `git diff --check` passed.
+- Full lint passed with one pre-existing warning in `test/encounter-operation-reconciliation.spec.ts`.
+- Prisma validation was not run because Phase 55 changes no Prisma schema or migrations.
+
+Phase 55 did not access production, run migrations, deploy, stage, or commit. Repository tests do not establish production provider approval, backup recoverability, legal compliance, performance capacity, or commercial acceptance. This document should be revised when the owner resolves scope decisions and new implementation evidence exists.

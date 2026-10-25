@@ -141,8 +141,6 @@
       return;
     }
     app.innerHTML = shell();
-    renderFacilities();
-    renderBranches();
   }
 
   function brand() {
