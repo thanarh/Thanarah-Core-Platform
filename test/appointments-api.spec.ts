@@ -16,6 +16,19 @@ interface ThanarahApi {
     input: Record<string, unknown>,
     idempotencyKey: string,
   ): Promise<unknown>;
+  listPatients(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  getPatient(tenantId: string, patientId: string): Promise<unknown>;
+  createPatient(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updatePatient(
+    tenantId: string,
+    patientId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  activatePatient(tenantId: string, patientId: string): Promise<unknown>;
+  deactivatePatient(tenantId: string, patientId: string): Promise<unknown>;
 }
 
 runInThisContext(readFileSync('public/appointments/api.js', 'utf8'));
@@ -160,5 +173,49 @@ describe('Thanarah browser API client', () => {
       code: 'APPOINTMENT_SCHEDULE_CONFLICT',
       message: 'هذا الوقت لم يعد متاحًا. اختر وقتًا آخر.',
     });
+  });
+
+  it('exposes tenant-scoped patient directory and lifecycle requests through the shared client', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, limit: 25, offset: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'patient-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'patient-id' }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: 'patient-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'patient-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'patient-id' }));
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    await api.listPatients('tenant-id', { search: 'ليان', status: 'ACTIVE', limit: 25, offset: 0 });
+    await api.getPatient('tenant-id', 'patient/id');
+    await api.createPatient('tenant-id', { patientNumber: 'P-100', firstName: 'ليان' });
+    await api.updatePatient('tenant-id', 'patient/id', { phone: '+966 500000000' });
+    await api.deactivatePatient('tenant-id', 'patient/id');
+    await api.activatePatient('tenant-id', 'patient/id');
+
+    const requests = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(new URL(requests[0]![0], 'http://same-origin').pathname).toBe(
+      '/api/v1/tenants/tenant-id/patients',
+    );
+    expect(Object.fromEntries(new URL(requests[0]![0], 'http://same-origin').searchParams)).toEqual(
+      {
+        search: 'ليان',
+        status: 'ACTIVE',
+        limit: '25',
+        offset: '0',
+      },
+    );
+    expect(requests[1]![0]).toBe('/api/v1/tenants/tenant-id/patients/patient%2Fid');
+    expect(requests[2]![0]).toBe('/api/v1/tenants/tenant-id/patients');
+    expect(requests[2]![1].method).toBe('POST');
+    expect(JSON.parse(String(requests[2]![1].body))).toEqual({
+      patientNumber: 'P-100',
+      firstName: 'ليان',
+    });
+    expect(requests[3]![1].method).toBe('PATCH');
+    expect(requests[4]![0]).toBe('/api/v1/tenants/tenant-id/patients/patient%2Fid/deactivate');
+    expect(requests[4]![1].method).toBe('POST');
+    expect(requests[5]![0]).toBe('/api/v1/tenants/tenant-id/patients/patient%2Fid/activate');
+    expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
   });
 });

@@ -2656,6 +2656,204 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           !document.querySelector('#patient-search-help')?.textContent.includes('جارٍ البحث')`,
         'tenant-isolated patient search',
       );
+
+      const browserPatientNumber = `PHASE54-${RUN_ID}`;
+      const browserPatientLastName = `Browser-${RUN_ID.slice(0, 8)}`;
+      const browserPatientNationalId = `TEST-${RUN_ID}`;
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/patients/` });
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'patient directory workspace selection',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const button = Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+            .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))
+            if (!button) return false;
+            button.click();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="new-patient"]'))`,
+        'authorized patient directory',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="new-patient"]')?.click(); true`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="patient"] [name="patientNumber"]'))`,
+        'patient registration form',
+      );
+      const submitPatientRegistration = `(() => {
+        const form = document.querySelector('form[data-form="patient"]');
+        if (!form) return false;
+        form.querySelector('[name="patientNumber"]').value = ${JSON.stringify(browserPatientNumber)};
+        form.querySelector('[name="firstName"]').value = 'Browser';
+        form.querySelector('[name="lastName"]').value = ${JSON.stringify(browserPatientLastName)};
+        form.querySelector('[name="email"]').value = ${JSON.stringify(`phase54-${RUN_ID}@example.test`)};
+        form.querySelector('[name="nationalId"]').value = ${JSON.stringify(browserPatientNationalId)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, submitPatientRegistration)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(browserPatientNumber)}) &&
+          document.body.innerText.includes(${JSON.stringify(browserPatientNationalId)})`,
+        'registered patient profile',
+      );
+      const browserPatientRecord = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('patients')
+        .findOne({
+          _tenantId: tenantA.id,
+          patientNumber: browserPatientNumber,
+        });
+      expect(browserPatientRecord).not.toBeNull();
+
+      const browserPatientPhone = '+966500000001';
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="edit-patient"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="patient"] [name="phone"]'))`,
+        'patient edit form',
+      );
+      const updatePatientPhone = `(() => {
+        const form = document.querySelector('form[data-form="patient"]');
+        if (!form) return false;
+        form.querySelector('[name="phone"]').value = ${JSON.stringify(browserPatientPhone)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, updatePatientPhone)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(browserPatientPhone)})`,
+        'saved patient profile update',
+      );
+
+      const deactivateBrowserPatient = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="deactivate-patient"]')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await deactivateBrowserPatient;
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="activate-patient"]')) &&
+          document.body.innerText.includes('غير نشط')`,
+        'inactive patient profile',
+      );
+      const activateBrowserPatient = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="activate-patient"]')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await activateBrowserPatient;
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="deactivate-patient"]')) &&
+          document.body.innerText.includes('نشط')`,
+        'reactivated patient profile',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="back-directory"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#patient-search'))`,
+        'patient directory after lifecycle updates',
+      );
+      const searchRegisteredPatient = `(() => {
+        const input = document.querySelector('#patient-search');
+        const form = document.querySelector('form[data-form="filters"]');
+        if (!input || !form) return false;
+        input.value = ${JSON.stringify(browserPatientNumber)};
+        form.requestSubmit();
+        return true;
+      })()`;
+      expect(await evaluateBrowser(client, searchRegisteredPatient)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(browserPatientNumber)})`,
+        'search result for registered patient',
+      );
+      await client.send('Page.reload');
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'workspace restoration after patient page reload',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const button = Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+              .find((item) => item.textContent?.includes(${JSON.stringify(tenantA.slug)}));
+            if (!button) return false;
+            button.click();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#patient-search'))`,
+        'patient directory restored after reload',
+      );
+      expect(await evaluateBrowser(client, searchRegisteredPatient)).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(browserPatientNumber)})`,
+        'persisted patient search result after reload',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="open-patient"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(browserPatientNationalId)}) &&
+          document.body.innerText.includes(${JSON.stringify(browserPatientPhone)})`,
+        'persisted patient profile after reload',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const stored = JSON.stringify({
+              local: Object.values(localStorage),
+              session: Object.values(sessionStorage)
+            });
+            return !stored.includes(${JSON.stringify(browserPatientNumber)}) &&
+              !stored.includes(${JSON.stringify(browserPatientNationalId)}) &&
+              !location.search.includes(${JSON.stringify(browserPatientNumber)}) &&
+              !location.hash.includes(${JSON.stringify(browserPatientNumber)});
+          })()`,
+        ),
+      ).toBe(true);
+      const browserPatientDelete = await mongoAdminClient!
+        .db(tenantA.databaseName)
+        .collection('patients')
+        .deleteOne({ _tenantId: tenantA.id, patientNumber: browserPatientNumber });
+      expect(browserPatientDelete.deletedCount).toBe(1);
+
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
       await waitForBrowserCondition(

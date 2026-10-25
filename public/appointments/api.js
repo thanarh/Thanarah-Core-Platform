@@ -21,6 +21,13 @@
     APPOINTMENT_POLICY_VIOLATION: 'الموعد لا يطابق سياسة الجدولة الحالية.',
     APPOINTMENT_STATE_CONFLICT: 'تغيّرت حالة الموعد. حدّث الصفحة قبل المتابعة.',
     AUTH_INVALID_CREDENTIALS: 'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+    PATIENT_INPUT_INVALID: 'تحقق من بيانات المريض المطلوبة وصيغ الحقول.',
+    PATIENT_ID_INVALID: 'معرّف المريض غير صالح.',
+    PATIENT_NOT_FOUND: 'لم يعد سجل المريض متاحًا.',
+    PATIENT_NUMBER_CONFLICT: 'رقم المريض مستخدم بالفعل في هذه المنشأة.',
+    PATIENT_DUPLICATE_POSSIBLE:
+      'قد يوجد سجل مكرر ببيانات مشابهة. راجع السجلات قبل إنشاء مريض جديد.',
+    PATIENT_STATUS_TRANSITION_INVALID: 'تغيّرت حالة المريض. حدّث القائمة قبل المتابعة.',
     SCHEDULING_POLICY_INPUT_INVALID: 'تحقق من بيانات سياسة الجدولة.',
     SCHEDULING_POLICY_REFERENCE_INVALID: 'أحد الأطباء أو الخدمات في السياسة لم يعد متاحًا.',
     SCHEDULING_POLICY_VERSION_CONFLICT: 'تغيّرت السياسة منذ فتحها. أعد تحميلها قبل الحفظ.',
@@ -414,6 +421,35 @@
 
     listPatients(tenantId, options = {}) {
       return request(withQuery(tenantPath(tenantId, '/patients'), listOptions(options)));
+    },
+
+    getPatient(tenantId, patientId) {
+      return request(tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}`));
+    },
+
+    createPatient(tenantId, input) {
+      return request(tenantPath(tenantId, '/patients'), { method: 'POST', body: input });
+    },
+
+    updatePatient(tenantId, patientId, input) {
+      return request(tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    activatePatient(tenantId, patientId) {
+      return request(
+        tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}/activate`),
+        { method: 'POST' },
+      );
+    },
+
+    deactivatePatient(tenantId, patientId) {
+      return request(
+        tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}/deactivate`),
+        { method: 'POST' },
+      );
     },
 
     listDoctors(tenantId, options = {}) {
