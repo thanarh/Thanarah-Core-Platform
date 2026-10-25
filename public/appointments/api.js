@@ -28,6 +28,17 @@
     PATIENT_DUPLICATE_POSSIBLE:
       'قد يوجد سجل مكرر ببيانات مشابهة. راجع السجلات قبل إنشاء مريض جديد.',
     PATIENT_STATUS_TRANSITION_INVALID: 'تغيّرت حالة المريض. حدّث القائمة قبل المتابعة.',
+    FACILITY_INPUT_INVALID: 'تحقق من اسم المنشأة.',
+    FACILITY_ID_INVALID: 'معرّف المنشأة غير صالح.',
+    FACILITY_NOT_FOUND: 'لم تعد المنشأة متاحة.',
+    FACILITY_STATUS_TRANSITION_INVALID: 'تغيّرت حالة المنشأة. حدّث القائمة قبل المتابعة.',
+    BRANCH_INPUT_INVALID: 'تحقق من اسم الفرع.',
+    BRANCH_FACILITY_ID_INVALID: 'معرّف المنشأة غير صالح.',
+    BRANCH_ID_INVALID: 'معرّف الفرع غير صالح.',
+    BRANCH_FACILITY_NOT_FOUND: 'المنشأة غير متاحة ضمن مساحة العمل.',
+    BRANCH_NOT_FOUND: 'لم يعد الفرع متاحًا ضمن هذه المنشأة.',
+    BRANCH_PARENT_UNAVAILABLE: 'فعّل المنشأة أولًا لإدارة فروعها.',
+    BRANCH_STATUS_TRANSITION_INVALID: 'تغيّرت حالة الفرع. حدّث القائمة قبل المتابعة.',
     SCHEDULING_POLICY_INPUT_INVALID: 'تحقق من بيانات سياسة الجدولة.',
     SCHEDULING_POLICY_REFERENCE_INVALID: 'أحد الأطباء أو الخدمات في السياسة لم يعد متاحًا.',
     SCHEDULING_POLICY_VERSION_CONFLICT: 'تغيّرت السياسة منذ فتحها. أعد تحميلها قبل الحفظ.',
@@ -470,6 +481,62 @@
     listBranches(tenantId, facilityId, options = {}) {
       const path = tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}/branches`);
       return request(withQuery(path, { status: 'ACTIVE', ...listOptions(options) }));
+    },
+
+    listSetupBranches(tenantId, facilityId, options = {}) {
+      const path = tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}/branches`);
+      return request(withQuery(path, listOptions(options)));
+    },
+
+    createFacility(tenantId, input) {
+      return request(tenantPath(tenantId, '/facilities'), { method: 'POST', body: input });
+    },
+
+    updateFacility(tenantId, facilityId, input) {
+      return request(tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeFacilityStatus(tenantId, facilityId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid facility lifecycle action is required.');
+      }
+      return request(
+        tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}/${action}`),
+        { method: 'POST' },
+      );
+    },
+
+    createBranch(tenantId, facilityId, input) {
+      return request(
+        tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}/branches`),
+        { method: 'POST', body: input },
+      );
+    },
+
+    updateBranch(tenantId, facilityId, branchId, input) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/facilities/${encodeURIComponent(facilityId)}/branches/${encodeURIComponent(branchId)}`,
+        ),
+        { method: 'PATCH', body: input },
+      );
+    },
+
+    changeBranchStatus(tenantId, facilityId, branchId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid branch lifecycle action is required.');
+      }
+      return request(
+        tenantPath(
+          tenantId,
+          `/facilities/${encodeURIComponent(facilityId)}/branches/${encodeURIComponent(branchId)}/${action}`,
+        ),
+        { method: 'POST' },
+      );
     },
 
     listServices(tenantId, options = {}) {

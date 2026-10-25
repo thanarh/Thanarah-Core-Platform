@@ -2510,6 +2510,25 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(limitedAppointmentList.json<{ items: Array<{ id: string }> }>().items).toEqual(
       expect.arrayContaining([expect.objectContaining({ id: browserAppointmentId })]),
     );
+    const deniedFacilityRead = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/facilities`,
+      headers: limitedHeaders,
+    });
+    expect(deniedFacilityRead.statusCode).toBe(403);
+    const deniedFacilityCreate = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/facilities`,
+      headers: limitedHeaders,
+      payload: { name: 'Forbidden clinic setup' },
+    });
+    expect(deniedFacilityCreate.statusCode).toBe(403);
+    const deniedBranchRead = await getApplication().inject({
+      method: 'GET',
+      url: `${tenantRoot(tenantA)}/facilities/${clinicalFacilityId}/branches`,
+      headers: limitedHeaders,
+    });
+    expect(deniedBranchRead.statusCode).toBe(403);
     const deniedClinicalRead = await getApplication().inject({
       method: 'GET',
       url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
@@ -2853,6 +2872,300 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         .collection('patients')
         .deleteOne({ _tenantId: tenantA.id, patientNumber: browserPatientNumber });
       expect(browserPatientDelete.deletedCount).toBe(1);
+
+      const phase55FacilityName = `Phase55 Clinic ${RUN_ID.slice(0, 8)}`;
+      const phase55FacilityUpdatedName = `${phase55FacilityName} Main`;
+      const phase55BranchName = `Phase55 Branch ${RUN_ID.slice(0, 8)}`;
+      const phase55BranchUpdatedName = `${phase55BranchName} North`;
+      let phase55FacilityId = '';
+      let phase55BranchId = '';
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/clinic-setup/` });
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'clinic setup workspace selection',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const button = Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+              .find((item) => item.textContent?.includes(${JSON.stringify(tenantA.slug)}));
+            if (!button) return false;
+            button.click();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="new-facility"]'))`,
+        'facility management for an authorized workspace',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="new-facility"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="facility"] [name="name"]'))`,
+        'facility creation form',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const form = document.querySelector('form[data-form="facility"]');
+            if (!form) return false;
+            form.querySelector('[name="name"]').value = ${JSON.stringify(phase55FacilityName)};
+            form.requestSubmit();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="select-facility"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(phase55FacilityName)}))`,
+        'created facility in the tenant directory',
+      );
+      phase55FacilityId = String(
+        await evaluateBrowser(
+          client,
+          `Array.from(document.querySelectorAll('[data-action="select-facility"]'))
+            .find((button) => button.textContent?.includes(${JSON.stringify(phase55FacilityName)}))
+            ?.dataset.id || ''`,
+        ),
+      );
+      expect(phase55FacilityId).toMatch(/^[0-9a-f-]{36}$/iu);
+
+      const crossTenantFacilityRead = await getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantB)}/facilities/${phase55FacilityId}`,
+        headers: bearerHeaders(),
+      });
+      expect(crossTenantFacilityRead.statusCode).toBe(404);
+
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="edit-facility"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55FacilityId)})?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="facility"] [name="name"]'))`,
+        'facility update form',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const form = document.querySelector('form[data-form="facility"]');
+            if (!form) return false;
+            form.querySelector('[name="name"]').value = ${JSON.stringify(phase55FacilityUpdatedName)};
+            form.requestSubmit();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="select-facility"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(phase55FacilityUpdatedName)}))`,
+        'updated facility name',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="select-facility"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(phase55FacilityUpdatedName)}))
+          ?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="new-branch"]'))`,
+        'branch management under the selected facility',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="new-branch"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="branch"] [name="name"]'))`,
+        'branch creation form',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const form = document.querySelector('form[data-form="branch"]');
+            if (!form) return false;
+            form.querySelector('[name="name"]').value = ${JSON.stringify(phase55BranchName)};
+            form.requestSubmit();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.branch-card')).some((card) =>
+          card.textContent?.includes(${JSON.stringify(phase55BranchName)}))`,
+        'created branch in its parent facility',
+      );
+      phase55BranchId = String(
+        await evaluateBrowser(
+          client,
+          `Array.from(document.querySelectorAll('.branch-card'))
+            .find((card) => card.textContent?.includes(${JSON.stringify(phase55BranchName)}))
+            ?.querySelector('[data-action="edit-branch"]')?.dataset.id || ''`,
+        ),
+      );
+      expect(phase55BranchId).toMatch(/^[0-9a-f-]{36}$/iu);
+      const crossTenantBranchRead = await getApplication().inject({
+        method: 'GET',
+        url: `${tenantRoot(tenantB)}/facilities/${phase55FacilityId}/branches/${phase55BranchId}`,
+        headers: bearerHeaders(),
+      });
+      expect(crossTenantBranchRead.statusCode).toBe(404);
+
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="edit-branch"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55BranchId)})?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="branch"] [name="name"]'))`,
+        'branch update form',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `(() => {
+            const form = document.querySelector('form[data-form="branch"]');
+            if (!form) return false;
+            form.querySelector('[name="name"]').value = ${JSON.stringify(phase55BranchUpdatedName)};
+            form.requestSubmit();
+            return true;
+          })()`,
+        ),
+      ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.branch-card')).some((card) =>
+          card.textContent?.includes(${JSON.stringify(phase55BranchUpdatedName)}))`,
+        'updated branch name',
+      );
+      const suspendBranchInBrowser = evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="suspend-branch"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55BranchId)})?.click()`,
+      );
+      await respondToDialog('confirm');
+      await suspendBranchInBrowser;
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.branch-card')).some((card) =>
+          card.textContent?.includes(${JSON.stringify(phase55BranchUpdatedName)}) &&
+          card.textContent?.includes('موقوفة مؤقتًا'))`,
+        'suspended branch status',
+      );
+      const activateBranchInBrowser = evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="activate-branch"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55BranchId)})?.click()`,
+      );
+      await respondToDialog('confirm');
+      await activateBranchInBrowser;
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.branch-card')).some((card) =>
+          card.textContent?.includes(${JSON.stringify(phase55BranchUpdatedName)}) &&
+          card.textContent?.includes('نشطة'))`,
+        'reactivated branch status',
+      );
+
+      const suspendFacilityInBrowser = evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="suspend-facility"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55FacilityId)})?.click()`,
+      );
+      await respondToDialog('confirm');
+      await suspendFacilityInBrowser;
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="activate-facility"]'))
+          .some((button) => button.dataset.id === ${JSON.stringify(phase55FacilityId)}) &&
+          document.body.innerText.includes('فعّل المنشأة لعرض فروعها')`,
+        'suspended facility and guarded branch operations',
+      );
+      const activateFacilityInBrowser = evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="activate-facility"]'))
+          .find((button) => button.dataset.id === ${JSON.stringify(phase55FacilityId)})?.click()`,
+      );
+      await respondToDialog('confirm');
+      await activateFacilityInBrowser;
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="new-branch"]'))`,
+        'reactivated facility',
+      );
+
+      await client.send('Page.reload');
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'clinic setup workspace restoration after reload',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="select-facility"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(phase55FacilityUpdatedName)}))`,
+        'persisted facility after reload',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="select-facility"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(phase55FacilityUpdatedName)}))
+          ?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.branch-card')).some((card) =>
+          card.textContent?.includes(${JSON.stringify(phase55BranchUpdatedName)}))`,
+        'persisted branch after reload',
+      );
+      const setupPrisma = getApplication().get(PrismaService);
+      expect(await setupPrisma.branch.findUnique({ where: { id: phase55BranchId } })).toMatchObject(
+        {
+          id: phase55BranchId,
+          facilityId: phase55FacilityId,
+          name: phase55BranchUpdatedName,
+          status: 'ACTIVE',
+        },
+      );
+      expect(
+        await setupPrisma.facility.findUnique({ where: { id: phase55FacilityId } }),
+      ).toMatchObject({
+        id: phase55FacilityId,
+        tenantId: tenantA.id,
+        name: phase55FacilityUpdatedName,
+        status: 'ACTIVE',
+      });
+      await setupPrisma.branch.deleteMany({
+        where: { id: phase55BranchId, facilityId: phase55FacilityId },
+      });
+      await setupPrisma.facility.deleteMany({
+        where: { id: phase55FacilityId, tenantId: tenantA.id },
+      });
 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
@@ -6678,7 +6991,15 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
 
   const encounterPermissionCodes = [
     'tenant.facilities.read',
+    'tenant.facilities.create',
+    'tenant.facilities.update',
+    'tenant.facilities.suspend',
+    'tenant.facilities.activate',
     'tenant.branches.read',
+    'tenant.branches.create',
+    'tenant.branches.update',
+    'tenant.branches.suspend',
+    'tenant.branches.activate',
     'tenant.doctors.read',
     'tenant.services.read',
     'tenant.appointments.create',
@@ -6705,7 +7026,7 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
     where: { code: { in: encounterPermissionCodes } },
   });
   if (encounterPermissions.length !== encounterPermissionCodes.length) {
-    throw new Error('Phase 42 encounter permission catalog is incomplete in disposable migrations');
+    throw new Error('The Phase 42 permission catalog is incomplete in disposable migrations');
   }
   await prisma.tenantRolePermission.createMany({
     data: encounterPermissions.map(({ id }) => ({

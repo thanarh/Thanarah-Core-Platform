@@ -29,6 +29,39 @@ interface ThanarahApi {
   ): Promise<unknown>;
   activatePatient(tenantId: string, patientId: string): Promise<unknown>;
   deactivatePatient(tenantId: string, patientId: string): Promise<unknown>;
+  listFacilities(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  listSetupBranches(
+    tenantId: string,
+    facilityId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createFacility(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateFacility(
+    tenantId: string,
+    facilityId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeFacilityStatus(tenantId: string, facilityId: string, action: string): Promise<unknown>;
+  createBranch(
+    tenantId: string,
+    facilityId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  updateBranch(
+    tenantId: string,
+    facilityId: string,
+    branchId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeBranchStatus(
+    tenantId: string,
+    facilityId: string,
+    branchId: string,
+    action: string,
+  ): Promise<unknown>;
 }
 
 runInThisContext(readFileSync('public/appointments/api.js', 'utf8'));
@@ -217,5 +250,55 @@ describe('Thanarah browser API client', () => {
     expect(requests[4]![1].method).toBe('POST');
     expect(requests[5]![0]).toBe('/api/v1/tenants/tenant-id/patients/patient%2Fid/activate');
     expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
+  });
+
+  it('exposes tenant-scoped facility and branch setup operations without filtering inactive records', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'facility-id' }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: 'facility-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'facility-id' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'branch-id' }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: 'branch-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'branch-id' }));
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    await api.listFacilities('tenant-id', { status: 'SUSPENDED', limit: 50, offset: 0 });
+    await api.createFacility('tenant-id', { name: 'العيادة' });
+    await api.updateFacility('tenant-id', 'facility/id', { name: 'العيادة الرئيسية' });
+    await api.changeFacilityStatus('tenant-id', 'facility/id', 'activate');
+    await api.listSetupBranches('tenant-id', 'facility/id', { limit: 50, offset: 0 });
+    await api.createBranch('tenant-id', 'facility/id', { name: 'الفرع الشمالي' });
+    await api.updateBranch('tenant-id', 'facility/id', 'branch/id', { name: 'فرع الشمال' });
+    await api.changeBranchStatus('tenant-id', 'facility/id', 'branch/id', 'suspend');
+
+    const requests = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(Object.fromEntries(new URL(requests[0]![0], 'http://same-origin').searchParams)).toEqual(
+      { limit: '50', offset: '0', status: 'SUSPENDED' },
+    );
+    expect(requests[1]![0]).toBe('/api/v1/tenants/tenant-id/facilities');
+    expect(requests[1]![1].method).toBe('POST');
+    expect(requests[2]![0]).toBe('/api/v1/tenants/tenant-id/facilities/facility%2Fid');
+    expect(requests[2]![1].method).toBe('PATCH');
+    expect(requests[3]![0]).toBe('/api/v1/tenants/tenant-id/facilities/facility%2Fid/activate');
+    expect(requests[4]![0]).toBe(
+      '/api/v1/tenants/tenant-id/facilities/facility%2Fid/branches?limit=50&offset=0',
+    );
+    expect(requests[5]![0]).toBe('/api/v1/tenants/tenant-id/facilities/facility%2Fid/branches');
+    expect(requests[6]![0]).toBe(
+      '/api/v1/tenants/tenant-id/facilities/facility%2Fid/branches/branch%2Fid',
+    );
+    expect(requests[7]![0]).toBe(
+      '/api/v1/tenants/tenant-id/facilities/facility%2Fid/branches/branch%2Fid/suspend',
+    );
+    expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
+    expect(() => api.changeFacilityStatus('tenant-id', 'facility-id', 'reset')).toThrow(
+      'A valid facility lifecycle action is required.',
+    );
+    expect(() => api.changeBranchStatus('tenant-id', 'facility-id', 'branch-id', 'reset')).toThrow(
+      'A valid branch lifecycle action is required.',
+    );
   });
 });
