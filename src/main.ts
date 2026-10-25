@@ -9,6 +9,7 @@ import { Logger } from 'nestjs-pino';
 import { join } from 'path';
 import { AppModule } from './app.module';
 import { ConfigService } from './config/config.service';
+import { corsPolicyFor } from './config/cors.policy';
 import { APP_CONSTANTS } from './common/constants/app.constants';
 
 async function bootstrap(): Promise<void> {
@@ -43,18 +44,7 @@ async function bootstrap(): Promise<void> {
     decorateReply: false,
   });
 
-  app.enableCors({
-    origin: config.isProduction ? false : true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: [
-      'Content-Type',
-      'Authorization',
-      'Idempotency-Key',
-      APP_CONSTANTS.headers.requestId,
-    ],
-    exposedHeaders: [APP_CONSTANTS.headers.requestId],
-    credentials: true,
-  });
+  app.enableCors(corsPolicyFor(config.nodeEnv));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle(APP_CONSTANTS.swagger.title)

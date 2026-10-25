@@ -13,3 +13,5 @@
 - [Disposable integration fixtures](disposable-integration-fixtures.md) — integration tests selected with `-t` must provision their own fixture data, not rely on state seeded by earlier tests.
 - [Encounter uncertain-mutation UI](encounter-uncertain-mutation-ui.md) — every clinical mutation error path must preserve the operation reference as well as the draft so status recovery remains available.
 - [Tenant storage readiness](tenant-storage-readiness.md) — probe the shared storage adapter, not every tenant target, and keep provider health behind a neutral contract.
+- [Docker exec restrictions](docker-exec-restrictions.md) — when Testcontainers exec cannot start processes, run disposable tools as helper containers and transfer data through container copy APIs.
+- [Production MongoDB TLS](production-mongodb-tls.md) — production tenant MongoDB URIs must use TLS and retain certificate and hostname validation.

@@ -69,6 +69,50 @@ describe('central database production readiness', () => {
     ).toThrow('TENANT_STORAGE_MONGO_URI is required in production');
   });
 
+  it('requires validated TLS for production MongoDB storage', () => {
+    const productionMongo = {
+      ...productionEnvironment,
+      DATABASE_URL: 'mysql://configured-non-production-database',
+      TENANT_STORAGE_PROVIDER: 'mongodb',
+    };
+
+    for (const uri of [
+      'mongodb://storage-user:storage-password@db.example.test/thanarah',
+      'mongodb://storage-user:storage-password@db.example.test/thanarah?tls=false',
+      'mongodb://storage-user:storage-password@db.example.test/thanarah?tls=true&tlsAllowInvalidCertificates=true',
+      'mongodb://storage-user:storage-password@db.example.test/thanarah?tls=true&tlsAllowInvalidHostnames=true',
+      'mongodb://storage-user:storage-password@db.example.test/thanarah?tlsInsecure=true',
+      'mongodb://storage-user:storage-password@db.example.test/thanarah?ssl=true&tls=false',
+      'mongodb+srv://storage-user:storage-password@cluster.example.test/thanarah?tls=false',
+    ]) {
+      expect(() => validateEnv({ ...productionMongo, TENANT_STORAGE_MONGO_URI: uri })).toThrow(
+        'Production MongoDB connections must use TLS with certificate and hostname validation',
+      );
+    }
+
+    expect(
+      validateEnv({
+        ...productionMongo,
+        TENANT_STORAGE_MONGO_URI:
+          'mongodb://storage-user:storage-password@db.example.test/thanarah?tls=true',
+      }).TENANT_STORAGE_MONGO_URI,
+    ).toContain('tls=true');
+    expect(
+      validateEnv({
+        ...productionMongo,
+        TENANT_STORAGE_MONGO_URI:
+          'mongodb://storage-user:storage-password@db.example.test/thanarah?ssl=true',
+      }).TENANT_STORAGE_MONGO_URI,
+    ).toContain('ssl=true');
+    expect(
+      validateEnv({
+        ...productionMongo,
+        TENANT_STORAGE_MONGO_URI:
+          'mongodb+srv://storage-user:storage-password@cluster.example.test/thanarah',
+      }).TENANT_STORAGE_MONGO_URI,
+    ).toContain('mongodb+srv://');
+  });
+
   it('allows development startup without attempting a database connection', async () => {
     const prisma = new PrismaService(config());
     const connect = vi.spyOn(prisma, '$connect');

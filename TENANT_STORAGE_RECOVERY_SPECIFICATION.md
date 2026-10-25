@@ -1,12 +1,12 @@
 # Provider-neutral tenant-storage recovery specification
 
-**Status:** Requirements for operational approval; this is not a backup implementation or evidence that backups exist.
+**Status:** Operational requirements remain open. Phase 49 added a disposable artifact prototype and passed a disposable restore test; this is not production backup automation or evidence that production backups exist.
 
 ## Scope and current evidence
 
 The application stores central identity, membership, authorization, and tenant-storage routing metadata in MySQL/MariaDB. Patient, appointment, and encounter records are routed to tenant-owned physical databases through the tenant-storage registry. The MongoDB provider/topology is still pending approval.
 
-No in-repository backup automation, restore tooling, or verified restoration runbook was found during Phases 47–48. Do not infer provider-managed backups or successful recovery. No production system has been accessed.
+Phases 47–48 found no in-repository backup automation, restore tooling, or verified restoration runbook. Phase 49 added encrypted, signed recovery artifacts and verified a restore using disposable MySQL 8.0.41 and MongoDB 7.0.17 containers. The tested restore covered the central database and both registered tenant fixtures; it does not establish production recoverability. Do not infer provider-managed backups or successful production recovery. No production system has been accessed.
 
 ## Required recovery design
 
@@ -38,5 +38,7 @@ No in-repository backup automation, restore tooling, or verified restoration run
    - Assign an accountable operator for backup inventory, key custody, recovery authorization, and evidence retention.
 
 ## Safe implementation gate
+
+The Phase 49 prototype is intentionally not a production backup service: it does not schedule backups, store artifacts outside the temporary filesystem, manage production keys, authorize operators, alert, set retention, or define recovery objectives. The integration test uses a MySQL single-transaction dump and separately captured MongoDB data; cross-store atomicity is not guaranteed.
 
 Do not build provider-specific backup automation until the provider/topology, available backup primitives, data residency, healthcare agreement, consistency model, and recovery objectives are approved. After approval, implement and rehearse the plan only against disposable infrastructure before production use.

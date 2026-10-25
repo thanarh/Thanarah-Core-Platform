@@ -1,6 +1,34 @@
 import { z } from 'zod';
 import { isIP } from 'node:net';
 
+function hasValidatedMongoTls(uri: string): boolean {
+  try {
+    const parsed = new URL(uri);
+    const tls = parsed.searchParams.get('tls') ?? parsed.searchParams.get('ssl');
+    const explicitlyDisabled =
+      parsed.searchParams.get('tls')?.toLowerCase() === 'false' ||
+      parsed.searchParams.get('ssl')?.toLowerCase() === 'false';
+    const certificateValidationDisabled = [
+      'tlsInsecure',
+      'tlsAllowInvalidCertificates',
+      'tlsAllowInvalidHostnames',
+    ].some((key) => parsed.searchParams.get(key)?.toLowerCase() === 'true');
+
+    if (parsed.protocol === 'mongodb+srv:') {
+      return !explicitlyDisabled && !certificateValidationDisabled;
+    }
+
+    return (
+      parsed.protocol === 'mongodb:' &&
+      (tls?.toLowerCase() === 'true' || parsed.searchParams.get('ssl')?.toLowerCase() === 'true') &&
+      !explicitlyDisabled &&
+      !certificateValidationDisabled
+    );
+  } catch {
+    return false;
+  }
+}
+
 const trustedProxySchema = z
   .string()
   .default('127.0.0.1,::1')
@@ -84,6 +112,19 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['TENANT_STORAGE_MONGO_URI'],
         message: 'TENANT_STORAGE_MONGO_URI is required in production',
+      });
+    }
+    if (
+      config.NODE_ENV === 'production' &&
+      config.TENANT_STORAGE_PROVIDER === 'mongodb' &&
+      config.TENANT_STORAGE_MONGO_URI.trim() &&
+      !hasValidatedMongoTls(config.TENANT_STORAGE_MONGO_URI.trim())
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['TENANT_STORAGE_MONGO_URI'],
+        message:
+          'Production MongoDB connections must use TLS with certificate and hostname validation',
       });
     }
     if (config.NODE_ENV === 'production' && config.JWT_ACCESS_SECRET.length < 32) {

@@ -1,5 +1,13 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync } from 'node:fs';
+import {
+  copyFileSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from 'node:fs';
 import { execFileSync, fork, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
 import { createRequire } from 'node:module';
@@ -25,6 +33,11 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { GenericContainer, Wait, type StartedTestContainer } from 'testcontainers';
 import { MongoClient, type Db, type Document } from 'mongodb';
 import { BSON } from 'mongodb';
+import {
+  createRecoveryArtifact,
+  readVerifiedRecoveryArtifact,
+  recordRecoveryVerification,
+} from '../src/recovery/disposable-recovery-artifact';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import type { ConfigService } from '../dist/config/config.service';
 import type { TenantMongoClientFactory } from '../dist/tenant/tenant-mongo-client.manager';
@@ -4486,6 +4499,29 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
   });
 
   it('enforces tenant boundaries in HTTP, repository, and target resolution', async () => {
+    const redirectedCreate = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: {
+        ...patientPayload('PAT-50-SPOOF'),
+        tenantId: tenantB.id,
+        targetId: targetB.id,
+        databaseName: targetB.databaseName,
+        connectionReference: targetB.connectionReference,
+      },
+    });
+    expect(redirectedCreate.statusCode).toBe(400);
+    expect(JSON.stringify(redirectedCreate.json())).not.toContain(targetB.databaseName);
+    for (const target of [targetA, targetB]) {
+      expect(
+        await mongoAdminClient!
+          .db(target.databaseName)
+          .collection(PATIENT_COLLECTION)
+          .findOne({ patientNumber: 'PAT-50-SPOOF' }),
+      ).toBeNull();
+    }
+
     const patientAResponse = await getApplication().inject({
       method: 'POST',
       url: `${tenantRoot(tenantA)}/patients`,
@@ -4502,6 +4538,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(patientBResponse.statusCode).toBe(201);
     const patientA = patientAResponse.json<{ id: string }>();
     const patientB = patientBResponse.json<{ id: string }>();
+    expect(
+      await mongoAdminClient!
+        .db(targetA.databaseName)
+        .collection(PATIENT_COLLECTION)
+        .findOne({ _id: patientA.id, _tenantId: tenantA.id }),
+    ).not.toBeNull();
+    expect(
+      await mongoAdminClient!
+        .db(targetB.databaseName)
+        .collection(PATIENT_COLLECTION)
+        .findOne({ _id: patientA.id, _tenantId: tenantA.id }),
+    ).toBeNull();
 
     const crossTenantRead = await getApplication().inject({
       method: 'GET',
@@ -4599,6 +4647,66 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await restorePrimaryTargetA();
     }
   });
+
+  it('fails closed on a real MongoDB activation check and serializes concurrent primary changes', async () => {
+    const prisma = getApplication().get(PrismaService);
+    const registry = getApplication().get(TenantStorageRegistryService);
+    const activation = getApplication().get(TenantStorageActivationService);
+    const secondaryDatabase = `phase50_${RUN_ID}`;
+    const secondary = await registry.registerTarget(tenantA.id, secondaryDatabase);
+
+    try {
+      await mongoAdminClient!
+        .db(secondaryDatabase)
+        .collection(PATIENT_COLLECTION)
+        .insertMany([
+          { _id: 'duplicate-one', _tenantId: tenantA.id, patientNumber: 'DUPLICATE' },
+          { _id: 'duplicate-two', _tenantId: tenantA.id, patientNumber: 'DUPLICATE' },
+        ]);
+      await expect(
+        activation.setTargetStatus(tenantA.id, secondary.id, TenantStorageTargetStatus.ACTIVE),
+      ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+
+      expect(
+        await prisma.tenantStorageTarget.findUnique({ where: { id: secondary.id } }),
+      ).toMatchObject({ status: TenantStorageTargetStatus.INACTIVE, isPrimary: false });
+      await mongoAdminClient!.db(secondaryDatabase).dropDatabase();
+
+      await expect(
+        activation.setTargetStatus(tenantA.id, secondary.id, TenantStorageTargetStatus.ACTIVE),
+      ).resolves.toMatchObject({ status: TenantStorageTargetStatus.ACTIVE, isPrimary: false });
+      const primaryChanges = await Promise.all([
+        activation.setPrimaryTarget(tenantA.id, targetA.id),
+        activation.setPrimaryTarget(tenantA.id, secondary.id),
+      ]);
+      expect(primaryChanges.every(Boolean)).toBe(true);
+
+      const activePrimaries = await prisma.tenantStorageTarget.findMany({
+        where: {
+          tenantId: tenantA.id,
+          status: TenantStorageTargetStatus.ACTIVE,
+          isPrimary: true,
+        },
+      });
+      expect(activePrimaries).toHaveLength(1);
+      expect([targetA.id, secondary.id]).toContain(activePrimaries[0]?.id);
+      await expect(registry.getPlacements(contextA)).resolves.toEqual([
+        { placementId: activePrimaries[0]!.id },
+      ]);
+    } finally {
+      await activation.setPrimaryTarget(tenantA.id, targetA.id).catch(() => undefined);
+      await activation
+        .setTargetStatus(tenantA.id, secondary.id, TenantStorageTargetStatus.INACTIVE)
+        .catch(() => undefined);
+      await prisma.tenantStorageTarget
+        .delete({ where: { id: secondary.id } })
+        .catch(() => undefined);
+      await mongoAdminClient!
+        .db(secondaryDatabase)
+        .dropDatabase()
+        .catch(() => undefined);
+    }
+  }, 30_000);
 
   it('fails closed during a real disposable MySQL outage and recovers after connectivity returns', async () => {
     const prisma = getApplication().get(PrismaService) as InstanceType<typeof PrismaClient>;
@@ -4706,6 +4814,279 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       ).statusCode,
     ).toBe(200);
   });
+
+  it('backs up and restores central MySQL plus every registered tenant MongoDB target', async () => {
+    if (!mysqlContainer || !mongoContainer || !mongoAdminClient) {
+      throw new Error('Disposable database containers are unavailable');
+    }
+    const rootDirectory = mkdtempSync(join(tmpdir(), 'thanarah-phase49-recovery-'));
+    const encryptionKey = randomBytes(32);
+    const signingKey = randomBytes(32);
+    const backupMarker = `PHASE49-${RUN_ID}`;
+    const restoreDatabase = `restore_${randomUUID().replaceAll('-', '').slice(0, 20)}`;
+    const restoredMongoNames = new Map<string, string>();
+    const mysqlUtilityContainers: StartedTestContainer[] = [];
+    let restoredPrisma: InstanceType<typeof PrismaClient> | undefined;
+
+    try {
+      await mongoAdminClient
+        .db(targetA.databaseName)
+        .collection('phase49_recovery_probe')
+        .insertOne({ marker: backupMarker, tenantId: tenantA.id });
+
+      const capturedAt = new Date().toISOString();
+      const sourcePrisma = getApplication().get(PrismaService);
+      const sourceVersionRows = await sourcePrisma.$queryRawUnsafe<
+        Array<{ version: string; databaseName: string }>
+      >('SELECT VERSION() AS version, DATABASE() AS databaseName');
+      const dumpPath = '/tmp/phase49-central.sql';
+      const dumpUtility = await new GenericContainer(MYSQL_IMAGE)
+        .withEntrypoint(['/bin/sh'])
+        .withCommand([
+          '-c',
+          `mysqldump --host=host.docker.internal --port=${mysqlContainer.getMappedPort(3306)} --user=root --single-transaction --routines --triggers --events --no-tablespaces '${TEST_MYSQL_DATABASE}' > '${dumpPath}' && echo PHASE49_DUMP_READY && sleep 120`,
+        ])
+        .withEnvironment({ MYSQL_PWD: mysqlRootPassword })
+        .withExtraHosts([{ host: 'host.docker.internal', ipAddress: 'host-gateway' }])
+        .withWaitStrategy(Wait.forLogMessage(/PHASE49_DUMP_READY/u, 1))
+        .withStartupTimeout(60_000)
+        .start();
+      mysqlUtilityContainers.push(dumpUtility);
+      const dumpArchiveChunks: Buffer[] = [];
+      for await (const chunk of await dumpUtility.copyArchiveFromContainer(dumpPath)) {
+        dumpArchiveChunks.push(Buffer.from(chunk));
+      }
+      const sqlArtifact = execFileSync('tar', ['-xOf', '-'], {
+        input: Buffer.concat(dumpArchiveChunks),
+        maxBuffer: 512 * 1024 * 1024,
+      });
+      expect(sqlArtifact.byteLength).toBeGreaterThan(0);
+
+      const tenantSnapshots: Array<{
+        source: {
+          kind: 'tenant-mongodb';
+          sourceIdentity: string;
+          capturedAt: string;
+          tenantId: string;
+          targetId: string;
+          connectionReference: string;
+          databaseName: string;
+          targetStatus: string;
+          isPrimary: boolean;
+          result: 'captured';
+          bytes: number;
+          sha256: string;
+        };
+        payload: Buffer;
+      }> = [];
+      for (const target of [targetA, targetB]) {
+        const database = mongoAdminClient.db(target.databaseName);
+        const collections = await database.listCollections({}, { nameOnly: false }).toArray();
+        const collectionSnapshots = [];
+        for (const info of collections.filter(({ name }) => !name.startsWith('system.'))) {
+          const collection = database.collection(info.name);
+          const documents = await collection.find({}).toArray();
+          const indexes = await collection.listIndexes().toArray();
+          collectionSnapshots.push({
+            name: info.name,
+            options: info.options ?? {},
+            documents: documents.map((document) => BSON.serialize(document).toString('base64')),
+            indexes: indexes.filter(({ name }) => name !== '_id_'),
+          });
+        }
+        const payload = Buffer.from(JSON.stringify({ collections: collectionSnapshots }));
+        tenantSnapshots.push({
+          source: {
+            kind: 'tenant-mongodb',
+            sourceIdentity: `mongodb:${target.databaseName}`,
+            capturedAt: new Date().toISOString(),
+            tenantId: target.tenantId,
+            targetId: target.id,
+            connectionReference: target.connectionReference,
+            databaseName: target.databaseName,
+            targetStatus: target.status,
+            isPrimary: target.isPrimary,
+            result: 'captured',
+            bytes: payload.byteLength,
+            sha256: createHash('sha256').update(payload).digest('hex'),
+          },
+          payload,
+        });
+      }
+
+      const centralSource = {
+        kind: 'central-mysql' as const,
+        sourceIdentity: `mysql:${sourceVersionRows[0]?.databaseName ?? 'unknown'}`,
+        capturedAt,
+        result: 'captured' as const,
+        bytes: sqlArtifact.byteLength,
+        sha256: createHash('sha256').update(sqlArtifact).digest('hex'),
+      };
+      const created = await createRecoveryArtifact({
+        rootDirectory,
+        encryptionKey,
+        manifestSigningKey: signingKey,
+        operatorOwner: 'Phase 49 disposable integration test',
+        central: { source: centralSource, payload: sqlArtifact },
+        tenants: tenantSnapshots,
+      });
+      expect(created.manifest.state).toBe('complete');
+      expect(created.manifest.sources).toHaveLength(3);
+      const manifestText = JSON.stringify(created.manifest);
+      expect(manifestText).not.toContain(backupMarker);
+      expect(manifestText).not.toContain(mysqlUri);
+      expect(manifestText).not.toContain(mongoUri);
+      expect(manifestText).not.toContain(mysqlPassword);
+      expect(manifestText).not.toContain(mongoPassword);
+
+      const bundle = await readVerifiedRecoveryArtifact(
+        rootDirectory,
+        created.backupId,
+        encryptionKey,
+        signingKey,
+      );
+      expect(bundle.payload.central.equals(sqlArtifact)).toBe(true);
+      expect(bundle.payload.tenants).toHaveLength(2);
+
+      const sqlPath = `/tmp/${created.backupId}.sql`;
+      const restoreUtility = await new GenericContainer(MYSQL_IMAGE)
+        .withEntrypoint(['/bin/sh'])
+        .withCommand([
+          '-c',
+          `mysql --host=host.docker.internal --port=${mysqlContainer.getMappedPort(3306)} --user=root -e "CREATE DATABASE \\\`${restoreDatabase}\\\`" && mysql --host=host.docker.internal --port=${mysqlContainer.getMappedPort(3306)} --user=root '${restoreDatabase}' < '${sqlPath}' && echo PHASE49_RESTORE_READY && sleep 120`,
+        ])
+        .withEnvironment({ MYSQL_PWD: mysqlRootPassword })
+        .withExtraHosts([{ host: 'host.docker.internal', ipAddress: 'host-gateway' }])
+        .withCopyContentToContainer([
+          { target: sqlPath, content: bundle.payload.central.toString('utf8') },
+        ])
+        .withWaitStrategy(Wait.forLogMessage(/PHASE49_RESTORE_READY/u, 1))
+        .withStartupTimeout(60_000)
+        .start();
+      mysqlUtilityContainers.push(restoreUtility);
+
+      const restoreUrl = new URL(mysqlRootUri);
+      restoreUrl.pathname = `/${restoreDatabase}`;
+      restoredPrisma = new PrismaClient({ datasources: { db: { url: restoreUrl.toString() } } });
+      await restoredPrisma.$connect();
+      const restoredTargets = await restoredPrisma.tenantStorageTarget.findMany({
+        where: { id: { in: [targetA.id, targetB.id] } },
+      });
+      expect(restoredTargets).toHaveLength(2);
+
+      for (const [index, tenantArtifact] of bundle.payload.tenants.entries()) {
+        const restoredName = `recovery_${created.backupId.replaceAll('-', '').slice(0, 20)}_${index}`;
+        restoredMongoNames.set(tenantArtifact.source.databaseName!, restoredName);
+        const restoredDatabase = mongoAdminClient.db(restoredName);
+        const snapshot = JSON.parse(tenantArtifact.payload.toString('utf8')) as {
+          collections: Array<{
+            name: string;
+            options: Record<string, unknown>;
+            documents: string[];
+            indexes: Array<Record<string, unknown>>;
+          }>;
+        };
+        expect(snapshot.collections.length).toBeGreaterThan(0);
+        for (const collectionSnapshot of snapshot.collections) {
+          const options = Object.fromEntries(
+            Object.entries(collectionSnapshot.options).filter(([key]) =>
+              [
+                'capped',
+                'size',
+                'max',
+                'validator',
+                'validationLevel',
+                'validationAction',
+              ].includes(key),
+            ),
+          );
+          const collection = await restoredDatabase.createCollection(
+            collectionSnapshot.name,
+            options,
+          );
+          const documents = collectionSnapshot.documents.map((document) =>
+            BSON.deserialize(Buffer.from(document, 'base64')),
+          );
+          if (documents.length > 0) await collection.insertMany(documents);
+          for (const indexSpec of collectionSnapshot.indexes) {
+            const indexOptions = Object.fromEntries(
+              Object.entries(indexSpec).filter(
+                ([key]) => !['key', 'name', 'ns', 'v'].includes(key),
+              ),
+            );
+            await collection.createIndex(indexSpec.key as Record<string, 1 | -1>, {
+              ...(indexOptions as Record<string, unknown>),
+              name: String(indexSpec.name),
+            });
+          }
+          expect(await collection.countDocuments()).toBe(documents.length);
+          const restoredIndexes = await collection.listIndexes().toArray();
+          expect(restoredIndexes.map(({ name }) => name).sort()).toEqual(
+            ['_id_', ...collectionSnapshot.indexes.map(({ name }) => String(name))].sort(),
+          );
+        }
+      }
+
+      for (const target of [targetA, targetB]) {
+        const restoredName = restoredMongoNames.get(target.databaseName);
+        if (!restoredName) throw new Error('A registered target has no restored mapping');
+        await restoredPrisma.tenantStorageTarget.update({
+          where: { id: target.id },
+          data: { databaseName: restoredName },
+        });
+      }
+      const restoredRegistry = new TenantStorageRegistryService(restoredPrisma);
+      const placementsA = await restoredRegistry.getPlacements(contextA);
+      expect(placementsA).toHaveLength(1);
+      const restoredTargetA = await restoredRegistry.findActivePrimaryTarget(
+        contextA,
+        placementsA[0]!.placementId,
+      );
+      expect(restoredTargetA?.databaseName).toBe(restoredMongoNames.get(targetA.databaseName));
+      expect(await restoredRegistry.findActivePrimaryTarget(contextB, targetA.id)).toBeNull();
+      const restoredMarker = await mongoAdminClient
+        .db(restoredTargetA!.databaseName)
+        .collection('phase49_recovery_probe')
+        .findOne({ marker: backupMarker, tenantId: tenantA.id });
+      expect(restoredMarker).toMatchObject({ marker: backupMarker, tenantId: tenantA.id });
+
+      const verified = await recordRecoveryVerification(
+        rootDirectory,
+        created.backupId,
+        signingKey,
+        true,
+        [
+          'central MySQL dump restored into a separate disposable database',
+          'all registered tenant databases restored with indexes',
+          'restored tenant mapping resolved and cross-tenant lookup denied',
+        ],
+      );
+      expect(verified.state).toBe('verified');
+      expect(verified.verification).toBe('passed');
+
+      const encryptedPath = join(rootDirectory, `${created.backupId}.backup.enc`);
+      const encryptedArtifact = readFileSync(encryptedPath);
+      encryptedArtifact[encryptedArtifact.length - 1] ^= 0xff;
+      writeFileSync(encryptedPath, encryptedArtifact);
+      await expect(
+        readVerifiedRecoveryArtifact(rootDirectory, created.backupId, encryptionKey, signingKey),
+      ).rejects.toThrow('Recovery artifact integrity verification failed');
+
+      const versions = await mongoAdminClient.db('admin').command({ buildInfo: 1 });
+      expect(versions.version).toBe('7.0.17');
+      expect(sourceVersionRows[0]?.version).toContain('8.0.41');
+    } finally {
+      await restoredPrisma?.$disconnect();
+      await Promise.allSettled(mysqlUtilityContainers.map((container) => container.stop()));
+      for (const databaseName of restoredMongoNames.values()) {
+        await mongoAdminClient
+          .db(databaseName)
+          .dropDatabase()
+          .catch(() => undefined);
+      }
+      rmSync(rootDirectory, { recursive: true, force: true });
+    }
+  }, 90_000);
 
   it('returns unavailable for real tenant MongoDB HTTP reads and writes, then recovers', async () => {
     const admin = mongoAdminClient?.db('admin');
