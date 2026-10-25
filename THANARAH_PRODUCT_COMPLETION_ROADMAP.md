@@ -69,7 +69,7 @@ The proposed first release below concentrates on the existing clinic workflows a
 | CRM, leads, campaigns, marketing automation | **Not implemented** | No adequate implementation evidence found. No initial-release requirement located. |
 | Clinic website builder, domain management, online booking | **Not implemented** | Public root page is a “coming soon” landing page (`public/index.html`); no website-builder, tenant-site, domain, or public booking API/workflow was found. |
 | Analytics and operational dashboards/reports | **Not implemented** | No analytics/reporting module or dashboard workflow was found. The existing API and audit metadata are not by themselves a reporting product. |
-| Health and readiness endpoints, API documentation | **Backend only** | `src/app.controller.ts`, `src/main.ts`; `/health`, `/ready`, and Swagger setup. Phase 51 verified local `/health` 200 and sanitized `/ready` 503 without configured databases. Production monitoring, alerts, and deployment operations remain unverified. |
+| Health and readiness endpoints, API documentation | **Backend only** | `src/app.controller.ts`, `src/tenant/tenant-storage-readiness.service.ts`, `src/main.ts`; `/health` is liveness and `/ready` requires both central database and configured tenant-storage provider health. Per-target index readiness remains an activation/use-time check, not a global probe. HTTP and disposable integration tests cover unavailable dependencies. Production monitoring, alerts, and deployment operations remain unverified. |
 | Backup/recovery operations | **Blocked by external decision** | `src/recovery/disposable-recovery-artifact.ts`, `PHASE_49_DISPOSABLE_RECOVERY_REPORT.md`, `TENANT_STORAGE_RECOVERY_SPECIFICATION.md`, and Phase 50 describe disposable backup/restore evidence, not scheduled isolated production backups or approved RPO/RTO. |
 | AI/RAG, voice receptionist and telephony | **Optional / deferred** | `replit.md` labels the Thanarah AI Voice Receptionist as future/planned, not implemented; no provider selected and no production API/data models are authorized. Do not add telephony dependencies or workflows in this release phase. |
 
@@ -154,7 +154,7 @@ Sequence is ordered by prerequisite and risk. Backend APIs that already exist sh
 
 - Backend/Infrastructure: implement and rehearse production backup, restore, isolation, key custody, alerting, and guarded activation for central MySQL and all registered tenant stores.
 - Backend/Security: resolve outstanding dependency advisories. Prisma 7, Zod 4, Swagger 12, and Vitest upgrades need compatibility work; the Vitest npm resolver failure must be diagnosed without bypass flags.
-- Backend/Infrastructure: make readiness and monitoring represent the dependencies required by the approved deployment design without leaking sensitive configuration.
+- Backend/Infrastructure: verify readiness and monitoring against the approved deployment design without leaking sensitive configuration. Current `/ready` already checks central database and tenant-storage provider health; it does not enumerate every tenant target.
 - Security/Frontend: configure a narrow trusted-origin allowlist and verify credentialed CORS in staging; preserve fail-closed defaults.
 - Operations: verify exact production-like deployment, migrations, logs, monitoring, incident response, and safe application rollback in approved staging.
 

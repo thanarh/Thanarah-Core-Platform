@@ -64,7 +64,9 @@ Thanarah uses two permanent, distinct persistence systems:
   development, or `TENANT_STORAGE_PROVIDER=mongodb` with
   `TENANT_STORAGE_MONGO_URI` supplied through the runtime secret manager and an
   active central registry target. `disabled` is the default. `/health` remains
-  a liveness check and `/ready` checks only the central database.
+  a liveness check and `/ready` checks the central database and configured
+  tenant-storage provider health. It does not probe every tenant target; each
+  target must pass its own activation and index-readiness checks before use.
 
 The central Patient Prisma model/table is retained as legacy schema to protect
 existing records, but the Patient application repository no longer queries it.

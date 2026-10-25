@@ -23,7 +23,7 @@ function config(overrides: Partial<ConfigService> = {}): ConfigService {
   } as ConfigService;
 }
 
-describe('central database production readiness', () => {
+describe('application dependency readiness', () => {
   let app: NestFastifyApplication | undefined;
 
   afterEach(async () => {
@@ -206,6 +206,46 @@ describe('central database production readiness', () => {
     expect(serialized).not.toContain('Prisma');
     expect(liveness.statusCode).toBe(200);
     expect(incorrectlyPrefixed.statusCode).toBe(404);
+  });
+
+  it('returns a sanitized 503 when tenant storage is unavailable and keeps liveness healthy', async () => {
+    const prisma = {
+      isReady: vi.fn().mockResolvedValue(true),
+    };
+    const tenantStorage = {
+      checkReadiness: vi.fn().mockResolvedValue(false),
+    };
+    const module = await Test.createTestingModule({
+      controllers: [AppController],
+      providers: [
+        { provide: PrismaService, useValue: prisma },
+        { provide: TenantStorageReadinessService, useValue: tenantStorage },
+      ],
+    }).compile();
+    app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
+    app.useGlobalFilters(new GlobalExceptionFilter());
+    app.setGlobalPrefix('api', { exclude: ['health', 'ready'] });
+    await app.init();
+    await app.getHttpAdapter().getInstance().ready();
+
+    const response = await app.inject({ method: 'GET', url: '/ready' });
+    const liveness = await app.inject({ method: 'GET', url: '/health' });
+    const body = response.json();
+    const serialized = JSON.stringify(body);
+
+    expect(prisma.isReady).toHaveBeenCalledOnce();
+    expect(tenantStorage.checkReadiness).toHaveBeenCalledOnce();
+    expect(response.statusCode).toBe(503);
+    expect(body).toMatchObject({
+      success: false,
+      error: {
+        code: 'TENANT_STORAGE_UNAVAILABLE',
+        message: 'Required tenant storage is unavailable',
+      },
+    });
+    expect(serialized).not.toContain('mongodb://');
+    expect(serialized).not.toContain('password');
+    expect(liveness.statusCode).toBe(200);
   });
 
   it('keeps liveness independent of readiness', async () => {
