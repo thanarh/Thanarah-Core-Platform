@@ -13,7 +13,7 @@ function assertDevelopmentDatabase(databaseUrl) {
     throw new Error('MYSQL_DATABASE_URL is not a valid database URL.');
   }
 
-  if (!['mysql:', 'mariadb:'].includes(parsed.protocol)) {
+  if (parsed.protocol !== 'mysql:') {
     throw new Error('The development bootstrap expects the configured MySQL database.');
   }
 
