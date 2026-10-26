@@ -471,6 +471,16 @@ Replit development must never connect to the production cPanel database.
 Production database configuration belongs exclusively to the cPanel
 environment.
 
+To create the first platform administrator on a separate development database,
+set `NODE_ENV=development` and configure `DATABASE_URL` to a MySQL database
+whose name clearly includes `dev`, `development`, `test`, `sandbox`, or `local`.
+After applying the existing development migrations, run
+`npm run bootstrap:platform-admin:dev`. The command requires typing
+`CREATE DEV SUPER_ADMIN`, then asks for a password twice without echoing it.
+It creates `admin@thanarah.com` with `SUPER_ADMIN` only if the account does not
+already exist and the role has every platform permission. It does not run
+migrations or modify an existing account. Never use a production database URL.
+
 ---
 
 ## 📁 هيكل المشروع — Project Structure
