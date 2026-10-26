@@ -60,13 +60,12 @@ export const envSchema = z
     NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
     /**
-     * MySQL / MariaDB connection string.
-     * - Production (cPanel): set in the Node.js app environment as
-     *   mysql://USER:PASS@localhost:3306/thanarah_platform
-     * - Replit development: left unset; the application starts without a
-     *   live database connection and PrismaService.isConnected() returns false.
+     * MySQL / MariaDB connection string for staging and production.
+     * Replit manages DATABASE_URL for its PostgreSQL database, so development
+     * MySQL connections use MYSQL_DATABASE_URL instead.
      */
     DATABASE_URL: z.string().default(''),
+    MYSQL_DATABASE_URL: z.string().default(''),
     TENANT_STORAGE_PROVIDER: z.enum(['disabled', 'memory', 'mongodb']).default('disabled'),
     TENANT_STORAGE_MONGO_URI: z.string().default(''),
     JWT_ACCESS_SECRET: z.string().default(''),

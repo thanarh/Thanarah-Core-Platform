@@ -10,7 +10,7 @@ function assertDevelopmentDatabase(databaseUrl) {
   try {
     parsed = new URL(databaseUrl);
   } catch {
-    throw new Error('DATABASE_URL is not a valid database URL.');
+    throw new Error('MYSQL_DATABASE_URL is not a valid database URL.');
   }
 
   if (!['mysql:', 'mariadb:'].includes(parsed.protocol)) {
@@ -34,16 +34,18 @@ async function main() {
   if (process.env.NODE_ENV !== 'development') {
     throw new Error('Blocked: NODE_ENV must be exactly development.');
   }
-  if (!process.env.DATABASE_URL) {
-    throw new Error('Blocked: DATABASE_URL is not configured.');
+  if (!process.env.MYSQL_DATABASE_URL) {
+    throw new Error('Blocked: MYSQL_DATABASE_URL is not configured.');
   }
   if (!process.env.BOOTSTRAP_PASSWORD || process.env.BOOTSTRAP_PASSWORD.length < 14) {
     throw new Error('Blocked: a password of at least 14 characters is required.');
   }
 
-  assertDevelopmentDatabase(process.env.DATABASE_URL);
+  assertDevelopmentDatabase(process.env.MYSQL_DATABASE_URL);
 
-  const prisma = new PrismaClient();
+  const prisma = new PrismaClient({
+    datasources: { db: { url: process.env.MYSQL_DATABASE_URL } },
+  });
   try {
     try {
       await prisma.$connect();

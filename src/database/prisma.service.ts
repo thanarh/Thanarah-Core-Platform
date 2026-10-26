@@ -6,25 +6,26 @@ import { ConfigService } from '../config/config.service';
  * PrismaService wraps PrismaClient for NestJS lifecycle management.
  *
  * Connection behaviour:
- *  - Production (cPanel): DATABASE_URL is set in the Node.js app environment;
- *    the client connects normally on module init.
- *  - Replit development: DATABASE_URL may be absent. The service stays
- *    operational with isConnected() returning false so non-database development
- *    workflows remain usable.
+ *  - Production/staging use DATABASE_URL.
+ *  - Development uses MYSQL_DATABASE_URL so Replit's managed PostgreSQL
+ *    DATABASE_URL is never mistaken for this MySQL datasource.
  */
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger(PrismaService.name);
   private _connected = false;
+  private readonly config: ConfigService;
 
-  constructor(private readonly config: ConfigService) {
-    super();
+  constructor(config: ConfigService) {
+    const databaseUrl = config.databaseUrl;
+    super(databaseUrl ? { datasources: { db: { url: databaseUrl } } } : {});
+    this.config = config;
   }
 
   async onModuleInit(): Promise<void> {
     if (!this.config.databaseUrl) {
       this.logger.warn(
-        'DATABASE_URL is not set — running without a database connection (development mode)',
+        'Development MySQL connection is not configured — running without a database connection',
       );
       return;
     }

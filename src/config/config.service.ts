@@ -15,6 +15,9 @@ export class ConfigService {
   }
 
   get databaseUrl(): string {
+    if (this.isDevelopment) {
+      return this.config.get('MYSQL_DATABASE_URL', { infer: true });
+    }
     return this.config.get('DATABASE_URL', { infer: true });
   }
 

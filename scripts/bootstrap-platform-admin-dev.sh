@@ -6,8 +6,8 @@ if [[ "${NODE_ENV:-}" != "development" ]]; then
   exit 1
 fi
 
-if [[ -z "${DATABASE_URL:-}" ]]; then
-  echo "Blocked: DATABASE_URL is not configured." >&2
+if [[ -z "${MYSQL_DATABASE_URL:-}" ]]; then
+  echo "Blocked: MYSQL_DATABASE_URL is not configured." >&2
   exit 1
 fi
 

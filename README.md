@@ -449,8 +449,9 @@ npm install
 
 # Configure environment variables
 cp .env.example .env
-# For local/Replit development, leave DATABASE_URL empty unless using an
-# approved non-production MySQL/MariaDB database.
+# For Replit development, DATABASE_URL is managed by Replit for PostgreSQL.
+# This MySQL/MariaDB project uses MYSQL_DATABASE_URL only for an approved
+# non-production MySQL/MariaDB database.
 
 # Build and run
 npx nest build && node dist/main
@@ -460,6 +461,7 @@ npx nest build && node dist/main
 
 | Variable | Description | Required |
 |----------|-------------|----------|
+| `MYSQL_DATABASE_URL` | Separate development MySQL/MariaDB connection; stored as a Replit Secret | Development |
 | `DATABASE_URL` | Central MySQL/MariaDB connection; production value belongs only in cPanel | Production |
 | `JWT_ACCESS_SECRET` | Access-token signing secret (minimum 32 characters in production) | ✅ |
 | `AUTH_ACCESS_TOKEN_TTL_MINUTES` | Access-token lifetime in minutes (default: 15) | — |
@@ -472,7 +474,7 @@ Production database configuration belongs exclusively to the cPanel
 environment.
 
 To create the first platform administrator on a separate development database,
-set `NODE_ENV=development` and configure `DATABASE_URL` to a MySQL database
+set `NODE_ENV=development` and configure `MYSQL_DATABASE_URL` to a MySQL database
 whose name clearly includes `dev`, `development`, `test`, `sandbox`, or `local`.
 After applying the existing development migrations, run
 `npm run bootstrap:platform-admin:dev`. The command requires typing
