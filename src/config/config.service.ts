@@ -1,10 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import type { EnvConfig } from './env.schema';
-import {
-  getDevelopmentMysqlUrlStatus,
-  isSafeDevelopmentMysqlUrl,
-} from './database-url-policy';
+import { getDevelopmentMysqlUrlStatus, isSafeDevelopmentMysqlUrl } from './database-url-policy';
 
 @Injectable()
 export class ConfigService {
@@ -20,9 +17,9 @@ export class ConfigService {
 
   get databaseUrl(): string {
     if (this.isDevelopment) {
-      return isSafeDevelopmentMysqlUrl(this.developmentMysqlDatabaseUrl) ?
-        this.developmentMysqlDatabaseUrl :
-        '';
+      return isSafeDevelopmentMysqlUrl(this.developmentMysqlDatabaseUrl)
+        ? this.developmentMysqlDatabaseUrl
+        : '';
     }
     return this.config.get('DATABASE_URL', { infer: true });
   }

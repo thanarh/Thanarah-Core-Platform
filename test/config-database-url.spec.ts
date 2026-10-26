@@ -47,8 +47,8 @@ describe('central database URL selection', () => {
     expect(getDevelopmentMysqlUrlStatus('mysql://db.example.test/thanarah_platform')).toBe(
       'database-name-not-development',
     );
-    expect(
-      getDevelopmentMysqlUrlStatus('mysql://prod-db.example.test/thanarah_platform_dev'),
-    ).toBe('production-host');
+    expect(getDevelopmentMysqlUrlStatus('mysql://prod-db.example.test/thanarah_platform_dev')).toBe(
+      'production-host',
+    );
   });
 });

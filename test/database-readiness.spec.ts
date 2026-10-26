@@ -18,6 +18,7 @@ const productionEnvironment = {
 function config(overrides: Partial<ConfigService> = {}): ConfigService {
   return {
     databaseUrl: '',
+    developmentMysqlUrlStatus: 'missing',
     isProduction: false,
     ...overrides,
   } as ConfigService;
