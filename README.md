@@ -364,6 +364,21 @@ Tenant staff profiles are documented separately below.
 The entitlement runtime is implemented separately, but no existing business
 route is gated by it.
 
+## Tenant Membership Directory
+
+The authenticated `/team-setup/` workspace includes a read-only membership
+directory backed by `GET /api/v1/tenants/:tenantId/memberships`. It requires an
+active trusted tenant context and `tenant.members.read`, supports the existing
+status and pagination filters, and returns membership state, display name, and
+platform-account state only. It does not expose email addresses, credentials, or
+security/session details.
+
+The directory is not a tenant membership lifecycle API. Invitation, activation,
+suspension, and removal remain behind the existing platform-admin permission
+(`platform.manage`); the tenant UI displays membership state without offering
+those mutations. Existing owner-role protections and tenant-scoped role/staff
+authorization continue to be enforced by the server.
+
 ## Tenant Staff Foundation
 
 Tenant staff profiles are central-platform metadata that link an existing

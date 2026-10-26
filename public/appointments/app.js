@@ -410,9 +410,9 @@
     const epoch = state.workspaceEpoch;
     const requestId = ++state.timeZoneRequestId;
     const zones = await fetchEffectiveTimeZones([key]);
-    if (epoch !== state.workspaceEpoch) throw new Error('تغيّرت مساحة العمل أثناء تحميل المنطقة الزمنية.');
-    if (requestId !== state.timeZoneRequestId && state.timeZones[key])
-      return state.timeZones[key];
+    if (epoch !== state.workspaceEpoch)
+      throw new Error('تغيّرت مساحة العمل أثناء تحميل المنطقة الزمنية.');
+    if (requestId !== state.timeZoneRequestId && state.timeZones[key]) return state.timeZones[key];
     const result = zones.find((item) => String(item.facilityId) === key);
     if (!result) throw new Error('تعذّر التحقق من المنطقة الزمنية لهذه المنشأة.');
     state.timeZones = { ...state.timeZones, [key]: result };
@@ -691,6 +691,7 @@
     const showAppointments = permission(PERMISSIONS.appointmentsRead);
     const showPolicy = permission(PERMISSIONS.policyManage);
     const showEncounters = permission('tenant.encounters.read');
+    const showTeamSetup = permission('tenant.members.read') || permission('tenant.staff.read');
     return `
       <div class="app-frame">
         <aside class="sidebar" aria-label="التنقل الرئيسي">
@@ -702,6 +703,7 @@
           <nav class="side-nav">
             ${showAppointments ? `<button class="nav-item ${state.view === 'appointments' ? 'active' : ''}" type="button" data-action="view-appointments" ${state.view === 'appointments' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('calendar')}</span><span>المواعيد</span></button>` : ''}
             ${showEncounters ? `<a class="nav-item" href="/encounters/" style="text-decoration:none"><span class="nav-icon">${icon('calendar')}</span><span>السجلات الطبية</span></a>` : ''}
+            ${showTeamSetup ? `<a class="nav-item" href="/team-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الأعضاء والفريق</span></a>` : ''}
             ${showPolicy ? `<button class="nav-item ${state.view === 'policy' ? 'active' : ''}" type="button" data-action="view-policy" ${state.view === 'policy' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('policy')}</span><span>سياسة الجدولة</span></button>` : ''}
           </nav>
           <div class="side-bottom">
@@ -1614,7 +1616,8 @@
             return;
           }
           state.timeZoneError = error;
-          if (dateNote) dateNote.textContent = 'تعذّر التحقق من المنطقة الزمنية؛ لا تطبق مرشح التاريخ الآن.';
+          if (dateNote)
+            dateNote.textContent = 'تعذّر التحقق من المنطقة الزمنية؛ لا تطبق مرشح التاريخ الآن.';
         }
       }
     }

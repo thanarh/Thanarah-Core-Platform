@@ -450,10 +450,9 @@
     },
 
     activatePatient(tenantId, patientId) {
-      return request(
-        tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}/activate`),
-        { method: 'POST' },
-      );
+      return request(tenantPath(tenantId, `/patients/${encodeURIComponent(patientId)}/activate`), {
+        method: 'POST',
+      });
     },
 
     deactivatePatient(tenantId, patientId) {
@@ -536,6 +535,127 @@
           `/facilities/${encodeURIComponent(facilityId)}/branches/${encodeURIComponent(branchId)}/${action}`,
         ),
         { method: 'POST' },
+      );
+    },
+
+    listTenantMemberships(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/memberships'), listOptions(options)));
+    },
+
+    listTenantRoles(tenantId) {
+      return request(tenantPath(tenantId, '/roles'));
+    },
+
+    listTenantMembershipRoles(tenantId, membershipId) {
+      return request(
+        tenantPath(tenantId, `/memberships/${encodeURIComponent(membershipId)}/roles`),
+      );
+    },
+
+    assignTenantMembershipRole(tenantId, membershipId, roleId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/memberships/${encodeURIComponent(membershipId)}/roles/${encodeURIComponent(roleId)}`,
+        ),
+        { method: 'POST' },
+      );
+    },
+
+    removeTenantMembershipRole(tenantId, membershipId, roleId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/memberships/${encodeURIComponent(membershipId)}/roles/${encodeURIComponent(roleId)}`,
+        ),
+        { method: 'DELETE' },
+      );
+    },
+
+    listTenantStaff(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/staff'), listOptions(options)));
+    },
+
+    createTenantStaff(tenantId, input) {
+      return request(tenantPath(tenantId, '/staff'), { method: 'POST', body: input });
+    },
+
+    updateTenantStaff(tenantId, staffId, input) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeTenantStaffStatus(tenantId, staffId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid staff lifecycle action is required.');
+      }
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/${action}`), {
+        method: 'POST',
+      });
+    },
+
+    listStaffRoles(tenantId, staffId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/roles`));
+    },
+
+    assignStaffRole(tenantId, staffId, roleId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/roles`), {
+        method: 'POST',
+        body: { roleId },
+      });
+    },
+
+    removeStaffRole(tenantId, staffId, roleId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/staff/${encodeURIComponent(staffId)}/roles/${encodeURIComponent(roleId)}`,
+        ),
+        { method: 'DELETE' },
+      );
+    },
+
+    listStaffFacilityScope(tenantId, staffId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/facilities`));
+    },
+
+    assignStaffFacilityScope(tenantId, staffId, facilityId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/facilities`), {
+        method: 'POST',
+        body: { facilityId },
+      });
+    },
+
+    removeStaffFacilityScope(tenantId, staffId, facilityId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/staff/${encodeURIComponent(staffId)}/facilities/${encodeURIComponent(facilityId)}`,
+        ),
+        { method: 'DELETE' },
+      );
+    },
+
+    listStaffBranchScope(tenantId, staffId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/branches`));
+    },
+
+    assignStaffBranchScope(tenantId, staffId, branchId) {
+      return request(tenantPath(tenantId, `/staff/${encodeURIComponent(staffId)}/branches`), {
+        method: 'POST',
+        body: { branchId },
+      });
+    },
+
+    removeStaffBranchScope(tenantId, staffId, branchId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/staff/${encodeURIComponent(staffId)}/branches/${encodeURIComponent(branchId)}`,
+        ),
+        { method: 'DELETE' },
       );
     },
 

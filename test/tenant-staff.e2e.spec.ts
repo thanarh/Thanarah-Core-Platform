@@ -18,6 +18,8 @@ import { PlatformAuthorizationGuard } from '../src/auth/guards/platform-authoriz
 import type { PlatformAuthorizationService } from '../src/auth/services/platform-authorization.service';
 import { APP_CONSTANTS } from '../src/common/constants/app.constants';
 import { TenantStaffController } from '../src/tenant/tenant-staff.controller';
+import { TenantMembershipDirectoryController } from '../src/tenant/tenant-membership-directory.controller';
+import { TenantMembershipService } from '../src/tenant/tenant-membership.service';
 import { TenantStaffNotFoundError } from '../src/tenant/tenant-staff.errors';
 import { TenantStaffService } from '../src/tenant/tenant-staff.service';
 import { TenantStaffRoleController } from '../src/tenant/tenant-staff-role.controller';
@@ -119,6 +121,7 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     assign: vi.fn(),
     remove: vi.fn(),
   };
+  const membershipService = { listDirectoryForTrustedTenant: vi.fn() };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -135,6 +138,21 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     staffRoleService.list.mockResolvedValue({ items: [staffRole] });
     staffRoleService.assign.mockResolvedValue(staffRole);
     staffRoleService.remove.mockResolvedValue(undefined);
+    membershipService.listDirectoryForTrustedTenant.mockResolvedValue({
+      items: [
+        {
+          id: membershipId,
+          platformUserId,
+          status: 'ACTIVE',
+          statusChangedAt: '2026-10-06T10:00:00.000Z',
+          createdAt: '2026-10-06T10:00:00.000Z',
+          memberName: 'Taylor Member',
+          accountStatus: 'ACTIVE',
+        },
+      ],
+      limit: 50,
+      offset: 0,
+    });
 
     const tenantContextGuard = new TenantContextGuard(
       validator as unknown as TenantMembershipValidatorService,
@@ -153,6 +171,7 @@ describe('Tenant Staff HTTP authorization and routing', () => {
       controllers: [
         TenantStaffController,
         TenantStaffRoleController,
+        TenantMembershipDirectoryController,
         StaffPlatformAuthorizationProbeController,
       ],
       providers: [
@@ -162,6 +181,7 @@ describe('Tenant Staff HTTP authorization and routing', () => {
         TenantAuthorizationGuard,
         TenantStaffService,
         TenantStaffRoleService,
+        TenantMembershipService,
       ],
     })
       .overrideGuard(PlatformAuthGuard)
@@ -176,6 +196,8 @@ describe('Tenant Staff HTTP authorization and routing', () => {
       .useValue(staffService)
       .overrideProvider(TenantStaffRoleService)
       .useValue(staffRoleService)
+      .overrideProvider(TenantMembershipService)
+      .useValue(membershipService)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -197,6 +219,57 @@ describe('Tenant Staff HTTP authorization and routing', () => {
     expect(validator.validateMembership).not.toHaveBeenCalled();
     expect(tenantAuthorization.authorize).not.toHaveBeenCalled();
     expect(staffService.list).not.toHaveBeenCalled();
+  });
+
+  it('lists only trusted-tenant membership summaries with the tenant read permission', async () => {
+    membershipService.listDirectoryForTrustedTenant.mockResolvedValueOnce({
+      items: [
+        {
+          id: membershipId,
+          platformUserId,
+          status: 'ACTIVE',
+          statusChangedAt: '2026-10-06T10:00:00.000Z',
+          createdAt: '2026-10-06T10:00:00.000Z',
+          memberName: 'Taylor Member',
+          accountStatus: 'ACTIVE',
+        },
+      ],
+      limit: 25,
+      offset: 5,
+    });
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${tenantId}/memberships?limit=25&offset=5`,
+      headers: validHeaders,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      items: [{ id: membershipId, memberName: 'Taylor Member', status: 'ACTIVE' }],
+      limit: 25,
+      offset: 5,
+    });
+    expect(tenantAuthorization.authorize).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      'tenant.members.read',
+    );
+    expect(membershipService.listDirectoryForTrustedTenant).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      { limit: 25, offset: 5 },
+    );
+  });
+
+  it('denies the membership directory without tenant member read permission', async () => {
+    tenantAuthorization.authorize.mockRejectedValueOnce(new ForbiddenException());
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/api/v1/tenants/${tenantId}/memberships`,
+      headers: validHeaders,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(membershipService.listDirectoryForTrustedTenant).not.toHaveBeenCalled();
   });
 
   it('rejects a route tenant without an active membership', async () => {

@@ -6,6 +6,29 @@ interface ThanarahApi {
   clearSession(): void;
   login(email: string, password: string): Promise<boolean>;
   listWorkspaces(): Promise<{ items: unknown[] }>;
+  listTenantMemberships(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  listTenantRoles(tenantId: string): Promise<unknown>;
+  listTenantMembershipRoles(tenantId: string, membershipId: string): Promise<unknown>;
+  assignTenantMembershipRole(
+    tenantId: string,
+    membershipId: string,
+    roleId: string,
+  ): Promise<unknown>;
+  removeTenantMembershipRole(
+    tenantId: string,
+    membershipId: string,
+    roleId: string,
+  ): Promise<unknown>;
+  listTenantStaff(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createTenantStaff(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  assignStaffFacilityScope(tenantId: string, staffId: string, facilityId: string): Promise<unknown>;
+  assignStaffBranchScope(tenantId: string, staffId: string, branchId: string): Promise<unknown>;
   listAppointments(
     tenantId: string,
     options: Record<string, string | number | undefined>,
@@ -300,5 +323,51 @@ describe('Thanarah browser API client', () => {
     expect(() => api.changeBranchStatus('tenant-id', 'facility-id', 'branch-id', 'reset')).toThrow(
       'A valid branch lifecycle action is required.',
     );
+  });
+
+  it('uses same-origin authenticated tenant routes for membership, staff, role, and scope setup', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
+      .mockResolvedValueOnce(jsonResponse({ items: [] }))
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse([]))
+      .mockResolvedValueOnce(jsonResponse(undefined, 201))
+      .mockResolvedValueOnce(jsonResponse(undefined, 204))
+      .mockResolvedValueOnce(jsonResponse(undefined, 201))
+      .mockResolvedValueOnce(jsonResponse(undefined, 201))
+      .mockResolvedValueOnce(jsonResponse(undefined, 201));
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    await api.listTenantMemberships('tenant-id', { status: 'ACTIVE', limit: 25, offset: 0 });
+    await api.listTenantRoles('tenant-id');
+    await api.listTenantMembershipRoles('tenant-id', 'member/id');
+    await api.assignTenantMembershipRole('tenant-id', 'member/id', 'role/id');
+    await api.removeTenantMembershipRole('tenant-id', 'member/id', 'role/id');
+    await api.listTenantStaff('tenant-id', { limit: 50, offset: 0 });
+    await api.assignStaffFacilityScope('tenant-id', 'staff/id', 'facility/id');
+    await api.assignStaffBranchScope('tenant-id', 'staff/id', 'branch/id');
+
+    const requests = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(requests.map(([url]) => url)).toEqual([
+      '/api/v1/tenants/tenant-id/memberships?limit=25&offset=0&status=ACTIVE',
+      '/api/v1/tenants/tenant-id/roles',
+      '/api/v1/tenants/tenant-id/memberships/member%2Fid/roles',
+      '/api/v1/tenants/tenant-id/memberships/member%2Fid/roles/role%2Fid',
+      '/api/v1/tenants/tenant-id/memberships/member%2Fid/roles/role%2Fid',
+      '/api/v1/tenants/tenant-id/staff?limit=50&offset=0',
+      '/api/v1/tenants/tenant-id/staff/staff%2Fid/facilities',
+      '/api/v1/tenants/tenant-id/staff/staff%2Fid/branches',
+    ]);
+    expect(requests.map(([, options]) => options.method || 'GET')).toEqual([
+      'GET',
+      'GET',
+      'GET',
+      'POST',
+      'DELETE',
+      'GET',
+      'POST',
+      'POST',
+    ]);
+    expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
   });
 });

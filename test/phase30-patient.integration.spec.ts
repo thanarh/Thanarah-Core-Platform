@@ -95,6 +95,9 @@ const { TenantStorageActivationService } = requireFromWorkspace(
 );
 const { TenantMembershipValidatorService, TrustedTenantContextFactoryService } =
   requireFromWorkspace('../dist/tenant/tenant-context.service');
+const { TenantMembershipRoleRepository } = requireFromWorkspace(
+  '../dist/tenant/tenant-membership-role.repository',
+);
 const { TenantStorageResolverService } = requireFromWorkspace(
   '../dist/tenant/tenant-storage.resolver',
 );
@@ -3167,16 +3170,208 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         where: { id: phase55FacilityId, tenantId: tenantA.id },
       });
 
-      await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/team-setup/` });
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        `Array.from(document.querySelectorAll('button[data-action="choose"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'tenant team workspace selection',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('.team-member'))`,
+        'tenant membership directory',
+      );
+      const temporaryMember = await setupPrisma.tenantMembership.findUniqueOrThrow({
+        where: { tenantId_platformUserId: { tenantId: tenantA.id, platformUserId: limitedUserId } },
+        select: { id: true },
+      });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('.team-member[data-id="${temporaryMember.id}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="add-membership-role"] select option[value="${tenantA.roleId}"]'))`,
+        'authorized membership role assignment control',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-membership-role"]');
+          if (!form) return false;
+          form.querySelector('[name="roleId"]').value = ${JSON.stringify(tenantA.roleId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+          chip.textContent?.includes('Phase 30 integration role'))`,
+        'membership role assignment confirmation',
+      );
+      expect(
+        await setupPrisma.tenantMembershipRole.findUnique({
+          where: {
+            membershipId_tenantRoleId: {
+              membershipId: temporaryMember.id,
+              tenantRoleId: tenantA.roleId,
+            },
+          },
+        }),
+      ).not.toBeNull();
+      const limitedMembershipContext = getApplication()
+        .get(TrustedTenantContextFactoryService)
+        .fromValidatedMembership(
+          await getApplication()
+            .get(TenantMembershipValidatorService)
+            .validateMembership({
+              authenticatedPlatformUser: {
+                userId: limitedUserId,
+                sessionId: platformSessionId,
+                tokenVersion: 1,
+                platformRoleIds: [],
+              },
+              tenantIdCandidate: tenantA.id,
+            }),
+        );
+      expect(
+        await getApplication()
+          .get(TenantMembershipRoleRepository)
+          .resolvePermissionCodes(limitedMembershipContext),
+      ).toContain('tenant.staff.scope.manage');
+
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="create-staff"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="add-facility"] select option[value="${clinicalFacilityId}"]'))`,
+        'new staff profile and facility scope controls',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-facility"]');
+          if (!form) return false;
+          form.querySelector('[name="facilityId"]').value = ${JSON.stringify(clinicalFacilityId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+          chip.textContent?.includes('Phase 42 Clinic'))`,
+        'facility scope assignment confirmation',
+      );
+      const temporaryStaff = await setupPrisma.staff.findUniqueOrThrow({
+        where: { tenantId_userId: { tenantId: tenantA.id, userId: limitedUserId } },
+        select: { id: true },
+      });
+      expect(
+        await setupPrisma.staffFacilityAssignment.findUnique({
+          where: {
+            staffId_facilityId: {
+              staffId: temporaryStaff.id,
+              facilityId: clinicalFacilityId,
+            },
+          },
+        }),
+      ).not.toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-branch"]');
+          if (!form) return false;
+          form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+          chip.textContent?.includes('Assigned Branch'))`,
+        'branch scope assignment confirmation',
+      );
+      expect(
+        await setupPrisma.staffBranchAssignment.findUnique({
+          where: { staffId_branchId: { staffId: temporaryStaff.id, branchId: clinicalBranchId } },
+        }),
+      ).not.toBeNull();
+
+      await client.send('Page.reload');
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'team workspace restoration after reload',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('.team-member[data-id="${temporaryMember.id}"]'))`,
+        'membership after reload',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('.team-member[data-id="${temporaryMember.id}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+          chip.textContent?.includes('Phase 30 integration role')) &&
+          Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+            chip.textContent?.includes('Phase 42 Clinic')) &&
+          Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+            chip.textContent?.includes('Assigned Branch'))`,
+        'persisted role, facility, and branch scopes after reload',
+      );
+      await setupPrisma.staffBranchAssignment.deleteMany({
+        where: { tenantId: tenantA.id, staffId: temporaryStaff.id },
+      });
+      await setupPrisma.staffFacilityAssignment.deleteMany({
+        where: { tenantId: tenantA.id, staffId: temporaryStaff.id },
+      });
+      await setupPrisma.staffBranchAssignment.deleteMany({
+        where: { tenantId: tenantA.id, staffId: temporaryStaff.id },
+      });
+      await setupPrisma.staffRoleAssignment.deleteMany({
+        where: { tenantId: tenantA.id, staffId: temporaryStaff.id },
+      });
+      await setupPrisma.staff.delete({ where: { id: temporaryStaff.id } });
+      await setupPrisma.tenantMembershipRole.delete({
+        where: {
+          membershipId_tenantRoleId: {
+            membershipId: temporaryMember.id,
+            tenantRoleId: tenantA.roleId,
+          },
+        },
+      });
+
+      await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/appointments/` });
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form#signin-form'))`,
         'sign-out before permission-denied browser check',
       );
       await evaluateBrowser(
         client,
         `(() => {
-          const form = document.querySelector('form[data-form="signin"]');
+          const form = document.querySelector('form#signin-form');
           if (!form) return false;
           form.querySelector('[name="email"]').value = ${JSON.stringify(limitedUserEmail)};
           form.querySelector('[name="password"]').value = ${JSON.stringify(limitedUserPassword)};
@@ -3184,6 +3379,12 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           return true;
         })()`,
       );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-action="logout"]'))`,
+        'limited user sign-in',
+      );
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/clinic-setup/` });
       await waitForBrowserCondition(
         client,
         `document.body.innerText.includes('الوصول محدود')`,
@@ -7049,6 +7250,15 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
   }
 
   const encounterPermissionCodes = [
+    'tenant.members.read',
+    'tenant.members.roles.manage',
+    'tenant.roles.read',
+    'tenant.staff.read',
+    'tenant.staff.manage',
+    'tenant.staff.roles.read',
+    'tenant.staff.roles.manage',
+    'tenant.staff.scope.read',
+    'tenant.staff.scope.manage',
     'tenant.facilities.read',
     'tenant.facilities.create',
     'tenant.facilities.update',

@@ -32,6 +32,7 @@ import { TenantRepository } from './tenant.repository';
 import { TenantNotFoundError } from './tenant.errors';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
+import type { TrustedTenantContext } from './tenant-context.contract';
 
 export type TenantMembershipAuditContext = Pick<
   TrustedSecurityContext,
@@ -108,6 +109,53 @@ export class TenantMembershipService implements TenantMembershipAccessLookup {
     const { status, limit, offset } = parsed.data;
     const items = await this.memberships.listForTenant({ tenantId, status, limit, offset });
     return { items, limit, offset };
+  }
+
+  async listDirectoryForTrustedTenant(
+    context: TrustedTenantContext,
+    query: ListTenantMembershipsQuery,
+  ): Promise<{
+    items: Array<{
+      id: string;
+      platformUserId: string;
+      status: TenantMembershipRecord['status'];
+      statusChangedAt: Date;
+      createdAt: Date;
+      memberName: string;
+      accountStatus: string;
+    }>;
+    limit: number;
+    offset: number;
+  }> {
+    if (
+      !context ||
+      typeof context.tenantId !== 'string' ||
+      !z.string().uuid().safeParse(context.tenantId).success
+    ) {
+      throw new TenantMembershipInputValidationError();
+    }
+    const parsed = listTenantMembershipsQuerySchema.safeParse(query);
+    if (!parsed.success) throw new TenantMembershipInputValidationError();
+    const { status, limit, offset } = parsed.data;
+    const items = await this.memberships.listDirectoryForTenant({
+      tenantId: context.tenantId,
+      status,
+      limit,
+      offset,
+    });
+    return {
+      items: items.map((membership) => ({
+        id: membership.id,
+        platformUserId: membership.platformUserId,
+        status: membership.status,
+        statusChangedAt: membership.statusChangedAt,
+        createdAt: membership.createdAt,
+        memberName: membership.platformUser.fullName,
+        accountStatus: membership.platformUser.status,
+      })),
+      limit,
+      offset,
+    };
   }
 
   async activate(

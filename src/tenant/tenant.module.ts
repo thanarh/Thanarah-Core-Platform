@@ -4,6 +4,7 @@ import { DatabaseModule } from '../database/database.module';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { TenantController } from './tenant.controller';
 import { TenantMembershipController } from './tenant-membership.controller';
+import { TenantMembershipDirectoryController } from './tenant-membership-directory.controller';
 import { TenantMembershipRepository } from './tenant-membership.repository';
 import { TenantMembershipRoleRepository } from './tenant-membership-role.repository';
 import { TenantMembershipService } from './tenant-membership.service';
@@ -70,6 +71,7 @@ import { EncounterService } from './encounter.service';
   controllers: [
     TenantController,
     TenantMembershipController,
+    TenantMembershipDirectoryController,
     TenantWorkspaceController,
     TenantRoleController,
     TenantRoleBootstrapController,
