@@ -463,6 +463,8 @@ without applying them. This wrapper validates `MYSQL_DATABASE_URL` and supplies
 it to Prisma as `DATABASE_URL` only in the child CLI process. Direct `npx prisma`
 commands are not the supported development path because Prisma reads
 `DATABASE_URL` from the schema.
+To diagnose the development URL without printing it or connecting, run
+`npm run build && node scripts/prisma-dev.cjs --check-config`.
 
 ### متغيرات البيئة — Environment Variables
 

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { ConfigService } from '../src/config/config.service';
 import type { EnvConfig } from '../src/config/env.schema';
 import {
+  getSafeDatabaseUrlDiagnostics,
   getDevelopmentMysqlUrlStatus,
   isSafeDevelopmentMysqlUrl,
   resolveCentralDatabaseUrl,
@@ -81,5 +82,33 @@ describe('central database URL selection', () => {
     expect(getDevelopmentMysqlUrlStatus('mysql://prod-db.example.test/thanarah_platform_dev')).toBe(
       'production-host',
     );
+  });
+
+  it('reports only safe URL diagnostics for malformed and alternate schemes', () => {
+    expect(
+      getSafeDatabaseUrlDiagnostics(
+        'postgresql://user:private@example.test/db',
+        'MYSQL_DATABASE_URL',
+        true,
+      ),
+    ).toEqual({
+      source: 'MYSQL_DATABASE_URL',
+      present: true,
+      empty: false,
+      urlParses: true,
+      scheme: 'postgresql',
+      developmentDatabaseNameSafe: false,
+      productionLikeHost: false,
+    });
+    expect(getSafeDatabaseUrlDiagnostics('  ', 'MYSQL_DATABASE_URL', true)).toMatchObject({
+      present: true,
+      empty: true,
+      urlParses: false,
+      scheme: 'missing',
+    });
+    expect(getSafeDatabaseUrlDiagnostics('not a URL', 'MYSQL_DATABASE_URL', true)).toMatchObject({
+      urlParses: false,
+      scheme: 'invalid',
+    });
   });
 });

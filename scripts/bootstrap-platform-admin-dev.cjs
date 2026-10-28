@@ -1,12 +1,30 @@
 const { PrismaClient } = require('@prisma/client');
 const argon2 = require('argon2');
-const { resolveCentralDatabaseUrl } = require('../dist/config/database-url-policy');
+const {
+  getSafeDatabaseUrlDiagnostics,
+  resolveCentralDatabaseUrl,
+} = require('../dist/config/database-url-policy');
 
 const EMAIL = 'admin@thanarah.com';
 const FULL_NAME = 'Platform Administrator';
 const ROLE_CODE = 'SUPER_ADMIN';
 
 async function main() {
+  if (process.argv.includes('--check-config')) {
+    const diagnostics = getSafeDatabaseUrlDiagnostics(
+      process.env.MYSQL_DATABASE_URL,
+      'MYSQL_DATABASE_URL',
+      Object.prototype.hasOwnProperty.call(process.env, 'MYSQL_DATABASE_URL'),
+    );
+    const database = resolveCentralDatabaseUrl({
+      nodeEnv: process.env.NODE_ENV || '',
+      databaseUrl: process.env.DATABASE_URL || '',
+      developmentMysqlUrl: process.env.MYSQL_DATABASE_URL || '',
+    });
+    console.log(JSON.stringify({ ...diagnostics, resolutionStatus: database.status }));
+    return;
+  }
+
   if (process.env.NODE_ENV !== 'development') {
     throw new Error('Blocked: NODE_ENV must be exactly development.');
   }

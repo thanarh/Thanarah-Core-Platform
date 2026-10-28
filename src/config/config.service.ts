@@ -2,8 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import type { EnvConfig } from './env.schema';
 import {
+  getSafeDatabaseUrlDiagnostics,
   resolveCentralDatabaseUrl,
   type CentralDatabaseUrlResolution,
+  type SafeDatabaseUrlDiagnostics,
 } from './database-url-policy';
 
 @Injectable()
@@ -24,6 +26,18 @@ export class ConfigService {
 
   get developmentMysqlUrlStatus(): string {
     return this.centralDatabaseUrlResolution.status;
+  }
+
+  get centralDatabaseDiagnostics(): SafeDatabaseUrlDiagnostics {
+    const source = this.isDevelopment ? 'MYSQL_DATABASE_URL' : 'DATABASE_URL';
+    const value = this.isDevelopment
+      ? this.developmentMysqlDatabaseUrl
+      : this.config.get('DATABASE_URL', { infer: true });
+    return getSafeDatabaseUrlDiagnostics(
+      value,
+      source,
+      Object.prototype.hasOwnProperty.call(process.env, source),
+    );
   }
 
   private get developmentMysqlDatabaseUrl(): string {

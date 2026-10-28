@@ -25,7 +25,11 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
   async onModuleInit(): Promise<void> {
     if (!this.config.databaseUrl) {
       this.logger.warn(
-        `Development MySQL connection unavailable (configuration status: ${this.config.developmentMysqlUrlStatus})`,
+        {
+          ...this.config.centralDatabaseDiagnostics,
+          resolutionStatus: this.config.developmentMysqlUrlStatus,
+        },
+        'Central database configuration rejected before connection',
       );
       return;
     }

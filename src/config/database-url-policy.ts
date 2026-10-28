@@ -40,6 +40,57 @@ export interface CentralDatabaseUrlResolution {
   status: DevelopmentMysqlUrlStatus;
 }
 
+export interface SafeDatabaseUrlDiagnostics {
+  source: 'MYSQL_DATABASE_URL' | 'DATABASE_URL';
+  present: boolean;
+  empty: boolean;
+  urlParses: boolean;
+  scheme: 'mysql' | 'postgresql' | 'postgres' | 'other' | 'invalid' | 'missing';
+  developmentDatabaseNameSafe: boolean;
+  productionLikeHost: boolean;
+}
+
+export function getSafeDatabaseUrlDiagnostics(
+  value: string | undefined,
+  source: SafeDatabaseUrlDiagnostics['source'],
+  variablePresent = value !== undefined,
+): SafeDatabaseUrlDiagnostics {
+  const empty = !value || value.trim().length === 0;
+  const diagnostics: SafeDatabaseUrlDiagnostics = {
+    source,
+    present: variablePresent,
+    empty,
+    urlParses: false,
+    scheme: empty ? 'missing' : 'invalid',
+    developmentDatabaseNameSafe: false,
+    productionLikeHost: false,
+  };
+  if (empty || !value) return diagnostics;
+
+  try {
+    const parsed = new URL(value);
+    diagnostics.urlParses = true;
+    diagnostics.scheme =
+      parsed.protocol === 'mysql:'
+        ? 'mysql'
+        : parsed.protocol === 'postgresql:'
+          ? 'postgresql'
+          : parsed.protocol === 'postgres:'
+            ? 'postgres'
+            : 'other';
+    const databaseName = decodeURIComponent(parsed.pathname.replace(/^\/+/, '')).toLowerCase();
+    const hostname = parsed.hostname.toLowerCase();
+    diagnostics.productionLikeHost = /(prod|production|live)/.test(hostname);
+    diagnostics.developmentDatabaseNameSafe =
+      /(^|[_-])(dev|development|test|sandbox|local)([_-]|$)/.test(databaseName) &&
+      !diagnostics.productionLikeHost;
+  } catch {
+    // Keep the initialized, sanitized invalid-URL diagnostics.
+  }
+
+  return diagnostics;
+}
+
 function targetsSameMysqlDatabase(first: string, second: string): boolean {
   try {
     const left = new URL(first);
