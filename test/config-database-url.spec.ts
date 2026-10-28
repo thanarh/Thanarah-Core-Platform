@@ -5,6 +5,7 @@ import type { EnvConfig } from '../src/config/env.schema';
 import {
   getDevelopmentMysqlUrlStatus,
   isSafeDevelopmentMysqlUrl,
+  resolveCentralDatabaseUrl,
 } from '../src/config/database-url-policy';
 
 function configFor(environment: 'development' | 'production'): ConfigService {
@@ -38,6 +39,36 @@ describe('central database URL selection', () => {
 
   it('accepts a MySQL URL with an explicit development database name', () => {
     expect(isSafeDevelopmentMysqlUrl('mysql://db.example.test/thanarah_platform_dev')).toBe(true);
+  });
+
+  it('selects the validated MySQL development URL and ignores managed PostgreSQL explicitly', () => {
+    expect(
+      resolveCentralDatabaseUrl({
+        nodeEnv: 'development',
+        developmentMysqlUrl: 'mysql://dev-host/thanarah_dev',
+        databaseUrl: 'postgresql://managed-host/platform',
+      }),
+    ).toEqual({ url: 'mysql://dev-host/thanarah_dev', status: 'ready' });
+  });
+
+  it('rejects a conflicting MySQL DATABASE_URL in development', () => {
+    expect(
+      resolveCentralDatabaseUrl({
+        nodeEnv: 'development',
+        developmentMysqlUrl: 'mysql://dev-host/thanarah_dev',
+        databaseUrl: 'mysql://other-host/thanarah_test',
+      }),
+    ).toEqual({ url: '', status: 'conflicting-database-urls' });
+  });
+
+  it('keeps the production Prisma URL selection unchanged', () => {
+    expect(
+      resolveCentralDatabaseUrl({
+        nodeEnv: 'production',
+        developmentMysqlUrl: 'mysql://dev-host/thanarah_dev',
+        databaseUrl: 'mysql://central-host/thanarah_platform',
+      }),
+    ).toEqual({ url: 'mysql://central-host/thanarah_platform', status: 'ready' });
   });
 
   it('classifies unsafe development targets without exposing connection details', () => {

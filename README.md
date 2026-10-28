@@ -457,6 +457,13 @@ cp .env.example .env
 npx nest build && node dist/main
 ```
 
+In development, run Prisma CLI commands through `npm run prisma:dev -- ...`.
+For example, use `npm run prisma:dev -- migrate status` to check migrations
+without applying them. This wrapper validates `MYSQL_DATABASE_URL` and supplies
+it to Prisma as `DATABASE_URL` only in the child CLI process. Direct `npx prisma`
+commands are not the supported development path because Prisma reads
+`DATABASE_URL` from the schema.
+
 ### متغيرات البيئة — Environment Variables
 
 | Variable | Description | Required |
@@ -482,6 +489,8 @@ After applying the existing development migrations, run
 It creates `admin@thanarah.com` with `SUPER_ADMIN` only if the account does not
 already exist and the role has every platform permission. It does not run
 migrations or modify an existing account. Never use a production database URL.
+The bootstrap command applies the same validated central database selection as
+the application and Prisma development CLI.
 
 ---
 

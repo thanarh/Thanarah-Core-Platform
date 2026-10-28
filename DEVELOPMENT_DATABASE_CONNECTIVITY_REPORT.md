@@ -2,6 +2,10 @@
 
 **Date:** 2026-10-27
 
+> This was the initial diagnostic. The configuration alignment work and latest
+> verification are documented in
+> `PHASE_57_DATABASE_CONFIGURATION_REPORT.md`.
+
 ## Root cause
 
 The configured development secret exists, but the running application classifies

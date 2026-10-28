@@ -1,7 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService as NestConfigService } from '@nestjs/config';
 import type { EnvConfig } from './env.schema';
-import { getDevelopmentMysqlUrlStatus, isSafeDevelopmentMysqlUrl } from './database-url-policy';
+import {
+  resolveCentralDatabaseUrl,
+  type CentralDatabaseUrlResolution,
+} from './database-url-policy';
 
 @Injectable()
 export class ConfigService {
@@ -16,20 +19,23 @@ export class ConfigService {
   }
 
   get databaseUrl(): string {
-    if (this.isDevelopment) {
-      return isSafeDevelopmentMysqlUrl(this.developmentMysqlDatabaseUrl)
-        ? this.developmentMysqlDatabaseUrl
-        : '';
-    }
-    return this.config.get('DATABASE_URL', { infer: true });
+    return this.centralDatabaseUrlResolution.url;
   }
 
   get developmentMysqlUrlStatus(): string {
-    return getDevelopmentMysqlUrlStatus(this.developmentMysqlDatabaseUrl);
+    return this.centralDatabaseUrlResolution.status;
   }
 
   private get developmentMysqlDatabaseUrl(): string {
     return this.config.get('MYSQL_DATABASE_URL', { infer: true });
+  }
+
+  private get centralDatabaseUrlResolution(): CentralDatabaseUrlResolution {
+    return resolveCentralDatabaseUrl({
+      nodeEnv: this.nodeEnv,
+      databaseUrl: this.config.get('DATABASE_URL', { infer: true }),
+      developmentMysqlUrl: this.developmentMysqlDatabaseUrl,
+    });
   }
 
   get tenantStorageProvider(): 'disabled' | 'memory' | 'mongodb' {

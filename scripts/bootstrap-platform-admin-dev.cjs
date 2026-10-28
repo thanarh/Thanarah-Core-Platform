@@ -1,34 +1,10 @@
 const { PrismaClient } = require('@prisma/client');
 const argon2 = require('argon2');
+const { resolveCentralDatabaseUrl } = require('../dist/config/database-url-policy');
 
 const EMAIL = 'admin@thanarah.com';
 const FULL_NAME = 'Platform Administrator';
 const ROLE_CODE = 'SUPER_ADMIN';
-
-function assertDevelopmentDatabase(databaseUrl) {
-  let parsed;
-  try {
-    parsed = new URL(databaseUrl);
-  } catch {
-    throw new Error('MYSQL_DATABASE_URL is not a valid database URL.');
-  }
-
-  if (parsed.protocol !== 'mysql:') {
-    throw new Error('The development bootstrap expects the configured MySQL database.');
-  }
-
-  const databaseName = decodeURIComponent(parsed.pathname.replace(/^\/+/, '')).toLowerCase();
-  if (!/(^|[_-])(dev|development|test|sandbox|local)([_-]|$)/.test(databaseName)) {
-    throw new Error(
-      'Blocked: database name must clearly identify a development, test, sandbox, or local database.',
-    );
-  }
-
-  const hostname = parsed.hostname.toLowerCase();
-  if (/(prod|production|live)/.test(hostname)) {
-    throw new Error('Blocked: production-like database hosts cannot be used.');
-  }
-}
 
 async function main() {
   if (process.env.NODE_ENV !== 'development') {
@@ -41,10 +17,17 @@ async function main() {
     throw new Error('Blocked: a password of at least 14 characters is required.');
   }
 
-  assertDevelopmentDatabase(process.env.MYSQL_DATABASE_URL);
+  const database = resolveCentralDatabaseUrl({
+    nodeEnv: process.env.NODE_ENV,
+    databaseUrl: process.env.DATABASE_URL || '',
+    developmentMysqlUrl: process.env.MYSQL_DATABASE_URL,
+  });
+  if (database.status !== 'ready') {
+    throw new Error(`Blocked: development database configuration is ${database.status}.`);
+  }
 
   const prisma = new PrismaClient({
-    datasources: { db: { url: process.env.MYSQL_DATABASE_URL } },
+    datasources: { db: { url: database.url } },
   });
   try {
     try {
