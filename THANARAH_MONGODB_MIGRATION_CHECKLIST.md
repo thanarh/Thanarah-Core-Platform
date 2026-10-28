@@ -1,6 +1,6 @@
 # Thanarah — MySQL/MariaDB to MongoDB Migration Checklist
 
-**Status:** Planning checklist; no migration performed  
+**Status:** Planning checklist; no migration performed
 **Rule:** Check an item only after evidence is recorded and the accountable owner has accepted it. An unchecked decision or release gate is a blocker.
 
 ## A. Scope and governance
@@ -44,6 +44,7 @@
 - [ ] Document a replacement for refresh-token atomic rotation and reuse/compromise detection.
 - [ ] Document atomic failed-login count/lockout behavior under concurrent requests.
 - [ ] Preserve tenant owner uniqueness and membership/role assignment rules under concurrency.
+- [ ] Review every transaction call site in the 13 repositories identified in the Phase 59 decision record; document its MongoDB invariant and topology requirement.
 - [ ] Preserve staff role/facility/branch scope checks when parent status changes race assignment.
 - [ ] Preserve scheduling policy version compare-and-set and revision history atomically.
 - [ ] Prevent overlapping active subscription periods under concurrent create/transition requests.

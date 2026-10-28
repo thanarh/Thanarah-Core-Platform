@@ -1,7 +1,7 @@
 # Thanarah — Full MySQL/MariaDB to MongoDB Migration Assessment
 
-**Assessment date:** 2026-10-28  
-**Status:** Planning assessment; no migration approved or performed  
+**Assessment date:** 2026-10-28
+**Status:** Planning assessment; no migration approved or performed
 **Scope:** Repository-specific assessment of moving all platform persistence from MySQL/MariaDB to MongoDB, including data transfer, architecture, consistency, phased execution, and retirement gates.
 
 ## 1. Executive summary
@@ -138,6 +138,8 @@ Runtime transactions are present in these areas; this is a repository inventory,
 | Encounter mutation and platform audit | Durable SQL PREPARED marker before tenant Mongo write; history evidence, idempotency, delivery retries and reconciliation. | Ledger, clinical write, audit delivery, and possible separate clusters need an explicit outbox/saga or proven common-cluster transaction model. |
 
 Some SQL transactions use `SELECT ... FOR UPDATE` and explicit `ReadCommitted`. A standalone MongoDB deployment does not provide multi-document transactions. Replica-set or sharded transaction support is not an approval by itself: transaction scope, topology, retry semantics, write concern, and failure behavior must be tested. Avoid long-running transactions around bulk copy or user requests.
+
+Phase 59 rechecked the complete transaction call-site inventory in these 13 repositories: `src/auth/repositories/platform-session.repository.ts`, `src/auth/repositories/platform-user.repository.ts`, `src/subscriptions/subscription.repository.ts`, `src/tenant/appointment-scheduling-policy.repository.ts`, `src/tenant/branch.repository.ts`, `src/tenant/doctor.repository.ts`, `src/tenant/tenant-membership.repository.ts`, `src/tenant/tenant-membership-role.repository.ts`, `src/tenant/tenant-role.repository.ts`, `src/tenant/tenant-staff.repository.ts`, `src/tenant/tenant-staff-role.repository.ts`, `src/tenant/tenant-staff-scope.repository.ts`, and `src/tenant/tenant-storage.activation.service.ts`. The detailed callsite-to-invariant replacement matrix is in `THANARAH_MONGODB_MIGRATION_DECISIONS.md`.
 
 The appointment schedule lock collection uses a unique tenant/resource key and explicit release. The observed release path does not establish a time-based lease or crash cleanup; the migration must preserve current behavior initially and treat lock expiry/recovery as a separately reviewed design change.
 
