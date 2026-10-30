@@ -107,3 +107,25 @@
 - [ ] Obtain security/compliance, data owner, product, and operations sign-off for archive, retention, and deletion.
 - [ ] Obtain explicit authorization before revoking access or irreversibly deleting SQL data/backups.
 
+## I. Phase 60 infrastructure evidence and prerequisites
+
+### Verified repository/workspace facts (not production validation)
+
+- [x] Current Prisma datasource remains MySQL; the repository has 36 models, 21 enums, and 29 migration directories.
+- [x] The current tenant Mongo client enables `retryWrites`; this does not prove majority acknowledgement, transaction support, or end-to-end idempotency.
+- [x] Production configuration validates the tenant Mongo URI for TLS with certificate and hostname validation; this does not verify a live production endpoint.
+- [x] The existing Mongo integration fixture starts `mongo:7.0.17` without replica-set initialization; it is standalone test infrastructure, not production-topology evidence.
+- [x] No local MongoDB process or running Docker container was found during Phase 60 workspace inspection; port-listener inspection was unavailable because `ss` was not installed.
+- [x] The current project workflow starts the NestJS application; no MongoDB service workflow is configured in this workspace.
+
+### Required before capability tests or implementation
+
+- [ ] Owner approves provider, supported server version, topology, region/residency, service terms, and operating owner.
+- [ ] Owner makes an isolated topology-matched replica-set environment available; do not create one without explicit authorization.
+- [ ] Verify transaction commit/abort and failover interruption on that environment.
+- [ ] Verify exact unique/partial indexes, concurrent update races, write concern, retry behavior, backup and restore.
+- [ ] Approve TLS/network restrictions, least-privilege users, connection-pool/timeouts, monitoring, and alerting.
+- [ ] Approve backup frequency/retention, restore test cadence, RPO/RTO, and recovery responsibilities.
+- [ ] Record actual test commands, topology/version, output and limitations in `PHASE_60_MONGODB_CAPABILITY_TEST_RESULTS.md`.
+- [ ] Keep migration readiness **NO-GO** until every mandatory capability and owner decision has evidence.
+
