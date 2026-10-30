@@ -129,3 +129,23 @@
 - [ ] Record actual test commands, topology/version, output and limitations in `PHASE_60_MONGODB_CAPABILITY_TEST_RESULTS.md`.
 - [ ] Keep migration readiness **NO-GO** until every mandatory capability and owner decision has evidence.
 
+## J. Phase 61 isolated replica-set lab evidence
+
+### Verified discovery (2026-10-30; read-only)
+
+- [x] Docker CLI and daemon are available; read-only Docker metadata reported server version 27.5.1.
+- [x] `docker ps` returned no running containers; no container or service was started.
+- [x] No local `mongod`, `mongosh`, or `mongo` executable, MongoDB process, or port-27017 listener was found.
+- [x] Existing Testcontainers fixture provisions standalone MongoDB 7.0.17 and is not replica-set evidence.
+- [x] No approved isolated replica-set environment or target profile was evidenced; no remote endpoint was probed.
+- [x] Phase 61 replica-set, concurrency, and backup/restore tests were **NOT RUN** because the required approved environment was unavailable.
+- [x] The Phase 49 disposable restore report is historical standalone-fixture evidence only; it does not establish Phase 61 replica-set recovery capability.
+
+### Required before Phase 61 tests
+
+- [ ] Owner explicitly approves and provides an isolated, disposable replica-set test environment matching the proposed target profile; do not provision one without authorization.
+- [ ] Approve server/driver versions, member/election layout, TLS, least-privilege identities, network restrictions, write concern, and permitted failover controls.
+- [ ] Provide an isolated backup method and separate clean restore target; define integrity checks and recovery-time criteria.
+- [ ] Run the replica-set, Thanarah concurrency, and backup/restore matrices using synthetic data only; record actual evidence in the three Phase 61 reports.
+- [ ] Keep migration readiness **NO-GO** until required tests pass and owner decisions are approved.
+
