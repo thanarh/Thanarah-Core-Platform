@@ -167,3 +167,25 @@
 - [ ] Keep all transaction, failover, backup/restore, and Thanarah capability claims unverified until their respective Phase 62 reports contain passing evidence.
 - [ ] Keep migration readiness **NO-GO**; infrastructure tests alone do not establish production readiness or application parity.
 
+## L. Phase 63 local replica-set evidence
+
+### Demonstrated in a disposable local lab (2026-10-31)
+
+- [x] A three-member MongoDB 7.0.17 replica set initialized using loopback-only Docker host networking after the bridge network failed peer TCP connectivity.
+- [x] One primary and two healthy secondaries were verified; synthetic writes replicated to all three members.
+- [x] Multi-document transaction commit and abort behavior passed.
+- [x] Unique-index conflict, concurrent insert, and atomic conditional-update tests passed.
+- [x] Majority write acknowledgement and a normal retryable write were verified; retry after an induced transient failure and uncertain acknowledgement remain untested.
+- [x] Controlled primary stepdown, replacement election, and reconnection by a replica-set-aware test client passed.
+- [x] A logical backup restored to a separate isolated standalone MongoDB 7.0.17 target; six documents, counts, representative values, a unique index, and source/restore independence were verified.
+- [x] Seven synthetic Thanarah invariant simulations passed; they do not verify production application code or establish workflow parity.
+- [x] Phase 63 containers, volumes, temporary credentials, backup files, and test ports were removed and verified absent.
+
+### Still unverified; readiness remains NO-GO
+
+- [ ] Resolve or replace the Docker bridge networking restriction; host networking is loopback-only test infrastructure, not an approved production topology.
+- [ ] Test in-flight transaction interruption, retry after failover, and ambiguous acknowledgement recovery.
+- [ ] Verify Thanarah's actual Node MongoDB client and application workflows against the approved target topology.
+- [ ] Approve provider, production topology, TLS/network profile, residency/compliance, operational ownership, backup controls, RPO/RTO, and cutover/recovery plan.
+- [ ] Do not infer production migration readiness or application parity from this local lab.
+

@@ -14,4 +14,5 @@
 - [Encounter uncertain-mutation UI](encounter-uncertain-mutation-ui.md) — every clinical mutation error path must preserve the operation reference as well as the draft so status recovery remains available.
 - [Tenant storage readiness](tenant-storage-readiness.md) — probe the shared storage adapter, not every tenant target, and keep provider health behind a neutral contract.
 - [Docker exec restrictions](docker-exec-restrictions.md) — when Testcontainers exec cannot start processes, run disposable tools as helper containers and transfer data through container copy APIs.
+- [MongoDB local test networking](mongodb-local-test-networking.md) — nested Docker bridge DNS can work while peer TCP is blocked; host-loopback replica-set tests require sequential startup.
 - [Production MongoDB TLS](production-mongodb-tls.md) — production tenant MongoDB URIs must use TLS and retain certificate and hostname validation.
