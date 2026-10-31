@@ -189,3 +189,22 @@
 - [ ] Approve provider, production topology, TLS/network profile, residency/compliance, operational ownership, backup controls, RPO/RTO, and cutover/recovery plan.
 - [ ] Do not infer production migration readiness or application parity from this local lab.
 
+## M. Phase 64 application-client evidence
+
+### Verified on a disposable loopback-only replica set (2026-10-31)
+
+- [x] The actual official MongoDB 7.7.0 client created by `TenantMongoClientManager` connected to the disposable MongoDB 7.0.17 replica set, discovered one primary/two secondaries, and reported readiness.
+- [x] Native driver session commit, abort, and session cleanup passed through the managed client; this is driver-level evidence, not an existing repository transaction abstraction.
+- [x] The actual `MongoTenantPatientStorage` adapter resolved the synthetic tenant target, created/read a synthetic Patient, and translated a duplicate patient-number conflict.
+- [x] An injected pre-execution connection close on a retryable insert and an injected transient transaction error both recovered without duplicate test documents; a controlled primary stepdown was followed by a successful write.
+- [x] Focused application-manager/readiness/storage unit tests passed; exact counts and boundaries are in `PHASE_64_APPLICATION_MONGODB_COMPATIBILITY.md`.
+
+### Still unverified; readiness remains NO-GO
+
+- [ ] Reproduce an acknowledgement lost after the server commits and verify safe operation-status recovery; the Phase 64 failure injector closed the connection before execution.
+- [ ] Interrupt an active application transaction with a real primary stepdown and prove safe retry/commit-status handling.
+- [ ] Add a supported application session/transaction propagation boundary before translating transaction-bearing repositories.
+- [ ] Verify MongoDB implementations for all 13 repositories in `PHASE_64_REPOSITORY_TRANSACTION_MATRIX.md`; each is still Prisma/MySQL.
+- [ ] Test actual Appointment and Encounter Mongo adapters and live timeout/topology error sanitization.
+- [ ] Approve a production topology and verify TLS, credentials, provider/network behavior, backups, recovery objectives, and application parity. Keep migration readiness **NO-GO**.
+
