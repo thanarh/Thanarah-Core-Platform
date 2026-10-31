@@ -149,3 +149,21 @@
 - [ ] Run the replica-set, Thanarah concurrency, and backup/restore matrices using synthetic data only; record actual evidence in the three Phase 61 reports.
 - [ ] Keep migration readiness **NO-GO** until required tests pass and owner decisions are approved.
 
+## K. Phase 62 replica-set lab attempt
+
+### Actual evidence (2026-10-31)
+
+- [x] Three isolated MongoDB 7.0.17 containers started with separate data volumes and localhost-only published ports.
+- [x] MongoDB runtime was configured with replica-set mode, authorization, and a locally generated test keyfile; test-only credential values were not recorded.
+- [x] Replica-set initialization was attempted and **failed** its quorum check because the second and third members did not respond.
+- [x] Peer names resolved on the dedicated user-defined bridge, but member TCP connectivity failed; no primary, secondary health, or replication state was established.
+- [x] Transaction, failover, backup/restore, and Thanarah workflow matrices were **NOT RUN**. No standalone substitute was used.
+- [x] Only Phase 62 containers, networks, volumes, and temporary test credentials were removed; verification found no Phase 62 resources or localhost test listeners remaining.
+
+### Required before further capability tests
+
+- [ ] Provide an isolated Docker/network environment where members can communicate over a private bridge while retaining loopback-only published ports.
+- [ ] Reprovision three members and verify successful initialization, one primary, two healthy secondaries, and replicated synthetic writes before running capability tests.
+- [ ] Keep all transaction, failover, backup/restore, and Thanarah capability claims unverified until their respective Phase 62 reports contain passing evidence.
+- [ ] Keep migration readiness **NO-GO**; infrastructure tests alone do not establish production readiness or application parity.
+
