@@ -7,6 +7,7 @@ import {
 } from '@nestjs/swagger';
 import { PrismaService } from './database/prisma.service';
 import { TenantStorageReadinessService } from './tenant/tenant-storage-readiness.service';
+import { PlatformMongoClientManager } from './platform-mongo/platform-mongo.client.manager';
 
 interface HealthResponse {
   status: string;
@@ -16,6 +17,7 @@ interface HealthResponse {
 interface ReadinessResponse extends HealthResponse {
   database: 'available';
   tenantStorage: 'available';
+  platformMongo?: 'available';
 }
 
 @ApiTags('system')
@@ -25,6 +27,8 @@ export class AppController {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(TenantStorageReadinessService)
     private readonly tenantStorage: TenantStorageReadinessService,
+    @Inject(PlatformMongoClientManager)
+    private readonly platformMongo: PlatformMongoClientManager,
   ) {}
 
   @Get('health')
@@ -54,11 +58,18 @@ export class AppController {
         message: 'Required tenant storage is unavailable',
       });
     }
+    if (!(await this.platformMongo.checkReadiness())) {
+      throw new ServiceUnavailableException({
+        code: 'PLATFORM_STORAGE_UNAVAILABLE',
+        message: 'Platform storage is unavailable',
+      });
+    }
 
     return {
       status: 'ready',
       database: 'available',
       tenantStorage: 'available',
+      ...(this.platformMongo.configured ? { platformMongo: 'available' as const } : {}),
       timestamp: new Date().toISOString(),
     };
   }

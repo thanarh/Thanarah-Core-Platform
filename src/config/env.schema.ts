@@ -68,6 +68,8 @@ export const envSchema = z
     MYSQL_DATABASE_URL: z.string().default(''),
     TENANT_STORAGE_PROVIDER: z.enum(['disabled', 'memory', 'mongodb']).default('disabled'),
     TENANT_STORAGE_MONGO_URI: z.string().default(''),
+    PLATFORM_MONGO_URI: z.string().default(''),
+    PLATFORM_MONGO_DATABASE: z.string().default(''),
     JWT_ACCESS_SECRET: z.string().default(''),
     AUTH_ACCESS_TOKEN_TTL_MINUTES: z.coerce.number().int().positive().max(1440).default(15),
     AUTH_REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().max(365).default(30),
@@ -100,6 +102,27 @@ export const envSchema = z
         code: z.ZodIssueCode.custom,
         path: ['TENANT_STORAGE_PROVIDER'],
         message: 'Persistent tenant storage is required in production',
+      });
+    }
+    if (
+      Boolean(config.PLATFORM_MONGO_URI.trim()) !== Boolean(config.PLATFORM_MONGO_DATABASE.trim())
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLATFORM_MONGO_DATABASE'],
+        message: 'PLATFORM_MONGO_URI and PLATFORM_MONGO_DATABASE must be configured together',
+      });
+    }
+    if (
+      config.NODE_ENV === 'production' &&
+      config.PLATFORM_MONGO_URI.trim() &&
+      !hasValidatedMongoTls(config.PLATFORM_MONGO_URI.trim())
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLATFORM_MONGO_URI'],
+        message:
+          'Production platform MongoDB connections must use TLS with certificate and hostname validation',
       });
     }
     if (

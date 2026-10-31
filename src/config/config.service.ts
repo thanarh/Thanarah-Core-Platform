@@ -60,6 +60,14 @@ export class ConfigService {
     return this.config.get('TENANT_STORAGE_MONGO_URI', { infer: true });
   }
 
+  get platformMongoUri(): string {
+    return this.config.get('PLATFORM_MONGO_URI', { infer: true });
+  }
+
+  get platformMongoDatabase(): string {
+    return this.config.get('PLATFORM_MONGO_DATABASE', { infer: true });
+  }
+
   get jwtAccessSecret(): string {
     return this.config.get('JWT_ACCESS_SECRET', { infer: true });
   }

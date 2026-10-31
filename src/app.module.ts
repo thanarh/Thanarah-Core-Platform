@@ -13,12 +13,14 @@ import { PlatformSecurityModule } from './platform-security/platform-security.mo
 import { TenantModule } from './tenant/tenant.module';
 import { PlatformCatalogModule } from './platform-catalog/platform-catalog.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
+import { PlatformMongoModule } from './platform-mongo/platform-mongo.module';
 
 @Module({
   imports: [
     ConfigModule,
     LoggerModule,
     DatabaseModule,
+    PlatformMongoModule,
     PlatformSecurityModule,
     AuthModule,
     TenantModule,
