@@ -15,7 +15,7 @@
 
 ## Document contracts implemented
 
-All identifiers are stable UUID strings in `_id` (legacy IDs are retained as-is). All timestamp fields are BSON `Date` values. Mutable root documents carry `schemaVersion: 1`, `createdAt`, and `updatedAt`. Zod contracts reject unknown fields and validate reads, creates, and replacement updates. Raw credentials and raw refresh tokens are never part of the contracts.
+All identifiers are stable UUID strings in `_id` (legacy IDs are retained as-is). Source timestamp fields are BSON `Date` values; `createdAt` and `updatedAt` are included only on models that have those fields in Prisma. Mutable documents carry `schemaVersion: 1`. Zod contracts reject unknown fields and validate reads, creates, and replacement updates. Raw credentials and raw refresh tokens are never part of the contracts.
 
 | Prisma source | Collection | Implemented contract and repository |
 |---|---|---|
@@ -26,8 +26,8 @@ All identifiers are stable UUID strings in `_id` (legacy IDs are retained as-is)
 | `PlatformPermission` | `platform_permissions` | Existing ID, code and timestamps; basic create/read/update. |
 | `UserPlatformRole` | `platform_user_roles` | Existing user/role references and deterministic composite `_id`; basic persistence contract. |
 | `PlatformRolePermission` | `platform_role_permissions` | Existing role/permission references and deterministic composite `_id`; basic persistence contract. |
-| `PlatformSession` | `platform_sessions` | Existing session metadata and refresh-token hash; basic create/read/update. Hashes only; no TTL index and no auth/session workflow integration. |
-| `PlatformRefreshTokenHistory` | `platform_refresh_token_history` | Existing historical token hash, family/session references and rotation/reuse timestamps; basic create/read/update. No token-history pruning policy or TTL index. |
+| `PlatformSession` | `platform_sessions` | Existing session metadata, `createdAt`, and refresh-token hash; basic create/read/update. Does not invent `updatedAt`. Hashes only; no TTL index and no auth/session workflow integration. |
+| `PlatformRefreshTokenHistory` | `platform_refresh_token_history` | Existing historical token hash, family/session references and rotation/reuse timestamps; basic create/read/update. Does not invent `createdAt` or `updatedAt`. No token-history pruning policy or TTL index. |
 
 There is no `Organization` Prisma model in the approved schema; `Tenant` is the implemented organization/control-plane root. Platform role/permission contracts do not add `TenantRole`, `TenantPermission`, tenant storage target, audit/security, subscription, or encounter-operation repositories. Those require separate policy/atomicity scope.
 

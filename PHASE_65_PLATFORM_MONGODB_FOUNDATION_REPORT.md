@@ -1,6 +1,6 @@
 # Phase 65 — Central Platform MongoDB Foundation
 
-**Date:** 2026-10-31  
+**Date:** 2026-11-01
 **Result:** An isolated platform MongoDB persistence foundation is implemented. This is not migrated application functionality and does not establish MySQL retirement readiness.
 
 ## Summary
@@ -33,18 +33,17 @@ Detailed fields, index contract, limitations, and safety boundary are in `PHASE_
 
 ## Verification
 
-Fill in the verified commands/results for the completed Phase 65 test run below. A skipped integration test is not a pass.
-
 | Check | Result |
 |---|---|
-| Phase 65 replica-set integration | Pending |
-| Focused existing Mongo manager/readiness/storage suites | Pending |
-| Relevant full unit suite | Pending |
-| TypeScript check | Pending |
-| ESLint | Pending |
-| Prettier | Pending |
-| Nest build | Pending |
-| `git diff --check` | Pending |
+| Phase 65 replica-set integration | **PASS — 6/6** against disposable loopback-only MongoDB 7.0.17 three-member `rs0`; synthetic test database only. |
+| Existing application tests | **PASS — 932 passed, 12 skipped** across 104 passed test files; 2 integration files skipped because their separate opt-in targets were not configured. |
+| TypeScript check | **PASS** (`npm run type-check`). |
+| ESLint | **PASS — 0 errors**; one pre-existing warning remains in `test/encounter-operation-reconciliation.spec.ts:10`. |
+| Prettier | **PASS** (`npm run format:check`). |
+| Nest build | **PASS** (`npm run build`). |
+| `git diff --check` | **PASS**. |
+| Application workflow | **PASS** — Nest started and served on port 5000; platform Mongo remained unconfigured and did not connect. |
+| Test resource cleanup | **PASS** — test containers removed; ports 27017 and 45271–45273 closed. |
 
 ## Remaining limitations and NO-GO decisions
 

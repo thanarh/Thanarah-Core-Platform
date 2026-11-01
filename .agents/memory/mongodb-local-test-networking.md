@@ -7,6 +7,8 @@ In this workspace's containerized Docker daemon, user-defined bridge DNS may res
 
 The official MongoDB image's first-run initialization process temporarily binds port 27017 even when the final `mongod` uses a custom port. Starting multiple host-network members concurrently can collide on that temporary listener. Start members one at a time and wait for each configured final port before starting the next.
 
-**Why:** Bridge peer TCP failed despite successful DNS resolution; simultaneous host-network startup produced address-in-use errors, while sequential startup on loopback ports formed a working replica set.
+When a member is already running with `--replSet` but has not yet been initialized, connect to that single seed with `directConnection=true` for `replSetInitiate`. After initialization, switch to the full replica-set seed list and allow for election delay before requiring a primary.
 
-**How to apply:** Before any database test, verify the exact topology's peer TCP path. In host-network labs, bind only loopback, use unique member ports, start sequentially, and keep the topology disposable and synthetic-data-only. Never infer production suitability from this local workaround.
+**Why:** Bridge peer TCP failed despite successful DNS resolution; simultaneous host-network startup produced address-in-use errors, while sequential startup on loopback ports formed a working replica set. An uninitialized replica-set member is an `RSGhost`, so a normal topology-aware bootstrap client cannot select it.
+
+**How to apply:** Before any database test, verify the exact topology's peer TCP path. In host-network labs, bind only loopback, use unique member ports, start sequentially, bootstrap uninitialized members through a direct connection, then use the full replica-set seed list. Keep the topology disposable and synthetic-data-only; never infer production suitability from this local workaround.

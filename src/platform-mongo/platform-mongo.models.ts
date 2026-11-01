@@ -10,6 +10,10 @@ const common = {
   updatedAt: timestamp,
   schemaVersion: z.literal(1),
 };
+const identity = {
+  _id: uuid,
+  schemaVersion: z.literal(1),
+};
 
 export const platformUserSchema = z
   .object({
@@ -82,7 +86,8 @@ export const platformUserRoleSchema = z
 
 export const platformSessionSchema = z
   .object({
-    ...common,
+    ...identity,
+    createdAt: timestamp,
     userId: uuid,
     refreshTokenHash: z.string().regex(/^[a-f0-9]{64}$/iu),
     tokenFamilyId: uuid,
@@ -104,7 +109,7 @@ export const platformSessionSchema = z
 
 export const platformRefreshTokenHistorySchema = z
   .object({
-    ...common,
+    ...identity,
     sessionId: uuid,
     tokenFamilyId: uuid,
     tokenHash: z.string().regex(/^[a-f0-9]{64}$/iu),

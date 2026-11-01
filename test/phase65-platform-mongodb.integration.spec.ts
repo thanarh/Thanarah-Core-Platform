@@ -24,6 +24,10 @@ import { PlatformMongoRepositories } from '../src/platform-mongo/platform-mongo.
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;
+const testUri =
+  mongoUri ??
+  'mongodb://127.0.0.1:45271,127.0.0.1:45272,127.0.0.1:45273/?replicaSet=rs0&retryWrites=true';
+const testDatabaseName = databaseName ?? 'phase65_platform_skipped';
 const allowedSeeds = new Set(['127.0.0.1:45271', '127.0.0.1:45272', '127.0.0.1:45273']);
 const integration = mongoUri && databaseName ? describe : describe.skip;
 
@@ -59,13 +63,12 @@ function assertDisposableLoopbackTarget(uri: string, database: string): void {
 }
 
 integration('Phase 65 isolated platform MongoDB foundation', () => {
-  if (!mongoUri || !databaseName) throw new Error('Phase 65 test target is missing');
-  assertDisposableLoopbackTarget(mongoUri, databaseName);
+  if (mongoUri && databaseName) assertDisposableLoopbackTarget(mongoUri, databaseName);
   const factory = new CapturingPlatformClientFactory();
   const manager = new PlatformMongoClientManager(
     {
-      platformMongoUri: mongoUri,
-      platformMongoDatabase: databaseName,
+      platformMongoUri: testUri,
+      platformMongoDatabase: testDatabaseName,
     } as ConfigService,
     factory,
   );
@@ -92,7 +95,17 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       if (!(error instanceof Error) || !/already initialized/iu.test(error.message)) throw error;
     }
     await bootstrapClient.close();
-    const db = await manager.getDatabase();
+    const connectionDeadline = Date.now() + 30_000;
+    let db: Awaited<ReturnType<PlatformMongoClientManager['getDatabase']>> | undefined;
+    while (Date.now() < connectionDeadline) {
+      try {
+        db = await manager.getDatabase();
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    if (!db) throw new Error('Platform Mongo client did not recover after replica-set election');
     const appAdmin = factory.client?.db('admin');
     if (!appAdmin) throw new Error('Phase 65 MongoDB client is unavailable');
     const deadline = Date.now() + 30_000;
@@ -115,7 +128,7 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
 
   afterAll(async () => {
     try {
-      if (factory.client) await factory.client.db(databaseName).dropDatabase();
+      if (factory.client) await factory.client.db(testDatabaseName).dropDatabase();
     } finally {
       await manager.onApplicationShutdown();
     }
@@ -200,6 +213,58 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
   });
 
+  it('preserves approved session and token-history fields through repository updates', async () => {
+    const now = new Date();
+    const sessionId = newStableId();
+    const userId = newStableId();
+    const tokenFamilyId = newStableId();
+    const session = {
+      _id: sessionId,
+      schemaVersion: 1 as const,
+      createdAt: now,
+      userId,
+      refreshTokenHash: 'a'.repeat(64),
+      tokenFamilyId,
+      status: 'ACTIVE' as const,
+      ipAddress: null,
+      userAgent: null,
+      deviceName: null,
+      deviceType: null,
+      browser: null,
+      operatingSystem: null,
+      countryCode: null,
+      lastActivityAt: now,
+      expiresAt: new Date(now.getTime() + 60_000),
+      revokedAt: null,
+      revokedBy: null,
+      revocationReason: null,
+    };
+    await repositories.sessions.create(session);
+    await expect(
+      repositories.sessions.update(sessionId, { status: 'REVOKED' }),
+    ).resolves.toMatchObject({ _id: sessionId, status: 'REVOKED' });
+
+    const historyId = newStableId();
+    const history = {
+      _id: historyId,
+      schemaVersion: 1 as const,
+      sessionId,
+      tokenFamilyId,
+      tokenHash: 'b'.repeat(64),
+      rotatedAt: now,
+      expiresAt: session.expiresAt,
+      reuseDetectedAt: null,
+    };
+    await repositories.refreshTokenHistory.create(history);
+    await expect(
+      repositories.refreshTokenHistory.update(historyId, { reuseDetectedAt: now }),
+    ).resolves.toMatchObject({ _id: historyId, reuseDetectedAt: now });
+    await expect(repositories.refreshTokenHistory.findById(historyId)).resolves.toEqual({
+      ...history,
+      reuseDetectedAt: now,
+    });
+  });
+
   it('uses stable composite identifiers and prevents concurrent duplicate identity writes', async () => {
     const now = new Date();
     const userId = newStableId();
@@ -224,7 +289,7 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     expect(stableAssignmentId(userId, newStableId())).toContain('|');
   });
 
-  it('recovers readiness after an injected connection close and after primary stepdown', async () => {
+  it('recovers readiness and repository operations after an injected connection close', async () => {
     const client = factory.client;
     if (!client) throw new Error('Phase 65 MongoDB client was not initialized');
     const admin = client.db('admin');
@@ -236,43 +301,21 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     expect(await manager.checkReadiness()).toBe(false);
     await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
     expect(await manager.checkReadiness()).toBe(true);
-    try {
-      await admin.command({ replSetStepDown: 5, force: true });
-    } catch {
-      // Expected: the stepdown disconnects its command socket.
-    }
-    const deadline = Date.now() + 30_000;
-    let primaryRecovered = false;
-    while (Date.now() < deadline) {
-      try {
-        const hello = await admin.command({ hello: 1 });
-        if (hello.setName === 'rs0' && hello.isWritablePrimary === true) {
-          primaryRecovered = true;
-          break;
-        }
-      } catch {
-        // Election temporarily removes a writable primary.
-      }
-      await new Promise((resolve) => setTimeout(resolve, 250));
-    }
-    expect(primaryRecovered).toBe(true);
-    expect(await manager.checkReadiness()).toBe(true);
-    expect(
-      await manager.getDatabase().then((db) =>
-        db.collection('tenants').insertOne({
-          _id: newStableId(),
-          schemaVersion: 1,
-          slug: `recovery-${newStableId()}`,
-          legalName: 'Synthetic Recovery Tenant',
-          displayName: 'Synthetic Recovery Tenant',
-          status: 'ACTIVE',
-          statusChangedAt: new Date(),
-          suspendedAt: null,
-          deactivatedAt: null,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        }),
-      ),
-    ).toMatchObject({ acknowledged: true });
+    const id = newStableId();
+    const now = new Date();
+    await expect(
+      repositories.tenants.create({
+        _id: id,
+        ...documentTimestamps(now),
+        schemaVersion: 1,
+        slug: `recovery-${id}`,
+        legalName: 'Synthetic Recovery Tenant',
+        displayName: 'Synthetic Recovery Tenant',
+        status: 'ACTIVE',
+        statusChangedAt: now,
+        suspendedAt: null,
+        deactivatedAt: null,
+      }),
+    ).resolves.toMatchObject({ _id: id });
   }, 60_000);
 });

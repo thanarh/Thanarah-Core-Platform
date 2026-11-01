@@ -114,11 +114,12 @@ class MongoPlatformDocumentRepository<
       const current = await collection.findOne(filter);
       if (!current) return null;
       const validatedCurrent = this.parse(current);
-      const next = this.parse({
+      const candidate: Record<string, unknown> = {
         ...validatedCurrent,
         ...patch,
-        updatedAt: new Date(),
-      });
+      };
+      if ('updatedAt' in validatedCurrent) candidate.updatedAt = new Date();
+      const next = this.parse(candidate);
       const result = await collection.replaceOne(validatedCurrent as Filter<T>, next);
       if (result.matchedCount !== 1) throw new PlatformDocumentConflictError();
       return next;
@@ -175,9 +176,10 @@ export class PlatformMongoRepositories {
       platformUserSchema,
     );
     this.users = {
-      create: (document) => userRepository.create(document),
-      findById: (id) => userRepository.findById(id),
-      findByEmail: async (email) => {
+      create: (document: PlatformUserDocument): Promise<PlatformUserDocument> =>
+        userRepository.create(document),
+      findById: (id: string): Promise<PlatformUserDocument | null> => userRepository.findById(id),
+      findByEmail: async (email: string): Promise<PlatformUserDocument | null> => {
         try {
           const db = await manager.getDatabase();
           const document = await db
@@ -192,7 +194,10 @@ export class PlatformMongoRepositories {
           throw new PlatformMongoUnavailableError();
         }
       },
-      update: (id, patch) => userRepository.update(id, patch),
+      update: (
+        id: string,
+        patch: Partial<Omit<PlatformUserDocument, '_id' | 'createdAt' | 'updatedAt'>>,
+      ): Promise<PlatformUserDocument | null> => userRepository.update(id, patch),
     };
     this.tenants = new MongoPlatformDocumentRepository(manager, 'tenants', tenantSchema);
     const membershipRepository = new MongoPlatformDocumentRepository(
@@ -201,9 +206,20 @@ export class PlatformMongoRepositories {
       tenantMembershipSchema,
     );
     this.memberships = {
-      create: (document) => membershipRepository.create(document),
-      findByIdForTenant: (id, tenantId) => membershipRepository.findOne({ _id: id, tenantId }),
-      updateForTenant: (id, tenantId, patch) =>
+      create: (document: TenantMembershipDocument): Promise<TenantMembershipDocument> =>
+        membershipRepository.create(document),
+      findByIdForTenant: (id: string, tenantId: string): Promise<TenantMembershipDocument | null> =>
+        membershipRepository.findOne({ _id: id, tenantId }),
+      updateForTenant: (
+        id: string,
+        tenantId: string,
+        patch: Partial<
+          Omit<
+            TenantMembershipDocument,
+            '_id' | 'createdAt' | 'updatedAt' | 'tenantId' | 'platformUserId'
+          >
+        >,
+      ): Promise<TenantMembershipDocument | null> =>
         membershipRepository.updateWhere({ _id: id, tenantId }, patch),
     };
     this.roles = new MongoPlatformDocumentRepository(manager, 'platform_roles', platformRoleSchema);

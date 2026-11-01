@@ -1,4 +1,4 @@
-import { Controller, Get, Inject, ServiceUnavailableException } from '@nestjs/common';
+import { Controller, Get, Inject, Optional, ServiceUnavailableException } from '@nestjs/common';
 import {
   ApiOkResponse,
   ApiOperation,
@@ -27,8 +27,9 @@ export class AppController {
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(TenantStorageReadinessService)
     private readonly tenantStorage: TenantStorageReadinessService,
+    @Optional()
     @Inject(PlatformMongoClientManager)
-    private readonly platformMongo: PlatformMongoClientManager,
+    private readonly platformMongo?: PlatformMongoClientManager,
   ) {}
 
   @Get('health')
@@ -58,7 +59,7 @@ export class AppController {
         message: 'Required tenant storage is unavailable',
       });
     }
-    if (!(await this.platformMongo.checkReadiness())) {
+    if (this.platformMongo && !(await this.platformMongo.checkReadiness())) {
       throw new ServiceUnavailableException({
         code: 'PLATFORM_STORAGE_UNAVAILABLE',
         message: 'Platform storage is unavailable',
@@ -69,7 +70,7 @@ export class AppController {
       status: 'ready',
       database: 'available',
       tenantStorage: 'available',
-      ...(this.platformMongo.configured ? { platformMongo: 'available' as const } : {}),
+      ...(this.platformMongo?.configured ? { platformMongo: 'available' as const } : {}),
       timestamp: new Date().toISOString(),
     };
   }

@@ -208,3 +208,21 @@
 - [ ] Test actual Appointment and Encounter Mongo adapters and live timeout/topology error sanitization.
 - [ ] Approve a production topology and verify TLS, credentials, provider/network behavior, backups, recovery objectives, and application parity. Keep migration readiness **NO-GO**.
 
+## N. Phase 65 isolated platform storage foundation
+
+### Implemented and verified in the workspace (2026-11-01)
+
+- [x] Added an independent optional `PLATFORM_MONGO_URI` / `PLATFORM_MONGO_DATABASE` configuration pair; tenant Mongo and Prisma/MySQL configuration are unchanged.
+- [x] Added lazy platform client lifecycle, neutral readiness, graceful shutdown, typed/validated platform identity, tenant, membership, platform-role/permission, and session/history document contracts and repository operations.
+- [x] Added explicit index provisioning and verification for the implemented collections; the disposable replica-set test verified uniqueness, ordered keys, user-email collation, and no TTL index.
+- [x] Phase 65 platform MongoDB integration: **6/6 passed** against a disposable three-member loopback-only MongoDB 7.0.17 replica set. Tests used synthetic data and a test-only database; no Prisma/MySQL connection was imported by the integration test.
+- [x] No existing SQL repositories, authentication/authorization workflows, tenant activation, subscriptions, audit workflows, production data, or production configuration were switched or modified.
+
+### Still not migrated or proven; readiness remains NO-GO
+
+- [ ] No cross-document referential integrity, authorization invariants, session rotation/reuse guarantee, or MongoDB transaction propagation is implemented; keep the new repositories unused by live workflows.
+- [ ] Prove equality/collation behavior against MySQL `utf8mb4_unicode_ci` before any identity cutover.
+- [ ] Approve production provider/topology, data residency/compliance, access roles/secrets, backup and restore, retention, RPO/RTO, and operations ownership.
+- [ ] Implement and verify the 13 transaction-bearing repository replacements, audit/outbox/encounter consistency, Appointment and Encounter compatibility, transfer rehearsal, and cutover gates.
+- [ ] Do not infer MySQL retirement readiness or production feature parity from this foundation.
+
