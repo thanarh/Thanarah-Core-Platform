@@ -248,3 +248,21 @@
 - [ ] Owner decisions and approvals for provider/topology, residency/compliance, transaction policy, retention, backups/restore, RPO/RTO, and operational ownership remain outstanding.
 - [ ] Do not begin production migration, active repository replacement, shadow traffic, or cutover. Phase 67 may begin only isolated planning/contract-test/tooling after required topology and owner approvals.
 
+## P. Phase 66B incremental typed persistence ports
+
+### Implemented and verified in the workspace (2026-11-01)
+
+- [x] Added application-owned typed ports for Feature catalog, Plan/PlanFeature catalog, and Platform audit/security event persistence. The interfaces do not expose Prisma or MongoDB types.
+- [x] Bound the three ports to their existing Prisma repositories using explicit Nest injection tokens and `useExisting`; no Mongo adapter is registered.
+- [x] Migrated `FeatureService`, `PlanService`, and `PlatformAuditService` to interface-typed constructor dependencies. Query behavior, conditional updates, and transaction ownership were retained.
+- [x] Added a Nest dependency-injection test proving all three tokens resolve to their intended Prisma adapters.
+- [x] TypeScript, build, focused repository/DI tests, full suite, formatting, and lint passed. Full suite: 933 passed, 12 skipped; lint has one pre-existing warning.
+
+### Still incomplete; readiness remains NO-GO
+
+- [ ] Nineteen of the 22 central Prisma-backed repositories remain unported; their services continue using concrete repositories.
+- [ ] `AppController` still calls Prisma readiness directly; `EncounterService` and `TenantStorageActivationService` still use Prisma directly. `TenantWorkspaceController` still injects `TenantMembershipRepository`.
+- [ ] Feature/Plan services still inspect Prisma `P2002` errors, and catalog/audit services still import generated Prisma enum values. These implementation leaks need a neutral domain contract before those services are fully persistence-independent.
+- [ ] No all-repository contract suite or Mongo adapter tests were added. Transaction commit/rollback, concurrent-update, failover and uncertain-acknowledgement behavior remain unverified for MongoDB.
+- [ ] Phase 66B is an incremental port milestone, not complete. Phase 66C may begin only as isolated planning or test design after review; no active Mongo repository replacement, migration, or cutover is safe yet.
+

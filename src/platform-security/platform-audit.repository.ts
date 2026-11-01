@@ -1,22 +1,26 @@
 import { Injectable } from '@nestjs/common';
-import type { Prisma, PlatformAuditLog, PlatformSecurityEvent } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type { PlatformAuditPersistencePort } from '../persistence/platform-persistence.ports';
+import type {
+  CreatePlatformAuditRecord,
+  CreatePlatformSecurityRecord,
+  PlatformAuditRecord,
+  PlatformSecurityRecord,
+} from '../persistence/platform-persistence.ports';
 
 @Injectable()
-export class PlatformAuditRepository {
+export class PlatformAuditRepository implements PlatformAuditPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
-  createAuditLog(data: Prisma.PlatformAuditLogUncheckedCreateInput): Promise<PlatformAuditLog> {
+  createAuditLog(data: CreatePlatformAuditRecord): Promise<PlatformAuditRecord> {
     return this.prisma.platformAuditLog.create({ data });
   }
 
-  findAuditLog(id: string): Promise<PlatformAuditLog | null> {
+  findAuditLog(id: string): Promise<PlatformAuditRecord | null> {
     return this.prisma.platformAuditLog.findUnique({ where: { id } });
   }
 
-  createSecurityEvent(
-    data: Prisma.PlatformSecurityEventUncheckedCreateInput,
-  ): Promise<PlatformSecurityEvent> {
+  createSecurityEvent(data: CreatePlatformSecurityRecord): Promise<PlatformSecurityRecord> {
     return this.prisma.platformSecurityEvent.create({ data });
   }
 

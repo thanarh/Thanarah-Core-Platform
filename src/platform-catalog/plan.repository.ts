@@ -2,6 +2,18 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, PlanStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type { PlanFeatureQuotaLimits } from './plan-feature-quota';
+import type { PlanPersistencePort } from '../persistence/platform-persistence.ports';
+import type {
+  PlanFeatureRecord,
+  PlanListFilter,
+  PlanRecord,
+} from '../persistence/platform-persistence.ports';
+
+export type {
+  PlanFeatureRecord,
+  PlanListFilter,
+  PlanRecord,
+} from '../persistence/platform-persistence.ports';
 
 const planSelect = {
   id: true,
@@ -35,19 +47,8 @@ const planFeatureSelect = {
   },
 } satisfies Prisma.PlanFeatureSelect;
 
-export type PlanRecord = Prisma.PlanGetPayload<{ select: typeof planSelect }>;
-export type PlanFeatureRecord = Prisma.PlanFeatureGetPayload<{
-  select: typeof planFeatureSelect;
-}>;
-
-export interface PlanListFilter {
-  status?: PlanStatus;
-  limit: number;
-  offset: number;
-}
-
 @Injectable()
-export class PlanRepository {
+export class PlanRepository implements PlanPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: { key: string; name: string; description?: string }): Promise<PlanRecord> {

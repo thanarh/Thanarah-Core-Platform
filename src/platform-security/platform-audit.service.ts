@@ -1,15 +1,18 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import {
   PlatformAuditEventType,
   PlatformSecurityEventStatus,
   PlatformSecurityEventType,
-  Prisma,
 } from '@prisma/client';
 import { AuthorizationForbiddenError } from '../auth/errors/authorization.errors';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import type { PlatformPermissionCode } from '../auth/platform-authorization.constants';
 import { PlatformAuthorizationService } from '../auth/services/platform-authorization.service';
-import { PlatformAuditRepository } from './platform-audit.repository';
+import { PLATFORM_AUDIT_PERSISTENCE } from '../persistence/platform-persistence.ports';
+import type {
+  PlatformAuditPersistencePort,
+  SafeAuditMetadata,
+} from '../persistence/platform-persistence.ports';
 import type {
   CreatePlatformAuditInput,
   CreatePlatformSecurityEventInput,
@@ -41,7 +44,7 @@ export class PlatformAuditService {
   private readonly logger = new Logger(PlatformAuditService.name);
 
   constructor(
-    private readonly repository: PlatformAuditRepository,
+    @Inject(PLATFORM_AUDIT_PERSISTENCE) private readonly repository: PlatformAuditPersistencePort,
     private readonly authorization: PlatformAuthorizationService,
   ) {}
 
@@ -130,7 +133,7 @@ export class PlatformAuditService {
     };
   }
 
-  private metadata(input: SafeSecurityMetadata | undefined): Prisma.InputJsonValue {
+  private metadata(input: SafeSecurityMetadata | undefined): SafeAuditMetadata {
     if (!input || typeof input !== 'object' || Array.isArray(input)) return {};
 
     const output: Record<string, string | number | boolean | null> = {};

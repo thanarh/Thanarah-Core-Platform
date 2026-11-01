@@ -1,6 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { FeatureStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type { FeaturePersistencePort } from '../persistence/platform-persistence.ports';
+import type { FeatureListFilter, FeatureRecord } from '../persistence/platform-persistence.ports';
+
+export type { FeatureListFilter, FeatureRecord } from '../persistence/platform-persistence.ports';
 
 const featureSelect = {
   id: true,
@@ -13,16 +17,8 @@ const featureSelect = {
   updatedAt: true,
 } satisfies Prisma.FeatureSelect;
 
-export type FeatureRecord = Prisma.FeatureGetPayload<{ select: typeof featureSelect }>;
-
-export interface FeatureListFilter {
-  status?: FeatureStatus;
-  limit: number;
-  offset: number;
-}
-
 @Injectable()
-export class FeatureRepository {
+export class FeatureRepository implements FeaturePersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: { key: string; name: string; description?: string }): Promise<FeatureRecord> {

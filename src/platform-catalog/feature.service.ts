@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { FeatureStatus, PlatformAuditEventType, Prisma } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
@@ -20,12 +20,16 @@ import {
   FeatureLifecycleConflictError,
   FeatureNotFoundError,
 } from './catalog.errors';
-import { FeatureRepository, type FeatureRecord } from './feature.repository';
+import type {
+  FeaturePersistencePort,
+  FeatureRecord,
+} from '../persistence/platform-persistence.ports';
+import { FEATURE_PERSISTENCE } from '../persistence/platform-persistence.ports';
 
 @Injectable()
 export class FeatureService {
   constructor(
-    private readonly features: FeatureRepository,
+    @Inject(FEATURE_PERSISTENCE) private readonly features: FeaturePersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

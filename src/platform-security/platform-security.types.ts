@@ -1,4 +1,7 @@
-import type { PlatformAuditEventType, PlatformSecurityEventType } from '@prisma/client';
+import type {
+  PlatformAuditEvent,
+  PlatformSecurityEvent,
+} from '../persistence/platform-persistence.ports';
 
 export interface TrustedSecurityContext {
   actorUserId?: string | null;
@@ -12,7 +15,7 @@ export interface TrustedSecurityContext {
 export type SafeSecurityMetadata = Record<string, unknown>;
 
 export interface CreatePlatformAuditInput extends TrustedSecurityContext {
-  eventType: PlatformAuditEventType;
+  eventType: PlatformAuditEvent;
   /** Stable UUID from an immutable source event, when one exists. */
   eventId?: string;
   subjectTenantId?: string | null;
@@ -20,6 +23,6 @@ export interface CreatePlatformAuditInput extends TrustedSecurityContext {
 }
 
 export interface CreatePlatformSecurityEventInput extends TrustedSecurityContext {
-  eventType: PlatformSecurityEventType;
+  eventType: PlatformSecurityEvent;
   metadata?: SafeSecurityMetadata;
 }

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { FeatureStatus, PlanStatus, PlatformAuditEventType, Prisma } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
@@ -27,8 +27,14 @@ import {
   PlanLifecycleConflictError,
   PlanNotFoundError,
 } from './catalog.errors';
-import { FeatureRepository, type FeatureRecord } from './feature.repository';
-import { PlanRepository, type PlanFeatureRecord, type PlanRecord } from './plan.repository';
+import { FEATURE_PERSISTENCE, PLAN_PERSISTENCE } from '../persistence/platform-persistence.ports';
+import type {
+  FeaturePersistencePort,
+  FeatureRecord,
+  PlanFeatureRecord,
+  PlanPersistencePort,
+  PlanRecord,
+} from '../persistence/platform-persistence.ports';
 
 function stableQuotaLimits(value: unknown): string | null {
   if (value === null) return 'null';
@@ -44,8 +50,8 @@ function stableQuotaLimits(value: unknown): string | null {
 @Injectable()
 export class PlanService {
   constructor(
-    private readonly plans: PlanRepository,
-    private readonly features: FeatureRepository,
+    @Inject(PLAN_PERSISTENCE) private readonly plans: PlanPersistencePort,
+    @Inject(FEATURE_PERSISTENCE) private readonly features: FeaturePersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 
