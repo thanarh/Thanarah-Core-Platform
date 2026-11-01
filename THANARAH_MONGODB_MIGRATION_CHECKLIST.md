@@ -226,3 +226,25 @@
 - [ ] Implement and verify the 13 transaction-bearing repository replacements, audit/outbox/encounter consistency, Appointment and Encounter compatibility, transfer rehearsal, and cutover gates.
 - [ ] Do not infer MySQL retirement readiness or production feature parity from this foundation.
 
+## O. Phase 66 repository migration audit
+
+### Verified source-repository facts (2026-11-01; no production access)
+
+- [x] Recounted the current Prisma schema: 36 models, 21 enums, and 29 migration directories; the prior inventory counts still match.
+- [x] Found 22 active Prisma-backed control-plane repository classes and 3 separate tenant-storage contract implementations. `TenantStorageActivationService` is a service, not a repository.
+- [x] Confirmed 13 distinct source files contain transaction-bearing operations: 12 repository classes and `TenantStorageActivationService`; multiple transaction blocks occur in some files.
+- [x] Identified direct Prisma access outside repository classes in `AppController` readiness, `EncounterService` operation-ledger handling, and `TenantStorageActivationService`.
+- [x] No Nest scheduled-job/cron registration was found in `src/` or `scripts/`; explicit development bootstrap and Prisma helper scripts exist.
+- [x] Added Phase 66 architecture, repository dependency, transaction compatibility, SQL/Mongo semantics, and migration-sequence reports. These are source audits and plans, not production inventory or compatibility evidence.
+
+### Incomplete and unverified; readiness remains NO-GO
+
+- [ ] The active central repositories still lack a complete database-independent persistence-port layer; services continue to inject concrete repository classes. Controllers still include direct persistence access. Implement and test a complete port boundary with Prisma as the only active adapter before any replacement.
+- [ ] No reusable cross-adapter repository contract suite was added or run in Phase 66.
+- [ ] The Phase 65 platform Mongo repositories are not replacements for the active central repositories. All 13 transaction-bearing workflows and encounter cross-store behavior remain unimplemented/unverified on MongoDB.
+- [ ] Phase 66 did not run disposable replica-set commit/abort, workflow concurrency, failover interruption, or uncertain-acknowledgement tests. Prior Phase 63–65 evidence is limited to its stated test surfaces.
+- [ ] No differential MySQL/MongoDB semantic tests were run for Unicode collation, nullable uniqueness, date precision/timezones, decimal precision, sorting/pagination, enums, null-versus-missing, counters, or lifecycle filters.
+- [ ] No production database, production secret value, or production environment was accessed or changed. No migration, dual-write, shadow-write, deployment, staging, or commit was performed.
+- [ ] Owner decisions and approvals for provider/topology, residency/compliance, transaction policy, retention, backups/restore, RPO/RTO, and operational ownership remain outstanding.
+- [ ] Do not begin production migration, active repository replacement, shadow traffic, or cutover. Phase 67 may begin only isolated planning/contract-test/tooling after required topology and owner approvals.
+
