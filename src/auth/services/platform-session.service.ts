@@ -1,39 +1,43 @@
-import { Injectable } from '@nestjs/common';
-import type { PlatformSession } from '@prisma/client';
+import { Inject, Injectable } from '@nestjs/common';
 import {
-  PlatformSessionRepository,
-  type CreatePlatformSessionInput,
-} from '../repositories/platform-session.repository';
+  PLATFORM_SESSION_PERSISTENCE,
+  type CreatePlatformSessionRecord,
+  type PlatformSessionPersistencePort,
+  type PlatformSessionRecord,
+} from '../../persistence/platform-persistence.ports';
 
 @Injectable()
 export class PlatformSessionService {
-  constructor(private readonly repository: PlatformSessionRepository) {}
+  constructor(
+    @Inject(PLATFORM_SESSION_PERSISTENCE)
+    private readonly repository: PlatformSessionPersistencePort,
+  ) {}
 
-  create(data: CreatePlatformSessionInput): Promise<PlatformSession> {
+  create(data: CreatePlatformSessionRecord): Promise<PlatformSessionRecord> {
     return this.repository.create(data);
   }
-  findById(id: string): Promise<PlatformSession | null> {
+  findById(id: string): Promise<PlatformSessionRecord | null> {
     return this.repository.findById(id);
   }
-  findByIdForUser(id: string, userId: string): Promise<PlatformSession | null> {
+  findByIdForUser(id: string, userId: string): Promise<PlatformSessionRecord | null> {
     return this.repository.findByIdForUser(id, userId);
   }
-  listByUserId(userId: string): Promise<PlatformSession[]> {
+  listByUserId(userId: string): Promise<PlatformSessionRecord[]> {
     return this.repository.listByUserId(userId);
   }
-  findActiveByUserId(userId: string): Promise<PlatformSession[]> {
+  findActiveByUserId(userId: string): Promise<PlatformSessionRecord[]> {
     return this.repository.findActiveByUserId(userId);
   }
-  findByRefreshTokenHash(hash: string): Promise<PlatformSession | null> {
+  findByRefreshTokenHash(hash: string): Promise<PlatformSessionRecord | null> {
     return this.repository.findByRefreshTokenHash(hash);
   }
-  updateLastActivity(id: string): Promise<PlatformSession> {
+  updateLastActivity(id: string): Promise<PlatformSessionRecord> {
     return this.repository.updateLastActivity(id);
   }
-  revoke(id: string, by?: string, reason?: string): Promise<PlatformSession> {
+  revoke(id: string, by?: string, reason?: string): Promise<PlatformSessionRecord> {
     return this.repository.revoke(id, by, reason);
   }
-  revokeOne(id: string, by?: string, reason?: string): Promise<PlatformSession | null> {
+  revokeOne(id: string, by?: string, reason?: string): Promise<PlatformSessionRecord | null> {
     return this.repository.revokeOne(id, by, reason);
   }
   revokeAllForUser(userId: string, by?: string, reason?: string): Promise<number> {
@@ -42,16 +46,16 @@ export class PlatformSessionService {
   revokeAll(userId: string, by?: string, reason?: string): Promise<number> {
     return this.repository.revokeAll(userId, by, reason);
   }
-  markExpired(id: string): Promise<PlatformSession> {
+  markExpired(id: string): Promise<PlatformSessionRecord> {
     return this.repository.markExpired(id);
   }
-  markCompromised(id: string): Promise<PlatformSession> {
+  markCompromised(id: string): Promise<PlatformSessionRecord> {
     return this.repository.markCompromised(id);
   }
-  findByTokenFamilyId(id: string): Promise<PlatformSession[]> {
+  findByTokenFamilyId(id: string): Promise<PlatformSessionRecord[]> {
     return this.repository.findByTokenFamilyId(id);
   }
-  updateRefreshTokenHash(id: string, hash: string): Promise<PlatformSession> {
+  updateRefreshTokenHash(id: string, hash: string): Promise<PlatformSessionRecord> {
     return this.repository.updateRefreshTokenHash(id, hash);
   }
 }

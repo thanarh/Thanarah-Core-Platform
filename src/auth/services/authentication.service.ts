@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '../../config/config.service';
 import { Optional } from '@nestjs/common';
 import {
@@ -15,9 +15,10 @@ import {
 import { PlatformAuthorizationService } from './platform-authorization.service';
 import { PlatformSessionService } from './platform-session.service';
 import {
-  PlatformUserRepository,
-  type LoginUserRecord,
-} from '../repositories/platform-user.repository';
+  PLATFORM_USER_PERSISTENCE,
+  type PlatformLoginUserRecord,
+  type PlatformUserPersistencePort,
+} from '../../persistence/platform-persistence.ports';
 import { PasswordHasherService } from '../security/password-hasher.service';
 import { TokenGeneratorService } from '../security/token-generator.service';
 import { RefreshTokenService } from './refresh-token.service';
@@ -42,7 +43,8 @@ const DUMMY_HASH =
 @Injectable()
 export class AuthenticationService {
   constructor(
-    private readonly users: PlatformUserRepository,
+    @Inject(PLATFORM_USER_PERSISTENCE)
+    private readonly users: PlatformUserPersistencePort,
     private readonly passwords: PasswordHasherService,
     private readonly config: ConfigService,
     private readonly sessions: PlatformSessionService,
@@ -165,7 +167,7 @@ export class AuthenticationService {
   }
 
   private async recordFailure(
-    record: LoginUserRecord,
+    record: PlatformLoginUserRecord,
   ): Promise<{ lockApplied: boolean } | undefined> {
     return this.users.recordFailedLogin(
       record.id,

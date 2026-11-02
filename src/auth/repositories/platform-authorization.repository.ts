@@ -1,9 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../database/prisma.service';
 import type { PlatformPermissionCode, PlatformRoleCode } from '../platform-authorization.constants';
+import type { PlatformAuthorizationPersistencePort } from '../../persistence/platform-persistence.ports';
 
 @Injectable()
-export class PlatformAuthorizationRepository {
+export class PlatformAuthorizationRepository implements PlatformAuthorizationPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findRoleCodesByUserId(userId: string): Promise<PlatformRoleCode[]> {

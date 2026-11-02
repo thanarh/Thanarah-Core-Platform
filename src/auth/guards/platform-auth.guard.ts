@@ -1,20 +1,25 @@
-import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, Inject, Injectable } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { PlatformSessionStatus, UserStatus } from '@prisma/client';
 import type { FastifyRequest } from 'fastify';
 import { IS_PUBLIC_KEY } from '../auth.constants';
 import { AuthenticationError } from '../errors/auth.errors';
-import { PlatformSessionRepository } from '../repositories/platform-session.repository';
-import { PlatformUserRepository } from '../repositories/platform-user.repository';
 import { AccessTokenService } from '../services/access-token.service';
+import {
+  PLATFORM_SESSION_PERSISTENCE,
+  PLATFORM_USER_PERSISTENCE,
+  type PlatformSessionPersistencePort,
+  type PlatformUserPersistencePort,
+} from '../../persistence/platform-persistence.ports';
 
 @Injectable()
 export class PlatformAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly accessTokens: AccessTokenService,
-    private readonly users: PlatformUserRepository,
-    private readonly sessions: PlatformSessionRepository,
+    @Inject(PLATFORM_USER_PERSISTENCE)
+    private readonly users: PlatformUserPersistencePort,
+    @Inject(PLATFORM_SESSION_PERSISTENCE)
+    private readonly sessions: PlatformSessionPersistencePort,
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
@@ -30,7 +35,7 @@ export class PlatformAuthGuard implements CanActivate {
     const user = await this.users.findAuthRecordById(claims.sub);
 
     if (!user) throw new AuthenticationError('AUTH_USER_NOT_FOUND', 'User was not found');
-    if (user.status !== UserStatus.ACTIVE) {
+    if (user.status !== 'ACTIVE') {
       throw new AuthenticationError('AUTH_ACCOUNT_INACTIVE', 'Account is not active');
     }
     if (user.tokenVersion !== claims.tokenVersion) {
@@ -45,13 +50,13 @@ export class PlatformAuthGuard implements CanActivate {
         'Session does not belong to user',
       );
     }
-    if (session.status === PlatformSessionStatus.REVOKED) {
+    if (session.status === 'REVOKED') {
       throw new AuthenticationError('AUTH_SESSION_REVOKED', 'Session has been revoked');
     }
-    if (session.status === PlatformSessionStatus.COMPROMISED) {
+    if (session.status === 'COMPROMISED') {
       throw new AuthenticationError('AUTH_SESSION_COMPROMISED', 'Session is compromised');
     }
-    if (session.status === PlatformSessionStatus.EXPIRED || session.expiresAt <= new Date()) {
+    if (session.status === 'EXPIRED' || session.expiresAt <= new Date()) {
       throw new AuthenticationError('AUTH_SESSION_EXPIRED', 'Session has expired');
     }
 

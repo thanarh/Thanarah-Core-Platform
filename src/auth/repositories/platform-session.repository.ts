@@ -6,22 +6,18 @@ import {
   type PlatformSession,
 } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import type {
+  CreatePlatformSessionRecord,
+  PlatformRefreshRotationResult,
+  PlatformSessionPersistencePort,
+} from '../../persistence/platform-persistence.ports';
 
-export type CreatePlatformSessionInput = Omit<
-  Prisma.PlatformSessionUncheckedCreateInput,
-  'id' | 'createdAt' | 'lastActivityAt'
->;
+export type CreatePlatformSessionInput = CreatePlatformSessionRecord;
 
-export type RefreshRotationResult =
-  | { kind: 'rotated'; session: PlatformSession }
-  | { kind: 'reused'; sessionId: string; subjectUserId: string }
-  | { kind: 'not-found' }
-  | { kind: 'revoked' }
-  | { kind: 'compromised'; sessionId: string; subjectUserId: string }
-  | { kind: 'expired' };
+export type RefreshRotationResult = PlatformRefreshRotationResult;
 
 @Injectable()
-export class PlatformSessionRepository {
+export class PlatformSessionRepository implements PlatformSessionPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(data: CreatePlatformSessionInput): Promise<PlatformSession> {

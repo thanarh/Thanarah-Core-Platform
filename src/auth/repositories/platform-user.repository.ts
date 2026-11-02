@@ -1,21 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import type { User } from '@prisma/client';
 import { PrismaService } from '../../database/prisma.service';
+import type {
+  PlatformLoginUserRecord,
+  PlatformUserAuthRecord,
+  PlatformUserPersistencePort,
+} from '../../persistence/platform-persistence.ports';
 
-export type PlatformUserAuthRecord = Pick<User, 'id' | 'status' | 'tokenVersion'>;
-export type LoginUserRecord = Pick<
-  User,
-  | 'id'
-  | 'email'
-  | 'passwordHash'
-  | 'status'
-  | 'tokenVersion'
-  | 'failedLoginAttempts'
-  | 'lockedUntil'
->;
+export type LoginUserRecord = PlatformLoginUserRecord;
+export type { PlatformUserAuthRecord };
 
 @Injectable()
-export class PlatformUserRepository {
+export class PlatformUserRepository implements PlatformUserPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   findAuthRecordById(id: string): Promise<PlatformUserAuthRecord | null> {
@@ -25,7 +20,7 @@ export class PlatformUserRepository {
     });
   }
 
-  findLoginRecordByEmail(email: string): Promise<LoginUserRecord | null> {
+  findLoginRecordByEmail(email: string): Promise<PlatformLoginUserRecord | null> {
     return this.prisma.user.findUnique({
       where: { email },
       select: {

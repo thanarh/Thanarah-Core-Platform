@@ -1,10 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import type { PlatformPermissionCode, PlatformRoleCode } from '../platform-authorization.constants';
-import { PlatformAuthorizationRepository } from '../repositories/platform-authorization.repository';
+import {
+  PLATFORM_AUTHORIZATION_PERSISTENCE,
+  type PlatformAuthorizationPersistencePort,
+} from '../../persistence/platform-persistence.ports';
 
 @Injectable()
 export class PlatformAuthorizationService {
-  constructor(private readonly authorization: PlatformAuthorizationRepository) {}
+  constructor(
+    @Inject(PLATFORM_AUTHORIZATION_PERSISTENCE)
+    private readonly authorization: PlatformAuthorizationPersistencePort,
+  ) {}
 
   async hasPermissions(
     userId: string,

@@ -19,6 +19,10 @@ import { RefreshTokenService } from './services/refresh-token.service';
 import { AuthenticationService } from './services/authentication.service';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { PlatformAuthorizationModule } from './platform-authorization.module';
+import {
+  PLATFORM_SESSION_PERSISTENCE,
+  PLATFORM_USER_PERSISTENCE,
+} from '../persistence/platform-persistence.ports';
 
 const providers = [
   AccessTokenService,
@@ -29,8 +33,10 @@ const providers = [
   PlatformAuthorizationGuard,
   PlatformRolePolicyService,
   PlatformSessionRepository,
+  { provide: PLATFORM_SESSION_PERSISTENCE, useExisting: PlatformSessionRepository },
   PlatformSessionService,
   PlatformUserRepository,
+  { provide: PLATFORM_USER_PERSISTENCE, useExisting: PlatformUserRepository },
   RefreshTokenService,
   AuthenticationService,
   TokenGeneratorService,

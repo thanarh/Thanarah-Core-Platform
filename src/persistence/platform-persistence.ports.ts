@@ -3,6 +3,109 @@ import type { PlanFeatureQuotaLimits } from '../platform-catalog/plan-feature-qu
 export const FEATURE_PERSISTENCE = Symbol('FEATURE_PERSISTENCE');
 export const PLAN_PERSISTENCE = Symbol('PLAN_PERSISTENCE');
 export const PLATFORM_AUDIT_PERSISTENCE = Symbol('PLATFORM_AUDIT_PERSISTENCE');
+export const PLATFORM_USER_PERSISTENCE = Symbol('PLATFORM_USER_PERSISTENCE');
+export const PLATFORM_SESSION_PERSISTENCE = Symbol('PLATFORM_SESSION_PERSISTENCE');
+export const PLATFORM_AUTHORIZATION_PERSISTENCE = Symbol('PLATFORM_AUTHORIZATION_PERSISTENCE');
+
+export type PlatformUserStatusValue = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
+export type PlatformSessionStatusValue = 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'COMPROMISED';
+export type PlatformRoleCodeValue =
+  | 'OWNER'
+  | 'SUPER_ADMIN'
+  | 'PLATFORM_ADMIN'
+  | 'SECURITY_ADMIN'
+  | 'SUPPORT_ADMIN';
+
+export interface PlatformUserAuthRecord {
+  id: string;
+  status: PlatformUserStatusValue;
+  tokenVersion: number;
+}
+
+export interface PlatformLoginUserRecord extends PlatformUserAuthRecord {
+  email: string;
+  passwordHash: string;
+  failedLoginAttempts: number;
+  lockedUntil: Date | null;
+}
+
+export interface PlatformUserPersistencePort {
+  findAuthRecordById(id: string): Promise<PlatformUserAuthRecord | null>;
+  findLoginRecordByEmail(email: string): Promise<PlatformLoginUserRecord | null>;
+  recordFailedLogin(
+    id: string,
+    threshold: number,
+    lockMinutes: number,
+  ): Promise<{ lockApplied: boolean }>;
+  resetFailedLogins(id: string): Promise<void>;
+}
+
+export interface CreatePlatformSessionRecord {
+  userId: string;
+  refreshTokenHash: string;
+  tokenFamilyId: string;
+  expiresAt: Date;
+  ipAddress?: string | null;
+  userAgent?: string | null;
+}
+
+export interface PlatformSessionRecord {
+  id: string;
+  userId: string;
+  refreshTokenHash: string;
+  tokenFamilyId: string;
+  status: PlatformSessionStatusValue;
+  ipAddress: string | null;
+  userAgent: string | null;
+  deviceName: string | null;
+  deviceType: string | null;
+  browser: string | null;
+  operatingSystem: string | null;
+  countryCode: string | null;
+  createdAt: Date;
+  lastActivityAt: Date;
+  expiresAt: Date;
+  revokedAt: Date | null;
+  revokedBy: string | null;
+  revocationReason: string | null;
+}
+
+export type PlatformRefreshRotationResult =
+  | { kind: 'rotated'; session: PlatformSessionRecord }
+  | { kind: 'reused'; sessionId: string; subjectUserId: string }
+  | { kind: 'not-found' }
+  | { kind: 'revoked' }
+  | { kind: 'compromised'; sessionId: string; subjectUserId: string }
+  | { kind: 'expired' };
+
+export interface PlatformSessionPersistencePort {
+  create(data: CreatePlatformSessionRecord): Promise<PlatformSessionRecord>;
+  findById(id: string): Promise<PlatformSessionRecord | null>;
+  findByIdForUser(id: string, userId: string): Promise<PlatformSessionRecord | null>;
+  listByUserId(userId: string): Promise<PlatformSessionRecord[]>;
+  findActiveByUserId(userId: string): Promise<PlatformSessionRecord[]>;
+  findByRefreshTokenHash(hash: string): Promise<PlatformSessionRecord | null>;
+  updateLastActivity(id: string, at?: Date): Promise<PlatformSessionRecord>;
+  revoke(id: string, revokedBy?: string, reason?: string): Promise<PlatformSessionRecord>;
+  revokeOne(id: string, revokedBy?: string, reason?: string): Promise<PlatformSessionRecord | null>;
+  revokeAllForUser(userId: string, revokedBy?: string, reason?: string): Promise<number>;
+  revokeAll(userId: string, revokedBy?: string, reason?: string): Promise<number>;
+  markExpired(id: string): Promise<PlatformSessionRecord>;
+  markCompromised(id: string): Promise<PlatformSessionRecord>;
+  findByTokenFamilyId(tokenFamilyId: string): Promise<PlatformSessionRecord[]>;
+  updateRefreshTokenHash(id: string, hash: string): Promise<PlatformSessionRecord>;
+  rotateByRefreshTokenHash(
+    presentedHash: string,
+    newTokenHash: string,
+    now?: Date,
+  ): Promise<PlatformRefreshRotationResult>;
+}
+
+export interface PlatformAuthorizationPersistencePort {
+  findRoleCodesByUserId(userId: string): Promise<PlatformRoleCodeValue[]>;
+  findRoleIdsByUserId(userId: string): Promise<string[]>;
+  findPermissionCodesByUserId(userId: string): Promise<string[]>;
+}
 
 export type FeatureStatusValue = 'ACTIVE' | 'INACTIVE';
 export type PlanStatusValue = 'ACTIVE' | 'INACTIVE' | 'ARCHIVED';

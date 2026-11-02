@@ -1,11 +1,14 @@
-import { Injectable, Optional } from '@nestjs/common';
-import type { PlatformSession } from '@prisma/client';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   PlatformAuditService,
   PlatformSecurityEventType,
 } from '../../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../../platform-security/platform-security.types';
-import { PlatformSessionRepository } from '../repositories/platform-session.repository';
+import {
+  PLATFORM_SESSION_PERSISTENCE,
+  type PlatformSessionPersistencePort,
+  type PlatformSessionRecord,
+} from '../../persistence/platform-persistence.ports';
 import { TokenGeneratorService } from '../security/token-generator.service';
 import { TokenHasherService } from '../security/token-hasher.service';
 import {
@@ -19,13 +22,14 @@ import {
 
 export interface RotatedRefreshToken {
   refreshToken: string;
-  session: PlatformSession;
+  session: PlatformSessionRecord;
 }
 
 @Injectable()
 export class RefreshTokenService {
   constructor(
-    private readonly sessions: PlatformSessionRepository,
+    @Inject(PLATFORM_SESSION_PERSISTENCE)
+    private readonly sessions: PlatformSessionPersistencePort,
     private readonly generator: TokenGeneratorService,
     private readonly hasher: TokenHasherService,
     @Optional() private readonly audit?: PlatformAuditService,
