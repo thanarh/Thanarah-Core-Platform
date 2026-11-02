@@ -183,7 +183,6 @@ describe('Tenant appointment HTTP authorization and routing', () => {
     const module = await Test.createTestingModule({
       controllers: [TenantAppointmentController, FacilitySchedulingPolicyController],
       providers: [
-        PlatformAuthGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,
         AppointmentService,

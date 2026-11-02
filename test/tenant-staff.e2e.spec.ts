@@ -175,7 +175,6 @@ describe('Tenant Staff HTTP authorization and routing', () => {
         StaffPlatformAuthorizationProbeController,
       ],
       providers: [
-        PlatformAuthGuard,
         PlatformAuthorizationGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,

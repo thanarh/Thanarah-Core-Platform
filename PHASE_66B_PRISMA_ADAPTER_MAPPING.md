@@ -1,17 +1,20 @@
 # Phase 66B — Prisma Adapter Mapping
 
-**Date:** 2026-11-01
-**Scope:** Mapping for the three Phase 66B ports only. No MongoDB adapter is registered.
+**Date:** 2026-11-02
+**Scope:** Mapping for the six implemented Phase 66B port groups. No MongoDB adapter is registered.
 
 | Port | Prisma adapter | Source models | Query/consistency contract retained |
 |---|---|---|---|
 | `FeaturePersistencePort` | `FeatureRepository` | `Feature` | Existing selected record fields; find by primary ID or unique key; optional status filter; `createdAt DESC, id DESC` ordering with offset/limit; expected-status conditional updates; uniqueness errors are still translated by `FeatureService`. |
 | `PlanPersistencePort` | `PlanRepository` | `Plan`, `PlanFeature`, related `Feature` projection | Existing selected fields; unique key lookup; same deterministic paginated ordering; expected-status conditional updates; plan-feature order is `createdAt ASC, featureId ASC`; quota JSON NULL/write semantics and duplicate behavior remain in Prisma adapter. |
 | `PlatformAuditPersistencePort` | `PlatformAuditRepository` | `PlatformAuditLog`, `PlatformSecurityEvent` | Existing create/find behavior; security resolution updates only `id + OPEN` and reports whether exactly one row changed; no transaction was moved or added. |
+| `PlatformUserPersistencePort` | `PlatformUserRepository` | `User` | Existing field projections and email lookup retained; failed-login increment and threshold lock continue in the same Prisma transaction; reset remains a single update. |
+| `PlatformSessionPersistencePort` | `PlatformSessionRepository` | `PlatformSession`, `PlatformRefreshTokenHistory` | Existing ordering/filter behavior retained; refresh rotation and reuse detection remain atomic in the same transaction with existing row lock/retry policy; revocation remains conditional on ACTIVE state. |
+| `PlatformAuthorizationPersistencePort` | `PlatformAuthorizationRepository` | `UserPlatformRole`, `PlatformRole`, `PlatformRolePermission`, `PlatformPermission` | Existing role, role-ID, and permission projections and Set-based permission de-duplication retained. |
 
 ## Dependency injection
 
-`PlatformCatalogModule` binds `FEATURE_PERSISTENCE` to `FeatureRepository` and `PLAN_PERSISTENCE` to `PlanRepository`. `PlatformSecurityModule` binds `PLATFORM_AUDIT_PERSISTENCE` to `PlatformAuditRepository`. Both bindings use `useExisting`.
+`PlatformCatalogModule` binds catalog tokens; `PlatformSecurityModule` binds the audit token. `AuthPersistenceModule` binds user, session, and authorization tokens. All bindings use `useExisting`.
 
 ## Remaining Prisma-specific behavior in consumers
 

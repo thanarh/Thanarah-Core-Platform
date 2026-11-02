@@ -1,7 +1,8 @@
 import { Test, type TestingModule } from '@nestjs/testing';
-import { Reflector } from '@nestjs/core';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/database/prisma.service';
+import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
+import { AccessTokenService } from '../src/auth/services/access-token.service';
 import {
   FEATURE_PERSISTENCE,
   PLAN_PERSISTENCE,
@@ -10,12 +11,11 @@ import {
   PLATFORM_SESSION_PERSISTENCE,
   PLATFORM_USER_PERSISTENCE,
 } from '../src/persistence/platform-persistence.ports';
-import { AuthModule } from '../src/auth/auth.module';
+import { AuthPersistenceModule } from '../src/auth/auth-persistence.module';
+import { PlatformAuthorizationModule } from '../src/auth/platform-authorization.module';
 import { PlatformAuthorizationRepository } from '../src/auth/repositories/platform-authorization.repository';
-import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { PlatformSessionRepository } from '../src/auth/repositories/platform-session.repository';
 import { PlatformUserRepository } from '../src/auth/repositories/platform-user.repository';
-import { AccessTokenService } from '../src/auth/services/access-token.service';
 import { FeatureRepository } from '../src/platform-catalog/feature.repository';
 import { PlatformCatalogModule } from '../src/platform-catalog/platform-catalog.module';
 import { PlanRepository } from '../src/platform-catalog/plan.repository';
@@ -29,6 +29,10 @@ describe('central persistence port providers', () => {
       imports: [PlatformCatalogModule],
     })
       .overrideProvider(PrismaService)
+      .useValue({})
+      .overrideProvider(PlatformAuthGuard)
+      .useValue({})
+      .overrideProvider(AccessTokenService)
       .useValue({})
       .compile();
   });
@@ -48,14 +52,10 @@ describe('platform authentication persistence port providers', () => {
   let moduleRef: TestingModule;
 
   beforeAll(async () => {
-    moduleRef = await Test.createTestingModule({ imports: [AuthModule] })
+    moduleRef = await Test.createTestingModule({
+      imports: [AuthPersistenceModule, PlatformAuthorizationModule],
+    })
       .overrideProvider(PrismaService)
-      .useValue({})
-      .overrideProvider(PlatformAuthGuard)
-      .useValue({})
-      .overrideProvider(Reflector)
-      .useValue(new Reflector())
-      .overrideProvider(AccessTokenService)
       .useValue({})
       .compile();
   });

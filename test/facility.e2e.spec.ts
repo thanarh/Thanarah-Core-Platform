@@ -123,7 +123,6 @@ describe('Tenant Facility HTTP authorization', () => {
     const module = await Test.createTestingModule({
       controllers: [FacilityController, FacilityPlatformAuthorizationProbeController],
       providers: [
-        PlatformAuthGuard,
         PlatformAuthorizationGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,

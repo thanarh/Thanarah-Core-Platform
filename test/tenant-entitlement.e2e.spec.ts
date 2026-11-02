@@ -111,12 +111,7 @@ describe('Tenant entitlement authorization composition HTTP contract', () => {
 
     const module = await Test.createTestingModule({
       controllers: [TenantEntitlementContractController],
-      providers: [
-        PlatformAuthGuard,
-        TenantContextGuard,
-        TenantAuthorizationGuard,
-        TenantEntitlementGuard,
-      ],
+      providers: [TenantContextGuard, TenantAuthorizationGuard, TenantEntitlementGuard],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

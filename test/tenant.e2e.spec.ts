@@ -88,7 +88,7 @@ describe('Tenant administration HTTP security boundary', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [TenantController, TenantGuardProbeController],
-      providers: [PlatformAuthGuard, PlatformAuthorizationGuard, TenantService],
+      providers: [PlatformAuthorizationGuard, TenantService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

@@ -105,7 +105,7 @@ describe('Platform Plan and Feature HTTP authorization', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [PlanController, FeatureController],
-      providers: [PlatformAuthGuard, PlatformAuthorizationGuard, PlanService, FeatureService],
+      providers: [PlatformAuthorizationGuard, PlanService, FeatureService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

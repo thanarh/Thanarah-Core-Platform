@@ -10,11 +10,7 @@ export const PLATFORM_AUTHORIZATION_PERSISTENCE = Symbol('PLATFORM_AUTHORIZATION
 export type PlatformUserStatusValue = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 export type PlatformSessionStatusValue = 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'COMPROMISED';
 export type PlatformRoleCodeValue =
-  | 'OWNER'
-  | 'SUPER_ADMIN'
-  | 'PLATFORM_ADMIN'
-  | 'SECURITY_ADMIN'
-  | 'SUPPORT_ADMIN';
+  'OWNER' | 'SUPER_ADMIN' | 'PLATFORM_ADMIN' | 'SECURITY_ADMIN' | 'SUPPORT_ADMIN';
 
 export interface PlatformUserAuthRecord {
   id: string;

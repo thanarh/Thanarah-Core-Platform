@@ -140,7 +140,6 @@ describe('Tenant quota authorization composition HTTP contract', () => {
     const module = await Test.createTestingModule({
       controllers: [TenantQuotaContractController],
       providers: [
-        PlatformAuthGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,
         { provide: TenantQuotaService, useValue: quotaService },

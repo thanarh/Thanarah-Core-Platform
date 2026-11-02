@@ -88,7 +88,7 @@ describe('Platform Subscription administration HTTP contract', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [SubscriptionController],
-      providers: [PlatformAuthGuard, PlatformAuthorizationGuard, SubscriptionService],
+      providers: [PlatformAuthorizationGuard, SubscriptionService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

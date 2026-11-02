@@ -119,12 +119,7 @@ describe('Tenant service catalog HTTP authorization and routing', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [TenantServiceCatalogController],
-      providers: [
-        PlatformAuthGuard,
-        TenantContextGuard,
-        TenantAuthorizationGuard,
-        ServiceCatalogService,
-      ],
+      providers: [TenantContextGuard, TenantAuthorizationGuard, ServiceCatalogService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

@@ -14,8 +14,8 @@ import {
 @Injectable()
 export class PlatformAuthGuard implements CanActivate {
   constructor(
-    private readonly reflector: Reflector,
-    private readonly accessTokens: AccessTokenService,
+    @Inject(Reflector) private readonly reflector: Reflector,
+    @Inject(AccessTokenService) private readonly accessTokens: AccessTokenService,
     @Inject(PLATFORM_USER_PERSISTENCE)
     private readonly users: PlatformUserPersistencePort,
     @Inject(PLATFORM_SESSION_PERSISTENCE)

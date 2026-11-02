@@ -117,7 +117,6 @@ describe('Tenant role administration HTTP authorization', () => {
         PlatformAuthProbeController,
       ],
       providers: [
-        PlatformAuthGuard,
         PlatformAuthorizationGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,

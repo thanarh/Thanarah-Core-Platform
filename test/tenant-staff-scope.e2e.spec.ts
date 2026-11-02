@@ -104,12 +104,7 @@ describe('Tenant staff scope HTTP authorization and routing', () => {
 
     const module = await Test.createTestingModule({
       controllers: [TenantStaffScopeController],
-      providers: [
-        PlatformAuthGuard,
-        TenantContextGuard,
-        TenantAuthorizationGuard,
-        TenantStaffScopeService,
-      ],
+      providers: [TenantContextGuard, TenantAuthorizationGuard, TenantStaffScopeService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

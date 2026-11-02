@@ -5,8 +5,7 @@ import { DatabaseModule } from '../database/database.module';
 import { AuthController } from './auth.controller';
 import { PlatformAuthGuard } from './guards/platform-auth.guard';
 import { PlatformAuthorizationGuard } from './guards/platform-authorization.guard';
-import { PlatformSessionRepository } from './repositories/platform-session.repository';
-import { PlatformUserRepository } from './repositories/platform-user.repository';
+import { AuthPersistenceModule } from './auth-persistence.module';
 import { PasswordHasherService } from './security/password-hasher.service';
 import { PasswordPolicyService } from './security/password-policy.service';
 import { TokenGeneratorService } from './security/token-generator.service';
@@ -19,10 +18,6 @@ import { RefreshTokenService } from './services/refresh-token.service';
 import { AuthenticationService } from './services/authentication.service';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { PlatformAuthorizationModule } from './platform-authorization.module';
-import {
-  PLATFORM_SESSION_PERSISTENCE,
-  PLATFORM_USER_PERSISTENCE,
-} from '../persistence/platform-persistence.ports';
 
 const providers = [
   AccessTokenService,
@@ -32,11 +27,7 @@ const providers = [
   PlatformAuthGuard,
   PlatformAuthorizationGuard,
   PlatformRolePolicyService,
-  PlatformSessionRepository,
-  { provide: PLATFORM_SESSION_PERSISTENCE, useExisting: PlatformSessionRepository },
   PlatformSessionService,
-  PlatformUserRepository,
-  { provide: PLATFORM_USER_PERSISTENCE, useExisting: PlatformUserRepository },
   RefreshTokenService,
   AuthenticationService,
   TokenGeneratorService,
@@ -47,12 +38,13 @@ const providers = [
   imports: [
     ConfigModule,
     DatabaseModule,
+    AuthPersistenceModule,
     PlatformAuthorizationModule,
     PlatformSecurityModule,
     JwtModule.register({}),
   ],
   controllers: [AuthController],
   providers,
-  exports: [...providers, PlatformAuthorizationModule],
+  exports: [...providers, AuthPersistenceModule, PlatformAuthorizationModule],
 })
 export class AuthModule {}

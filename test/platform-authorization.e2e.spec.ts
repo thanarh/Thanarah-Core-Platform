@@ -59,7 +59,7 @@ describe('Platform guard composition HTTP contract', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [TestAuthorizationController],
-      providers: [PlatformAuthGuard, PlatformAuthorizationGuard],
+      providers: [PlatformAuthorizationGuard],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

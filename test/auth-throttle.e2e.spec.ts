@@ -47,7 +47,6 @@ describe('Authentication endpoint throttling', () => {
         { provide: PlatformSessionService, useValue: {} },
         { provide: AuthCookieService, useValue: cookies },
         { provide: AuthenticationService, useValue: authentication },
-        PlatformAuthGuard,
         { provide: APP_GUARD, useClass: ThrottlerGuard },
       ],
     })

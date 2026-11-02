@@ -126,7 +126,6 @@ describe('Tenant Branch HTTP authorization and routing', () => {
     const module = await Test.createTestingModule({
       controllers: [BranchController, BranchPlatformAuthorizationProbeController],
       providers: [
-        PlatformAuthGuard,
         PlatformAuthorizationGuard,
         TenantContextGuard,
         TenantAuthorizationGuard,

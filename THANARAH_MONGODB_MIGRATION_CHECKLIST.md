@@ -210,7 +210,7 @@
 
 ## N. Phase 65 isolated platform storage foundation
 
-### Implemented and verified in the workspace (2026-11-01)
+### Implemented and verified in the workspace (2026-11-02)
 
 - [x] Added an independent optional `PLATFORM_MONGO_URI` / `PLATFORM_MONGO_DATABASE` configuration pair; tenant Mongo and Prisma/MySQL configuration are unchanged.
 - [x] Added lazy platform client lifecycle, neutral readiness, graceful shutdown, typed/validated platform identity, tenant, membership, platform-role/permission, and session/history document contracts and repository operations.
@@ -253,16 +253,19 @@
 ### Implemented and verified in the workspace (2026-11-01)
 
 - [x] Added application-owned typed ports for Feature catalog, Plan/PlanFeature catalog, and Platform audit/security event persistence. The interfaces do not expose Prisma or MongoDB types.
-- [x] Bound the three ports to their existing Prisma repositories using explicit Nest injection tokens and `useExisting`; no Mongo adapter is registered.
+- [x] Bound the six implemented port groups to their existing Prisma repositories using explicit Nest injection tokens and `useExisting`; no Mongo adapter is registered.
 - [x] Migrated `FeatureService`, `PlanService`, and `PlatformAuditService` to interface-typed constructor dependencies. Query behavior, conditional updates, and transaction ownership were retained.
 - [x] Added a Nest dependency-injection test proving all three tokens resolve to their intended Prisma adapters.
-- [x] TypeScript, build, focused repository/DI tests, full suite, formatting, and lint passed. Full suite: 933 passed, 12 skipped; lint has one pre-existing warning.
+- [x] TypeScript, build, focused repository/DI tests, full suite, formatting, and lint passed. Full suite: 934 passed, 12 skipped; lint has one pre-existing warning.
+- [x] Added typed identity, session/refresh-history, and platform authorization ports. Existing Prisma repositories remain the adapters; auth services and guard depend on the ports. Login lockout and session/history transaction boundaries were not moved.
+- [x] Added focused auth DI coverage verifying all three auth ports resolve to their intended Prisma repositories.
 
 ### Still incomplete; readiness remains NO-GO
 
-- [ ] Nineteen of the 22 central Prisma-backed repositories remain unported; their services continue using concrete repositories.
+- [ ] Six of the 22 central Prisma-backed repositories implement ports; 16 remain unported and continue using concrete repositories.
 - [ ] `AppController` still calls Prisma readiness directly; `EncounterService` and `TenantStorageActivationService` still use Prisma directly. `TenantWorkspaceController` still injects `TenantMembershipRepository`.
 - [ ] Feature/Plan services still inspect Prisma `P2002` errors, and catalog/audit services still import generated Prisma enum values. These implementation leaks need a neutral domain contract before those services are fully persistence-independent.
 - [ ] No all-repository contract suite or Mongo adapter tests were added. Transaction commit/rollback, concurrent-update, failover and uncertain-acknowledgement behavior remain unverified for MongoDB.
+- [ ] This auth slice uses mocked Prisma tests; true concurrent refresh execution and database rollback behavior were not verified against MySQL in this increment.
 - [ ] Phase 66B is an incremental port milestone, not complete. Phase 66C may begin only as isolated planning or test design after review; no active Mongo repository replacement, migration, or cutover is safe yet.
 

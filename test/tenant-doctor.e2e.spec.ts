@@ -139,7 +139,7 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [DoctorController],
-      providers: [PlatformAuthGuard, TenantContextGuard, TenantAuthorizationGuard, DoctorService],
+      providers: [TenantContextGuard, TenantAuthorizationGuard, DoctorService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)

@@ -16,3 +16,4 @@
 - [Docker exec restrictions](docker-exec-restrictions.md) — when Testcontainers exec cannot start processes, run disposable tools as helper containers and transfer data through container copy APIs.
 - [MongoDB local test networking](mongodb-local-test-networking.md) — nested Docker bridge DNS can work while peer TCP is blocked; host-loopback replica-set tests require sequential startup.
 - [Production MongoDB TLS](production-mongodb-tls.md) — production tenant MongoDB URIs must use TLS and retain certificate and hostname validation.
+- [Nest guard test overrides](nest-guard-test-overrides.md) — manually registering a guard alongside `overrideGuard` can still instantiate the real guard and its dependencies; omit the redundant provider.

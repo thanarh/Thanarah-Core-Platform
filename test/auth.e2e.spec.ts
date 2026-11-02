@@ -1,6 +1,5 @@
 import { UnauthorizedException, type CanActivate, type ExecutionContext } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
-import { Reflector } from '@nestjs/core';
 import cookie from '@fastify/cookie';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -10,11 +9,6 @@ import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { AuthCookieService } from '../src/auth/services/auth-cookie.service';
 import { PlatformSessionService } from '../src/auth/services/platform-session.service';
 import { AuthenticationService } from '../src/auth/services/authentication.service';
-import { AccessTokenService } from '../src/auth/services/access-token.service';
-import {
-  PLATFORM_SESSION_PERSISTENCE,
-  PLATFORM_USER_PERSISTENCE,
-} from '../src/persistence/platform-persistence.ports';
 import type { ConfigService } from '../src/config/config.service';
 
 const authenticatedUser: AuthenticatedPlatformUser = {
@@ -60,13 +54,11 @@ describe('Phase 12 auth HTTP contract', () => {
         { provide: PlatformSessionService, useValue: sessions },
         { provide: AuthCookieService, useValue: new AuthCookieService(config) },
         { provide: AuthenticationService, useValue: { login: vi.fn(), refresh: vi.fn() } },
-        { provide: PlatformAuthGuard, useClass: TestPlatformAuthGuard },
-        { provide: Reflector, useValue: {} },
-        { provide: AccessTokenService, useValue: {} },
-        { provide: PLATFORM_USER_PERSISTENCE, useValue: {} },
-        { provide: PLATFORM_SESSION_PERSISTENCE, useValue: {} },
       ],
-    }).compile();
+    })
+      .overrideGuard(PlatformAuthGuard)
+      .useClass(TestPlatformAuthGuard)
+      .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
     app.setGlobalPrefix('api');

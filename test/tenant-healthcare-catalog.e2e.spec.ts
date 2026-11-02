@@ -121,12 +121,7 @@ describe('Tenant healthcare catalog HTTP authorization and routing', () => {
 
     const module = await Test.createTestingModule({
       controllers: [TenantHealthcareCatalogController],
-      providers: [
-        PlatformAuthGuard,
-        TenantContextGuard,
-        TenantAuthorizationGuard,
-        HealthcareCatalogService,
-      ],
+      providers: [TenantContextGuard, TenantAuthorizationGuard, HealthcareCatalogService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)
