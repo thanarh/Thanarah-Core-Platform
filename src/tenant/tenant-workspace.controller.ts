@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Inject, UseGuards } from '@nestjs/common';
 import {
   ApiBearerAuth,
   ApiOkResponse,
@@ -11,7 +11,10 @@ import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuthGuard } from '../auth/guards/platform-auth.guard';
 import { APP_CONSTANTS } from '../common/constants/app.constants';
 import { TenantAuthorizationService } from './tenant-authorization.service';
-import { TenantMembershipRepository } from './tenant-membership.repository';
+import {
+  TENANT_MEMBERSHIP_PERSISTENCE,
+  type TenantMembershipPersistencePort,
+} from '../persistence/platform-persistence.ports';
 import {
   TenantMembershipValidatorService,
   TrustedTenantContextFactoryService,
@@ -24,7 +27,8 @@ import { TenantWorkspaceListResponseDto } from './tenant-workspace.openapi';
 @Controller(`${APP_CONSTANTS.apiVersion}/session/tenants`)
 export class TenantWorkspaceController {
   constructor(
-    private readonly memberships: TenantMembershipRepository,
+    @Inject(TENANT_MEMBERSHIP_PERSISTENCE)
+    private readonly memberships: TenantMembershipPersistencePort,
     private readonly membershipValidator: TenantMembershipValidatorService,
     private readonly tenantContextFactory: TrustedTenantContextFactoryService,
     private readonly authorization: TenantAuthorizationService,

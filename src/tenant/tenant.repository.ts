@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  TenantListFilter,
+  TenantPersistencePort,
+  TenantRecord,
+} from '../persistence/platform-persistence.ports';
+
+export type { TenantListFilter, TenantRecord } from '../persistence/platform-persistence.ports';
 
 const tenantSelect = {
   id: true,
@@ -15,16 +22,8 @@ const tenantSelect = {
   updatedAt: true,
 } satisfies Prisma.TenantSelect;
 
-export type TenantRecord = Prisma.TenantGetPayload<{ select: typeof tenantSelect }>;
-
-export interface TenantListFilter {
-  status?: TenantStatus;
-  limit: number;
-  offset: number;
-}
-
 @Injectable()
-export class TenantRepository {
+export class TenantRepository implements TenantPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: { slug: string; legalName: string; displayName: string }): Promise<TenantRecord> {

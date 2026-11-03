@@ -1,8 +1,15 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, Prisma, TenantMembershipStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
-import { PlatformUserRepository } from '../auth/repositories/platform-user.repository';
+import {
+  PLATFORM_USER_PERSISTENCE,
+  TENANT_MEMBERSHIP_PERSISTENCE,
+  TENANT_PERSISTENCE,
+  type PlatformUserPersistencePort,
+  type TenantMembershipPersistencePort,
+  type TenantPersistencePort,
+} from '../persistence/platform-persistence.ports';
 import { tenantIdSchema } from './tenant.dto';
 import {
   createTenantMembershipSchema,
@@ -24,11 +31,7 @@ import type {
   TenantMembershipAccessLookup,
   TenantMembershipAccessQuery,
 } from './tenant-membership-access.contract';
-import {
-  TenantMembershipRepository,
-  type TenantMembershipRecord,
-} from './tenant-membership.repository';
-import { TenantRepository } from './tenant.repository';
+import type { TenantMembershipRecord } from './tenant-membership.repository';
 import { TenantNotFoundError } from './tenant.errors';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
@@ -49,9 +52,11 @@ const membershipAccessQuerySchema = z
 @Injectable()
 export class TenantMembershipService implements TenantMembershipAccessLookup {
   constructor(
-    private readonly memberships: TenantMembershipRepository,
-    private readonly tenants: TenantRepository,
-    private readonly platformUsers: PlatformUserRepository,
+    @Inject(TENANT_MEMBERSHIP_PERSISTENCE)
+    private readonly memberships: TenantMembershipPersistencePort,
+    @Inject(TENANT_PERSISTENCE) private readonly tenants: TenantPersistencePort,
+    @Inject(PLATFORM_USER_PERSISTENCE)
+    private readonly platformUsers: PlatformUserPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

@@ -10,6 +10,8 @@ import {
   PLATFORM_AUTHORIZATION_PERSISTENCE,
   PLATFORM_SESSION_PERSISTENCE,
   PLATFORM_USER_PERSISTENCE,
+  TENANT_MEMBERSHIP_PERSISTENCE,
+  TENANT_PERSISTENCE,
 } from '../src/persistence/platform-persistence.ports';
 import { AuthPersistenceModule } from '../src/auth/auth-persistence.module';
 import { PlatformAuthorizationModule } from '../src/auth/platform-authorization.module';
@@ -20,6 +22,9 @@ import { FeatureRepository } from '../src/platform-catalog/feature.repository';
 import { PlatformCatalogModule } from '../src/platform-catalog/platform-catalog.module';
 import { PlanRepository } from '../src/platform-catalog/plan.repository';
 import { PlatformAuditRepository } from '../src/platform-security/platform-audit.repository';
+import { TenantMembershipRepository } from '../src/tenant/tenant-membership.repository';
+import { TenantPersistenceModule } from '../src/tenant/tenant-persistence.module';
+import { TenantRepository } from '../src/tenant/tenant.repository';
 
 describe('central persistence port providers', () => {
   let moduleRef: TestingModule;
@@ -73,6 +78,30 @@ describe('platform authentication persistence port providers', () => {
     );
     expect(moduleRef.get(PLATFORM_AUTHORIZATION_PERSISTENCE, { strict: false })).toBeInstanceOf(
       PlatformAuthorizationRepository,
+    );
+  });
+});
+
+describe('tenant persistence port providers', () => {
+  let moduleRef: TestingModule;
+
+  beforeAll(async () => {
+    moduleRef = await Test.createTestingModule({
+      imports: [TenantPersistenceModule],
+    })
+      .overrideProvider(PrismaService)
+      .useValue({})
+      .compile();
+  });
+
+  afterAll(async () => {
+    await moduleRef?.close();
+  });
+
+  it('binds tenant and membership ports to their Prisma repositories', () => {
+    expect(moduleRef.get(TENANT_PERSISTENCE, { strict: false })).toBeInstanceOf(TenantRepository);
+    expect(moduleRef.get(TENANT_MEMBERSHIP_PERSISTENCE, { strict: false })).toBeInstanceOf(
+      TenantMembershipRepository,
     );
   });
 });

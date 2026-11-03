@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, Prisma, TenantStatus } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import {
@@ -16,7 +16,11 @@ import {
   TenantNotFoundError,
   TenantSlugConflictError,
 } from './tenant.errors';
-import { TenantRepository, type TenantRecord } from './tenant.repository';
+import {
+  TENANT_PERSISTENCE,
+  type TenantPersistencePort,
+} from '../persistence/platform-persistence.ports';
+import type { TenantRecord } from './tenant.repository';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import type { TrustedSecurityContext } from '../platform-security/platform-security.types';
 
@@ -28,7 +32,7 @@ export type TenantRequestAuditContext = Pick<
 @Injectable()
 export class TenantService {
   constructor(
-    private readonly tenants: TenantRepository,
+    @Inject(TENANT_PERSISTENCE) private readonly tenants: TenantPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

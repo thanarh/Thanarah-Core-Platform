@@ -250,22 +250,27 @@
 
 ## P. Phase 66B incremental typed persistence ports
 
-### Implemented and verified in the workspace (2026-11-01)
+### Implemented and verified in the workspace (2026-11-03)
 
 - [x] Added application-owned typed ports for Feature catalog, Plan/PlanFeature catalog, and Platform audit/security event persistence. The interfaces do not expose Prisma or MongoDB types.
-- [x] Bound the six implemented port groups to their existing Prisma repositories using explicit Nest injection tokens and `useExisting`; no Mongo adapter is registered.
+- [x] Bound the catalog, audit, authentication, tenant, and membership port groups to their existing Prisma repositories using explicit Nest injection tokens and `useExisting`; no Mongo adapter is registered.
 - [x] Migrated `FeatureService`, `PlanService`, and `PlatformAuditService` to interface-typed constructor dependencies. Query behavior, conditional updates, and transaction ownership were retained.
 - [x] Added a Nest dependency-injection test proving all three tokens resolve to their intended Prisma adapters.
-- [x] TypeScript, build, focused repository/DI tests, full suite, formatting, and lint passed. Full suite: 934 passed, 12 skipped; lint has one pre-existing warning.
+- [x] TypeScript, build, focused repository/DI tests, full suite, formatting, and lint passed. Latest full suite: 935 passed, 12 skipped; lint has one pre-existing warning.
 - [x] Added typed identity, session/refresh-history, and platform authorization ports. Existing Prisma repositories remain the adapters; auth services and guard depend on the ports. Login lockout and session/history transaction boundaries were not moved.
 - [x] Added focused auth DI coverage verifying all three auth ports resolve to their intended Prisma repositories.
+- [x] Added application-owned tenant/organization and membership ports. The central Tenant model represents organization; source audit found no separate organization or tenant-hostname repository.
+- [x] Bound `TENANT_PERSISTENCE` and `TENANT_MEMBERSHIP_PERSISTENCE` to the existing Prisma repositories with `useExisting`; migrated tenant service, membership service, membership validation, and workspace listing consumers.
+- [x] Routed membership invitation user lookup through the existing `PLATFORM_USER_PERSISTENCE` port.
+- [x] Preserved tenant-scoped membership predicates, active-tenant checks, lifecycle row lock, owner protection, transaction ownership, pagination, and ordering; added focused cross-tenant negative regression coverage.
+- [x] Eight of the 22 central Prisma-backed repository classes now implement ports; 14 remain unported. Slice 3 reports document the adapter mappings, isolation coverage, and regression results.
 
 ### Still incomplete; readiness remains NO-GO
 
-- [ ] Six of the 22 central Prisma-backed repositories implement ports; 16 remain unported and continue using concrete repositories.
-- [ ] `AppController` still calls Prisma readiness directly; `EncounterService` and `TenantStorageActivationService` still use Prisma directly. `TenantWorkspaceController` still injects `TenantMembershipRepository`.
+- [ ] Fourteen of the 22 central Prisma-backed repositories remain unported and continue using concrete repositories.
+- [ ] `AppController` still calls Prisma readiness directly; `EncounterService` and `TenantStorageActivationService` still use Prisma directly.
 - [ ] Feature/Plan services still inspect Prisma `P2002` errors, and catalog/audit services still import generated Prisma enum values. These implementation leaks need a neutral domain contract before those services are fully persistence-independent.
-- [ ] No all-repository contract suite or Mongo adapter tests were added. Transaction commit/rollback, concurrent-update, failover and uncertain-acknowledgement behavior remain unverified for MongoDB.
+- [ ] No all-repository contract suite or Mongo adapter tests were added. Transaction commit/rollback and concurrent tenant membership lifecycle behavior remain unverified against MySQL; failover and uncertain-acknowledgement behavior remain unverified for MongoDB.
 - [ ] This auth slice uses mocked Prisma tests; true concurrent refresh execution and database rollback behavior were not verified against MySQL in this increment.
 - [ ] Phase 66B is an incremental port milestone, not complete. Phase 66C may begin only as isolated planning or test design after review; no active Mongo repository replacement, migration, or cutover is safe yet.
 

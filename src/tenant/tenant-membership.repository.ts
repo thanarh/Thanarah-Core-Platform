@@ -1,6 +1,22 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  TenantMembershipDirectoryRecord,
+  TenantMembershipListFilter,
+  TenantMembershipPersistencePort,
+  TenantMembershipRecord,
+  TenantMembershipStatusChangeResult,
+  TenantWorkspaceMembershipRecord,
+} from '../persistence/platform-persistence.ports';
+
+export type {
+  TenantMembershipDirectoryRecord,
+  TenantMembershipListFilter,
+  TenantMembershipRecord,
+  TenantMembershipStatusChangeResult,
+  TenantWorkspaceMembershipRecord,
+} from '../persistence/platform-persistence.ports';
 
 const tenantMembershipSelect = {
   id: true,
@@ -15,10 +31,6 @@ const tenantMembershipSelect = {
   updatedAt: true,
 } satisfies Prisma.TenantMembershipSelect;
 
-export type TenantMembershipRecord = Prisma.TenantMembershipGetPayload<{
-  select: typeof tenantMembershipSelect;
-}>;
-
 const tenantMembershipDirectorySelect = {
   id: true,
   tenantId: true,
@@ -28,10 +40,6 @@ const tenantMembershipDirectorySelect = {
   createdAt: true,
   platformUser: { select: { fullName: true, status: true } },
 } satisfies Prisma.TenantMembershipSelect;
-
-export type TenantMembershipDirectoryRecord = Prisma.TenantMembershipGetPayload<{
-  select: typeof tenantMembershipDirectorySelect;
-}>;
 
 const tenantWorkspaceMembershipSelect = {
   id: true,
@@ -44,24 +52,8 @@ const tenantWorkspaceMembershipSelect = {
   },
 } satisfies Prisma.TenantMembershipSelect;
 
-export type TenantWorkspaceMembershipRecord = Prisma.TenantMembershipGetPayload<{
-  select: typeof tenantWorkspaceMembershipSelect;
-}>;
-
-export interface TenantMembershipListFilter {
-  tenantId: string;
-  status?: TenantMembershipStatus;
-  limit: number;
-  offset: number;
-}
-
-export type TenantMembershipStatusChangeResult =
-  | { kind: 'updated'; membership: TenantMembershipRecord }
-  | { kind: 'stale' }
-  | { kind: 'owner-protected' };
-
 @Injectable()
-export class TenantMembershipRepository {
+export class TenantMembershipRepository implements TenantMembershipPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: { tenantId: string; platformUserId: string }): Promise<TenantMembershipRecord> {

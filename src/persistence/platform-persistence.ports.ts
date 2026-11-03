@@ -6,6 +6,110 @@ export const PLATFORM_AUDIT_PERSISTENCE = Symbol('PLATFORM_AUDIT_PERSISTENCE');
 export const PLATFORM_USER_PERSISTENCE = Symbol('PLATFORM_USER_PERSISTENCE');
 export const PLATFORM_SESSION_PERSISTENCE = Symbol('PLATFORM_SESSION_PERSISTENCE');
 export const PLATFORM_AUTHORIZATION_PERSISTENCE = Symbol('PLATFORM_AUTHORIZATION_PERSISTENCE');
+export const TENANT_PERSISTENCE = Symbol('TENANT_PERSISTENCE');
+export const TENANT_MEMBERSHIP_PERSISTENCE = Symbol('TENANT_MEMBERSHIP_PERSISTENCE');
+
+export type TenantStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+export type TenantMembershipStatusValue = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
+
+export interface TenantRecord {
+  id: string;
+  slug: string;
+  legalName: string;
+  displayName: string;
+  status: TenantStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TenantListFilter {
+  status?: TenantStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export interface TenantPersistencePort {
+  create(input: { slug: string; legalName: string; displayName: string }): Promise<TenantRecord>;
+  findById(id: string): Promise<TenantRecord | null>;
+  findBySlug(slug: string): Promise<TenantRecord | null>;
+  list(filter: TenantListFilter): Promise<TenantRecord[]>;
+  changeStatusIfCurrent(
+    id: string,
+    expectedStatus: TenantStatusValue,
+    nextStatus: TenantStatusValue,
+    changedAt: Date,
+  ): Promise<TenantRecord | null>;
+}
+
+export interface TenantMembershipRecord {
+  id: string;
+  tenantId: string;
+  platformUserId: string;
+  status: TenantMembershipStatusValue;
+  statusChangedAt: Date;
+  activatedAt: Date | null;
+  suspendedAt: Date | null;
+  removedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TenantMembershipDirectoryRecord {
+  id: string;
+  tenantId: string;
+  platformUserId: string;
+  status: TenantMembershipStatusValue;
+  statusChangedAt: Date;
+  createdAt: Date;
+  platformUser: { fullName: string; status: PlatformUserStatusValue };
+}
+
+export interface TenantWorkspaceMembershipRecord {
+  id: string;
+  tenantId: string;
+  tenant: { displayName: string; slug: string };
+}
+
+export interface TenantMembershipListFilter {
+  tenantId: string;
+  status?: TenantMembershipStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export type TenantMembershipStatusChangeResult =
+  | { kind: 'updated'; membership: TenantMembershipRecord }
+  | { kind: 'stale' }
+  | { kind: 'owner-protected' };
+
+export interface TenantMembershipPersistencePort {
+  create(input: { tenantId: string; platformUserId: string }): Promise<TenantMembershipRecord>;
+  findByTenantAndPlatformUser(
+    tenantId: string,
+    platformUserId: string,
+  ): Promise<TenantMembershipRecord | null>;
+  findActiveForTenantAndPlatformUser(
+    tenantId: string,
+    platformUserId: string,
+  ): Promise<TenantMembershipRecord | null>;
+  listActiveForPlatformUser(platformUserId: string): Promise<TenantWorkspaceMembershipRecord[]>;
+  findByIdForTenant(id: string, tenantId: string): Promise<TenantMembershipRecord | null>;
+  listForTenant(filter: TenantMembershipListFilter): Promise<TenantMembershipRecord[]>;
+  listDirectoryForTenant(
+    filter: TenantMembershipListFilter,
+  ): Promise<TenantMembershipDirectoryRecord[]>;
+  changeStatusIfCurrent(
+    id: string,
+    tenantId: string,
+    expectedStatus: TenantMembershipStatusValue,
+    nextStatus: TenantMembershipStatusValue,
+    changedAt: Date,
+  ): Promise<TenantMembershipStatusChangeResult>;
+  hasActiveMembership(tenantId: string, platformUserId: string): Promise<boolean>;
+}
 
 export type PlatformUserStatusValue = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
 export type PlatformSessionStatusValue = 'ACTIVE' | 'REVOKED' | 'EXPIRED' | 'COMPROMISED';

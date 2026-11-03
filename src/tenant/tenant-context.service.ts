@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { TenantMembershipStatus } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
-import { TenantMembershipRepository } from './tenant-membership.repository';
+import {
+  TENANT_MEMBERSHIP_PERSISTENCE,
+  type TenantMembershipPersistencePort,
+} from '../persistence/platform-persistence.ports';
 import {
   TenantContextInvalidError,
   type TenantMembershipValidator,
@@ -14,7 +17,10 @@ import {
 
 @Injectable()
 export class TenantMembershipValidatorService implements TenantMembershipValidator {
-  constructor(private readonly memberships: TenantMembershipRepository) {}
+  constructor(
+    @Inject(TENANT_MEMBERSHIP_PERSISTENCE)
+    private readonly memberships: TenantMembershipPersistencePort,
+  ) {}
 
   async validateMembership(input: {
     readonly authenticatedPlatformUser: AuthenticatedPlatformUser;

@@ -5,7 +5,6 @@ import { PlatformSecurityModule } from '../platform-security/platform-security.m
 import { TenantController } from './tenant.controller';
 import { TenantMembershipController } from './tenant-membership.controller';
 import { TenantMembershipDirectoryController } from './tenant-membership-directory.controller';
-import { TenantMembershipRepository } from './tenant-membership.repository';
 import { TenantMembershipRoleRepository } from './tenant-membership-role.repository';
 import { TenantMembershipService } from './tenant-membership.service';
 import { TenantAuthorizationGuard } from './tenant-authorization.guard';
@@ -25,8 +24,8 @@ import { TenantRoleBootstrapController } from './tenant-role-bootstrap.controlle
 import { TenantRoleController } from './tenant-role.controller';
 import { TenantRoleRepository } from './tenant-role.repository';
 import { TenantRoleService } from './tenant-role.service';
-import { TenantRepository } from './tenant.repository';
 import { TenantService } from './tenant.service';
+import { TenantPersistenceModule } from './tenant-persistence.module';
 import { TenantEntitlementModule } from './tenant-entitlement.module';
 import { TenantQuotaModule } from './tenant-quota.module';
 import { TenantStaffController } from './tenant-staff.controller';
@@ -67,6 +66,7 @@ import { EncounterService } from './encounter.service';
     TenantEntitlementModule,
     TenantQuotaModule,
     TenantStorageModule,
+    TenantPersistenceModule,
   ],
   controllers: [
     TenantController,
@@ -92,7 +92,6 @@ import { EncounterService } from './encounter.service';
     TenantAuthorizationGuard,
     TenantAuthorizationService,
     TenantContextGuard,
-    TenantMembershipRepository,
     TenantMembershipRoleRepository,
     TenantMembershipService,
     TenantMembershipValidatorService,
@@ -117,7 +116,6 @@ import { EncounterService } from './encounter.service';
     FacilitySchedulingPolicyRepository,
     FacilitySchedulingPolicyService,
     EncounterService,
-    TenantRepository,
     TenantRoleRepository,
     TenantRoleService,
     TenantService,
