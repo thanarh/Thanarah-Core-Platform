@@ -4,6 +4,9 @@ import { randomUUID } from 'node:crypto';
 const uuid = z.string().uuid();
 const timestamp = z.date();
 const optionalTimestamp = timestamp.nullable();
+const jsonValue: z.ZodType<unknown> = z.lazy(() =>
+  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValue), z.record(jsonValue)]),
+);
 const common = {
   _id: uuid,
   createdAt: timestamp,
@@ -68,6 +71,40 @@ export const platformPermissionSchema = z
   })
   .strict();
 
+export const platformFeatureSchema = z
+  .object({
+    ...common,
+    key: z.string().min(1).max(64),
+    name: z.string().min(1).max(191),
+    description: z.string().max(1000).nullable(),
+    status: z.enum(['ACTIVE', 'INACTIVE']),
+    statusChangedAt: timestamp,
+  })
+  .strict();
+
+export const platformPlanSchema = z
+  .object({
+    ...common,
+    key: z.string().min(1).max(64),
+    name: z.string().min(1).max(191),
+    description: z.string().max(1000).nullable(),
+    status: z.enum(['ACTIVE', 'INACTIVE', 'ARCHIVED']),
+    statusChangedAt: timestamp,
+  })
+  .strict();
+
+export const platformPlanFeatureSchema = z
+  .object({
+    _id: z.string().min(1),
+    planId: uuid,
+    featureId: uuid,
+    enabled: z.boolean(),
+    quotaLimits: jsonValue,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  })
+  .strict();
+
 export const platformRolePermissionSchema = z
   .object({
     _id: z.string().min(1),
@@ -124,6 +161,9 @@ export type TenantDocument = z.infer<typeof tenantSchema>;
 export type TenantMembershipDocument = z.infer<typeof tenantMembershipSchema>;
 export type PlatformRoleDocument = z.infer<typeof platformRoleSchema>;
 export type PlatformPermissionDocument = z.infer<typeof platformPermissionSchema>;
+export type PlatformFeatureDocument = z.infer<typeof platformFeatureSchema>;
+export type PlatformPlanDocument = z.infer<typeof platformPlanSchema>;
+export type PlatformPlanFeatureDocument = z.infer<typeof platformPlanFeatureSchema>;
 export type PlatformRolePermissionDocument = z.infer<typeof platformRolePermissionSchema>;
 export type PlatformUserRoleDocument = z.infer<typeof platformUserRoleSchema>;
 export type PlatformSessionDocument = z.infer<typeof platformSessionSchema>;

@@ -26,6 +26,10 @@ import {
 } from '../src/platform-mongo/platform-mongo.models';
 import { PlatformMongoRepositories } from '../src/platform-mongo/platform-mongo.repositories';
 import { MongoPlatformAuthorizationRepository } from '../src/platform-mongo/mongo-platform-authorization.repository';
+import { MongoPlatformFeatureRepository } from '../src/platform-mongo/mongo-platform-feature.repository';
+import { MongoPlatformPlanRepository } from '../src/platform-mongo/mongo-platform-plan.repository';
+import { MongoTenantEntitlementRepository } from '../src/platform-mongo/mongo-tenant-entitlement.repository';
+import { MongoPlatformUserRepository } from '../src/platform-mongo/mongo-platform-user.repository';
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;
@@ -218,7 +222,8 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     ]);
     const readSessions = factory.authorizationReadSessions.slice(sessionOffset);
     expect(readSessions).toHaveLength(8);
-    expect(new Set(readSessions)).toHaveLength(3);
+    expect(readSessions[0]).toBe(readSessions[1]);
+    expect(readSessions[2]).toBe(readSessions[3]);
     expect(readSessions.slice(4)).toEqual(Array(4).fill(readSessions[4]));
     expect(readSessions).not.toContain('undefined');
   }, 20_000);
@@ -295,7 +300,7 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       _id: roleId,
       ...documentTimestamps(now),
       schemaVersion: 1,
-      code: 'PLATFORM_ADMIN',
+      code: 'SECURITY_ADMIN',
     });
     await db.collection('platform_user_roles').insertOne({
       _id: stableAssignmentId(missingPermissionUserId, roleId),
@@ -354,6 +359,193 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     }
     expect(recovered).toBe(true);
   }, 40_000);
+
+  it('implements feature lookup, ordering, unique keys, and conditional status changes', async () => {
+    const features = new MongoPlatformFeatureRepository(manager);
+    const first = await features.create({ key: 'phase65.feature.alpha', name: 'Alpha' });
+    const second = await features.create({
+      key: 'phase65.feature.beta',
+      name: 'Beta',
+      description: 'Synthetic feature',
+    });
+
+    await expect(features.findById(first.id)).resolves.toEqual(first);
+    await expect(features.findByKey('PHASE65.FEATURE.ALPHA')).resolves.toEqual(first);
+    await expect(
+      features.create({ key: 'PHASE65.FEATURE.ALPHA', name: 'Duplicate' }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+
+    const expectedFirstPage = [first, second].sort(
+      (left, right) =>
+        right.createdAt.getTime() - left.createdAt.getTime() || right.id.localeCompare(left.id),
+    )[0];
+    await expect(features.list({ limit: 1, offset: 0 })).resolves.toEqual([expectedFirstPage]);
+    await expect(
+      features.updateIfCurrentStatus(first.id, 'INACTIVE', { name: 'Stale update' }),
+    ).resolves.toBeNull();
+    const updated = await features.updateIfCurrentStatus(first.id, 'ACTIVE', {
+      name: 'Updated Alpha',
+      description: null,
+    });
+    expect(updated).toMatchObject({ id: first.id, name: 'Updated Alpha', description: null });
+
+    const changedAt = new Date('2026-11-03T00:00:00.000Z');
+    await expect(
+      features.changeStatusIfCurrent(first.id, 'ACTIVE', 'INACTIVE', changedAt),
+    ).resolves.toMatchObject({ status: 'INACTIVE', statusChangedAt: changedAt });
+    await expect(
+      features.list({ status: 'INACTIVE', limit: 10, offset: 0 }),
+    ).resolves.toContainEqual(expect.objectContaining({ id: first.id }));
+    await expect(
+      features.changeStatusIfCurrent(first.id, 'ACTIVE', 'INACTIVE', changedAt),
+    ).resolves.toBeNull();
+  }, 20_000);
+
+  it('implements plan lifecycle and referential plan-feature operations', async () => {
+    const plans = new MongoPlatformPlanRepository(manager);
+    const features = new MongoPlatformFeatureRepository(manager);
+    const feature = await features.create({
+      key: 'phase65.plan.feature',
+      name: 'Plan Feature',
+    });
+    const plan = await plans.create({ key: 'phase65.plan.basic', name: 'Basic' });
+
+    await expect(plans.findById(plan.id)).resolves.toEqual(plan);
+    await expect(plans.findByKey('PHASE65.PLAN.BASIC')).resolves.toEqual(plan);
+    await expect(
+      plans.create({ key: 'PHASE65.PLAN.BASIC', name: 'Duplicate Basic' }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    await expect(plans.findPlanFeature(plan.id, feature.id)).resolves.toBeNull();
+
+    const attached = await plans.attachFeature(plan.id, feature.id);
+    expect(attached).toMatchObject({
+      planId: plan.id,
+      featureId: feature.id,
+      enabled: true,
+      quotaLimits: null,
+      feature,
+    });
+    await expect(plans.attachFeature(plan.id, feature.id)).rejects.toBeInstanceOf(
+      PlatformDocumentConflictError,
+    );
+    await expect(plans.listFeatures(plan.id)).resolves.toEqual([attached]);
+
+    await expect(
+      plans.updateFeatureConfiguration(plan.id, feature.id, {
+        enabled: false,
+        quotaLimits: null,
+      }),
+    ).resolves.toMatchObject({ enabled: false, quotaLimits: null });
+    await expect(
+      plans.updateFeatureConfiguration(plan.id, newStableId(), { enabled: false }),
+    ).resolves.toBeNull();
+    await expect(plans.detachFeature(plan.id, feature.id)).resolves.toBe(true);
+    await expect(plans.detachFeature(plan.id, feature.id)).resolves.toBe(false);
+
+    await expect(
+      plans.changeStatusIfCurrent(plan.id, 'ACTIVE', 'ARCHIVED', new Date()),
+    ).resolves.toMatchObject({ status: 'ARCHIVED' });
+    await expect(
+      plans.changeStatusIfCurrent(plan.id, 'ACTIVE', 'INACTIVE', new Date()),
+    ).resolves.toBeNull();
+  }, 30_000);
+
+  it('resolves plan entitlements and active quota configurations from one snapshot', async () => {
+    const entitlements = new MongoTenantEntitlementRepository(manager);
+    const plans = new MongoPlatformPlanRepository(manager);
+    const features = new MongoPlatformFeatureRepository(manager);
+    const plan = await plans.create({ key: 'phase65.entitlement.plan', name: 'Entitlement' });
+    const feature = await features.create({
+      key: 'phase65.entitlement.feature',
+      name: 'Entitlement Feature',
+    });
+
+    await expect(entitlements.resolveFeatureOnPlan(newStableId(), feature.key)).resolves.toEqual({
+      kind: 'plan-not-found',
+    });
+    await expect(
+      entitlements.resolveFeatureOnPlan(plan.id, 'phase65.unknown.feature'),
+    ).resolves.toEqual({ kind: 'feature-not-found' });
+    await expect(entitlements.resolveFeatureOnPlan(plan.id, feature.key)).resolves.toEqual({
+      kind: 'plan-feature-missing',
+    });
+
+    await plans.attachFeature(plan.id, feature.id);
+    await expect(entitlements.resolveFeatureOnPlan(plan.id, feature.key)).resolves.toEqual({
+      kind: 'entitled',
+      featureId: feature.id,
+    });
+    await expect(
+      entitlements.findActivePlanFeatureQuotaLimits(plan.id, feature.id),
+    ).resolves.toEqual({ kind: 'ready', quotaLimits: null });
+
+    await plans.updateFeatureConfiguration(plan.id, feature.id, { enabled: false });
+    await expect(entitlements.resolveFeatureOnPlan(plan.id, feature.key)).resolves.toEqual({
+      kind: 'plan-feature-disabled',
+    });
+    await expect(
+      entitlements.findActivePlanFeatureQuotaLimits(plan.id, feature.id),
+    ).resolves.toEqual({ kind: 'unavailable' });
+    await plans.updateFeatureConfiguration(plan.id, feature.id, { enabled: true });
+
+    await features.changeStatusIfCurrent(feature.id, 'ACTIVE', 'INACTIVE', new Date());
+    await expect(entitlements.resolveFeatureOnPlan(plan.id, feature.key)).resolves.toEqual({
+      kind: 'feature-unavailable',
+    });
+    await expect(
+      entitlements.findActivePlanFeatureQuotaLimits(plan.id, feature.id),
+    ).resolves.toEqual({ kind: 'unavailable' });
+  }, 30_000);
+
+  it('preserves user authentication reads and atomically records failed logins', async () => {
+    const id = newStableId();
+    const now = new Date();
+    const email = `phase65-auth-${id}@example.test`;
+    await repositories.users.create({
+      _id: id,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      email,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Login User',
+      status: 'ACTIVE',
+      tokenVersion: 7,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+
+    const users = new MongoPlatformUserRepository(manager);
+    await expect(users.findAuthRecordById(id)).resolves.toEqual({
+      id,
+      status: 'ACTIVE',
+      tokenVersion: 7,
+    });
+    await expect(users.findLoginRecordByEmail(email.toUpperCase())).resolves.toMatchObject({
+      id,
+      email,
+      passwordHash: 'synthetic-hash-only',
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    await expect(
+      Promise.all(Array.from({ length: 4 }, () => users.recordFailedLogin(id, 3, 15))),
+    ).resolves.toEqual(Array.from({ length: 4 }, () => ({ lockApplied: true })));
+    const locked = await users.findLoginRecordByEmail(email);
+    expect(locked?.failedLoginAttempts).toBe(4);
+    expect(locked?.lockedUntil?.getTime()).toBeGreaterThan(Date.now());
+
+    await users.resetFailedLogins(id);
+    await expect(users.findLoginRecordByEmail(email)).resolves.toMatchObject({
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    await expect(users.recordFailedLogin(newStableId(), 3, 15)).resolves.toEqual({
+      lockApplied: false,
+    });
+    await expect(users.resetFailedLogins(newStableId())).rejects.toBeInstanceOf(
+      PlatformDocumentValidationError,
+    );
+  }, 20_000);
 
   it('creates, reads, and updates platform identities with strict document validation', async () => {
     const now = new Date();

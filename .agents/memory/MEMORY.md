@@ -18,3 +18,4 @@
 - [Production MongoDB TLS](production-mongodb-tls.md) — production tenant MongoDB URIs must use TLS and retain certificate and hostname validation.
 - [Nest guard test overrides](nest-guard-test-overrides.md) — manually registering a guard alongside `overrideGuard` can still instantiate the real guard and its dependencies; omit the redundant provider.
 - [Mongo authorization read consistency](mongo-authorization-read-consistency.md) — cross-collection role and permission reads require one snapshot transaction and one shared session.
+- [MongoDB migration activation gate](mongodb-migration-activation-gate.md) — keep candidates unregistered until port behavior and dependent transaction parity are proven.

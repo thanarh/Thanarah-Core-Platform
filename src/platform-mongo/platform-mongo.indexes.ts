@@ -29,6 +29,36 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
   ],
   platform_roles: [{ key: { code: 1 }, name: 'ux_platform_roles_code', unique: true }],
   platform_permissions: [{ key: { code: 1 }, name: 'ux_platform_permissions_code', unique: true }],
+  platform_features: [
+    {
+      key: { key: 1 },
+      name: 'ux_platform_features_key',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    { key: { status: 1, createdAt: -1, _id: -1 }, name: 'ix_platform_features_status_created' },
+  ],
+  platform_plans: [
+    {
+      key: { key: 1 },
+      name: 'ux_platform_plans_key',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    { key: { status: 1, createdAt: -1, _id: -1 }, name: 'ix_platform_plans_status_created' },
+  ],
+  platform_plan_features: [
+    {
+      key: { planId: 1, featureId: 1 },
+      name: 'ux_platform_plan_features_pair',
+      unique: true,
+    },
+    { key: { featureId: 1, createdAt: 1 }, name: 'ix_platform_plan_features_feature_created' },
+    {
+      key: { planId: 1, createdAt: 1, featureId: 1 },
+      name: 'ix_platform_plan_features_plan_created',
+    },
+  ],
   platform_user_roles: [
     { key: { userId: 1, roleId: 1 }, name: 'ux_platform_user_role', unique: true },
     { key: { roleId: 1, userId: 1 }, name: 'ix_platform_role_users' },
