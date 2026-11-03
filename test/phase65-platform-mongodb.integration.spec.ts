@@ -30,6 +30,8 @@ import { MongoPlatformFeatureRepository } from '../src/platform-mongo/mongo-plat
 import { MongoPlatformPlanRepository } from '../src/platform-mongo/mongo-platform-plan.repository';
 import { MongoTenantEntitlementRepository } from '../src/platform-mongo/mongo-tenant-entitlement.repository';
 import { MongoPlatformUserRepository } from '../src/platform-mongo/mongo-platform-user.repository';
+import { MongoPlatformSessionRepository } from '../src/platform-mongo/mongo-platform-session.repository';
+import { MongoTenantRepository } from '../src/platform-mongo/mongo-tenant.repository';
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;
@@ -611,6 +613,44 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
   });
 
+  it('implements tenant creation, filtering, stable pagination, and conditional lifecycle updates', async () => {
+    const tenants = new MongoTenantRepository(manager);
+    const first = await tenants.create({
+      slug: `phase65-tenant-${newStableId()}`,
+      legalName: 'Synthetic Tenant One',
+      displayName: 'Tenant One',
+    });
+    const second = await tenants.create({
+      slug: `phase65-tenant-${newStableId()}`,
+      legalName: 'Synthetic Tenant Two',
+      displayName: 'Tenant Two',
+    });
+    await expect(tenants.findById(first.id)).resolves.toEqual(first);
+    await expect(tenants.findBySlug(first.slug)).resolves.toEqual(first);
+    await expect(tenants.list({ limit: 1, offset: 0 })).resolves.toHaveLength(1);
+    await expect(tenants.list({ status: 'ACTIVE', limit: 10, offset: 0 })).resolves.toHaveLength(2);
+    const all = await tenants.list({ limit: 10, offset: 0 });
+    const firstPage = await tenants.list({ limit: 1, offset: 0 });
+    const secondPage = await tenants.list({ limit: 1, offset: 1 });
+    expect([...firstPage, ...secondPage].map(({ id }) => id)).toEqual(
+      all.slice(0, 2).map(({ id }) => id),
+    );
+    await expect(
+      tenants.create({ slug: first.slug, legalName: 'Duplicate', displayName: 'Duplicate' }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+
+    const changedAt = new Date(Date.now() + 1_000);
+    await expect(
+      tenants.changeStatusIfCurrent(first.id, 'ACTIVE', 'SUSPENDED', changedAt),
+    ).resolves.toMatchObject({ status: 'SUSPENDED', suspendedAt: changedAt, updatedAt: changedAt });
+    await expect(
+      tenants.changeStatusIfCurrent(first.id, 'ACTIVE', 'DEACTIVATED', changedAt),
+    ).resolves.toBeNull();
+    await expect(
+      tenants.changeStatusIfCurrent(second.id, 'ACTIVE', 'DEACTIVATED', changedAt),
+    ).resolves.toMatchObject({ status: 'DEACTIVATED', deactivatedAt: changedAt });
+  });
+
   it('preserves approved session and token-history fields through repository updates', async () => {
     const now = new Date();
     const sessionId = newStableId();
@@ -662,6 +702,149 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       reuseDetectedAt: now,
     });
   });
+
+  it('rotates session tokens atomically and marks reuse as compromise', async () => {
+    const now = new Date();
+    const userId = newStableId();
+    const oldHash = 'c'.repeat(64);
+    const nextHash = 'd'.repeat(64);
+    const sessions = new MongoPlatformSessionRepository(manager);
+    await repositories.users.create({
+      _id: userId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      email: `phase65-session-${userId}@example.test`,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Session User',
+      status: 'ACTIVE',
+      tokenVersion: 0,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    const created = await sessions.create({
+      userId,
+      refreshTokenHash: oldHash,
+      tokenFamilyId: newStableId(),
+      expiresAt: new Date(now.getTime() + 60_000),
+      ipAddress: '127.0.0.1',
+      userAgent: 'synthetic-test-agent',
+    });
+    await expect(
+      sessions.create({
+        userId: newStableId(),
+        refreshTokenHash: '9'.repeat(64),
+        tokenFamilyId: newStableId(),
+        expiresAt: new Date(now.getTime() + 60_000),
+      }),
+    ).rejects.toBeInstanceOf(PlatformDocumentValidationError);
+    await expect(
+      sessions.create({
+        userId,
+        refreshTokenHash: oldHash,
+        tokenFamilyId: newStableId(),
+        expiresAt: new Date(now.getTime() + 60_000),
+      }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    expect(created.status).toBe('ACTIVE');
+    await expect(sessions.findByIdForUser(created.id, newStableId())).resolves.toBeNull();
+    await expect(sessions.rotateByRefreshTokenHash(oldHash, nextHash, now)).resolves.toMatchObject({
+      kind: 'rotated',
+      session: { id: created.id, refreshTokenHash: nextHash, status: 'ACTIVE' },
+    });
+    const replay = await sessions.rotateByRefreshTokenHash(
+      oldHash,
+      'e'.repeat(64),
+      new Date(now.getTime() + 1),
+    );
+    expect(replay).toEqual({ kind: 'reused', sessionId: created.id, subjectUserId: userId });
+    await expect(sessions.findById(created.id)).resolves.toMatchObject({
+      status: 'COMPROMISED',
+      revocationReason: 'Refresh token reuse detected',
+    });
+    const db = await manager.getDatabase();
+    const history = await db
+      .collection('platform_refresh_token_history')
+      .findOne({ tokenHash: oldHash });
+    expect(history?.reuseDetectedAt).toBeInstanceOf(Date);
+
+    const raceHash = '8'.repeat(64);
+    const racing = await sessions.create({
+      userId,
+      refreshTokenHash: raceHash,
+      tokenFamilyId: newStableId(),
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+    const rotations = await Promise.allSettled([
+      sessions.rotateByRefreshTokenHash(raceHash, '7'.repeat(64), now),
+      sessions.rotateByRefreshTokenHash(raceHash, '6'.repeat(64), now),
+    ]);
+    expect(rotations.every((result) => result.status === 'fulfilled')).toBe(true);
+    const rotationKinds = rotations.map((result) =>
+      result.status === 'fulfilled' ? result.value.kind : 'failed',
+    );
+    expect(rotationKinds.sort()).toEqual(['reused', 'rotated']);
+    await expect(sessions.findById(racing.id)).resolves.toMatchObject({ status: 'COMPROMISED' });
+  }, 20_000);
+
+  it('preserves session lookup, ordering, activity, and lifecycle transitions', async () => {
+    const now = new Date();
+    const userId = newStableId();
+    await repositories.users.create({
+      _id: userId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      email: `phase65-session-lifecycle-${userId}@example.test`,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Session Lifecycle User',
+      status: 'ACTIVE',
+      tokenVersion: 0,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    const sessions = new MongoPlatformSessionRepository(manager);
+    const first = await sessions.create({
+      userId,
+      refreshTokenHash: 'f'.repeat(64),
+      tokenFamilyId: newStableId(),
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+    const second = await sessions.create({
+      userId,
+      refreshTokenHash: '0'.repeat(64),
+      tokenFamilyId: first.tokenFamilyId,
+      expiresAt: new Date(now.getTime() + 60_000),
+    });
+    await expect(sessions.findByRefreshTokenHash(first.refreshTokenHash)).resolves.toMatchObject({
+      id: first.id,
+    });
+    await expect(sessions.findByIdForUser(first.id, userId)).resolves.toMatchObject({
+      id: first.id,
+    });
+    await expect(sessions.findByTokenFamilyId(first.tokenFamilyId)).resolves.toHaveLength(2);
+    await expect(sessions.listByUserId(userId)).resolves.toHaveLength(2);
+    await expect(sessions.findActiveByUserId(userId)).resolves.toHaveLength(2);
+
+    const activityTime = new Date(now.getTime() + 1_000);
+    await expect(sessions.updateLastActivity(first.id, activityTime)).resolves.toMatchObject({
+      lastActivityAt: activityTime,
+    });
+    await expect(sessions.revokeOne(second.id, userId, 'user requested')).resolves.toMatchObject({
+      status: 'REVOKED',
+      revokedBy: userId,
+    });
+    await expect(sessions.revokeAllForUser(userId, userId, 'sign out all')).resolves.toBe(1);
+    await expect(sessions.findActiveByUserId(userId)).resolves.toHaveLength(0);
+    await expect(sessions.findById(first.id)).resolves.toMatchObject({
+      status: 'REVOKED',
+      revocationReason: 'sign out all',
+    });
+
+    await expect(sessions.markExpired(second.id)).resolves.toMatchObject({ status: 'EXPIRED' });
+    await expect(sessions.markCompromised(first.id)).resolves.toMatchObject({
+      status: 'COMPROMISED',
+    });
+    await expect(sessions.revokeAll(userId)).resolves.toBe(0);
+  }, 20_000);
 
   it('commits and aborts through the managed platform transaction boundary', async () => {
     const db = await manager.getDatabase();

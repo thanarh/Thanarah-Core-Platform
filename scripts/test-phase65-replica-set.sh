@@ -68,3 +68,9 @@ PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
 test_pid=$!
 wait "$test_pid"
 test_pid=""
+
+PHASE64_MONGO_URI="$uri" \
+  npx vitest run test/phase64-mongodb-application.integration.spec.ts --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
