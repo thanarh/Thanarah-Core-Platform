@@ -10,7 +10,11 @@ import type {
   PlatformMongoClient,
   PlatformMongoClientFactory,
 } from '../src/platform-mongo/platform-mongo.client.manager';
-import { PlatformDocumentConflictError } from '../src/platform-mongo/platform-mongo.errors';
+import {
+  PlatformDocumentConflictError,
+  PlatformDocumentValidationError,
+  PlatformMongoUnavailableError,
+} from '../src/platform-mongo/platform-mongo.errors';
 import {
   provisionPlatformMongoIndexes,
   verifyPlatformMongoIndexes,
@@ -37,9 +41,25 @@ class CapturingPlatformClientFactory
   implements PlatformMongoClientFactory
 {
   client?: MongoClient;
+  readonly authorizationReadSessions: string[] = [];
 
   override create(uri: string, options: MongoClientOptions): PlatformMongoClient {
-    const client = super.create(uri, options) as MongoClient;
+    const client = super.create(uri, { ...options, monitorCommands: true }) as MongoClient;
+    client.on('commandStarted', (event) => {
+      if (
+        event.commandName === 'find' &&
+        event.databaseName === testDatabaseName &&
+        typeof event.command.find === 'string' &&
+        [
+          'platform_user_roles',
+          'platform_roles',
+          'platform_role_permissions',
+          'platform_permissions',
+        ].includes(event.command.find)
+      ) {
+        this.authorizationReadSessions.push(JSON.stringify(event.command.lsid));
+      }
+    });
     this.client = client;
     return client;
   }
@@ -113,8 +133,14 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     let ready = false;
     while (Date.now() < deadline) {
       try {
-        const hello = await appAdmin.command({ hello: 1 });
-        if (hello.setName === 'rs0' && hello.isWritablePrimary) {
+        const status = await appAdmin.command({ replSetGetStatus: 1 });
+        const members = Array.isArray(status.members) ? status.members : [];
+        if (
+          members.length === 3 &&
+          members.filter((member) => member.stateStr === 'PRIMARY').length === 1 &&
+          members.filter((member) => member.stateStr === 'SECONDARY').length === 2 &&
+          members.every((member) => member.health === 1)
+        ) {
           ready = true;
           break;
         }
@@ -122,7 +148,11 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
         await new Promise((resolve) => setTimeout(resolve, 250));
       }
     }
-    if (!ready) throw new Error('Disposable Phase 65 replica set did not elect a primary');
+    if (!ready) {
+      throw new Error(
+        'Disposable Phase 65 replica set did not reach one primary and two healthy secondaries',
+      );
+    }
     await db.dropDatabase();
     await provisionPlatformMongoIndexes(db);
   }, 45_000);
@@ -180,12 +210,150 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     });
 
     const authorization = new MongoPlatformAuthorizationRepository(manager);
+    const sessionOffset = factory.authorizationReadSessions.length;
     await expect(authorization.findRoleCodesByUserId(userId)).resolves.toEqual(['PLATFORM_ADMIN']);
     await expect(authorization.findRoleIdsByUserId(userId)).resolves.toEqual([roleId]);
     await expect(authorization.findPermissionCodesByUserId(userId)).resolves.toEqual([
       'platform.read',
     ]);
+    const readSessions = factory.authorizationReadSessions.slice(sessionOffset);
+    expect(readSessions).toHaveLength(8);
+    expect(new Set(readSessions)).toHaveLength(3);
+    expect(readSessions.slice(4)).toEqual(Array(4).fill(readSessions[4]));
+    expect(readSessions).not.toContain('undefined');
   }, 20_000);
+
+  it('keeps a transaction snapshot stable while another client revokes a permission', async () => {
+    const db = await manager.getDatabase();
+    const roleId = newStableId();
+    const permissionId = newStableId();
+    const assignments = db.collection('platform_role_permissions');
+    await assignments.insertOne({
+      _id: stableAssignmentId(roleId, permissionId),
+      roleId,
+      permissionId,
+    });
+
+    let beginExternalWrite!: () => void;
+    let releaseSnapshotRead!: () => void;
+    const firstReadComplete = new Promise<void>((resolve) => {
+      beginExternalWrite = resolve;
+    });
+    const resumeSnapshotRead = new Promise<void>((resolve) => {
+      releaseSnapshotRead = resolve;
+    });
+    const snapshotRead = manager.withTransaction(
+      async (session) => {
+        const before = await assignments.find({ roleId }, { session }).toArray();
+        beginExternalWrite();
+        await resumeSnapshotRead;
+        const after = await assignments.find({ roleId }, { session }).toArray();
+        return [before.length, after.length] as const;
+      },
+      { readConcern: { level: 'snapshot' } },
+    );
+
+    await firstReadComplete;
+    try {
+      await assignments.deleteOne({ roleId, permissionId });
+    } finally {
+      releaseSnapshotRead();
+    }
+    await expect(snapshotRead).resolves.toEqual([1, 1]);
+    await expect(assignments.countDocuments({ roleId, permissionId })).resolves.toBe(0);
+  }, 20_000);
+
+  it('rejects missing and malformed authorization references and sanitizes active-transaction read failures', async () => {
+    const db = await manager.getDatabase();
+    const authorization = new MongoPlatformAuthorizationRepository(manager);
+    const missingRoleUserId = newStableId();
+    const missingRoleId = newStableId();
+    await db.collection('platform_user_roles').insertOne({
+      _id: stableAssignmentId(missingRoleUserId, missingRoleId),
+      userId: missingRoleUserId,
+      roleId: missingRoleId,
+    });
+    await expect(authorization.findRoleCodesByUserId(missingRoleUserId)).rejects.toBeInstanceOf(
+      PlatformDocumentValidationError,
+    );
+
+    const malformedUserId = newStableId();
+    await db.collection('platform_user_roles').insertOne({
+      _id: 'malformed-auth-assignment',
+      userId: malformedUserId,
+      roleId: 'not-a-uuid',
+    });
+    await expect(authorization.findRoleIdsByUserId(malformedUserId)).rejects.toBeInstanceOf(
+      PlatformDocumentValidationError,
+    );
+
+    const missingPermissionUserId = newStableId();
+    const roleId = newStableId();
+    const missingPermissionId = newStableId();
+    const now = new Date();
+    await db.collection('platform_roles').insertOne({
+      _id: roleId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      code: 'PLATFORM_ADMIN',
+    });
+    await db.collection('platform_user_roles').insertOne({
+      _id: stableAssignmentId(missingPermissionUserId, roleId),
+      userId: missingPermissionUserId,
+      roleId,
+    });
+    await db.collection('platform_role_permissions').insertOne({
+      _id: stableAssignmentId(roleId, missingPermissionId),
+      roleId,
+      permissionId: missingPermissionId,
+    });
+    await expect(
+      authorization.findPermissionCodesByUserId(missingPermissionUserId),
+    ).rejects.toBeInstanceOf(PlatformDocumentValidationError);
+
+    const admin = factory.client?.db('admin');
+    if (!admin) throw new Error('Phase 65 MongoDB client is unavailable');
+    await admin.command({
+      configureFailPoint: 'failCommand',
+      mode: { times: 1 },
+      data: {
+        failCommands: ['find'],
+        errorCode: 2,
+        errmsg: 'synthetic private database error',
+      },
+    });
+    try {
+      await expect(authorization.findPermissionCodesByUserId(newStableId())).rejects.toMatchObject({
+        name: new PlatformMongoUnavailableError().name,
+        message: new PlatformMongoUnavailableError().message,
+      });
+    } finally {
+      await admin.command({ configureFailPoint: 'failCommand', mode: 'off' });
+    }
+  }, 30_000);
+
+  it('recovers authorization reads after a primary stepdown', async () => {
+    const client = factory.client;
+    if (!client) throw new Error('Phase 65 MongoDB client is unavailable');
+    await client
+      .db('admin')
+      .command({ replSetStepDown: 5, force: true })
+      .catch(() => undefined);
+
+    const authorization = new MongoPlatformAuthorizationRepository(manager);
+    const deadline = Date.now() + 30_000;
+    let recovered = false;
+    while (Date.now() < deadline) {
+      try {
+        await expect(authorization.findRoleCodesByUserId(newStableId())).resolves.toEqual([]);
+        recovered = true;
+        break;
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 250));
+      }
+    }
+    expect(recovered).toBe(true);
+  }, 40_000);
 
   it('creates, reads, and updates platform identities with strict document validation', async () => {
     const now = new Date();
