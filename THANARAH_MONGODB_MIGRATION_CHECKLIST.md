@@ -203,7 +203,7 @@
 
 - [ ] Reproduce an acknowledgement lost after the server commits and verify safe operation-status recovery; the Phase 64 failure injector closed the connection before execution.
 - [ ] Interrupt an active application transaction with a real primary stepdown and prove safe retry/commit-status handling.
-- [ ] Add a supported application session/transaction propagation boundary before translating transaction-bearing repositories.
+- [x] Added `PlatformMongoClientManager.withTransaction` as a storage-layer session boundary; unit tests cover cleanup and error behavior. The Phase 65 real-replica-set test is added but was skipped in the current run.
 - [ ] Verify MongoDB implementations for all 13 repositories in `PHASE_64_REPOSITORY_TRANSACTION_MATRIX.md`; each is still Prisma/MySQL.
 - [ ] Test actual Appointment and Encounter Mongo adapters and live timeout/topology error sanitization.
 - [ ] Approve a production topology and verify TLS, credentials, provider/network behavior, backups, recovery objectives, and application parity. Keep migration readiness **NO-GO**.
@@ -239,10 +239,10 @@
 
 ### Incomplete and unverified; readiness remains NO-GO
 
-- [ ] The active central repositories still lack a complete database-independent persistence-port layer; services continue to inject concrete repository classes. Controllers still include direct persistence access. Implement and test a complete port boundary with Prisma as the only active adapter before any replacement.
+- [x] The Phase 66 baseline lacked a complete database-independent port layer; the 22-repository port layer was completed later in section R. Other direct Prisma responsibilities remain.
 - [ ] No reusable cross-adapter repository contract suite was added or run in Phase 66.
 - [ ] The Phase 65 platform Mongo repositories are not replacements for the active central repositories. All 13 transaction-bearing workflows and encounter cross-store behavior remain unimplemented/unverified on MongoDB.
-- [ ] Phase 66 did not run disposable replica-set commit/abort, workflow concurrency, failover interruption, or uncertain-acknowledgement tests. Prior Phase 63–65 evidence is limited to its stated test surfaces.
+- [ ] The current run did not execute opt-in replica-set workflow concurrency, failover interruption, or uncertain-acknowledgement tests. Prior Phase 63–65 evidence is limited to its stated test surfaces.
 - [ ] No differential MySQL/MongoDB semantic tests were run for Unicode collation, nullable uniqueness, date precision/timezones, decimal precision, sorting/pagination, enums, null-versus-missing, counters, or lifecycle filters.
 - [ ] No production database, production secret value, or production environment was accessed or changed. No migration, dual-write, shadow-write, deployment, staging, or commit was performed.
 - [ ] Owner decisions and approvals for provider/topology, residency/compliance, transaction policy, retention, backups/restore, RPO/RTO, and operational ownership remain outstanding.
@@ -263,14 +263,69 @@
 - [x] Bound `TENANT_PERSISTENCE` and `TENANT_MEMBERSHIP_PERSISTENCE` to the existing Prisma repositories with `useExisting`; migrated tenant service, membership service, membership validation, and workspace listing consumers.
 - [x] Routed membership invitation user lookup through the existing `PLATFORM_USER_PERSISTENCE` port.
 - [x] Preserved tenant-scoped membership predicates, active-tenant checks, lifecycle row lock, owner protection, transaction ownership, pagination, and ordering; added focused cross-tenant negative regression coverage.
-- [x] Eight of the 22 central Prisma-backed repository classes now implement ports; 14 remain unported. Slice 3 reports document the adapter mappings, isolation coverage, and regression results.
+- [x] At the end of Slice 3, eight of 22 central Prisma-backed repository classes implemented ports; the continued increments below record the current cumulative count.
 
 ### Still incomplete; readiness remains NO-GO
 
-- [ ] Fourteen of the 22 central Prisma-backed repositories remain unported and continue using concrete repositories.
+- [x] At that checkpoint, eight of the 22 central Prisma-backed repositories remained unported; later port increments are recorded in sections Q and R.
 - [ ] `AppController` still calls Prisma readiness directly; `EncounterService` and `TenantStorageActivationService` still use Prisma directly.
 - [ ] Feature/Plan services still inspect Prisma `P2002` errors, and catalog/audit services still import generated Prisma enum values. These implementation leaks need a neutral domain contract before those services are fully persistence-independent.
 - [ ] No all-repository contract suite or Mongo adapter tests were added. Transaction commit/rollback and concurrent tenant membership lifecycle behavior remain unverified against MySQL; failover and uncertain-acknowledgement behavior remain unverified for MongoDB.
 - [ ] This auth slice uses mocked Prisma tests; true concurrent refresh execution and database rollback behavior were not verified against MySQL in this increment.
-- [ ] Phase 66B is an incremental port milestone, not complete. Phase 66C may begin only as isolated planning or test design after review; no active Mongo repository replacement, migration, or cutover is safe yet.
+- [x] Phase 66B central repository porting is complete for the audited set; Mongo adapter migration, transaction parity, and cutover remain incomplete and unsafe to activate.
+
+## Q. Phase 66B continued port increments
+
+### Implemented and verified in the workspace (2026-11-03)
+
+- [x] Added typed ports for tenant roles, membership-role assignments, facilities, branches, feature entitlements, and plan-feature quota lookup.
+- [x] Kept all six domains on their existing Prisma repositories; the role, membership-role, and branch transaction boundaries remain in the adapters.
+- [x] Migrated role, tenant authorization, facility, branch, entitlement, and quota services to interface-typed port injection.
+- [x] Bound the role/assignment and facility/branch port groups with `useExisting`; entitlement and quota modules bind their port tokens to Prisma providers.
+- [x] Added DI binding tests for role/assignment and facility/branch groups; existing service and repository regression tests cover the changed consumers and adapters.
+- [x] TypeScript check passed. Focused regression run: 145 tests passed across 13 files.
+- [x] Fourteen of 22 central Prisma-backed repositories now implement ports; eight remain unported.
+
+### Still incomplete; readiness remains NO-GO
+
+- [ ] No MongoDB adapter is implemented or registered for these six new ports; Prisma/MySQL remains the only active adapter.
+- [ ] Role/bootstrap, role assignment, and branch creation transaction behavior remains unverified on MongoDB; no tenant owner or authorization workflow has switched stores.
+- [x] Full suite passed: 937 tests passed and 12 opt-in integration tests skipped across 2 files; TypeScript, Nest build, and formatting passed.
+- [x] ESLint passed with 0 errors and 1 pre-existing warning at `test/encounter-operation-reconciliation.spec.ts:10`.
+- [ ] Disposable Mongo integration, operational, migration-tooling, and data-transfer workstreams remain unverified or not started.
+- [x] At that checkpoint, the remaining eight repository ports and transaction compatibility work were still pending; port completion is recorded in section R.
+
+## R. Remaining central repository port increments
+
+### Implemented in the workspace (2026-11-03)
+
+- [x] Added application-owned ports and Prisma bindings for healthcare catalog, service catalog, subscriptions, tenant staff, staff-role assignments, staff facility/branch scope, doctors, and facility scheduling policies.
+- [x] Migrated the corresponding services to interface-typed port injection; transaction ownership, row locks, tenant predicates, version checks, and revision writes remain in existing Prisma adapters.
+- [x] Added Nest DI coverage for each new binding and retained the existing repository/service regression suites.
+- [x] All 22 of the audited central Prisma-backed repositories now implement ports. The port layer is complete for this repository set; this is not a MongoDB migration or parity claim.
+- [x] Full suite passed: 952 tests passed and 14 opt-in tests skipped across 107 passed and 2 skipped files; type-check, Nest build, formatting, and diff checks passed.
+- [x] Lint passed with 0 errors and 1 pre-existing warning at `test/encounter-operation-reconciliation.spec.ts:10`.
+- [x] Workflow restarted successfully; Nest started on port 5000. The configured development database URL was rejected as non-MySQL, so database connectivity remains unverified.
+
+### Still incomplete; readiness remains NO-GO
+
+- [ ] Prisma remains the only active adapter. No MongoDB adapter is registered for these ports.
+- [ ] MongoDB transaction/session parity, MySQL semantic parity, migration tooling, synthetic data-transfer rehearsal, backups/recovery, operational ownership, and cutover approval remain outstanding.
+- [ ] Do not access production databases, change production configuration, dual-write, deploy, commit, transfer production data, or retire SQL.
+
+## S. Mongo transaction propagation boundary
+
+- [x] Added an unused platform-storage transaction runner that passes a driver session only to transaction-scoped storage work and always ends the session.
+- [x] Added unit coverage for success, cleanup, safe domain errors, driver-error sanitization, and missing configuration.
+- [ ] Run the new commit/abort integration case against a disposable Phase 65 replica set; the current environment did not run opt-in Mongo integration files.
+- [ ] This runner is not a cross-provider contract, does not prove workflow parity, and is not bound to any active persistence port.
+
+## T. Read-only platform authorization Mongo candidate
+
+- [x] Added an isolated `PlatformAuthorizationPersistencePort` implementation using the existing platform role/permission collections.
+- [x] The candidate validates stored documents and references, rejects unknown authorization codes, de-duplicates permissions, and masks raw database failures.
+- [x] Authorization reads use snapshot transactions and pass the same session to each collection read; unit tests assert both.
+- [x] Unit tests cover role/permission resolution, empty assignments, broken references, and sanitized failures (5 tests).
+- [ ] The Phase 65 replica-set integration test is present but skipped in the current environment.
+- [ ] The candidate is not registered in Nest or selected for application traffic; it does not prove data parity, write-path consistency, or migration readiness.
 

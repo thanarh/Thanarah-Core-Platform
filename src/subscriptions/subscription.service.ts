@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, SubscriptionStatus } from '@prisma/client';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
@@ -29,7 +29,11 @@ import {
   type EffectiveSubscriptionStatus,
   type SubscriptionLifecycleAction,
 } from './subscription.rules';
-import { SubscriptionRepository, type SubscriptionRecord } from './subscription.repository';
+import {
+  SUBSCRIPTION_PERSISTENCE,
+  type SubscriptionPersistencePort,
+  type SubscriptionRecord,
+} from '../persistence/platform-persistence.ports';
 
 export type SubscriptionView = SubscriptionRecord & {
   effectiveStatus: EffectiveSubscriptionStatus;
@@ -38,7 +42,7 @@ export type SubscriptionView = SubscriptionRecord & {
 @Injectable()
 export class SubscriptionService {
   constructor(
-    private readonly subscriptions: SubscriptionRepository,
+    @Inject(SUBSCRIPTION_PERSISTENCE) private readonly subscriptions: SubscriptionPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

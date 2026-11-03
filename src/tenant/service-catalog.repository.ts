@@ -6,6 +6,11 @@ import type {
   ListServicesQuery,
   UpdateServiceInput,
 } from './service-catalog.dto';
+import type {
+  ServiceCatalogMutationResult as ServiceCatalogMutationResultContract,
+  ServiceCatalogPersistencePort,
+  ServiceCatalogRecord as ServiceCatalogRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const serviceSelect = {
   id: true,
@@ -20,23 +25,13 @@ const serviceSelect = {
   updatedAt: true,
 } satisfies Prisma.ServiceSelect;
 
-export type ServiceCatalogRecord = Prisma.ServiceGetPayload<{
-  select: typeof serviceSelect;
-}>;
-
-export type ServiceCatalogMutationResult =
-  | { kind: 'changed'; record: ServiceCatalogRecord }
-  | { kind: 'tenant-inactive' }
-  | { kind: 'not-found' }
-  | { kind: 'name-conflict' }
-  | { kind: 'code-conflict' }
-  | { kind: 'conflict' }
-  | { kind: 'not-changed' };
+export type ServiceCatalogRecord = ServiceCatalogRecordContract;
+export type ServiceCatalogMutationResult = ServiceCatalogMutationResultContract;
 
 type ServiceCatalogUniqueConflictKind = 'name-conflict' | 'code-conflict' | 'conflict';
 
 @Injectable()
-export class ServiceCatalogRepository {
+export class ServiceCatalogRepository implements ServiceCatalogPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(tenantId: string, input: CreateServiceInput): Promise<ServiceCatalogMutationResult> {

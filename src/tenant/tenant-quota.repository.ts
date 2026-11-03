@@ -1,12 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { FeatureStatus, PlanStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  TenantQuotaPersistencePort,
+  TenantQuotaPlanFeatureLookup as TenantQuotaPlanFeatureLookupContract,
+} from '../persistence/platform-persistence.ports';
 
-export type TenantQuotaPlanFeatureLookup =
-  { kind: 'unavailable' } | { kind: 'ready'; quotaLimits: Prisma.JsonValue | null };
+export type TenantQuotaPlanFeatureLookup = TenantQuotaPlanFeatureLookupContract;
 
 @Injectable()
-export class TenantQuotaRepository {
+export class TenantQuotaRepository implements TenantQuotaPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async findActivePlanFeatureQuotaLimits(

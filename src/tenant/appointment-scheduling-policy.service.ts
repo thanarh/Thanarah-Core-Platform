@@ -23,8 +23,9 @@ import { APPOINTMENT_REPOSITORY } from './tenant-appointment.storage';
 import type {
   FacilitySchedulingPolicyRecord,
   FacilitySchedulingPolicyRevisionRecord,
-} from './appointment-scheduling-policy.repository';
-import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
+  FacilitySchedulingPolicyPersistencePort,
+} from '../persistence/platform-persistence.ports';
+import { FACILITY_SCHEDULING_POLICY_PERSISTENCE } from '../persistence/platform-persistence.ports';
 import {
   facilitySchedulingPolicyIdSchema,
   schedulingPolicyInputSchema,
@@ -77,7 +78,8 @@ export interface FacilitySchedulingPolicyRevisionResponse {
 @Injectable()
 export class FacilitySchedulingPolicyService {
   constructor(
-    private readonly policies: FacilitySchedulingPolicyRepository,
+    @Inject(FACILITY_SCHEDULING_POLICY_PERSISTENCE)
+    private readonly policies: FacilitySchedulingPolicyPersistencePort,
     @Inject(APPOINTMENT_REPOSITORY)
     private readonly appointments: TenantAppointmentRepository,
     private readonly facilities: FacilityService,

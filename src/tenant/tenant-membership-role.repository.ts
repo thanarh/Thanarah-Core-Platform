@@ -2,28 +2,19 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, StaffStatus, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import type { TrustedTenantContext } from './tenant-context.contract';
 import { PrismaService } from '../database/prisma.service';
-import { tenantRoleSelect, type TenantRoleRecord } from './tenant-role.repository';
+import { tenantRoleSelect } from './tenant-role.repository';
+import type {
+  TenantMembershipRoleAssignmentResult,
+  TenantMembershipRolePersistencePort,
+  TenantMembershipRoleRecord as TenantMembershipRolePortRecord,
+  TenantMembershipRoleRemovalResult,
+} from '../persistence/platform-persistence.ports';
 
-export type TenantMembershipRoleAssignmentResult =
-  | { kind: 'changed'; platformUserId: string; roleCode: string }
-  | { kind: 'already-assigned'; platformUserId: string; roleCode: string }
-  | { kind: 'not-found' }
-  | { kind: 'self-assignment' }
-  | { kind: 'owner-only' };
-
-export type TenantMembershipRoleRemovalResult =
-  | { kind: 'changed'; platformUserId: string; roleCode: string }
-  | { kind: 'not-found' }
-  | { kind: 'owner-protected' }
-  | { kind: 'not-assigned' };
-
-export type TenantMembershipRoleRecord = {
-  assignedAt: Date;
-  role: TenantRoleRecord;
-};
+export type { TenantMembershipRoleAssignmentResult, TenantMembershipRoleRemovalResult };
+export type TenantMembershipRoleRecord = TenantMembershipRolePortRecord;
 
 @Injectable()
-export class TenantMembershipRoleRepository {
+export class TenantMembershipRoleRepository implements TenantMembershipRolePersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolvePermissionCodes(context: TrustedTenantContext): Promise<string[]> {

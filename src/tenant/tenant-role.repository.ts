@@ -10,6 +10,11 @@ import {
   TenantOwnerBootstrapConflictError,
   TenantPermissionCatalogUnavailableError,
 } from './tenant-authorization.errors';
+import type {
+  TenantRoleBootstrapResult,
+  TenantRoleRecord as TenantRolePortRecord,
+  TenantRolePersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 export const tenantRoleSelect = {
   id: true,
@@ -27,19 +32,10 @@ export const tenantRoleSelect = {
   },
 } satisfies Prisma.TenantRoleSelect;
 
-export type TenantRoleRecord = Prisma.TenantRoleGetPayload<{
-  select: typeof tenantRoleSelect;
-}>;
-
-export type TenantRoleBootstrapResult = {
-  ownerMembershipId: string;
-  roles: TenantRoleRecord[];
-  createdRoleCodes: string[];
-  updatedPermissionRoleCodes: string[];
-};
+export type TenantRoleRecord = TenantRolePortRecord;
 
 @Injectable()
-export class TenantRoleRepository {
+export class TenantRoleRepository implements TenantRolePersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(input: {

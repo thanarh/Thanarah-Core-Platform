@@ -7,6 +7,11 @@ import type {
   ListHealthcareCatalogQuery,
   UpdateHealthcareCatalogInput,
 } from './healthcare-catalog.dto';
+import type {
+  HealthcareCatalogMutationResult as HealthcareCatalogMutationResultContract,
+  HealthcareCatalogPersistencePort,
+  HealthcareCatalogRecord as HealthcareCatalogRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const healthcareCatalogSelect = {
   id: true,
@@ -21,24 +26,11 @@ const healthcareCatalogSelect = {
   updatedAt: true,
 } satisfies Prisma.DepartmentSelect & Prisma.SpecialtySelect;
 
-type DepartmentRecord = Prisma.DepartmentGetPayload<{
-  select: typeof healthcareCatalogSelect;
-}>;
-type SpecialtyRecord = Prisma.SpecialtyGetPayload<{
-  select: typeof healthcareCatalogSelect;
-}>;
-
-export type HealthcareCatalogRecord = DepartmentRecord | SpecialtyRecord;
-
-export type HealthcareCatalogMutationResult =
-  | { kind: 'changed'; record: HealthcareCatalogRecord }
-  | { kind: 'tenant-inactive' }
-  | { kind: 'not-found' }
-  | { kind: 'name-conflict' }
-  | { kind: 'not-changed' };
+export type HealthcareCatalogRecord = HealthcareCatalogRecordContract;
+export type HealthcareCatalogMutationResult = HealthcareCatalogMutationResultContract;
 
 @Injectable()
-export class HealthcareCatalogRepository {
+export class HealthcareCatalogRepository implements HealthcareCatalogPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(

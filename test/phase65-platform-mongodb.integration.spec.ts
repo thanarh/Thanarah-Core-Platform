@@ -1,5 +1,5 @@
 import { MongoClient } from 'mongodb';
-import type { MongoClientOptions } from 'mongodb';
+import type { ClientSession, MongoClientOptions } from 'mongodb';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { ConfigService } from '../src/config/config.service';
 import {
@@ -21,6 +21,7 @@ import {
   stableAssignmentId,
 } from '../src/platform-mongo/platform-mongo.models';
 import { PlatformMongoRepositories } from '../src/platform-mongo/platform-mongo.repositories';
+import { MongoPlatformAuthorizationRepository } from '../src/platform-mongo/mongo-platform-authorization.repository';
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;
@@ -149,6 +150,43 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
     ).toBe(false);
   });
 
+  it('resolves role and permission assignments through the Mongo authorization adapter', async () => {
+    const db = await manager.getDatabase();
+    const now = new Date();
+    const userId = newStableId();
+    const roleId = newStableId();
+    const permissionId = newStableId();
+    await db.collection('platform_roles').insertOne({
+      _id: roleId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      code: 'PLATFORM_ADMIN',
+    });
+    await db.collection('platform_permissions').insertOne({
+      _id: permissionId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      code: 'platform.read',
+    });
+    await db.collection('platform_user_roles').insertOne({
+      _id: stableAssignmentId(userId, roleId),
+      userId,
+      roleId,
+    });
+    await db.collection('platform_role_permissions').insertOne({
+      _id: stableAssignmentId(roleId, permissionId),
+      roleId,
+      permissionId,
+    });
+
+    const authorization = new MongoPlatformAuthorizationRepository(manager);
+    await expect(authorization.findRoleCodesByUserId(userId)).resolves.toEqual(['PLATFORM_ADMIN']);
+    await expect(authorization.findRoleIdsByUserId(userId)).resolves.toEqual([roleId]);
+    await expect(authorization.findPermissionCodesByUserId(userId)).resolves.toEqual([
+      'platform.read',
+    ]);
+  }, 20_000);
+
   it('creates, reads, and updates platform identities with strict document validation', async () => {
     const now = new Date();
     const userId = newStableId();
@@ -264,6 +302,29 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       reuseDetectedAt: now,
     });
   });
+
+  it('commits and aborts through the managed platform transaction boundary', async () => {
+    const db = await manager.getDatabase();
+    const collection = db.collection('phase65_transaction_boundary');
+    let committedSession: ClientSession | undefined;
+    await manager.withTransaction(async (session) => {
+      committedSession = session;
+      await collection.insertOne({ _id: 'committed', value: 1 }, { session });
+    });
+    expect(await collection.findOne({ _id: 'committed' })).toMatchObject({ value: 1 });
+    expect(committedSession?.hasEnded).toBe(true);
+
+    let abortedSession: ClientSession | undefined;
+    await expect(
+      manager.withTransaction(async (session) => {
+        abortedSession = session;
+        await collection.insertOne({ _id: 'aborted', value: 2 }, { session });
+        throw new PlatformDocumentConflictError();
+      }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    expect(await collection.findOne({ _id: 'aborted' })).toBeNull();
+    expect(abortedSession?.hasEnded).toBe(true);
+  }, 20_000);
 
   it('uses stable composite identifiers and prevents concurrent duplicate identity writes', async () => {
     const now = new Date();

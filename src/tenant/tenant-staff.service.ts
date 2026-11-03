@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, StaffStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -25,7 +25,11 @@ import {
   TenantStaffNotFoundError,
   TenantStaffTenantUnavailableError,
 } from './tenant-staff.errors';
-import { TenantStaffRepository, type TenantStaffRecord } from './tenant-staff.repository';
+import {
+  TENANT_STAFF_PERSISTENCE,
+  type TenantStaffPersistencePort,
+  type TenantStaffRecord,
+} from '../persistence/platform-persistence.ports';
 
 export type TenantStaffAuditContext = Pick<
   TrustedSecurityContext,
@@ -54,7 +58,7 @@ export interface TenantStaffListResponse {
 @Injectable()
 export class TenantStaffService {
   constructor(
-    private readonly staff: TenantStaffRepository,
+    @Inject(TENANT_STAFF_PERSISTENCE) private readonly staff: TenantStaffPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

@@ -7,35 +7,17 @@ import {
 import { PrismaService } from '../database/prisma.service';
 import type { SchedulingPolicyRules } from './appointment-scheduling-policy.dto';
 import { SchedulingPolicyVersionConflictError } from './appointment-scheduling-policy.errors';
+import type {
+  FacilitySchedulingPolicyPersistencePort,
+  FacilitySchedulingPolicyRecord as FacilitySchedulingPolicyRecordContract,
+  FacilitySchedulingPolicyRevisionRecord as FacilitySchedulingPolicyRevisionRecordContract,
+} from '../persistence/platform-persistence.ports';
 
-export type FacilitySchedulingPolicyRecord = {
-  id: string;
-  tenantId: string;
-  facilityId: string;
-  status: FacilitySchedulingPolicyStatus;
-  timeZone: string;
-  rules: Prisma.JsonValue;
-  version: number;
-  createdAt: Date;
-  updatedAt: Date;
-};
-
-export type FacilitySchedulingPolicyRevisionRecord = {
-  id: string;
-  policyId: string;
-  tenantId: string;
-  facilityId: string;
-  version: number;
-  action: FacilitySchedulingPolicyRevisionAction;
-  status: FacilitySchedulingPolicyStatus;
-  timeZone: string;
-  rules: Prisma.JsonValue;
-  actorUserId: string;
-  createdAt: Date;
-};
+export type FacilitySchedulingPolicyRecord = FacilitySchedulingPolicyRecordContract;
+export type FacilitySchedulingPolicyRevisionRecord = FacilitySchedulingPolicyRevisionRecordContract;
 
 @Injectable()
-export class FacilitySchedulingPolicyRepository {
+export class FacilitySchedulingPolicyRepository implements FacilitySchedulingPolicyPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   findByFacility(

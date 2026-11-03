@@ -8,6 +8,14 @@ import {
   TenantStatus,
 } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  AssignTenantStaffScopeResult as AssignTenantStaffScopeResultContract,
+  RemoveTenantStaffScopeResult as RemoveTenantStaffScopeResultContract,
+  TenantStaffBranchAssignmentRecord as TenantStaffBranchAssignmentRecordContract,
+  TenantStaffEffectiveScope as TenantStaffEffectiveScopeContract,
+  TenantStaffFacilityAssignmentRecord as TenantStaffFacilityAssignmentRecordContract,
+  TenantStaffScopePersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 const facilityAssignmentSelect = {
   staffId: true,
@@ -27,37 +35,11 @@ const branchAssignmentSelect = {
   facility: { select: { id: true, name: true, status: true } },
 } satisfies Prisma.StaffBranchAssignmentSelect;
 
-export type TenantStaffFacilityAssignmentRecord = Prisma.StaffFacilityAssignmentGetPayload<{
-  select: typeof facilityAssignmentSelect;
-}>;
-
-export type TenantStaffBranchAssignmentRecord = Prisma.StaffBranchAssignmentGetPayload<{
-  select: typeof branchAssignmentSelect;
-}>;
-
-export type AssignTenantStaffScopeResult<T> =
-  | { kind: 'changed'; assignment: T }
-  | { kind: 'already-assigned'; assignment: T }
-  | { kind: 'not-found' }
-  | { kind: 'actor-ineligible' }
-  | { kind: 'staff-ineligible' }
-  | { kind: 'unit-ineligible' };
-
-export type RemoveTenantStaffScopeResult =
-  | { kind: 'changed'; userId: string }
-  | { kind: 'not-found' }
-  | { kind: 'actor-ineligible' }
-  | { kind: 'not-assigned' };
-
-export interface TenantStaffEffectiveScope {
-  facilities: ReadonlyArray<{ id: string; name: string }>;
-  branches: ReadonlyArray<{
-    id: string;
-    name: string;
-    facilityId: string;
-    facilityName: string;
-  }>;
-}
+export type TenantStaffFacilityAssignmentRecord = TenantStaffFacilityAssignmentRecordContract;
+export type TenantStaffBranchAssignmentRecord = TenantStaffBranchAssignmentRecordContract;
+export type AssignTenantStaffScopeResult<T> = AssignTenantStaffScopeResultContract<T>;
+export type RemoveTenantStaffScopeResult = RemoveTenantStaffScopeResultContract;
+export type TenantStaffEffectiveScope = TenantStaffEffectiveScopeContract;
 
 type AssignmentInput = {
   tenantId: string;
@@ -79,7 +61,7 @@ function activeTenantRelation(): Prisma.StaffWhereInput['tenant'] {
 }
 
 @Injectable()
-export class TenantStaffScopeRepository {
+export class TenantStaffScopeRepository implements TenantStaffScopePersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async listFacilitiesForStaff(

@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, StaffStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  CreateTenantStaffResult as CreateTenantStaffResultContract,
+  TenantStaffListFilter as TenantStaffListFilterContract,
+  TenantStaffPersistencePort,
+  TenantStaffRecord as TenantStaffRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const staffSelect = {
   id: true,
@@ -17,19 +23,9 @@ const staffSelect = {
   updatedAt: true,
 } satisfies Prisma.StaffSelect;
 
-export type TenantStaffRecord = Prisma.StaffGetPayload<{ select: typeof staffSelect }>;
-
-export interface TenantStaffListFilter {
-  status?: StaffStatus;
-  limit: number;
-  offset: number;
-}
-
-export type CreateTenantStaffResult =
-  | { kind: 'created'; staff: TenantStaffRecord }
-  | { kind: 'membership-ineligible' }
-  | { kind: 'tenant-unavailable' }
-  | { kind: 'already-exists' };
+export type TenantStaffRecord = TenantStaffRecordContract;
+export type TenantStaffListFilter = TenantStaffListFilterContract;
+export type CreateTenantStaffResult = CreateTenantStaffResultContract;
 
 function isUniqueConflict(error: unknown): boolean {
   return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
@@ -40,7 +36,7 @@ function activeTenantRelation(): Prisma.StaffWhereInput['tenant'] {
 }
 
 @Injectable()
-export class TenantStaffRepository {
+export class TenantStaffRepository implements TenantStaffPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async createForActiveMembership(

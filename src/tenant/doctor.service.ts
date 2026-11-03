@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   PlatformAuditEventType,
   StaffStatus,
@@ -40,11 +40,12 @@ import {
   DoctorTenantUnavailableError,
 } from './doctor.errors';
 import {
-  DoctorRepository,
+  DOCTOR_PERSISTENCE,
   type CreateDoctorResult,
   type DoctorMutationResult,
+  type DoctorPersistencePort,
   type DoctorRecord,
-} from './doctor.repository';
+} from '../persistence/platform-persistence.ports';
 
 export type DoctorAuditContext = Pick<
   TrustedSecurityContext,
@@ -94,7 +95,7 @@ export interface DoctorListResponse {
 @Injectable()
 export class DoctorService {
   constructor(
-    private readonly doctors: DoctorRepository,
+    @Inject(DOCTOR_PERSISTENCE) private readonly doctors: DoctorPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

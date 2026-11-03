@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { BranchStatus, FacilityStatus, PlatformAuditEventType, TenantStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -23,7 +23,11 @@ import {
   type ListBranchesQuery,
   type UpdateBranchInput,
 } from './branch.dto';
-import { BranchRepository, type BranchRecord } from './branch.repository';
+import {
+  BRANCH_PERSISTENCE,
+  type BranchPersistencePort,
+} from '../persistence/platform-persistence.ports';
+import type { BranchRecord } from '../persistence/platform-persistence.ports';
 import {
   TenantContextInvalidError,
   TenantContextRequiredError,
@@ -39,7 +43,7 @@ export type BranchRequestAuditContext = Pick<
 @Injectable()
 export class BranchService {
   constructor(
-    private readonly branches: BranchRepository,
+    @Inject(BRANCH_PERSISTENCE) private readonly branches: BranchPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

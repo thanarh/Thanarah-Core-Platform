@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { BranchStatus, FacilityStatus, Prisma, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  BranchFacilityScope as BranchFacilityScopeContract,
+  BranchListFilter as BranchListFilterContract,
+  BranchPersistencePort,
+  BranchRecord as BranchRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const branchSelect = {
   id: true,
@@ -20,16 +26,9 @@ const branchFacilityScopeSelect = {
   tenant: { select: { status: true } },
 } satisfies Prisma.FacilitySelect;
 
-export type BranchRecord = Prisma.BranchGetPayload<{ select: typeof branchSelect }>;
-export type BranchFacilityScope = Prisma.FacilityGetPayload<{
-  select: typeof branchFacilityScopeSelect;
-}>;
-
-export interface BranchListFilter {
-  status?: BranchStatus;
-  limit: number;
-  offset: number;
-}
+export type BranchRecord = BranchRecordContract;
+export type BranchFacilityScope = BranchFacilityScopeContract;
+export type BranchListFilter = BranchListFilterContract;
 
 function activeFacilityRelation(
   tenantId: string,
@@ -46,7 +45,7 @@ function activeFacilityRelation(
 }
 
 @Injectable()
-export class BranchRepository {
+export class BranchRepository implements BranchPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   findFacilityScope(tenantId: string, facilityId: string): Promise<BranchFacilityScope | null> {

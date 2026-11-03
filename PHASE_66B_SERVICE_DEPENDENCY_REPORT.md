@@ -1,7 +1,7 @@
 # Phase 66B — Service Dependency Report
 
 **Date:** 2026-11-03
-**Scope:** Current service-to-persistence dependencies after the Phase 66B Slice 3 increment.
+**Scope:** Current service-to-persistence dependencies after all 22 central Prisma-backed repositories received application-owned ports.
 
 ## Services migrated to ports
 
@@ -16,29 +16,28 @@
 | `TenantService` | `TenantPersistencePort` | `TENANT_PERSISTENCE` → `TenantRepository` |
 | `TenantMembershipService` | `TenantMembershipPersistencePort`, `TenantPersistencePort`, `PlatformUserPersistencePort` | Tenant/membership tokens → Prisma repositories; user token → `PlatformUserRepository` |
 | `TenantMembershipValidatorService`, `TenantWorkspaceController` | `TenantMembershipPersistencePort` | `TENANT_MEMBERSHIP_PERSISTENCE` → `TenantMembershipRepository` |
+| `TenantRoleService` | `TenantRolePersistencePort`, `TenantMembershipRolePersistencePort` | Role tokens → Prisma role and membership-role repositories |
+| `TenantAuthorizationService` | `TenantMembershipRolePersistencePort` | `TENANT_MEMBERSHIP_ROLE_PERSISTENCE` → `TenantMembershipRoleRepository` |
+| `FacilityService` | `FacilityPersistencePort` | `FACILITY_PERSISTENCE` → `FacilityRepository` |
+| `BranchService` | `BranchPersistencePort` | `BRANCH_PERSISTENCE` → `BranchRepository` |
+| `TenantEntitlementService` | `TenantEntitlementPersistencePort` | `TENANT_ENTITLEMENT_PERSISTENCE` → `TenantEntitlementRepository` |
+| `TenantQuotaService` | `TenantQuotaPersistencePort` | `TENANT_QUOTA_PERSISTENCE` → `TenantQuotaRepository` |
+| `HealthcareCatalogService` | `HealthcareCatalogPersistencePort` | `HEALTHCARE_CATALOG_PERSISTENCE` → `HealthcareCatalogRepository` |
+| `ServiceCatalogService` | `ServiceCatalogPersistencePort` | `SERVICE_CATALOG_PERSISTENCE` → `ServiceCatalogRepository` |
+| `SubscriptionService` | `SubscriptionPersistencePort` | `SUBSCRIPTION_PERSISTENCE` → `SubscriptionRepository` |
+| `TenantStaffService` | `TenantStaffPersistencePort` | `TENANT_STAFF_PERSISTENCE` → `TenantStaffRepository` |
+| `TenantStaffRoleService` | `TenantStaffRolePersistencePort` | `TENANT_STAFF_ROLE_PERSISTENCE` → `TenantStaffRoleRepository` |
+| `TenantStaffScopeService` | `TenantStaffScopePersistencePort` | `TENANT_STAFF_SCOPE_PERSISTENCE` → `TenantStaffScopeRepository` |
+| `DoctorService` | `DoctorPersistencePort` | `DOCTOR_PERSISTENCE` → `DoctorRepository` |
+| `FacilitySchedulingPolicyService` | `FacilitySchedulingPolicyPersistencePort` | `FACILITY_SCHEDULING_POLICY_PERSISTENCE` → `FacilitySchedulingPolicyRepository` |
 
 These consumers use explicit Nest injection tokens and interface-typed constructor parameters. Plan, feature and audit domain behavior stays in the services; Prisma query mechanics remain in their adapters.
 
-## Remaining concrete repository dependencies
+## Central repository port coverage
 
-The following 14 of 22 central Prisma-backed repositories remain unported:
+All 22 central Prisma-backed repository classes audited for this increment now implement application-owned ports and are bound to their existing Prisma adapters. No central repository in this audited set remains unported.
 
-- `TenantRoleRepository`
-- `TenantMembershipRoleRepository`
-- `TenantStaffRepository`
-- `TenantStaffRoleRepository`
-- `TenantStaffScopeRepository`
-- `FacilityRepository`
-- `BranchRepository`
-- `HealthcareCatalogRepository`
-- `ServiceCatalogRepository`
-- `DoctorRepository`
-- `FacilitySchedulingPolicyRepository`
-- `TenantEntitlementRepository`
-- `TenantQuotaRepository`
-- `SubscriptionRepository`
-
-These remaining repositories must keep their current Prisma providers until an individual port, adapter binding and regression slice is implemented. Transaction-bearing workflows must not be mechanically converted.
+This completes the central repository port layer only. One unregistered, read-only authorization candidate exists, but the complete MongoDB adapter set, transaction parity, data migration readiness, and permission to switch runtime storage are not established. Transaction-bearing workflows remain in Prisma.
 
 The `Tenant` model is the organization record; no separate organization or tenant-hostname-resolution repository exists in the audited source.
 
@@ -51,4 +50,4 @@ The `Tenant` model is the organization record; no separate organization or tenan
 
 ## Provider safety
 
-Only Prisma adapter providers are registered for the eight port groups. `PlatformMongoRepositories` remains unused by these services. Auth and tenant persistence providers are registered with `useExisting`. Focused DI tests resolve the tenant/membership, auth, catalog, and audit port tokens to their Prisma repositories.
+Only Prisma adapter providers are registered for all 22 port groups. `PlatformMongoRepositories` and the isolated authorization candidate remain unused by these services. Persistence providers are registered with `useExisting`; focused DI tests cover the port bindings. No Mongo provider is selected for application traffic.

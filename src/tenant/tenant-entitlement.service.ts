@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { SubscriptionStatus } from '@prisma/client';
 import { SubscriptionService } from '../subscriptions/subscription.service';
 import {
@@ -9,7 +9,10 @@ import {
 } from './tenant-context.contract';
 import { TenantFeatureNotIncludedError } from './tenant-entitlement.errors';
 import { isTenantFeatureKey } from './tenant-require-feature.decorator';
-import { TenantEntitlementRepository } from './tenant-entitlement.repository';
+import {
+  TENANT_ENTITLEMENT_PERSISTENCE,
+  type TenantEntitlementPersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 export type TenantEntitlementDenialReason =
   | 'NOT_ENTITLED_NO_SUBSCRIPTION'
@@ -38,7 +41,8 @@ export type TenantEntitlementDecision =
 export class TenantEntitlementService {
   constructor(
     private readonly subscriptions: SubscriptionService,
-    private readonly entitlements: TenantEntitlementRepository,
+    @Inject(TENANT_ENTITLEMENT_PERSISTENCE)
+    private readonly entitlements: TenantEntitlementPersistencePort,
   ) {}
 
   async resolve(

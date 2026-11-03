@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { AuthorizationForbiddenError } from '../auth/errors/authorization.errors';
@@ -37,8 +37,15 @@ import {
   type ReplaceTenantRolePermissionsInput,
   type UpdateTenantRoleInput,
 } from './tenant-role.dto';
-import { TenantMembershipRoleRepository } from './tenant-membership-role.repository';
-import { TenantRoleRepository, type TenantRoleRecord } from './tenant-role.repository';
+import {
+  TENANT_MEMBERSHIP_ROLE_PERSISTENCE,
+  TENANT_ROLE_PERSISTENCE,
+} from '../persistence/platform-persistence.ports';
+import type {
+  TenantMembershipRolePersistencePort,
+  TenantRolePersistencePort,
+  TenantRoleRecord,
+} from '../persistence/platform-persistence.ports';
 
 export type TenantRoleAuditContext = Pick<
   TrustedSecurityContext,
@@ -54,8 +61,9 @@ const DEFAULT_ROLE_CODES = new Set<string>(DEFAULT_TENANT_ROLES.map(({ code }) =
 @Injectable()
 export class TenantRoleService {
   constructor(
-    private readonly roles: TenantRoleRepository,
-    private readonly membershipRoles: TenantMembershipRoleRepository,
+    @Inject(TENANT_ROLE_PERSISTENCE) private readonly roles: TenantRolePersistencePort,
+    @Inject(TENANT_MEMBERSHIP_ROLE_PERSISTENCE)
+    private readonly membershipRoles: TenantMembershipRolePersistencePort,
     private readonly tenantAuthorization: TenantAuthorizationService,
     private readonly platformAuthorization: PlatformAuthorizationService,
     private readonly audit: PlatformAuditService,

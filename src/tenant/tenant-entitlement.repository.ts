@@ -1,19 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { FeatureStatus, PlanStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  PlanFeatureEntitlementLookup as PlanFeatureEntitlementLookupContract,
+  TenantEntitlementPersistencePort,
+} from '../persistence/platform-persistence.ports';
 
-export type PlanFeatureEntitlementLookup =
-  | { kind: 'plan-not-found' }
-  | { kind: 'plan-unavailable' }
-  | { kind: 'feature-not-found' }
-  | { kind: 'feature-unavailable' }
-  | { kind: 'plan-feature-missing' }
-  | { kind: 'plan-feature-disabled' }
-  | { kind: 'plan-feature-ambiguous' }
-  | { kind: 'entitled'; featureId: string };
+export type PlanFeatureEntitlementLookup = PlanFeatureEntitlementLookupContract;
 
 @Injectable()
-export class TenantEntitlementRepository {
+export class TenantEntitlementRepository implements TenantEntitlementPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async resolveFeatureOnPlan(

@@ -1,10 +1,18 @@
 import { Inject, Injectable, OnApplicationShutdown } from '@nestjs/common';
 import { MongoClient } from 'mongodb';
-import type { Db, MongoClientOptions } from 'mongodb';
+import type {
+  ClientSession,
+  ClientSessionOptions,
+  Db,
+  MongoClientOptions,
+  TransactionOptions,
+} from 'mongodb';
 import { ConfigService } from '../config/config.service';
 import {
   PlatformMongoNotConfiguredError,
   PlatformMongoUnavailableError,
+  PlatformDocumentConflictError,
+  PlatformDocumentValidationError,
 } from './platform-mongo.errors';
 
 export const PLATFORM_MONGO_CLIENT_FACTORY = Symbol('PLATFORM_MONGO_CLIENT_FACTORY');
@@ -12,6 +20,7 @@ export const PLATFORM_MONGO_CLIENT_FACTORY = Symbol('PLATFORM_MONGO_CLIENT_FACTO
 export interface PlatformMongoClient {
   connect(): Promise<unknown>;
   db(databaseName: string): Db;
+  startSession(options?: ClientSessionOptions): ClientSession;
   close(force?: boolean): Promise<void>;
 }
 
@@ -58,6 +67,38 @@ export class PlatformMongoClientManager implements OnApplicationShutdown {
       return true;
     } catch {
       return false;
+    }
+  }
+
+  /**
+   * Run database-only work inside a MongoDB transaction. The driver may retry the
+   * callback, so external effects must be performed only after this method resolves.
+   */
+  async withTransaction<T>(
+    operation: (session: ClientSession) => Promise<T>,
+    options?: TransactionOptions,
+  ): Promise<T> {
+    if (!this.configured) throw new PlatformMongoNotConfiguredError();
+    const client = await this.getClient();
+    let session: ClientSession;
+    try {
+      session = client.startSession();
+    } catch {
+      throw new PlatformMongoUnavailableError();
+    }
+
+    try {
+      return await session.withTransaction(operation, options);
+    } catch (error) {
+      if (
+        error instanceof PlatformDocumentConflictError ||
+        error instanceof PlatformDocumentValidationError
+      ) {
+        throw error;
+      }
+      throw new PlatformMongoUnavailableError();
+    } finally {
+      await session.endSession().catch(() => undefined);
     }
   }
 

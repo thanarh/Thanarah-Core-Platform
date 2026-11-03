@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { FacilityStatus, PlatformAuditEventType } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -19,7 +19,11 @@ import {
   type ListFacilitiesQuery,
   type UpdateFacilityInput,
 } from './facility.dto';
-import { FacilityRepository, type FacilityRecord } from './facility.repository';
+import {
+  FACILITY_PERSISTENCE,
+  type FacilityPersistencePort,
+} from '../persistence/platform-persistence.ports';
+import type { FacilityRecord } from '../persistence/platform-persistence.ports';
 import {
   TenantContextInvalidError,
   TenantContextRequiredError,
@@ -35,7 +39,7 @@ export type FacilityRequestAuditContext = Pick<
 @Injectable()
 export class FacilityService {
   constructor(
-    private readonly facilities: FacilityRepository,
+    @Inject(FACILITY_PERSISTENCE) private readonly facilities: FacilityPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

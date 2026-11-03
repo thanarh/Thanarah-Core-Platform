@@ -1,6 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { Prisma, StaffStatus, TenantMembershipStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  AssignTenantStaffRoleResult as AssignTenantStaffRoleResultContract,
+  RemoveTenantStaffRoleResult as RemoveTenantStaffRoleResultContract,
+  TenantStaffRoleAssignmentRecord as TenantStaffRoleAssignmentRecordContract,
+  TenantStaffRolePersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 const staffRoleAssignmentSelect = {
   tenantId: true,
@@ -19,31 +25,16 @@ const staffRoleAssignmentSelect = {
   },
 } satisfies Prisma.StaffRoleAssignmentSelect;
 
-export type TenantStaffRoleAssignmentRecord = Prisma.StaffRoleAssignmentGetPayload<{
-  select: typeof staffRoleAssignmentSelect;
-}>;
-
-export type AssignTenantStaffRoleResult =
-  | { kind: 'changed'; assignment: TenantStaffRoleAssignmentRecord }
-  | { kind: 'already-assigned'; assignment: TenantStaffRoleAssignmentRecord }
-  | { kind: 'not-found' }
-  | { kind: 'staff-ineligible' }
-  | { kind: 'self-assignment' }
-  | { kind: 'owner-only' };
-
-export type RemoveTenantStaffRoleResult =
-  | { kind: 'changed'; userId: string; roleCode: string }
-  | { kind: 'not-found' }
-  | { kind: 'actor-ineligible' }
-  | { kind: 'owner-protected' }
-  | { kind: 'not-assigned' };
+export type TenantStaffRoleAssignmentRecord = TenantStaffRoleAssignmentRecordContract;
+export type AssignTenantStaffRoleResult = AssignTenantStaffRoleResultContract;
+export type RemoveTenantStaffRoleResult = RemoveTenantStaffRoleResultContract;
 
 function activeTenantRelation(): Prisma.StaffWhereInput['tenant'] {
   return { is: { status: TenantStatus.ACTIVE } };
 }
 
 @Injectable()
-export class TenantStaffRoleRepository {
+export class TenantStaffRoleRepository implements TenantStaffRolePersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async listForStaff(

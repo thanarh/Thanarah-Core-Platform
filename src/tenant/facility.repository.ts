@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { FacilityStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
+import type {
+  FacilityListFilter as FacilityListFilterContract,
+  FacilityPersistencePort,
+  FacilityRecord as FacilityRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const facilitySelect = {
   id: true,
@@ -14,16 +19,11 @@ const facilitySelect = {
   updatedAt: true,
 } satisfies Prisma.FacilitySelect;
 
-export type FacilityRecord = Prisma.FacilityGetPayload<{ select: typeof facilitySelect }>;
-
-export interface FacilityListFilter {
-  status?: FacilityStatus;
-  limit: number;
-  offset: number;
-}
+export type FacilityRecord = FacilityRecordContract;
+export type FacilityListFilter = FacilityListFilterContract;
 
 @Injectable()
-export class FacilityRepository {
+export class FacilityRepository implements FacilityPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   create(tenantId: string, input: { name: string }): Promise<FacilityRecord> {

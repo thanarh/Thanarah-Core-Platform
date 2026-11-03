@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, TenantCatalogStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -25,10 +25,11 @@ import {
   HealthcareCatalogNotFoundError,
 } from './healthcare-catalog.errors';
 import {
-  HealthcareCatalogRepository,
+  HEALTHCARE_CATALOG_PERSISTENCE,
   type HealthcareCatalogMutationResult,
+  type HealthcareCatalogPersistencePort,
   type HealthcareCatalogRecord,
-} from './healthcare-catalog.repository';
+} from '../persistence/platform-persistence.ports';
 
 export type HealthcareCatalogAuditContext = Pick<
   TrustedSecurityContext,
@@ -38,7 +39,8 @@ export type HealthcareCatalogAuditContext = Pick<
 @Injectable()
 export class HealthcareCatalogService {
   constructor(
-    private readonly catalogs: HealthcareCatalogRepository,
+    @Inject(HEALTHCARE_CATALOG_PERSISTENCE)
+    private readonly catalogs: HealthcareCatalogPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

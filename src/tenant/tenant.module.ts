@@ -5,7 +5,6 @@ import { PlatformSecurityModule } from '../platform-security/platform-security.m
 import { TenantController } from './tenant.controller';
 import { TenantMembershipController } from './tenant-membership.controller';
 import { TenantMembershipDirectoryController } from './tenant-membership-directory.controller';
-import { TenantMembershipRoleRepository } from './tenant-membership-role.repository';
 import { TenantMembershipService } from './tenant-membership.service';
 import { TenantAuthorizationGuard } from './tenant-authorization.guard';
 import { TenantAuthorizationService } from './tenant-authorization.service';
@@ -15,36 +14,34 @@ import {
   TrustedTenantContextFactoryService,
 } from './tenant-context.service';
 import { FacilityController } from './facility.controller';
-import { FacilityRepository } from './facility.repository';
 import { FacilityService } from './facility.service';
 import { BranchController } from './branch.controller';
-import { BranchRepository } from './branch.repository';
 import { BranchService } from './branch.service';
 import { TenantRoleBootstrapController } from './tenant-role-bootstrap.controller';
 import { TenantRoleController } from './tenant-role.controller';
-import { TenantRoleRepository } from './tenant-role.repository';
 import { TenantRoleService } from './tenant-role.service';
 import { TenantService } from './tenant.service';
 import { TenantPersistenceModule } from './tenant-persistence.module';
+import { TenantRolePersistenceModule } from './tenant-role-persistence.module';
+import { TenantFacilityBranchPersistenceModule } from './tenant-facility-branch-persistence.module';
+import { TenantCatalogPersistenceModule } from './tenant-catalog-persistence.module';
+import { TenantStaffPersistenceModule } from './tenant-staff-persistence.module';
+import { TenantStaffAuthorizationPersistenceModule } from './tenant-staff-authorization-persistence.module';
+import { FacilitySchedulingPolicyPersistenceModule } from './facility-scheduling-policy-persistence.module';
+import { DoctorPersistenceModule } from './doctor-persistence.module';
 import { TenantEntitlementModule } from './tenant-entitlement.module';
 import { TenantQuotaModule } from './tenant-quota.module';
 import { TenantStaffController } from './tenant-staff.controller';
-import { TenantStaffRepository } from './tenant-staff.repository';
 import { TenantStaffService } from './tenant-staff.service';
 import { TenantStaffRoleController } from './tenant-staff-role.controller';
-import { TenantStaffRoleRepository } from './tenant-staff-role.repository';
 import { TenantStaffRoleService } from './tenant-staff-role.service';
 import { TenantStaffScopeController } from './tenant-staff-scope.controller';
-import { TenantStaffScopeRepository } from './tenant-staff-scope.repository';
 import { TenantStaffScopeService } from './tenant-staff-scope.service';
 import { TenantHealthcareCatalogController } from './tenant-healthcare-catalog.controller';
-import { HealthcareCatalogRepository } from './healthcare-catalog.repository';
 import { HealthcareCatalogService } from './healthcare-catalog.service';
 import { TenantServiceCatalogController } from './tenant-service-catalog.controller';
-import { ServiceCatalogRepository } from './service-catalog.repository';
 import { ServiceCatalogService } from './service-catalog.service';
 import { DoctorController } from './doctor.controller';
-import { DoctorRepository } from './doctor.repository';
 import { DoctorService } from './doctor.service';
 import { TenantPatientController } from './tenant-patient.controller';
 import { PatientService } from './patient.service';
@@ -52,7 +49,6 @@ import { TenantAppointmentController } from './tenant-appointment.controller';
 import { AppointmentService } from './appointment.service';
 import { TenantStorageModule } from './tenant-storage.module';
 import { FacilitySchedulingPolicyController } from './facility-scheduling-policy.controller';
-import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 import { TenantWorkspaceController } from './tenant-workspace.controller';
 import { TenantEncounterController } from './tenant-encounter.controller';
@@ -67,6 +63,13 @@ import { EncounterService } from './encounter.service';
     TenantQuotaModule,
     TenantStorageModule,
     TenantPersistenceModule,
+    TenantRolePersistenceModule,
+    TenantFacilityBranchPersistenceModule,
+    TenantCatalogPersistenceModule,
+    TenantStaffPersistenceModule,
+    TenantStaffAuthorizationPersistenceModule,
+    FacilitySchedulingPolicyPersistenceModule,
+    DoctorPersistenceModule,
   ],
   controllers: [
     TenantController,
@@ -92,31 +95,20 @@ import { EncounterService } from './encounter.service';
     TenantAuthorizationGuard,
     TenantAuthorizationService,
     TenantContextGuard,
-    TenantMembershipRoleRepository,
     TenantMembershipService,
     TenantMembershipValidatorService,
-    FacilityRepository,
     FacilityService,
-    BranchRepository,
     BranchService,
-    TenantStaffRepository,
     TenantStaffService,
-    TenantStaffRoleRepository,
     TenantStaffRoleService,
-    TenantStaffScopeRepository,
     TenantStaffScopeService,
-    HealthcareCatalogRepository,
     HealthcareCatalogService,
-    ServiceCatalogRepository,
     ServiceCatalogService,
-    DoctorRepository,
     DoctorService,
     PatientService,
     AppointmentService,
-    FacilitySchedulingPolicyRepository,
     FacilitySchedulingPolicyService,
     EncounterService,
-    TenantRoleRepository,
     TenantRoleService,
     TenantService,
     TrustedTenantContextFactoryService,

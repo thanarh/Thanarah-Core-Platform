@@ -1,4 +1,6 @@
 import type { PlanFeatureQuotaLimits } from '../platform-catalog/plan-feature-quota';
+import type { TenantPermissionCode } from '../tenant/tenant-authorization.constants';
+import type { SchedulingPolicyRules } from '../tenant/appointment-scheduling-policy.dto';
 
 export const FEATURE_PERSISTENCE = Symbol('FEATURE_PERSISTENCE');
 export const PLAN_PERSISTENCE = Symbol('PLAN_PERSISTENCE');
@@ -8,6 +10,22 @@ export const PLATFORM_SESSION_PERSISTENCE = Symbol('PLATFORM_SESSION_PERSISTENCE
 export const PLATFORM_AUTHORIZATION_PERSISTENCE = Symbol('PLATFORM_AUTHORIZATION_PERSISTENCE');
 export const TENANT_PERSISTENCE = Symbol('TENANT_PERSISTENCE');
 export const TENANT_MEMBERSHIP_PERSISTENCE = Symbol('TENANT_MEMBERSHIP_PERSISTENCE');
+export const TENANT_ROLE_PERSISTENCE = Symbol('TENANT_ROLE_PERSISTENCE');
+export const TENANT_MEMBERSHIP_ROLE_PERSISTENCE = Symbol('TENANT_MEMBERSHIP_ROLE_PERSISTENCE');
+export const FACILITY_PERSISTENCE = Symbol('FACILITY_PERSISTENCE');
+export const BRANCH_PERSISTENCE = Symbol('BRANCH_PERSISTENCE');
+export const TENANT_ENTITLEMENT_PERSISTENCE = Symbol('TENANT_ENTITLEMENT_PERSISTENCE');
+export const TENANT_QUOTA_PERSISTENCE = Symbol('TENANT_QUOTA_PERSISTENCE');
+export const SUBSCRIPTION_PERSISTENCE = Symbol('SUBSCRIPTION_PERSISTENCE');
+export const HEALTHCARE_CATALOG_PERSISTENCE = Symbol('HEALTHCARE_CATALOG_PERSISTENCE');
+export const SERVICE_CATALOG_PERSISTENCE = Symbol('SERVICE_CATALOG_PERSISTENCE');
+export const TENANT_STAFF_PERSISTENCE = Symbol('TENANT_STAFF_PERSISTENCE');
+export const TENANT_STAFF_ROLE_PERSISTENCE = Symbol('TENANT_STAFF_ROLE_PERSISTENCE');
+export const TENANT_STAFF_SCOPE_PERSISTENCE = Symbol('TENANT_STAFF_SCOPE_PERSISTENCE');
+export const FACILITY_SCHEDULING_POLICY_PERSISTENCE = Symbol(
+  'FACILITY_SCHEDULING_POLICY_PERSISTENCE',
+);
+export const DOCTOR_PERSISTENCE = Symbol('DOCTOR_PERSISTENCE');
 
 export type TenantStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
 export type TenantMembershipStatusValue = 'INVITED' | 'ACTIVE' | 'SUSPENDED' | 'REMOVED';
@@ -109,6 +127,757 @@ export interface TenantMembershipPersistencePort {
     changedAt: Date,
   ): Promise<TenantMembershipStatusChangeResult>;
   hasActiveMembership(tenantId: string, platformUserId: string): Promise<boolean>;
+}
+
+export interface TenantRoleRecord {
+  id: string;
+  tenantId: string;
+  code: string;
+  name: string;
+  description: string | null;
+  isSystemRole: boolean;
+  createdAt: Date;
+  updatedAt: Date;
+  permissions: Array<{ permission: { code: string } }>;
+}
+
+export interface TenantRoleBootstrapResult {
+  ownerMembershipId: string;
+  roles: TenantRoleRecord[];
+  createdRoleCodes: string[];
+  updatedPermissionRoleCodes: string[];
+}
+
+export type TenantMembershipRoleAssignmentResult =
+  | { kind: 'changed'; platformUserId: string; roleCode: string }
+  | { kind: 'already-assigned'; platformUserId: string; roleCode: string }
+  | { kind: 'not-found' }
+  | { kind: 'self-assignment' }
+  | { kind: 'owner-only' };
+
+export type TenantMembershipRoleRemovalResult =
+  | { kind: 'changed'; platformUserId: string; roleCode: string }
+  | { kind: 'not-found' }
+  | { kind: 'owner-protected' }
+  | { kind: 'not-assigned' };
+
+export interface TenantMembershipRoleRecord {
+  assignedAt: Date;
+  role: TenantRoleRecord;
+}
+
+export interface TenantRolePersistencePort {
+  create(input: {
+    tenantId: string;
+    code: string;
+    name: string;
+    description?: string | null;
+  }): Promise<TenantRoleRecord>;
+  findByIdForTenant(tenantId: string, id: string): Promise<TenantRoleRecord | null>;
+  listForTenant(tenantId: string): Promise<TenantRoleRecord[]>;
+  updateMetadata(
+    tenantId: string,
+    id: string,
+    input: { name?: string; description?: string | null },
+  ): Promise<TenantRoleRecord | null>;
+  replacePermissions(
+    tenantId: string,
+    roleId: string,
+    permissionCodes: readonly TenantPermissionCode[],
+  ): Promise<TenantRoleRecord | null>;
+  bootstrapInitialOwner(input: {
+    tenantId: string;
+    platformUserId: string;
+  }): Promise<TenantRoleBootstrapResult>;
+}
+
+export interface TenantMembershipRolePersistencePort {
+  resolvePermissionCodes(context: {
+    tenantId: string;
+    membershipId: string;
+    platformUserId: string;
+  }): Promise<string[]>;
+  hasRoleCode(tenantId: string, membershipId: string, roleCode: string): Promise<boolean>;
+  listForMembership(
+    tenantId: string,
+    membershipId: string,
+  ): Promise<TenantMembershipRoleRecord[] | null>;
+  assign(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    targetMembershipId: string;
+    roleId: string;
+  }): Promise<TenantMembershipRoleAssignmentResult>;
+  remove(input: {
+    tenantId: string;
+    membershipId: string;
+    roleId: string;
+  }): Promise<TenantMembershipRoleRemovalResult>;
+}
+
+export type FacilityStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+export type BranchStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface FacilityRecord {
+  id: string;
+  tenantId: string;
+  name: string;
+  status: FacilityStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FacilityListFilter {
+  status?: FacilityStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export interface FacilityPersistencePort {
+  create(tenantId: string, input: { name: string }): Promise<FacilityRecord>;
+  findById(tenantId: string, id: string): Promise<FacilityRecord | null>;
+  listForTenant(tenantId: string, filter: FacilityListFilter): Promise<FacilityRecord[]>;
+  updateName(tenantId: string, id: string, name: string): Promise<FacilityRecord | null>;
+  changeStatusIfCurrent(
+    tenantId: string,
+    id: string,
+    expectedStatus: FacilityStatusValue,
+    nextStatus: FacilityStatusValue,
+    changedAt: Date,
+  ): Promise<FacilityRecord | null>;
+}
+
+export interface BranchRecord {
+  id: string;
+  facilityId: string;
+  name: string;
+  status: BranchStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface BranchFacilityScope {
+  id: string;
+  status: FacilityStatusValue;
+  tenant: { status: TenantStatusValue };
+}
+
+export interface BranchListFilter {
+  status?: BranchStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export interface BranchPersistencePort {
+  findFacilityScope(tenantId: string, facilityId: string): Promise<BranchFacilityScope | null>;
+  createUnderActiveFacility(
+    tenantId: string,
+    facilityId: string,
+    input: { name: string },
+  ): Promise<BranchRecord | null>;
+  listForFacility(
+    tenantId: string,
+    facilityId: string,
+    filter: BranchListFilter,
+  ): Promise<BranchRecord[]>;
+  findByIdWithinFacility(
+    tenantId: string,
+    facilityId: string,
+    branchId: string,
+  ): Promise<BranchRecord | null>;
+  updateNameWithinFacility(
+    tenantId: string,
+    facilityId: string,
+    branchId: string,
+    name: string,
+  ): Promise<BranchRecord | null>;
+  changeStatusIfCurrentWithinFacility(
+    tenantId: string,
+    facilityId: string,
+    branchId: string,
+    expectedStatus: BranchStatusValue,
+    nextStatus: BranchStatusValue,
+    changedAt: Date,
+  ): Promise<BranchRecord | null>;
+}
+
+export type PlanFeatureEntitlementLookup =
+  | { kind: 'plan-not-found' }
+  | { kind: 'plan-unavailable' }
+  | { kind: 'feature-not-found' }
+  | { kind: 'feature-unavailable' }
+  | { kind: 'plan-feature-missing' }
+  | { kind: 'plan-feature-disabled' }
+  | { kind: 'plan-feature-ambiguous' }
+  | { kind: 'entitled'; featureId: string };
+
+export interface TenantEntitlementPersistencePort {
+  resolveFeatureOnPlan(planId: string, featureKey: string): Promise<PlanFeatureEntitlementLookup>;
+}
+
+export type TenantQuotaPlanFeatureLookup =
+  { kind: 'unavailable' } | { kind: 'ready'; quotaLimits: unknown };
+
+export interface TenantQuotaPersistencePort {
+  findActivePlanFeatureQuotaLimits(
+    planId: string,
+    featureId: string,
+  ): Promise<TenantQuotaPlanFeatureLookup>;
+}
+
+export type SubscriptionStatusValue = 'ACTIVE' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';
+export type SubscriptionLifecycleActionValue = 'activate' | 'suspend' | 'cancel' | 'expire';
+
+export interface SubscriptionRecord {
+  id: string;
+  tenantId: string;
+  planId: string;
+  status: SubscriptionStatusValue;
+  startsAt: Date;
+  endsAt: Date | null;
+  cancelledAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface SubscriptionListFilter {
+  tenantId?: string;
+  status?: SubscriptionStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateSubscriptionRecordInput {
+  tenantId: string;
+  planId: string;
+  status: SubscriptionStatusValue;
+  startsAt: Date;
+  endsAt: Date | null;
+}
+
+export type CreateSubscriptionResult =
+  | { kind: 'created'; subscription: SubscriptionRecord }
+  | { kind: 'tenant-not-found' }
+  | { kind: 'tenant-unavailable' }
+  | { kind: 'plan-not-found' }
+  | { kind: 'plan-unavailable' }
+  | { kind: 'period-conflict' };
+
+export type TransitionSubscriptionResult =
+  | {
+      kind: 'updated';
+      subscription: SubscriptionRecord;
+      previousStatus: SubscriptionStatusValue;
+    }
+  | { kind: 'not-found' }
+  | { kind: 'tenant-unavailable' }
+  | { kind: 'period-conflict' }
+  | { kind: 'transition-invalid' };
+
+export interface SubscriptionPersistencePort {
+  findById(id: string): Promise<SubscriptionRecord | null>;
+  list(filter: SubscriptionListFilter): Promise<SubscriptionRecord[]>;
+  findCurrentForTenant(tenantId: string, asOf: Date): Promise<SubscriptionRecord[]>;
+  createForActiveTenantAndPlan(
+    input: CreateSubscriptionRecordInput,
+  ): Promise<CreateSubscriptionResult>;
+  transition(
+    id: string,
+    action: SubscriptionLifecycleActionValue,
+    now: Date,
+  ): Promise<TransitionSubscriptionResult>;
+}
+
+export type TenantCatalogStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface HealthcareCatalogRecord {
+  id: string;
+  tenantId: string;
+  name: string;
+  description: string | null;
+  status: TenantCatalogStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export type HealthcareCatalogKindValue = 'department' | 'specialty';
+export interface HealthcareCatalogListFilter {
+  status?: TenantCatalogStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export type HealthcareCatalogMutationResult =
+  | { kind: 'changed'; record: HealthcareCatalogRecord }
+  | { kind: 'tenant-inactive' }
+  | { kind: 'not-found' }
+  | { kind: 'name-conflict' }
+  | { kind: 'not-changed' };
+
+export interface HealthcareCatalogPersistencePort {
+  create(
+    kind: HealthcareCatalogKindValue,
+    tenantId: string,
+    input: { name: string; description?: string | null },
+  ): Promise<HealthcareCatalogMutationResult>;
+  findById(
+    kind: HealthcareCatalogKindValue,
+    tenantId: string,
+    id: string,
+  ): Promise<HealthcareCatalogRecord | null>;
+  list(
+    kind: HealthcareCatalogKindValue,
+    tenantId: string,
+    query: HealthcareCatalogListFilter,
+  ): Promise<HealthcareCatalogRecord[]>;
+  update(
+    kind: HealthcareCatalogKindValue,
+    tenantId: string,
+    id: string,
+    input: { name?: string; description?: string | null },
+  ): Promise<HealthcareCatalogMutationResult>;
+  changeStatusIfCurrent(
+    kind: HealthcareCatalogKindValue,
+    tenantId: string,
+    id: string,
+    expectedStatus: TenantCatalogStatusValue,
+    nextStatus: TenantCatalogStatusValue,
+    changedAt: Date,
+  ): Promise<HealthcareCatalogMutationResult>;
+}
+
+export interface ServiceCatalogRecord {
+  id: string;
+  name: string;
+  code: string | null;
+  description: string | null;
+  status: TenantCatalogStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface ServiceCatalogListFilter {
+  status?: TenantCatalogStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export type ServiceCatalogMutationResult =
+  | { kind: 'changed'; record: ServiceCatalogRecord }
+  | { kind: 'tenant-inactive' }
+  | { kind: 'not-found' }
+  | { kind: 'name-conflict' }
+  | { kind: 'code-conflict' }
+  | { kind: 'conflict' }
+  | { kind: 'not-changed' };
+
+export interface ServiceCatalogPersistencePort {
+  create(
+    tenantId: string,
+    input: { name: string; code?: string; description?: string | null },
+  ): Promise<ServiceCatalogMutationResult>;
+  findById(tenantId: string, id: string): Promise<ServiceCatalogRecord | null>;
+  list(
+    tenantId: string,
+    query: ServiceCatalogListFilter,
+  ): Promise<{ items: ServiceCatalogRecord[]; total: number }>;
+  update(
+    tenantId: string,
+    id: string,
+    input: { name?: string; code?: string | null; description?: string | null },
+  ): Promise<ServiceCatalogMutationResult>;
+  changeStatusIfCurrent(
+    tenantId: string,
+    id: string,
+    expectedStatus: TenantCatalogStatusValue,
+    nextStatus: TenantCatalogStatusValue,
+    changedAt: Date,
+  ): Promise<ServiceCatalogMutationResult>;
+}
+
+export type StaffStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface TenantStaffRecord {
+  id: string;
+  tenantId: string;
+  userId: string;
+  membershipId: string;
+  displayName: string;
+  jobTitle: string | null;
+  status: StaffStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface TenantStaffListFilter {
+  status?: StaffStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export type CreateTenantStaffResult =
+  | { kind: 'created'; staff: TenantStaffRecord }
+  | { kind: 'membership-ineligible' }
+  | { kind: 'tenant-unavailable' }
+  | { kind: 'already-exists' };
+
+export interface TenantStaffPersistencePort {
+  createForActiveMembership(
+    tenantId: string,
+    membershipId: string,
+    input: { displayName?: string; jobTitle?: string },
+  ): Promise<CreateTenantStaffResult>;
+  listForTenant(tenantId: string, filter: TenantStaffListFilter): Promise<TenantStaffRecord[]>;
+  findByIdForTenant(tenantId: string, id: string): Promise<TenantStaffRecord | null>;
+  updateForTenant(
+    tenantId: string,
+    id: string,
+    input: { displayName?: string; jobTitle?: string | null },
+  ): Promise<TenantStaffRecord | null>;
+  changeStatusIfCurrentForTenant(
+    tenantId: string,
+    id: string,
+    expectedStatus: StaffStatusValue,
+    nextStatus: StaffStatusValue,
+    changedAt: Date,
+  ): Promise<TenantStaffRecord | null>;
+}
+
+export interface TenantStaffRoleAssignmentRecord {
+  tenantId: string;
+  staffId: string;
+  tenantRoleId: string;
+  assignedAt: Date;
+  staff: { userId: string };
+  role: {
+    id: string;
+    code: string;
+    name: string;
+    description: string | null;
+    isSystemRole: boolean;
+  };
+}
+
+export type AssignTenantStaffRoleResult =
+  | { kind: 'changed'; assignment: TenantStaffRoleAssignmentRecord }
+  | { kind: 'already-assigned'; assignment: TenantStaffRoleAssignmentRecord }
+  | { kind: 'not-found' }
+  | { kind: 'staff-ineligible' }
+  | { kind: 'self-assignment' }
+  | { kind: 'owner-only' };
+
+export type RemoveTenantStaffRoleResult =
+  | { kind: 'changed'; userId: string; roleCode: string }
+  | { kind: 'not-found' }
+  | { kind: 'actor-ineligible' }
+  | { kind: 'owner-protected' }
+  | { kind: 'not-assigned' };
+
+export interface TenantStaffRolePersistencePort {
+  listForStaff(
+    tenantId: string,
+    staffId: string,
+  ): Promise<TenantStaffRoleAssignmentRecord[] | null>;
+  assign(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    roleId: string;
+  }): Promise<AssignTenantStaffRoleResult>;
+  remove(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    roleId: string;
+  }): Promise<RemoveTenantStaffRoleResult>;
+}
+
+export interface TenantStaffFacilityAssignmentRecord {
+  staffId: string;
+  facilityId: string;
+  assignedAt: Date;
+  staff: { userId: string };
+  facility: { id: string; name: string; status: FacilityStatusValue };
+}
+
+export interface TenantStaffBranchAssignmentRecord {
+  staffId: string;
+  branchId: string;
+  facilityId: string;
+  assignedAt: Date;
+  staff: { userId: string };
+  branch: { id: string; name: string; status: BranchStatusValue };
+  facility: { id: string; name: string; status: FacilityStatusValue };
+}
+
+export interface TenantStaffEffectiveScope {
+  facilities: ReadonlyArray<{ id: string; name: string }>;
+  branches: ReadonlyArray<{
+    id: string;
+    name: string;
+    facilityId: string;
+    facilityName: string;
+  }>;
+}
+
+export type AssignTenantStaffScopeResult<T> =
+  | { kind: 'changed'; assignment: T }
+  | { kind: 'already-assigned'; assignment: T }
+  | { kind: 'not-found' }
+  | { kind: 'actor-ineligible' }
+  | { kind: 'staff-ineligible' }
+  | { kind: 'unit-ineligible' };
+
+export type RemoveTenantStaffScopeResult =
+  | { kind: 'changed'; userId: string }
+  | { kind: 'not-found' }
+  | { kind: 'actor-ineligible' }
+  | { kind: 'not-assigned' };
+
+export interface TenantStaffScopePersistencePort {
+  listFacilitiesForStaff(
+    tenantId: string,
+    staffId: string,
+  ): Promise<TenantStaffFacilityAssignmentRecord[] | null>;
+  listBranchesForStaff(
+    tenantId: string,
+    staffId: string,
+  ): Promise<TenantStaffBranchAssignmentRecord[] | null>;
+  assignFacility(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    facilityId: string;
+  }): Promise<AssignTenantStaffScopeResult<TenantStaffFacilityAssignmentRecord>>;
+  assignBranch(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    branchId: string;
+  }): Promise<AssignTenantStaffScopeResult<TenantStaffBranchAssignmentRecord>>;
+  removeFacility(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    facilityId: string;
+  }): Promise<RemoveTenantStaffScopeResult>;
+  removeBranch(input: {
+    tenantId: string;
+    actorMembershipId: string;
+    actorPlatformUserId: string;
+    staffId: string;
+    branchId: string;
+  }): Promise<RemoveTenantStaffScopeResult>;
+  resolveEffectiveScope(
+    tenantId: string,
+    staffId: string,
+  ): Promise<TenantStaffEffectiveScope | null>;
+  resolveMembershipScope(
+    tenantId: string,
+    membershipId: string,
+    platformUserId: string,
+  ): Promise<TenantStaffEffectiveScope | null>;
+}
+
+export type FacilitySchedulingPolicyStatusValue = 'ACTIVE' | 'INACTIVE';
+export type FacilitySchedulingPolicyRevisionActionValue =
+  'CREATED' | 'UPDATED' | 'ACTIVATED' | 'DEACTIVATED';
+
+export interface FacilitySchedulingPolicyRecord {
+  id: string;
+  tenantId: string;
+  facilityId: string;
+  status: FacilitySchedulingPolicyStatusValue;
+  timeZone: string;
+  rules: unknown;
+  version: number;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+export interface FacilitySchedulingPolicyRevisionRecord {
+  id: string;
+  policyId: string;
+  tenantId: string;
+  facilityId: string;
+  version: number;
+  action: FacilitySchedulingPolicyRevisionActionValue;
+  status: FacilitySchedulingPolicyStatusValue;
+  timeZone: string;
+  rules: unknown;
+  actorUserId: string;
+  createdAt: Date;
+}
+
+export interface FacilitySchedulingPolicyPersistencePort {
+  findByFacility(
+    tenantId: string,
+    facilityId: string,
+  ): Promise<FacilitySchedulingPolicyRecord | null>;
+  findActiveByFacility(
+    tenantId: string,
+    facilityId: string,
+  ): Promise<FacilitySchedulingPolicyRecord | null>;
+  findActiveTimeZonesByFacilities(
+    tenantId: string,
+    facilityIds: string[],
+  ): Promise<Array<{ facilityId: string; timeZone: string }>>;
+  upsert(input: {
+    tenantId: string;
+    facilityId: string;
+    expectedVersion?: number;
+    timeZone: string;
+    rules: SchedulingPolicyRules;
+    actorUserId: string;
+  }): Promise<{ policy: FacilitySchedulingPolicyRecord; changed: boolean }>;
+  setStatus(input: {
+    tenantId: string;
+    facilityId: string;
+    expectedVersion: number;
+    status: FacilitySchedulingPolicyStatusValue;
+    actorUserId: string;
+  }): Promise<{ policy: FacilitySchedulingPolicyRecord | null; changed: boolean }>;
+  listRevisions(
+    tenantId: string,
+    facilityId: string,
+    limit: number,
+    offset: number,
+  ): Promise<{ items: FacilitySchedulingPolicyRevisionRecord[]; total: number }>;
+}
+
+export type DoctorStatusValue = 'ACTIVE' | 'SUSPENDED' | 'DEACTIVATED';
+
+export interface DoctorRecord {
+  id: string;
+  tenantId: string;
+  staffId: string;
+  professionalDisplayName: string | null;
+  professionalTitle: string | null;
+  professionalCode: string | null;
+  bio: string | null;
+  status: DoctorStatusValue;
+  statusChangedAt: Date;
+  suspendedAt: Date | null;
+  deactivatedAt: Date | null;
+  createdAt: Date;
+  updatedAt: Date;
+  tenant: { status: TenantStatusValue };
+  staff: {
+    id: string;
+    userId: string;
+    displayName: string;
+    status: DoctorStatusValue;
+  };
+  departmentAssignments: Array<{
+    createdAt: Date;
+    department: { id: string; name: string; status: TenantCatalogStatusValue };
+  }>;
+  specialtyAssignments: Array<{
+    createdAt: Date;
+    specialty: { id: string; name: string; status: TenantCatalogStatusValue };
+  }>;
+}
+
+export interface DoctorListFilter {
+  status?: DoctorStatusValue;
+  limit: number;
+  offset: number;
+}
+
+export interface CreateDoctorInput {
+  staffId: string;
+  professionalDisplayName?: string;
+  professionalTitle?: string;
+  professionalCode?: string;
+  bio?: string;
+  departmentIds?: string[];
+  specialtyIds?: string[];
+}
+
+export interface UpdateDoctorInput {
+  professionalDisplayName?: string | null;
+  professionalTitle?: string | null;
+  professionalCode?: string | null;
+  bio?: string | null;
+}
+
+export type CreateDoctorResult =
+  | { kind: 'created'; doctor: DoctorRecord }
+  | { kind: 'tenant-inactive' }
+  | { kind: 'staff-not-found' }
+  | { kind: 'staff-ineligible' }
+  | { kind: 'assignment-target-not-found' }
+  | { kind: 'professional-code-conflict' }
+  | { kind: 'already-exists' };
+
+export type DoctorMutationResult =
+  | { kind: 'changed'; doctor: DoctorRecord }
+  | { kind: 'tenant-inactive' }
+  | { kind: 'not-found' }
+  | { kind: 'not-changed' }
+  | { kind: 'doctor-deactivated' }
+  | { kind: 'professional-code-conflict' }
+  | { kind: 'assignment-target-not-found' }
+  | { kind: 'assignment-conflict' }
+  | { kind: 'assignment-not-found' };
+
+export interface DoctorPersistencePort {
+  create(tenantId: string, input: CreateDoctorInput): Promise<CreateDoctorResult>;
+  listForTenant(tenantId: string, filter: DoctorListFilter): Promise<DoctorRecord[]>;
+  findByIdForTenant(tenantId: string, id: string): Promise<DoctorRecord | null>;
+  updateForTenant(
+    tenantId: string,
+    id: string,
+    input: UpdateDoctorInput,
+  ): Promise<DoctorMutationResult>;
+  changeStatusIfCurrent(
+    tenantId: string,
+    id: string,
+    expectedStatus: DoctorStatusValue,
+    nextStatus: DoctorStatusValue,
+    changedAt: Date,
+  ): Promise<DoctorMutationResult>;
+  assignDepartment(
+    tenantId: string,
+    doctorId: string,
+    departmentId: string,
+  ): Promise<DoctorMutationResult>;
+  unassignDepartment(
+    tenantId: string,
+    doctorId: string,
+    departmentId: string,
+  ): Promise<DoctorMutationResult>;
+  assignSpecialty(
+    tenantId: string,
+    doctorId: string,
+    specialtyId: string,
+  ): Promise<DoctorMutationResult>;
+  unassignSpecialty(
+    tenantId: string,
+    doctorId: string,
+    specialtyId: string,
+  ): Promise<DoctorMutationResult>;
 }
 
 export type PlatformUserStatusValue = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';

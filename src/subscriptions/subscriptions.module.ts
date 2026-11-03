@@ -3,13 +3,13 @@ import { AuthModule } from '../auth/auth.module';
 import { DatabaseModule } from '../database/database.module';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { SubscriptionController } from './subscription.controller';
-import { SubscriptionRepository } from './subscription.repository';
+import { SubscriptionPersistenceModule } from './subscription-persistence.module';
 import { SubscriptionService } from './subscription.service';
 
 @Module({
-  imports: [AuthModule, DatabaseModule, PlatformSecurityModule],
+  imports: [AuthModule, DatabaseModule, PlatformSecurityModule, SubscriptionPersistenceModule],
   controllers: [SubscriptionController],
-  providers: [SubscriptionRepository, SubscriptionService],
+  providers: [SubscriptionService],
   exports: [SubscriptionService],
 })
 export class SubscriptionsModule {}

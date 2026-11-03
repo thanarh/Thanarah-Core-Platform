@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import {
   planFeatureQuotaLimitsSchema,
   isPlanFeatureQuotaResourceKey,
@@ -16,7 +16,10 @@ import {
 } from './tenant-entitlement.service';
 import { isTenantFeatureKey } from './tenant-require-feature.decorator';
 import { TenantQuotaInputInvalidError } from './tenant-quota.errors';
-import { TenantQuotaRepository } from './tenant-quota.repository';
+import {
+  TENANT_QUOTA_PERSISTENCE,
+  type TenantQuotaPersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 export interface TenantQuotaCheckInput {
   /** A server-selected Feature key required in addition to the quota resource. */
@@ -43,7 +46,7 @@ export type TenantQuotaDecision =
 export class TenantQuotaService {
   constructor(
     private readonly entitlements: TenantEntitlementService,
-    private readonly quotas: TenantQuotaRepository,
+    @Inject(TENANT_QUOTA_PERSISTENCE) private readonly quotas: TenantQuotaPersistencePort,
   ) {}
 
   async checkQuota(

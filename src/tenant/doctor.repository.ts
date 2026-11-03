@@ -2,6 +2,13 @@ import { Injectable } from '@nestjs/common';
 import { Prisma, StaffStatus, TenantCatalogStatus, TenantStatus } from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type { CreateDoctorInput, UpdateDoctorInput } from './doctor.dto';
+import type {
+  CreateDoctorResult as CreateDoctorResultContract,
+  DoctorListFilter as DoctorListFilterContract,
+  DoctorMutationResult as DoctorMutationResultContract,
+  DoctorPersistencePort,
+  DoctorRecord as DoctorRecordContract,
+} from '../persistence/platform-persistence.ports';
 
 const doctorSelect = {
   id: true,
@@ -42,33 +49,10 @@ const doctorSelect = {
   },
 } satisfies Prisma.DoctorSelect;
 
-export type DoctorRecord = Prisma.DoctorGetPayload<{ select: typeof doctorSelect }>;
-
-export interface DoctorListFilter {
-  status?: StaffStatus;
-  limit: number;
-  offset: number;
-}
-
-export type CreateDoctorResult =
-  | { kind: 'created'; doctor: DoctorRecord }
-  | { kind: 'tenant-inactive' }
-  | { kind: 'staff-not-found' }
-  | { kind: 'staff-ineligible' }
-  | { kind: 'assignment-target-not-found' }
-  | { kind: 'professional-code-conflict' }
-  | { kind: 'already-exists' };
-
-export type DoctorMutationResult =
-  | { kind: 'changed'; doctor: DoctorRecord }
-  | { kind: 'tenant-inactive' }
-  | { kind: 'not-found' }
-  | { kind: 'not-changed' }
-  | { kind: 'doctor-deactivated' }
-  | { kind: 'professional-code-conflict' }
-  | { kind: 'assignment-target-not-found' }
-  | { kind: 'assignment-conflict' }
-  | { kind: 'assignment-not-found' };
+export type DoctorRecord = DoctorRecordContract;
+export type DoctorListFilter = DoctorListFilterContract;
+export type CreateDoctorResult = CreateDoctorResultContract;
+export type DoctorMutationResult = DoctorMutationResultContract;
 
 type Transaction = Prisma.TransactionClient;
 type CatalogTable = 'Department' | 'Specialty';
@@ -96,7 +80,7 @@ function activeTenantFilter(): Prisma.DoctorWhereInput['tenant'] {
 }
 
 @Injectable()
-export class DoctorRepository {
+export class DoctorRepository implements DoctorPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   async create(tenantId: string, input: CreateDoctorInput): Promise<CreateDoctorResult> {

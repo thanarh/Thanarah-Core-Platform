@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -24,9 +24,10 @@ import {
   TenantStaffRoleSelfAssignmentError,
 } from './tenant-staff-role.errors';
 import {
-  TenantStaffRoleRepository,
+  TENANT_STAFF_ROLE_PERSISTENCE,
   type TenantStaffRoleAssignmentRecord,
-} from './tenant-staff-role.repository';
+  type TenantStaffRolePersistencePort,
+} from '../persistence/platform-persistence.ports';
 
 export type TenantStaffRoleAuditContext = Pick<
   TrustedSecurityContext,
@@ -50,7 +51,8 @@ export interface TenantStaffRoleAssignmentListResponse {
 @Injectable()
 export class TenantStaffRoleService {
   constructor(
-    private readonly assignments: TenantStaffRoleRepository,
+    @Inject(TENANT_STAFF_ROLE_PERSISTENCE)
+    private readonly assignments: TenantStaffRolePersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

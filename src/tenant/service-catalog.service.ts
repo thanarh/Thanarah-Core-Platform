@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { PlatformAuditEventType, TenantCatalogStatus } from '@prisma/client';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -27,10 +27,11 @@ import {
   ServiceNotFoundError,
 } from './service-catalog.errors';
 import {
-  ServiceCatalogRepository,
+  SERVICE_CATALOG_PERSISTENCE,
   type ServiceCatalogMutationResult,
+  type ServiceCatalogPersistencePort,
   type ServiceCatalogRecord,
-} from './service-catalog.repository';
+} from '../persistence/platform-persistence.ports';
 
 export type ServiceCatalogAuditContext = Pick<
   TrustedSecurityContext,
@@ -40,7 +41,8 @@ export type ServiceCatalogAuditContext = Pick<
 @Injectable()
 export class ServiceCatalogService {
   constructor(
-    private readonly services: ServiceCatalogRepository,
+    @Inject(SERVICE_CATALOG_PERSISTENCE)
+    private readonly services: ServiceCatalogPersistencePort,
     private readonly audit: PlatformAuditService,
   ) {}
 

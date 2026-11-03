@@ -5,6 +5,14 @@ import {
   decideSubscriptionTransition,
   type SubscriptionLifecycleAction,
 } from './subscription.rules';
+import type {
+  CreateSubscriptionRecordInput as CreateSubscriptionRecordInputContract,
+  CreateSubscriptionResult as CreateSubscriptionResultContract,
+  SubscriptionListFilter as SubscriptionListFilterContract,
+  SubscriptionPersistencePort,
+  SubscriptionRecord as SubscriptionRecordContract,
+  TransitionSubscriptionResult as TransitionSubscriptionResultContract,
+} from '../persistence/platform-persistence.ports';
 
 const subscriptionSelect = {
   id: true,
@@ -18,39 +26,11 @@ const subscriptionSelect = {
   updatedAt: true,
 } satisfies Prisma.SubscriptionSelect;
 
-export type SubscriptionRecord = Prisma.SubscriptionGetPayload<{
-  select: typeof subscriptionSelect;
-}>;
-
-export interface SubscriptionListFilter {
-  tenantId?: string;
-  status?: SubscriptionStatus;
-  limit: number;
-  offset: number;
-}
-
-export interface CreateSubscriptionRecordInput {
-  tenantId: string;
-  planId: string;
-  status: SubscriptionStatus;
-  startsAt: Date;
-  endsAt: Date | null;
-}
-
-export type CreateSubscriptionResult =
-  | { kind: 'created'; subscription: SubscriptionRecord }
-  | { kind: 'tenant-not-found' }
-  | { kind: 'tenant-unavailable' }
-  | { kind: 'plan-not-found' }
-  | { kind: 'plan-unavailable' }
-  | { kind: 'period-conflict' };
-
-export type TransitionSubscriptionResult =
-  | { kind: 'updated'; subscription: SubscriptionRecord; previousStatus: SubscriptionStatus }
-  | { kind: 'not-found' }
-  | { kind: 'tenant-unavailable' }
-  | { kind: 'period-conflict' }
-  | { kind: 'transition-invalid' };
+export type SubscriptionRecord = SubscriptionRecordContract;
+export type SubscriptionListFilter = SubscriptionListFilterContract;
+export type CreateSubscriptionRecordInput = CreateSubscriptionRecordInputContract;
+export type CreateSubscriptionResult = CreateSubscriptionResultContract;
+export type TransitionSubscriptionResult = TransitionSubscriptionResultContract;
 
 interface LockedTenantRow {
   id: string;
@@ -63,7 +43,7 @@ interface LockedPlanRow {
 }
 
 @Injectable()
-export class SubscriptionRepository {
+export class SubscriptionRepository implements SubscriptionPersistencePort {
   constructor(private readonly prisma: PrismaService) {}
 
   findById(id: string): Promise<SubscriptionRecord | null> {
