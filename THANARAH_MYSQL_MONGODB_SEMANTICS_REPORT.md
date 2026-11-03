@@ -7,7 +7,13 @@
 
 The configured development `MYSQL_DATABASE_URL` was inspected only through sanitized diagnostics: it parses but has scheme `other`, and the resolver classifies it as `not-mysql`. The secret value was not read, printed, guessed, or changed. No differential MySQL/MongoDB tests ran.
 
-The opt-in Mongo suites passed against a disposable three-member MongoDB 7.0.17 replica set (Phase 64: 6/6; Phase 65: 18/18). These establish candidate behavior on MongoDB only.
+The opt-in Mongo suites passed against a disposable three-member MongoDB 7.0.17 replica set (Phase 64: 6/6; Phase 65: 21/21). These establish candidate behavior on MongoDB only.
+
+The HealthcareCatalog candidate covers department/specialty operations and Mongo's case-insensitive unique-name index. MySQL collation equivalence remains unverified; this test evidence is Mongo-only.
+Service catalog tests cover null code and case-insensitive name/code uniqueness on Mongo partial/collated indexes. These behaviors have not been compared with MySQL semantics.
+Subscription tests cover snapshot transactions and same-tenant overlapping-period serialization on Mongo; SQL row-lock equivalence and plan/tenant status races have not been compared.
+Tenant role tests cover permission replacement and initial-owner bootstrap on Mongo; MySQL collation, relation enforcement, concurrent bootstrap, and transaction parity remain unverified.
+Branch tests cover active parent scope and transactional writes on Mongo; SQL locking parity and races with independent Facility/Tenant mutations remain unverified.
 
 ## Compatibility matrix
 

@@ -23,3 +23,7 @@ The source inventory contains 13 transaction-bearing files, plus encounter cross
 | Encounter operation ledger across central SQL and tenant Mongo | None | No cross-store migration protocol test | Not implemented |
 
 The broader source-level requirements and risks are recorded in `PHASE_66_TRANSACTION_COMPATIBILITY_REPORT.md`. Transaction parity is still unverified for every listed workflow, including the two with Mongo candidates. No full transaction callback, session propagation, retry classification, uncertain-ack recovery, or side-effect ordering has been proven for the remaining workflows. The user-approved guard remains: do not register any Mongo adapter until its own behavior and dependent transaction parity are proven.
+
+## Exact current status
+
+For the 13 SQL transaction workflows in this inventory: **VERIFIED 0, BLOCKED 2, NOT STARTED 11**. The blocked workflows have Mongo-only candidate evidence but lack source-database parity and recovery evidence. The 11 not-started workflows have no Mongo transaction implementation. Encounter cross-store coordination is tracked separately and is also **NOT STARTED**. The facility adapter test does not count as evidence for the branch-creation transaction.

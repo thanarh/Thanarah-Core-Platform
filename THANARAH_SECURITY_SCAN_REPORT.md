@@ -1,6 +1,6 @@
 # Thanarah Security Scan Report
 
-**Scanned:** 2026-11-03  
+**Scanned:** 2026-11-03 (fresh scan during migration continuation)
 **Scope:** Dependency audit, static analysis, and privacy/dataflow scan.
 
 | Scanner | Result |
@@ -15,7 +15,7 @@
 - **High — `deepmerge-ts` 7.1.5:** recursive object graphs can exhaust the stack. Scanner fix is 8.0.0, a major update.
 - **High — `zod` 3.25.76:** oversized invalid arrays can exhaust memory. Scanner fix is 4.6.6, a major update.
 
-The audit also flags the current `vitest` / `@vitest/mocker` 3.2.7 line for two moderate advisories; the listed patched versions are in the 4.1.x line. Other moderate findings remain in the dependency report.
+The fresh audit enumerated all 15 advisory/package instances (2 critical, 2 high, 11 moderate), including the `vitest` / `@vitest/mocker` 3.2.7 advisories, `glob`, `minimatch`, `deepmerge`, and `js-yaml`. Exact package paths, scopes, advisory IDs, and fix lines are in `THANARAH_SECURITY_FINDINGS_AND_REMEDIATION.md`. Only `js-yaml` has a reported non-major fix; it was not changed pending a compatibility check.
 
 ## Action taken
 

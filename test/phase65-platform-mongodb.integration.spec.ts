@@ -32,6 +32,19 @@ import { MongoTenantEntitlementRepository } from '../src/platform-mongo/mongo-te
 import { MongoPlatformUserRepository } from '../src/platform-mongo/mongo-platform-user.repository';
 import { MongoPlatformSessionRepository } from '../src/platform-mongo/mongo-platform-session.repository';
 import { MongoTenantRepository } from '../src/platform-mongo/mongo-tenant.repository';
+import { MongoFacilityRepository } from '../src/platform-mongo/mongo-facility.repository';
+import { MongoPlatformAuditRepository } from '../src/platform-mongo/mongo-platform-audit.repository';
+import { MongoHealthcareCatalogRepository } from '../src/platform-mongo/mongo-healthcare-catalog.repository';
+import { MongoServiceCatalogRepository } from '../src/platform-mongo/mongo-service-catalog.repository';
+import { MongoSubscriptionRepository } from '../src/platform-mongo/mongo-subscription.repository';
+import { MongoTenantRoleRepository } from '../src/platform-mongo/mongo-tenant-role.repository';
+import { MongoBranchRepository } from '../src/platform-mongo/mongo-branch.repository';
+import { TENANT_PERMISSION_DEFINITIONS } from '../src/tenant/tenant-authorization.constants';
+import {
+  TenantOwnerBootstrapConflictError,
+  TenantPermissionCatalogUnavailableError,
+} from '../src/tenant/tenant-authorization.errors';
+import { PlatformDocumentConflictError } from '../src/platform-mongo/platform-mongo.errors';
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;
@@ -922,4 +935,576 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       }),
     ).resolves.toMatchObject({ _id: id });
   }, 60_000);
+
+  it('enforces facility tenant references, isolation, lifecycle CAS, and stable pagination', async () => {
+    const facilities = new MongoFacilityRepository(manager);
+    const tenantA = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `facility-a-${newStableId()}`,
+      legalName: 'Synthetic Facility Tenant A',
+      displayName: 'Synthetic Facility Tenant A',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const tenantB = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `facility-b-${newStableId()}`,
+      legalName: 'Synthetic Facility Tenant B',
+      displayName: 'Synthetic Facility Tenant B',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    await expect(
+      facilities.create(newStableId(), { name: 'Missing-parent facility' }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    const older = await facilities.create(tenantA._id, { name: 'Older synthetic facility' });
+    await new Promise((resolve) => setTimeout(resolve, 2));
+    const newer = await facilities.create(tenantA._id, { name: 'Newer synthetic facility' });
+    expect(await facilities.findById(tenantB._id, older.id)).toBeNull();
+    expect(await facilities.listForTenant(tenantA._id, { limit: 1, offset: 0 })).toMatchObject([
+      { id: newer.id },
+    ]);
+    expect(await facilities.updateName(tenantA._id, older.id, 'Renamed facility')).toMatchObject({
+      name: 'Renamed facility',
+    });
+    const changedAt = new Date(Date.now() + 10);
+    await expect(
+      facilities.changeStatusIfCurrent(tenantA._id, older.id, 'ACTIVE', 'SUSPENDED', changedAt),
+    ).resolves.toMatchObject({
+      status: 'SUSPENDED',
+      statusChangedAt: changedAt,
+      suspendedAt: changedAt,
+    });
+    await expect(
+      facilities.changeStatusIfCurrent(tenantA._id, older.id, 'ACTIVE', 'DEACTIVATED', changedAt),
+    ).resolves.toBeNull();
+  });
+
+  it('persists audit/security events with reference checks, idempotent lookup, and one-time resolution', async () => {
+    const audit = new MongoPlatformAuditRepository(manager);
+    const userId = newStableId();
+    const tenantId = newStableId();
+    const now = new Date();
+    await repositories.users.create({
+      _id: userId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      email: `audit-${userId}@example.test`,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Audit User',
+      status: 'ACTIVE',
+      tokenVersion: 0,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    await repositories.tenants.create({
+      _id: tenantId,
+      ...documentTimestamps(now),
+      schemaVersion: 1,
+      slug: `audit-${tenantId}`,
+      legalName: 'Synthetic Audit Tenant',
+      displayName: 'Synthetic Audit Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: now,
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const auditId = newStableId();
+    const event = {
+      id: auditId,
+      eventType: 'AUTH_LOGIN_SUCCEEDED' as const,
+      actorUserId: userId,
+      subjectTenantId: tenantId,
+      requestId: 'synthetic-request',
+      metadata: { source: 'integration-test', accepted: true },
+    };
+    await expect(audit.createAuditLog(event)).resolves.toMatchObject({
+      id: auditId,
+      actorUserId: userId,
+      subjectTenantId: tenantId,
+    });
+    await expect(audit.createAuditLog(event)).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    await expect(audit.findAuditLog(auditId)).resolves.toMatchObject({
+      id: auditId,
+      eventType: 'AUTH_LOGIN_SUCCEEDED',
+      metadata: event.metadata,
+    });
+    await expect(
+      audit.createAuditLog({
+        ...event,
+        id: newStableId(),
+        actorUserId: newStableId(),
+      }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+
+    const security = await audit.createSecurityEvent({
+      eventType: 'AUTH_LOGIN_FAILED',
+      actorUserId: userId,
+      metadata: { reason: 'synthetic' },
+    });
+    await expect(
+      audit.resolveSecurityEvent(security.id, userId, 'Reviewed synthetic event'),
+    ).resolves.toBe(true);
+    await expect(
+      audit.resolveSecurityEvent(security.id, userId, 'Duplicate resolution'),
+    ).resolves.toBe(false);
+  });
+
+  it('implements tenant healthcare catalogs with unique names, scoped reads, and lifecycle CAS', async () => {
+    const catalogs = new MongoHealthcareCatalogRepository(manager);
+    const activeTenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `healthcare-active-${newStableId()}`,
+      legalName: 'Synthetic Healthcare Tenant',
+      displayName: 'Synthetic Healthcare Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const inactiveTenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `healthcare-inactive-${newStableId()}`,
+      legalName: 'Synthetic Inactive Tenant',
+      displayName: 'Synthetic Inactive Tenant',
+      status: 'SUSPENDED',
+      statusChangedAt: new Date(),
+      suspendedAt: new Date(),
+      deactivatedAt: null,
+    });
+    const department = await catalogs.create('department', activeTenant._id, {
+      name: 'Cardiology',
+      description: 'Synthetic department',
+    });
+    expect(department.kind).toBe('changed');
+    if (department.kind !== 'changed') throw new Error('Synthetic department was not created');
+    await expect(
+      catalogs.create('department', activeTenant._id, { name: 'CARDIOLOGY' }),
+    ).resolves.toEqual({ kind: 'name-conflict' });
+    await expect(
+      catalogs.create('specialty', inactiveTenant._id, { name: 'Unavailable specialty' }),
+    ).resolves.toEqual({ kind: 'tenant-inactive' });
+    expect(
+      await catalogs.findById('department', inactiveTenant._id, department.record.id),
+    ).toBeNull();
+    await expect(
+      catalogs.list('department', activeTenant._id, { limit: 1, offset: 0 }),
+    ).resolves.toMatchObject([{ id: department.record.id, name: 'Cardiology' }]);
+    const specialty = await catalogs.create('specialty', activeTenant._id, {
+      name: 'Cardiology',
+      description: null,
+    });
+    expect(specialty.kind).toBe('changed');
+    await expect(
+      catalogs.update('department', activeTenant._id, department.record.id, {
+        name: 'Neurology',
+        description: null,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'changed',
+      record: { name: 'Neurology', description: null },
+    });
+    const changedAt = new Date(Date.now() + 10);
+    await expect(
+      catalogs.changeStatusIfCurrent(
+        'department',
+        activeTenant._id,
+        department.record.id,
+        'ACTIVE',
+        'SUSPENDED',
+        changedAt,
+      ),
+    ).resolves.toMatchObject({
+      kind: 'changed',
+      record: { status: 'SUSPENDED', statusChangedAt: changedAt, suspendedAt: changedAt },
+    });
+    await expect(
+      catalogs.changeStatusIfCurrent(
+        'department',
+        activeTenant._id,
+        department.record.id,
+        'ACTIVE',
+        'DEACTIVATED',
+        changedAt,
+      ),
+    ).resolves.toEqual({ kind: 'not-changed' });
+  });
+
+  it('preserves service catalog nullable-code uniqueness, conflict kinds, counts, and lifecycle rules', async () => {
+    const services = new MongoServiceCatalogRepository(manager);
+    const activeTenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `services-active-${newStableId()}`,
+      legalName: 'Synthetic Service Tenant',
+      displayName: 'Synthetic Service Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const inactiveTenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `services-inactive-${newStableId()}`,
+      legalName: 'Synthetic Inactive Service Tenant',
+      displayName: 'Synthetic Inactive Service Tenant',
+      status: 'SUSPENDED',
+      statusChangedAt: new Date(),
+      suspendedAt: new Date(),
+      deactivatedAt: null,
+    });
+    const first = await services.create(activeTenant._id, { name: 'Imaging' });
+    const second = await services.create(activeTenant._id, { name: 'Laboratory' });
+    const coded = await services.create(activeTenant._id, {
+      name: 'Administration',
+      code: 'ADM',
+      description: 'Synthetic service',
+    });
+    expect(first.kind).toBe('changed');
+    expect(second.kind).toBe('changed');
+    expect(coded.kind).toBe('changed');
+    if (first.kind !== 'changed' || second.kind !== 'changed' || coded.kind !== 'changed') {
+      throw new Error('Synthetic services were not created');
+    }
+    await expect(services.create(activeTenant._id, { name: 'IMAGING' })).resolves.toEqual({
+      kind: 'name-conflict',
+    });
+    await expect(
+      services.create(activeTenant._id, { name: 'Admin copy', code: 'adm' }),
+    ).resolves.toEqual({ kind: 'code-conflict' });
+    await expect(services.create(inactiveTenant._id, { name: 'Unavailable' })).resolves.toEqual({
+      kind: 'tenant-inactive',
+    });
+    await expect(
+      services.update(activeTenant._id, second.record.id, { code: 'ADM' }),
+    ).resolves.toEqual({ kind: 'code-conflict' });
+    const servicePage = await services.list(activeTenant._id, { limit: 2, offset: 0 });
+    expect(servicePage.total).toBe(3);
+    expect(servicePage.items.map((item) => item.name)).toContain('Administration');
+    expect(await services.findById(inactiveTenant._id, first.record.id)).toBeNull();
+    await expect(
+      services.update(activeTenant._id, first.record.id, { description: null }),
+    ).resolves.toMatchObject({ kind: 'changed', record: { description: null } });
+    const changedAt = new Date(Date.now() + 10);
+    await expect(
+      services.changeStatusIfCurrent(
+        activeTenant._id,
+        first.record.id,
+        'ACTIVE',
+        'DEACTIVATED',
+        changedAt,
+      ),
+    ).resolves.toMatchObject({
+      kind: 'changed',
+      record: { status: 'DEACTIVATED', statusChangedAt: changedAt, deactivatedAt: changedAt },
+    });
+    await expect(
+      services.changeStatusIfCurrent(
+        activeTenant._id,
+        first.record.id,
+        'ACTIVE',
+        'SUSPENDED',
+        changedAt,
+      ),
+    ).resolves.toEqual({ kind: 'not-changed' });
+  });
+
+  it('enforces subscription periods and lifecycle transitions transactionally', async () => {
+    const subscriptions = new MongoSubscriptionRepository(manager);
+    const tenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `subscription-${newStableId()}`,
+      legalName: 'Synthetic Subscription Tenant',
+      displayName: 'Synthetic Subscription Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const planId = newStableId();
+    const now = new Date();
+    await manager.getDatabase().then((db) =>
+      db.collection('platform_plans').insertOne({
+        _id: planId,
+        ...documentTimestamps(now),
+        schemaVersion: 1,
+        key: `subscription-${planId}`,
+        name: 'Synthetic subscription plan',
+        description: null,
+        status: 'ACTIVE',
+        statusChangedAt: now,
+      }),
+    );
+    const firstStart = new Date(now.getTime() - 60_000);
+    const firstEnd = new Date(now.getTime() + 60_000);
+    const created = await subscriptions.createForActiveTenantAndPlan({
+      tenantId: tenant._id,
+      planId,
+      status: 'ACTIVE',
+      startsAt: firstStart,
+      endsAt: firstEnd,
+    });
+    expect(created.kind).toBe('created');
+    if (created.kind !== 'created') throw new Error('Synthetic subscription was not created');
+    await expect(subscriptions.findById(created.subscription.id)).resolves.toMatchObject({
+      tenantId: tenant._id,
+      planId,
+    });
+    await expect(
+      subscriptions.createForActiveTenantAndPlan({
+        tenantId: tenant._id,
+        planId,
+        status: 'ACTIVE',
+        startsAt: now,
+        endsAt: null,
+      }),
+    ).resolves.toEqual({ kind: 'period-conflict' });
+    const afterFirst = new Date(firstEnd.getTime() + 1);
+    const concurrent = await Promise.all([
+      subscriptions.createForActiveTenantAndPlan({
+        tenantId: tenant._id,
+        planId,
+        status: 'ACTIVE',
+        startsAt: afterFirst,
+        endsAt: null,
+      }),
+      subscriptions.createForActiveTenantAndPlan({
+        tenantId: tenant._id,
+        planId,
+        status: 'ACTIVE',
+        startsAt: afterFirst,
+        endsAt: null,
+      }),
+    ]);
+    expect(concurrent.map((result) => result.kind).sort()).toEqual(['created', 'period-conflict']);
+    await expect(subscriptions.findCurrentForTenant(tenant._id, now)).resolves.toMatchObject([
+      { id: created.subscription.id, status: 'ACTIVE' },
+    ]);
+    await expect(
+      subscriptions.transition(created.subscription.id, 'suspend', now),
+    ).resolves.toMatchObject({
+      kind: 'updated',
+      previousStatus: 'ACTIVE',
+      subscription: { status: 'SUSPENDED' },
+    });
+    await expect(
+      subscriptions.transition(created.subscription.id, 'activate', now),
+    ).resolves.toMatchObject({
+      kind: 'updated',
+      previousStatus: 'SUSPENDED',
+      subscription: { status: 'ACTIVE' },
+    });
+    await expect(
+      subscriptions.transition(created.subscription.id, 'cancel', now),
+    ).resolves.toMatchObject({
+      kind: 'updated',
+      previousStatus: 'ACTIVE',
+      subscription: { status: 'CANCELLED', cancelledAt: now },
+    });
+    await expect(
+      subscriptions.transition(created.subscription.id, 'activate', now),
+    ).resolves.toEqual({ kind: 'transition-invalid' });
+  });
+
+  it('implements tenant role metadata, permission replacement, and initial owner bootstrap', async () => {
+    const roles = new MongoTenantRoleRepository(manager);
+    const tenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `roles-${newStableId()}`,
+      legalName: 'Synthetic Role Tenant',
+      displayName: 'Synthetic Role Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const now = new Date();
+    const permissions = TENANT_PERMISSION_DEFINITIONS.map((permission) => ({
+      _id: newStableId(),
+      ...documentTimestamps(now),
+      schemaVersion: 1 as const,
+      code: permission.code,
+      description: permission.description,
+    }));
+    const membershipId = newStableId();
+    const platformUserId = newStableId();
+    await Promise.all([
+      manager
+        .getDatabase()
+        .then((db) => db.collection('tenant_permissions').insertMany(permissions)),
+      manager.getDatabase().then((db) =>
+        db.collection('tenant_memberships').insertOne({
+          _id: membershipId,
+          ...documentTimestamps(now),
+          schemaVersion: 1,
+          tenantId: tenant._id,
+          platformUserId,
+          status: 'ACTIVE',
+          statusChangedAt: now,
+          activatedAt: now,
+          suspendedAt: null,
+          removedAt: null,
+        }),
+      ),
+    ]);
+    const permissionCode = TENANT_PERMISSION_DEFINITIONS[0].code;
+    const custom = await roles.create({
+      tenantId: tenant._id,
+      code: 'REPORT_VIEWER',
+      name: 'Report Viewer',
+      description: null,
+    });
+    expect(custom.permissions).toEqual([]);
+    await expect(
+      roles.create({
+        tenantId: tenant._id,
+        code: 'REPORT_VIEWER',
+        name: 'Duplicate',
+      }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+    await expect(
+      roles.replacePermissions(tenant._id, custom.id, [permissionCode]),
+    ).resolves.toMatchObject({
+      id: custom.id,
+      permissions: [{ permission: { code: permissionCode } }],
+    });
+    await expect(
+      roles.updateMetadata(tenant._id, custom.id, { name: 'Updated Viewer' }),
+    ).resolves.toMatchObject({ name: 'Updated Viewer' });
+    const bootstrap = await roles.bootstrapInitialOwner({
+      tenantId: tenant._id,
+      platformUserId,
+    });
+    expect(bootstrap.ownerMembershipId).toBe(membershipId);
+    expect(bootstrap.createdRoleCodes).toEqual(['OWNER', 'ADMIN', 'MEMBER']);
+    expect(bootstrap.roles.map((role) => role.code)).toEqual(['ADMIN', 'MEMBER', 'OWNER']);
+    expect(bootstrap.roles.find((role) => role.code === 'OWNER')?.permissions.length).toBe(
+      TENANT_PERMISSION_DEFINITIONS.length,
+    );
+    await expect(
+      roles.updateMetadata(tenant._id, bootstrap.roles.find((role) => role.code === 'OWNER')!.id, {
+        name: 'Blocked system role edit',
+      }),
+    ).resolves.toBeNull();
+    await expect(
+      roles.bootstrapInitialOwner({
+        tenantId: tenant._id,
+        platformUserId,
+      }),
+    ).rejects.toBeInstanceOf(TenantOwnerBootstrapConflictError);
+    await expect(
+      roles.replacePermissions(tenant._id, custom.id, [
+        'tenant.permission.not-configured' as (typeof TENANT_PERMISSION_DEFINITIONS)[number]['code'],
+      ]),
+    ).rejects.toBeInstanceOf(TenantPermissionCatalogUnavailableError);
+  });
+
+  it('enforces active facility and tenant scope for branch CRUD and lifecycle updates', async () => {
+    const facilities = new MongoFacilityRepository(manager);
+    const branches = new MongoBranchRepository(manager);
+    const tenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `branches-${newStableId()}`,
+      legalName: 'Synthetic Branch Tenant',
+      displayName: 'Synthetic Branch Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const otherTenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `branch-other-${newStableId()}`,
+      legalName: 'Synthetic Other Tenant',
+      displayName: 'Synthetic Other Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const facility = await facilities.create(tenant._id, { name: 'Branch test facility' });
+    await expect(branches.findFacilityScope(tenant._id, facility.id)).resolves.toMatchObject({
+      id: facility.id,
+      status: 'ACTIVE',
+      tenant: { status: 'ACTIVE' },
+    });
+    const branch = await branches.createUnderActiveFacility(tenant._id, facility.id, {
+      name: 'Outpatient',
+    });
+    expect(branch).toMatchObject({ facilityId: facility.id, name: 'Outpatient', status: 'ACTIVE' });
+    if (!branch) throw new Error('Synthetic branch was not created');
+    await expect(
+      branches.findByIdWithinFacility(otherTenant._id, facility.id, branch.id),
+    ).resolves.toBeNull();
+    await expect(
+      branches.listForFacility(tenant._id, facility.id, { limit: 10, offset: 0 }),
+    ).resolves.toMatchObject([{ id: branch.id }]);
+    await expect(
+      branches.updateNameWithinFacility(tenant._id, facility.id, branch.id, 'Clinic'),
+    ).resolves.toMatchObject({ name: 'Clinic' });
+    const changedAt = new Date(Date.now() + 10);
+    await expect(
+      branches.changeStatusIfCurrentWithinFacility(
+        tenant._id,
+        facility.id,
+        branch.id,
+        'ACTIVE',
+        'SUSPENDED',
+        changedAt,
+      ),
+    ).resolves.toMatchObject({
+      status: 'SUSPENDED',
+      statusChangedAt: changedAt,
+      suspendedAt: changedAt,
+    });
+    await expect(
+      branches.changeStatusIfCurrentWithinFacility(
+        tenant._id,
+        facility.id,
+        branch.id,
+        'ACTIVE',
+        'DEACTIVATED',
+        changedAt,
+      ),
+    ).resolves.toBeNull();
+    await facilities.changeStatusIfCurrent(
+      tenant._id,
+      facility.id,
+      'ACTIVE',
+      'SUSPENDED',
+      changedAt,
+    );
+    await expect(
+      branches.createUnderActiveFacility(tenant._id, facility.id, { name: 'Blocked branch' }),
+    ).resolves.toBeNull();
+    await expect(
+      branches.listForFacility(tenant._id, facility.id, { limit: 10, offset: 0 }),
+    ).resolves.toEqual([]);
+    await expect(
+      branches.updateNameWithinFacility(tenant._id, facility.id, branch.id, 'Blocked edit'),
+    ).resolves.toBeNull();
+  });
 });

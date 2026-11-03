@@ -7,26 +7,33 @@
 
 The 2026-11-03 Replit dependency audit reported **2 critical, 2 high, and 11 moderate** findings. Replit SAST and HoundDog reported zero findings. Earlier npm audit results documented in `PHASE_51_SECURITY_HARDENING_REPORT.md` have different totals (full tree: 2 critical, 4 high, 4 moderate; production tree: 0 critical, 4 high, 2 moderate). These tools' totals are not interchangeable and may count package paths/advisories differently.
 
-## Identified critical/high packages
+## Enumerated package/advisory findings
+
+The fresh scan reports 15 advisory/package instances: 2 critical, 2 high, and 11 moderate. Dependency paths and runtime/development scope below were reconciled with `npm explain`; all findings are recorded against `package-lock.json`.
 
 | Finding | Dependency path / scope | Reported issue | Fix and compatibility status |
 |---|---|---|---|
-| Critical: `tinypool` 1.1.1 (two advisories) | Vitest test-runner dependency; development/test path | Prototype-pollution-to-code-execution advisories | Reported fixes 2.1.1 and 2.1.2; major-version line change. No compatibility or regression evidence; not applied |
-| High: `deepmerge-ts` 7.1.5 | `prisma` → `@prisma/config` → `deepmerge-ts`; build/tooling dependency path | Recursive object graph can exhaust the stack | Scanner reports 8.0.0; major upgrade, with Prisma 7 also reported as a route. No compatibility proof; not applied |
-| High: `zod` 3.25.76 | Direct application runtime dependency | Oversized invalid arrays can exhaust memory | Replit scan reports 4.6.6; prior npm report lists 4.6.7. Both are Zod 4 major upgrades. No compatibility proof; not applied |
-| High findings in earlier npm audit | Production dependency tree; details in Phase 51 report | Four high npm findings were recorded, including the Prisma/deepmerge-ts and Zod paths | Replit and npm totals differ; all remain unresolved |
-
-## Known moderate paths; incomplete inventory
-
-- `vitest` / `@vitest/mocker` 3.2.7: prior reports identify two moderate advisories with fixes in the 4.1.x line; Vitest 4/5 changes require test-runner compatibility assessment.
-- `@nestjs/swagger` → `js-yaml`: prior npm audit reports a moderate production-tree issue. The advisory fix for `js-yaml` was listed as 5.4.1; the package-level path was also reported as fixable via `@nestjs/swagger` 12.0.4, a major upgrade. No override or upgrade was retained.
-- The current Replit scan's summarized report does not enumerate all 11 moderate findings individually. Earlier npm audit reports 2 moderate production and 2 moderate development/test findings, which do not reconcile with the Replit count. The remaining moderate package names, exact dependency paths, advisory IDs, and patched versions require a fresh package-level audit export before remediation can be considered complete.
+| Critical: `tinypool` 1.1.1 — GHSA-5gmw-xhrv-c9v3 | `vitest` → `tinypool`; development/test | Prototype-pollution gadget can influence worker options and lead to code execution | 2.1.1 reported; major update; not applied |
+| Critical: `tinypool` 1.1.1 — GHSA-85c8-ppgw-ccpr | `vitest` → `tinypool`; development/test | Prototype-pollution gadget can redirect worker loading | 2.1.2 reported; major update; not applied |
+| High: `deepmerge-ts` 7.1.5 — GHSA-ggr8-5vv4-36mx | `prisma` → `@prisma/config` → `deepmerge-ts`; development/tooling | Recursive object graphs can exhaust the stack | 8.0.0 reported; major update; not applied |
+| High: `zod` 3.25.76 — GHSA-mrhx-c7xc-m3w5 | Root direct dependency; runtime | Oversized invalid arrays can exhaust memory | 4.6.6 reported; major update; not applied |
+| Moderate: `@vitest/mocker` 3.2.7 — GHSA-82fw-gwwq-j7x9 | `vitest` → `@vitest/mocker`; development/test | Redirect mock path validation gap | 4.1.11 reported; major update; not applied |
+| Moderate: `@vitest/mocker` 3.2.7 — GHSA-qxg6-89mg-rqv8 | `vitest` → `@vitest/mocker`; development/test | Manual mock URL code injection | 4.1.12 reported; major update; not applied |
+| Moderate: `vitest` 3.2.7 — GHSA-82fw-gwwq-j7x9 | Root direct dev dependency | Same mocker redirect path validation advisory | 4.1.11 reported; major update; not applied |
+| Moderate: `deepmerge` 4.3.1 — GHSA-gcqx-w48m-w2h4 | `@nestjs/cli` → `fork-ts-checker-webpack-plugin` → `deepmerge`; development/tooling | Prototype poisoning | No fix version reported by this scan |
+| Moderate: `glob` 13.0.6 — GHSA-3g3m-2fjr-6pw4 | `@fastify/static` and Nest CLI dependency paths; runtime/tooling | Abort can leave filesystem traversal running | 14.0.2 reported; major update; not applied |
+| Moderate: `glob` 10.5.0 — GHSA-3g3m-2fjr-6pw4 | `testcontainers` → `archiver` → `archiver-utils` → `glob`; development/test | Abort can leave filesystem traversal running | 14.0.2 reported; major update; not applied |
+| Moderate: `js-yaml` 5.3.0 — GHSA-r3ph-w7gj-g6xm | `@nestjs/swagger` 11.4.7 pins `js-yaml` exactly at 5.3.0; runtime | Denial of service in YAML parsing | 5.4.1 reported; same major, but exact parent pin means an override or Swagger update is required. Not applied without isolated compatibility evidence |
+| Moderate: `minimatch` 10.2.6 — GHSA-g3hv-75wg-m249 | TypeScript ESLint toolchain; development | Pattern amplification / resource exhaustion | 11.0.1 reported; major update; not applied |
+| Moderate: `minimatch` 9.0.9 — GHSA-g3hv-75wg-m249 | `testcontainers` → `archiver` → `archiver-utils` → `glob` → `minimatch`; development/test | Pattern amplification / resource exhaustion | 11.0.1 reported; major update; not applied |
+| Moderate: `minimatch` 5.1.9 — GHSA-g3hv-75wg-m249 | `testcontainers` → `archiver` → `readdir-glob` → `minimatch`; development/test | Pattern amplification / resource exhaustion | 11.0.1 reported; major update; not applied |
+| Moderate: `minimatch` 3.1.5 — GHSA-g3hv-75wg-m249 | ESLint configuration; development | Pattern amplification / resource exhaustion | 11.0.1 reported; major update; not applied |
 
 ## Actions and decision
 
 - No dependency version or lockfile change was made in this continuation.
-- A prior compatible Vitest update attempt failed in npm resolution (`Cannot read properties of null (reading 'edgesOut')`); no forced or legacy-peer-dependency bypass was used.
+- The only reported non-major fix is `js-yaml` 5.4.1; the installed parent pins 5.3.0 exactly, so applying it needs an override or parent update. It remains unapplied without isolated compatibility evidence.
 - No critical/high finding is dismissed because it is in development tooling.
-- Do not apply major upgrades without isolated compatibility assessment and full regression evidence. A safe compatible patch/minor update may be applied only after its resolved version, path, and tests are verified.
+- Do not apply major upgrades without isolated compatibility assessment and full regression evidence.
 
-The project remains **NOT READY** from a dependency-security perspective. This report does not claim the 11 moderate findings are fully enumerated or remediated.
+The project remains **NOT READY** from a dependency-security perspective. Findings are enumerated but not remediated.

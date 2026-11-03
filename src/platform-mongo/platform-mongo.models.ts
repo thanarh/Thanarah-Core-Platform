@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
+import { PlatformAuditEventType, PlatformSecurityEventType } from '@prisma/client';
 
 const uuid = z.string().uuid();
 const timestamp = z.date();
@@ -41,6 +42,139 @@ export const tenantSchema = z
     statusChangedAt: timestamp,
     suspendedAt: optionalTimestamp,
     deactivatedAt: optionalTimestamp,
+  })
+  .strict();
+
+export const facilitySchema = z
+  .object({
+    ...common,
+    tenantId: uuid,
+    name: z.string().min(1).max(191),
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+    statusChangedAt: timestamp,
+    suspendedAt: optionalTimestamp,
+    deactivatedAt: optionalTimestamp,
+  })
+  .strict();
+
+const healthcareCatalogFields = {
+  ...common,
+  tenantId: uuid,
+  name: z.string().min(1).max(191),
+  description: z.string().max(512).nullable(),
+  status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+  statusChangedAt: timestamp,
+  suspendedAt: optionalTimestamp,
+  deactivatedAt: optionalTimestamp,
+};
+export const departmentSchema = z.object(healthcareCatalogFields).strict();
+export const specialtySchema = z.object(healthcareCatalogFields).strict();
+export const serviceCatalogSchema = z
+  .object({
+    ...common,
+    tenantId: uuid,
+    name: z.string().min(1).max(191),
+    code: z.string().max(64).nullable(),
+    description: z.string().max(2000).nullable(),
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+    statusChangedAt: timestamp,
+    suspendedAt: optionalTimestamp,
+    deactivatedAt: optionalTimestamp,
+  })
+  .strict();
+export const subscriptionSchema = z
+  .object({
+    ...common,
+    tenantId: uuid,
+    planId: uuid,
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'CANCELLED', 'EXPIRED']),
+    startsAt: timestamp,
+    endsAt: optionalTimestamp,
+    cancelledAt: optionalTimestamp,
+  })
+  .strict();
+export const tenantPermissionSchema = z
+  .object({
+    ...common,
+    code: z.string().min(1).max(128),
+    description: z.string().min(1).max(255),
+  })
+  .strict();
+export const tenantRoleSchema = z
+  .object({
+    ...common,
+    tenantId: uuid,
+    code: z.string().min(1).max(64),
+    name: z.string().min(1).max(128),
+    description: z.string().max(512).nullable(),
+    isSystemRole: z.boolean(),
+  })
+  .strict();
+export const tenantRolePermissionSchema = z
+  .object({
+    _id: z.string().min(1),
+    tenantRoleId: uuid,
+    tenantPermissionId: uuid,
+    assignedAt: timestamp,
+  })
+  .strict();
+export const tenantMembershipRoleSchema = z
+  .object({
+    _id: z.string().min(1),
+    tenantId: uuid,
+    membershipId: uuid,
+    tenantRoleId: uuid,
+    assignedAt: timestamp,
+  })
+  .strict();
+export const branchSchema = z
+  .object({
+    ...common,
+    facilityId: uuid,
+    name: z.string().min(1).max(191),
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+    statusChangedAt: timestamp,
+    suspendedAt: optionalTimestamp,
+    deactivatedAt: optionalTimestamp,
+  })
+  .strict();
+
+const safeMetadataSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+const auditContextSchema = {
+  actorUserId: uuid.nullable(),
+  subjectUserId: uuid.nullable(),
+  subjectTenantId: uuid.nullable(),
+  sessionId: uuid.nullable(),
+  requestId: z.string().max(128).nullable(),
+  ipAddress: z.string().max(45).nullable(),
+  userAgent: z.string().max(512).nullable(),
+  occurredAt: timestamp,
+  metadata: safeMetadataSchema,
+};
+export const platformAuditLogSchema = z
+  .object({
+    _id: uuid,
+    eventType: z.nativeEnum(PlatformAuditEventType),
+    ...auditContextSchema,
+  })
+  .strict();
+export const platformSecurityEventSchema = z
+  .object({
+    ...identity,
+    eventType: z.nativeEnum(PlatformSecurityEventType),
+    status: z.enum(['OPEN', 'RESOLVED']),
+    actorUserId: uuid.nullable(),
+    subjectUserId: uuid.nullable(),
+    sessionId: uuid.nullable(),
+    requestId: z.string().max(128).nullable(),
+    ipAddress: z.string().max(45).nullable(),
+    userAgent: z.string().max(512).nullable(),
+    metadata: safeMetadataSchema,
+    occurredAt: timestamp,
+    resolvedAt: optionalTimestamp,
+    resolvedBy: uuid.nullable(),
+    resolutionNote: z.string().max(1000).nullable(),
+    updatedAt: timestamp,
   })
   .strict();
 
@@ -158,6 +292,18 @@ export const platformRefreshTokenHistorySchema = z
 
 export type PlatformUserDocument = z.infer<typeof platformUserSchema>;
 export type TenantDocument = z.infer<typeof tenantSchema>;
+export type FacilityDocument = z.infer<typeof facilitySchema>;
+export type DepartmentDocument = z.infer<typeof departmentSchema>;
+export type SpecialtyDocument = z.infer<typeof specialtySchema>;
+export type ServiceCatalogDocument = z.infer<typeof serviceCatalogSchema>;
+export type SubscriptionDocument = z.infer<typeof subscriptionSchema>;
+export type TenantPermissionDocument = z.infer<typeof tenantPermissionSchema>;
+export type TenantRoleDocument = z.infer<typeof tenantRoleSchema>;
+export type TenantRolePermissionDocument = z.infer<typeof tenantRolePermissionSchema>;
+export type TenantMembershipRoleDocument = z.infer<typeof tenantMembershipRoleSchema>;
+export type BranchDocument = z.infer<typeof branchSchema>;
+export type PlatformAuditLogDocument = z.infer<typeof platformAuditLogSchema>;
+export type PlatformSecurityEventDocument = z.infer<typeof platformSecurityEventSchema>;
 export type TenantMembershipDocument = z.infer<typeof tenantMembershipSchema>;
 export type PlatformRoleDocument = z.infer<typeof platformRoleSchema>;
 export type PlatformPermissionDocument = z.infer<typeof platformPermissionSchema>;

@@ -14,3 +14,9 @@ Refresh rotation needs a concurrent same-token test in addition to sequential ro
 **Why:** a sequential replay test does not exercise the race where two requests both discover the same token as current.
 
 **How to apply:** for any refresh-token persistence candidate, run simultaneous rotations using the same presented hash against a disposable replica set and assert both results plus the final session and token-history state.
+
+When translating Mongo errors inside a transaction-backed repository, convert duplicate-key errors to the repository's safe conflict error inside the transaction callback. The shared transaction boundary sanitizes unknown callback errors, so translating them only after it returns loses the duplicate-key signal.
+
+**Why:** duplicate audit IDs were surfaced as generic storage unavailability when the transaction manager sanitized the driver's duplicate-key error before repository-level translation.
+
+**How to apply:** catch and translate known Mongo error codes at the operation site inside `withTransaction`; let the manager sanitize only genuinely unexpected failures.

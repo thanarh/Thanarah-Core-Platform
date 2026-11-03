@@ -16,6 +16,122 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
     { key: { status: 1 }, name: 'ix_tenants_status' },
     { key: { status: 1, createdAt: 1 }, name: 'ix_tenants_status_created' },
   ],
+  facilities: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_facility_id_tenant', unique: true },
+    {
+      key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_facility_tenant_status_created',
+    },
+  ],
+  branches: [
+    { key: { _id: 1, facilityId: 1 }, name: 'ux_branch_id_facility', unique: true },
+    {
+      key: { facilityId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_branch_facility_status_created',
+    },
+  ],
+  departments: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_department_id_tenant', unique: true },
+    {
+      key: { tenantId: 1, name: 1 },
+      name: 'ux_department_tenant_name',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    {
+      key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_department_tenant_status_created',
+    },
+  ],
+  specialties: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_specialty_id_tenant', unique: true },
+    {
+      key: { tenantId: 1, name: 1 },
+      name: 'ux_specialty_tenant_name',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    {
+      key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_specialty_tenant_status_created',
+    },
+  ],
+  services: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_service_id_tenant', unique: true },
+    {
+      key: { tenantId: 1, name: 1 },
+      name: 'ux_service_tenant_name',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    {
+      key: { tenantId: 1, code: 1 },
+      name: 'ux_service_tenant_code',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+      partialFilterExpression: { code: { $type: 'string' } },
+    },
+    { key: { tenantId: 1, createdAt: -1, _id: -1 }, name: 'ix_service_tenant_created' },
+    {
+      key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_service_tenant_status_created',
+    },
+  ],
+  subscriptions: [
+    {
+      key: { tenantId: 1, status: 1, startsAt: -1, _id: -1 },
+      name: 'ix_subscription_tenant_status_start',
+    },
+    { key: { tenantId: 1, status: 1, endsAt: 1, startsAt: 1 }, name: 'ix_subscription_overlap' },
+    { key: { tenantId: 1, createdAt: -1, _id: -1 }, name: 'ix_subscription_tenant_created' },
+    { key: { planId: 1, createdAt: -1, _id: -1 }, name: 'ix_subscription_plan_created' },
+  ],
+  tenant_roles: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_tenant_role_id_tenant', unique: true },
+    {
+      key: { tenantId: 1, code: 1 },
+      name: 'ux_tenant_role_tenant_code',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+    { key: { tenantId: 1, isSystemRole: -1, code: 1 }, name: 'ix_tenant_role_list' },
+  ],
+  tenant_permissions: [
+    {
+      key: { code: 1 },
+      name: 'ux_tenant_permission_code',
+      unique: true,
+      collation: { locale: 'en', strength: 1 },
+    },
+  ],
+  tenant_role_permissions: [
+    {
+      key: { tenantRoleId: 1, tenantPermissionId: 1 },
+      name: 'ux_tenant_role_permission',
+      unique: true,
+    },
+    { key: { tenantPermissionId: 1 }, name: 'ix_tenant_permission_roles' },
+  ],
+  tenant_membership_roles: [
+    { key: { membershipId: 1, tenantRoleId: 1 }, name: 'ux_tenant_membership_role', unique: true },
+    { key: { tenantId: 1, tenantRoleId: 1 }, name: 'ix_tenant_role_memberships' },
+  ],
+  platform_audit_logs: [
+    { key: { eventType: 1, occurredAt: 1 }, name: 'ix_audit_event_time' },
+    { key: { actorUserId: 1, occurredAt: 1 }, name: 'ix_audit_actor_time' },
+    { key: { subjectUserId: 1, occurredAt: 1 }, name: 'ix_audit_subject_user_time' },
+    { key: { subjectTenantId: 1, occurredAt: 1 }, name: 'ix_audit_subject_tenant_time' },
+    { key: { sessionId: 1, occurredAt: 1 }, name: 'ix_audit_session_time' },
+  ],
+  platform_security_events: [
+    {
+      key: { eventType: 1, status: 1, occurredAt: 1 },
+      name: 'ix_security_event_status_time',
+    },
+    { key: { actorUserId: 1, occurredAt: 1 }, name: 'ix_security_actor_time' },
+    { key: { subjectUserId: 1, occurredAt: 1 }, name: 'ix_security_subject_time' },
+    { key: { sessionId: 1, occurredAt: 1 }, name: 'ix_security_session_time' },
+  ],
   tenant_memberships: [
     { key: { tenantId: 1, platformUserId: 1 }, name: 'ux_membership_tenant_user', unique: true },
     { key: { _id: 1, tenantId: 1 }, name: 'ux_membership_id_tenant', unique: true },
