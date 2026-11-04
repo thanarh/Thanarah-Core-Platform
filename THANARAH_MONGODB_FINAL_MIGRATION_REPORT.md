@@ -1,6 +1,6 @@
 # Thanarah MySQL-to-MongoDB Migration Report
 
-**Updated:** 2026-11-03  
+**Updated:** 2026-11-04
 **Decision:** **NO-GO — migration is incomplete and no adapter may be activated.**
 
 ## Current state
@@ -11,13 +11,14 @@
 - Seven persistence ports do not have a full Mongo port adapter.
 - Transaction parity remains unverified for all inventoried workflows. Failed-login and session-rotation candidates have Mongo-only tests, not proven MySQL equivalence; session failover/uncertain-commit recovery and encounter cross-store coordination remain unresolved.
 - MySQL development connectivity is blocked: sanitized diagnostics report `MYSQL_DATABASE_URL` parses but uses a non-MySQL scheme.
+- A separate TLS ping to the user-confirmed development-only Mongo cluster succeeded using the development secret and a dedicated probe database name. This confirms connectivity only; no data was read or written, and no candidate adapter was activated.
 - MySQL string collation, nullable/JSON semantics, pagination, duplicate behavior, transaction isolation, uncertain acknowledgements, recovery, and service-level error mapping are not fully compared.
 - Fresh scans report 2 critical, 2 high, and 11 moderate dependency findings. All 15 advisory/package instances are enumerated in the security findings report. Only one finding (`js-yaml` 5.3.0) has a reported non-major fix (5.4.1); no dependency changes were applied pending isolated compatibility checks.
 - Latest full default test result: 952 passed, 31 skipped, 0 failed. The 31 skips are the Phase 65/64 opt-in suites, which passed separately (25 + 6). Type-check, Nest build, formatting, diff validation, and lint (0 errors; 1 pre-existing warning) passed.
 
 ## Safety record
 
-Only synthetic local fixtures and a disposable loopback MongoDB replica set were used. No production database was accessed. No data migration, production configuration change, deployment, adapter activation, commit, or staging occurred. No unrelated processes or containers were stopped.
+Mongo integration tests used only synthetic local fixtures and a disposable loopback replica set. A separate, non-destructive ping was sent to the user-confirmed development-only Mongo cluster; no documents were read or written. No production database was accessed. No data migration, production configuration change, deployment, adapter activation, commit, or staging occurred. No unrelated processes or containers were stopped.
 
 ## Required before reconsidering migration
 

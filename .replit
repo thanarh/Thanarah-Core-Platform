@@ -13,6 +13,9 @@ PORT = "5000"
 THROTTLE_LIMIT = "100"
 THROTTLE_TTL = "60000"
 
+[userenv.development]
+PLATFORM_MONGO_DATABASE = "thanarah_platform_dev_probe"
+
 [workflows]
 runButton = "Project"
 
