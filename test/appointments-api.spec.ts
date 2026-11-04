@@ -85,6 +85,39 @@ interface ThanarahApi {
     branchId: string,
     action: string,
   ): Promise<unknown>;
+  listDepartments(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createDepartment(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateDepartment(
+    tenantId: string,
+    departmentId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeDepartmentStatus(tenantId: string, departmentId: string, action: string): Promise<unknown>;
+  listSpecialties(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createSpecialty(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateSpecialty(
+    tenantId: string,
+    specialtyId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeSpecialtyStatus(tenantId: string, specialtyId: string, action: string): Promise<unknown>;
+  listSetupServices(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createService(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateService(
+    tenantId: string,
+    serviceId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeServiceStatus(tenantId: string, serviceId: string, action: string): Promise<unknown>;
 }
 
 runInThisContext(readFileSync('public/appointments/api.js', 'utf8'));
@@ -369,5 +402,66 @@ describe('Thanarah browser API client', () => {
       'POST',
     ]);
     expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
+  });
+
+  it('exposes tenant-scoped catalog CRUD and lifecycle operations', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }));
+    for (let i = 0; i < 12; i += 1) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ items: [] }));
+    }
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    await api.listDepartments('tenant-id', { status: 'SUSPENDED', limit: 25, offset: 25 });
+    await api.createDepartment('tenant-id', { name: 'طب الأسرة', description: 'رعاية عامة' });
+    await api.updateDepartment('tenant-id', 'department/id', { name: 'طب الأسرة والعائلة' });
+    await api.changeDepartmentStatus('tenant-id', 'department/id', 'activate');
+    await api.listSpecialties('tenant-id', { limit: 50, offset: 0 });
+    await api.createSpecialty('tenant-id', { name: 'طب الأطفال' });
+    await api.updateSpecialty('tenant-id', 'specialty/id', { description: 'وصف' });
+    await api.changeSpecialtyStatus('tenant-id', 'specialty/id', 'suspend');
+    await api.listSetupServices('tenant-id', { limit: 50, offset: 0 });
+    await api.createService('tenant-id', { name: 'استشارة أولية', code: 'CONSULT' });
+    await api.updateService('tenant-id', 'service/id', { code: null });
+    await api.changeServiceStatus('tenant-id', 'service/id', 'deactivate');
+
+    const requests = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(requests.map(([url]) => url)).toEqual([
+      '/api/v1/tenants/tenant-id/departments?limit=25&offset=25&status=SUSPENDED',
+      '/api/v1/tenants/tenant-id/departments',
+      '/api/v1/tenants/tenant-id/departments/department%2Fid',
+      '/api/v1/tenants/tenant-id/departments/department%2Fid/activate',
+      '/api/v1/tenants/tenant-id/specialties?limit=50&offset=0',
+      '/api/v1/tenants/tenant-id/specialties',
+      '/api/v1/tenants/tenant-id/specialties/specialty%2Fid',
+      '/api/v1/tenants/tenant-id/specialties/specialty%2Fid/suspend',
+      '/api/v1/tenants/tenant-id/services?limit=50&offset=0',
+      '/api/v1/tenants/tenant-id/services',
+      '/api/v1/tenants/tenant-id/services/service%2Fid',
+      '/api/v1/tenants/tenant-id/services/service%2Fid/deactivate',
+    ]);
+    expect(requests.map(([, options]) => options.method || 'GET')).toEqual([
+      'GET',
+      'POST',
+      'PATCH',
+      'POST',
+      'GET',
+      'POST',
+      'PATCH',
+      'POST',
+      'GET',
+      'POST',
+      'PATCH',
+      'POST',
+    ]);
+    expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
+    expect(() => api.changeDepartmentStatus('tenant-id', 'id', 'reset')).toThrow(
+      'A valid department lifecycle action is required.',
+    );
+    expect(() => api.changeSpecialtyStatus('tenant-id', 'id', 'reset')).toThrow(
+      'A valid specialty lifecycle action is required.',
+    );
+    expect(() => api.changeServiceStatus('tenant-id', 'id', 'reset')).toThrow(
+      'A valid service lifecycle action is required.',
+    );
   });
 });

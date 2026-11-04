@@ -6,11 +6,11 @@
 ## Current state
 
 - Prisma/MySQL remains the only registered and active application persistence path.
-- Sixteen candidate Mongo adapters cover sixteen of 22 central persistence ports, now including tenant membership. All remain candidates, not active repositories.
-- The latest disposable three-member replica-set suite passed Phase 65 (26 tests) and Phase 64 (6 tests), including tenant-membership operations and owner protection. There is no MySQL differential evidence and no candidate is registered.
-- Six persistence ports do not have a full Mongo port adapter: tenant membership-role, tenant staff, tenant staff-role, tenant staff-scope, facility scheduling policy, and doctor.
+- Seventeen candidate Mongo adapters cover seventeen of 22 central persistence ports, including tenant membership and tenant staff. All remain candidates, not active repositories.
+- The latest disposable three-member replica-set suite passed Phase 65 (27 tests) and Phase 64 (6 tests), including tenant-membership and tenant-staff operations. There is no MySQL differential evidence and no candidate is registered.
+- Five persistence ports do not have a full Mongo port adapter: tenant membership-role, tenant staff-role, tenant staff-scope, facility scheduling policy, and doctor.
 - Transaction parity remains unverified for all inventoried workflows. Failed-login and session-rotation candidates have Mongo-only tests, not proven MySQL equivalence; session failover/uncertain-commit recovery and encounter cross-store coordination remain unresolved.
-- MySQL development connectivity is blocked: sanitized diagnostics report `MYSQL_DATABASE_URL` parses but uses a non-MySQL scheme.
+- MySQL development connectivity is blocked: sanitized diagnostics report `MYSQL_DATABASE_URL` parses but uses a non-MySQL scheme. The request for a separate isolated development credential was dismissed, so no comparison database became available.
 - A separate TLS ping to the user-confirmed development-only Mongo cluster succeeded using the development secret and a dedicated probe database name. This confirms connectivity only; no data was read or written, and no candidate adapter was activated.
 - MySQL string collation, nullable/JSON semantics, pagination, duplicate behavior, transaction isolation, uncertain acknowledgements, recovery, and service-level error mapping are not fully compared.
 - Fresh scans report 2 critical, 2 high, and 11 moderate dependency findings. All 15 advisory/package instances are enumerated in the security findings report. Only one finding (`js-yaml` 5.3.0) has a reported non-major fix (5.4.1); no dependency changes were applied pending isolated compatibility checks.
@@ -23,7 +23,7 @@ Mongo integration tests used only synthetic local fixtures and a disposable loop
 ## Required before reconsidering migration
 
 1. Restore safe development-only MySQL connectivity without exposing or guessing credentials.
-2. Complete the 22-port implementation and readiness matrices, including the 7 missing adapters and contract tests for every operation.
+2. Complete the 22-port implementation and readiness matrices, including the 5 missing adapters and contract tests for every operation.
 3. Run MySQL/Mongo differential tests for collation, null/missing values, unique constraints, pagination, and error behavior.
 4. Implement and prove all 13 transaction workflows, including concurrency, failover, retry, and uncertain-ack recovery; design and test encounter cross-store reconciliation.
 5. Run the full repository suite, build, integration suite, and security audit; publish exact evidence and unresolved risks.

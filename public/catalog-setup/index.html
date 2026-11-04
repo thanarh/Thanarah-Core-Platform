@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#f3f3ec" />
+    <meta name="description" content="إدارة تخصصات وخدمات مساحة العمل" />
+    <title>التخصصات والخدمات · ثناره</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg" />
+    <link rel="stylesheet" href="/patients/styles.css" />
+    <link rel="stylesheet" href="/clinic-setup/styles.css" />
+    <link rel="stylesheet" href="/catalog-setup/styles.css" />
+    <script src="/appointments/api.js" defer></script>
+    <script src="/catalog-setup/app.js" defer></script>
+  </head>
+  <body>
+    <main id="app" aria-live="polite">
+      <section class="workspace-screen" aria-label="تحميل إدارة التخصصات والخدمات">
+        <div class="workspace-card">
+          <div class="loading-state">
+            <div class="skeleton-row"></div>
+            <p>جارٍ التحقق من جلسة الدخول…</p>
+          </div>
+        </div>
+      </section>
+    </main>
+    <div id="toast-region" class="toast-region" aria-live="polite" aria-atomic="true"></div>
+  </body>
+</html>

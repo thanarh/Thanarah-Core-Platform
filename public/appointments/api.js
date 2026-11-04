@@ -468,6 +468,56 @@
       );
     },
 
+    listDepartments(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/departments'), listOptions(options)));
+    },
+
+    createDepartment(tenantId, input) {
+      return request(tenantPath(tenantId, '/departments'), { method: 'POST', body: input });
+    },
+
+    updateDepartment(tenantId, departmentId, input) {
+      return request(tenantPath(tenantId, `/departments/${encodeURIComponent(departmentId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeDepartmentStatus(tenantId, departmentId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid department lifecycle action is required.');
+      }
+      return request(
+        tenantPath(tenantId, `/departments/${encodeURIComponent(departmentId)}/${action}`),
+        { method: 'POST' },
+      );
+    },
+
+    listSpecialties(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/specialties'), listOptions(options)));
+    },
+
+    createSpecialty(tenantId, input) {
+      return request(tenantPath(tenantId, '/specialties'), { method: 'POST', body: input });
+    },
+
+    updateSpecialty(tenantId, specialtyId, input) {
+      return request(tenantPath(tenantId, `/specialties/${encodeURIComponent(specialtyId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeSpecialtyStatus(tenantId, specialtyId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid specialty lifecycle action is required.');
+      }
+      return request(
+        tenantPath(tenantId, `/specialties/${encodeURIComponent(specialtyId)}/${action}`),
+        { method: 'POST' },
+      );
+    },
+
     listFacilities(tenantId, options = {}) {
       return request(
         withQuery(tenantPath(tenantId, '/facilities'), {
@@ -663,6 +713,30 @@
       return request(
         withQuery(tenantPath(tenantId, '/services'), { status: 'ACTIVE', ...listOptions(options) }),
       );
+    },
+
+    listSetupServices(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/services'), listOptions(options)));
+    },
+
+    createService(tenantId, input) {
+      return request(tenantPath(tenantId, '/services'), { method: 'POST', body: input });
+    },
+
+    updateService(tenantId, serviceId, input) {
+      return request(tenantPath(tenantId, `/services/${encodeURIComponent(serviceId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeServiceStatus(tenantId, serviceId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid service lifecycle action is required.');
+      }
+      return request(tenantPath(tenantId, `/services/${encodeURIComponent(serviceId)}/${action}`), {
+        method: 'POST',
+      });
     },
 
     getSchedulingPolicy(tenantId, facilityId) {

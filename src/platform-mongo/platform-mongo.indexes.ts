@@ -23,6 +23,20 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
       name: 'ix_facility_tenant_status_created',
     },
   ],
+  tenant_staff: [
+    { key: { _id: 1, tenantId: 1 }, name: 'ux_tenant_staff_id_tenant', unique: true },
+    { key: { tenantId: 1, userId: 1 }, name: 'ux_tenant_staff_tenant_user', unique: true },
+    {
+      key: { membershipId: 1, tenantId: 1, userId: 1 },
+      name: 'ux_tenant_staff_membership_tenant_user',
+      unique: true,
+    },
+    {
+      key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 },
+      name: 'ix_tenant_staff_tenant_status_created',
+    },
+    { key: { userId: 1, status: 1 }, name: 'ix_tenant_staff_user_status' },
+  ],
   branches: [
     { key: { _id: 1, facilityId: 1 }, name: 'ux_branch_id_facility', unique: true },
     {

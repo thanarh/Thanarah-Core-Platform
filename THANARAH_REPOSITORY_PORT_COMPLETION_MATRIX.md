@@ -3,7 +3,7 @@
 **Updated:** 2026-11-04
 **Decision:** No-go for migration or adapter activation.
 
-The project defines 22 central persistence ports. Sixteen now have isolated MongoDB candidate implementations. None is registered in the application. Prisma/MySQL remains the only active persistence path. A passing Mongo integration test proves behavior against the disposable replica set only; it does not prove MySQL parity or migration readiness.
+The project defines 22 central persistence ports. Seventeen now have isolated MongoDB candidate implementations. None is registered in the application. Prisma/MySQL remains the only active persistence path. A passing Mongo integration test proves behavior against the disposable replica set only; it does not prove MySQL parity or migration readiness.
 
 | Persistence port | Prisma/MySQL implementation | Mongo candidate | Candidate classification | Disposable replica-set evidence | MySQL parity / activation |
 |---|---|---|---|---|
@@ -16,7 +16,7 @@ The project defines 22 central persistence ports. Sixteen now have isolated Mong
 | TenantEntitlementPersistencePort | Present | `MongoTenantEntitlementRepository` | PARTIAL | Entitlement state and cross-collection snapshot test | Not verified / not ready |
 | TenantQuotaPersistencePort | Present | `MongoTenantEntitlementRepository` | PARTIAL | Active configuration and unavailable-state test | Not verified / not ready |
 | SubscriptionPersistencePort | Present | `MongoSubscriptionRepository` candidate | PARTIAL | Replica-set tests cover overlap rejection, concurrent serialization, current lookup, and lifecycle transitions | Plan/tenant state races, isolation parity, uncertain commit, and MySQL semantics remain unverified / not ready |
-| TenantStaffPersistencePort | Present | None | MISSING | None | Not verified / not ready |
+| TenantStaffPersistencePort | Present | `MongoTenantStaffRepository` candidate | PARTIAL | Replica-set tests cover eligible-member creation, duplicate prevention, tenant-scoped reads, metadata updates, and lifecycle CAS | MySQL transaction/reference-race, status behavior, and service-error parity not verified / not ready |
 | TenantStaffRolePersistencePort | Present | None | MISSING | None | Not verified / not ready |
 | TenantStaffScopePersistencePort | Present | None | MISSING | None | Not verified / not ready |
 | FacilitySchedulingPolicyPersistencePort | Present | None | MISSING | None | Not verified / not ready |
@@ -30,6 +30,6 @@ The project defines 22 central persistence ports. Sixteen now have isolated Mong
 | HealthcareCatalogPersistencePort | Present | `MongoHealthcareCatalogRepository` candidate | PARTIAL | Replica-set tests cover both catalog kinds, unique names, tenant-active checks, tenant scoping, updates, and lifecycle CAS | MySQL collation and service/error parity not verified / not ready |
 | ServiceCatalogPersistencePort | Present | `MongoServiceCatalogRepository` candidate | PARTIAL | Replica-set tests cover nullable code uniqueness, name/code conflicts, counts, tenant scoping, updates, and lifecycle CAS | MySQL collation/null semantics and service error parity not verified / not ready |
 
-**Totals:** 22 Prisma/MySQL ports present; 16 Mongo candidate port implementations; 6 ports without a full Mongo port adapter; 0 Mongo adapters registered; 0 ports approved for migration. The sixteen candidates are PARTIAL for migration readiness; none is classified COMPLETE.
+**Totals:** 22 Prisma/MySQL ports present; 17 Mongo candidate port implementations; 5 ports without a full Mongo port adapter; 0 Mongo adapters registered; 0 ports approved for migration. All seventeen candidates are PARTIAL for migration readiness; none is classified COMPLETE.
 
 Generic document CRUD is not counted as a port implementation. No production database was accessed or changed.

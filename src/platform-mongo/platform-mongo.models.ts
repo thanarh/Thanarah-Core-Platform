@@ -57,6 +57,21 @@ export const facilitySchema = z
   })
   .strict();
 
+export const tenantStaffSchema = z
+  .object({
+    ...common,
+    tenantId: uuid,
+    userId: uuid,
+    membershipId: uuid,
+    displayName: z.string().min(1).max(191),
+    jobTitle: z.string().max(191).nullable(),
+    status: z.enum(['ACTIVE', 'SUSPENDED', 'DEACTIVATED']),
+    statusChangedAt: timestamp,
+    suspendedAt: optionalTimestamp,
+    deactivatedAt: optionalTimestamp,
+  })
+  .strict();
+
 const healthcareCatalogFields = {
   ...common,
   tenantId: uuid,
@@ -293,6 +308,7 @@ export const platformRefreshTokenHistorySchema = z
 export type PlatformUserDocument = z.infer<typeof platformUserSchema>;
 export type TenantDocument = z.infer<typeof tenantSchema>;
 export type FacilityDocument = z.infer<typeof facilitySchema>;
+export type TenantStaffDocument = z.infer<typeof tenantStaffSchema>;
 export type DepartmentDocument = z.infer<typeof departmentSchema>;
 export type SpecialtyDocument = z.infer<typeof specialtySchema>;
 export type ServiceCatalogDocument = z.infer<typeof serviceCatalogSchema>;

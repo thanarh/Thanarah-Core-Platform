@@ -40,6 +40,7 @@ import { MongoSubscriptionRepository } from '../src/platform-mongo/mongo-subscri
 import { MongoTenantRoleRepository } from '../src/platform-mongo/mongo-tenant-role.repository';
 import { MongoBranchRepository } from '../src/platform-mongo/mongo-branch.repository';
 import { MongoTenantMembershipRepository } from '../src/platform-mongo/mongo-tenant-membership.repository';
+import { MongoTenantStaffRepository } from '../src/platform-mongo/mongo-tenant-staff.repository';
 import { TENANT_PERMISSION_DEFINITIONS } from '../src/tenant/tenant-authorization.constants';
 import {
   TenantOwnerBootstrapConflictError,
@@ -733,6 +734,116 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       db.collection('platform_users').deleteOne({ _id: userId }),
       db.collection('tenants').deleteOne({ _id: tenant._id }),
     ]);
+  }, 20_000);
+
+  it('implements tenant staff creation, tenant-scoped reads, updates, and lifecycle CAS', async () => {
+    const staffRepository = new MongoTenantStaffRepository(manager);
+    const membershipRepository = new MongoTenantMembershipRepository(manager);
+    const tenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `staff-${newStableId()}`,
+      legalName: 'Synthetic Staff Tenant',
+      displayName: 'Synthetic Staff Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const userId = newStableId();
+    await repositories.users.create({
+      _id: userId,
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      email: `staff-${userId}@example.test`,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Staff Member',
+      status: 'ACTIVE',
+      tokenVersion: 0,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+    const membership = await membershipRepository.create({
+      tenantId: tenant._id,
+      platformUserId: userId,
+    });
+    const activeMembership = await membershipRepository.changeStatusIfCurrent(
+      membership.id,
+      tenant._id,
+      'INVITED',
+      'ACTIVE',
+      new Date(),
+    );
+    expect(activeMembership.kind).toBe('updated');
+
+    const created = await staffRepository.createForActiveMembership(tenant._id, membership.id, {});
+    expect(created).toMatchObject({
+      kind: 'created',
+      staff: {
+        tenantId: tenant._id,
+        userId,
+        membershipId: membership.id,
+        displayName: 'Synthetic Staff Member',
+        jobTitle: null,
+        status: 'ACTIVE',
+      },
+    });
+    if (created.kind !== 'created') throw new Error('Synthetic staff fixture was not created');
+    await expect(
+      staffRepository.createForActiveMembership(tenant._id, membership.id, {}),
+    ).resolves.toEqual({ kind: 'already-exists' });
+    await expect(staffRepository.findByIdForTenant(tenant._id, created.staff.id)).resolves.toEqual(
+      created.staff,
+    );
+    await expect(
+      staffRepository.findByIdForTenant(newStableId(), created.staff.id),
+    ).resolves.toBeNull();
+    await expect(
+      staffRepository.listForTenant(tenant._id, { limit: 10, offset: 0 }),
+    ).resolves.toMatchObject([{ id: created.staff.id }]);
+    await expect(
+      staffRepository.updateForTenant(tenant._id, created.staff.id, {
+        displayName: 'Updated Synthetic Staff',
+        jobTitle: 'Clinician',
+      }),
+    ).resolves.toMatchObject({ displayName: 'Updated Synthetic Staff', jobTitle: 'Clinician' });
+
+    const changedAt = new Date(Date.now() + 10);
+    await expect(
+      staffRepository.changeStatusIfCurrentForTenant(
+        tenant._id,
+        created.staff.id,
+        'ACTIVE',
+        'SUSPENDED',
+        changedAt,
+      ),
+    ).resolves.toMatchObject({ status: 'SUSPENDED', suspendedAt: changedAt });
+    await expect(
+      staffRepository.changeStatusIfCurrentForTenant(
+        tenant._id,
+        created.staff.id,
+        'ACTIVE',
+        'DEACTIVATED',
+        changedAt,
+      ),
+    ).resolves.toBeNull();
+    await expect(
+      staffRepository.changeStatusIfCurrentForTenant(
+        tenant._id,
+        created.staff.id,
+        'SUSPENDED',
+        'DEACTIVATED',
+        changedAt,
+      ),
+    ).resolves.toMatchObject({ status: 'DEACTIVATED', deactivatedAt: changedAt });
+
+    const db = await manager.getDatabase();
+    await db.collection('tenant_staff').deleteMany({ tenantId: tenant._id });
+    await db.collection('tenant_memberships').deleteMany({ tenantId: tenant._id });
+    await db.collection('tenant_membership_locks').deleteOne({ _id: tenant._id });
+    await db.collection('platform_users').deleteOne({ _id: userId });
+    await db.collection('tenants').deleteOne({ _id: tenant._id });
   }, 20_000);
 
   it('implements tenant creation, filtering, stable pagination, and conditional lifecycle updates', async () => {
