@@ -320,6 +320,15 @@ export class MongoTenantRoleRepository implements TenantRolePersistencePort {
     session: ClientSession,
     tenantId: string,
   ): Promise<void> {
+    await db
+      .collection<{ _id: string; version: number; schemaVersion: number }>(
+        'tenant_membership_locks',
+      )
+      .updateOne(
+        { _id: tenantId },
+        { $inc: { version: 1 }, $setOnInsert: { schemaVersion: 1 } },
+        { session, upsert: true },
+      );
     try {
       await db
         .collection<{ _id: string; version: number; schemaVersion: number }>(

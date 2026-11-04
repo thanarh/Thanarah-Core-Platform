@@ -1,14 +1,14 @@
 # Thanarah Repository-Port Completion Matrix
 
-**Updated:** 2026-11-03  
+**Updated:** 2026-11-04
 **Decision:** No-go for migration or adapter activation.
 
-The project defines 22 central persistence ports. Fifteen now have isolated MongoDB candidate implementations. None is registered in the application. Prisma/MySQL remains the only active persistence path. A passing Mongo integration test proves behavior against the disposable replica set only; it does not prove MySQL parity or migration readiness.
+The project defines 22 central persistence ports. Sixteen now have isolated MongoDB candidate implementations. None is registered in the application. Prisma/MySQL remains the only active persistence path. A passing Mongo integration test proves behavior against the disposable replica set only; it does not prove MySQL parity or migration readiness.
 
 | Persistence port | Prisma/MySQL implementation | Mongo candidate | Candidate classification | Disposable replica-set evidence | MySQL parity / activation |
 |---|---|---|---|---|
 | TenantPersistencePort | Present | `MongoTenantRepository` candidate | PARTIAL | Replica-set tests cover create/read/list/status CAS, pagination, and lifecycle timestamps | Not verified; slug collation parity / not ready |
-| TenantMembershipPersistencePort | Present | Generic document repository only; not a port adapter | MISSING | Generic membership tests only | Not verified / not ready |
+| TenantMembershipPersistencePort | Present | `MongoTenantMembershipRepository` candidate | PARTIAL | Replica-set tests cover create/read/list/directory, active tenant lookup, lifecycle CAS, duplicate protection, and owner protection; status/assignment race proof remains incomplete | Not verified; transaction and owner-assignment parity / not ready |
 | TenantRolePersistencePort | Present | `MongoTenantRoleRepository` candidate | PARTIAL | Replica-set tests cover role CRUD metadata, permission replacement, system-role protection, and transactional owner bootstrap | MySQL collation, cross-port coordination, and transaction/error parity unverified / not ready |
 | TenantMembershipRolePersistencePort | Present | None | MISSING | None | Not verified / not ready |
 | FacilityPersistencePort | Present | `MongoFacilityRepository` candidate; all port methods implemented | PARTIAL | Replica-set test covers reference rejection, tenant isolation, stable pagination, rename, and status CAS | MySQL parity and dependent transaction/reference race behavior not verified / not ready |
@@ -30,6 +30,6 @@ The project defines 22 central persistence ports. Fifteen now have isolated Mong
 | HealthcareCatalogPersistencePort | Present | `MongoHealthcareCatalogRepository` candidate | PARTIAL | Replica-set tests cover both catalog kinds, unique names, tenant-active checks, tenant scoping, updates, and lifecycle CAS | MySQL collation and service/error parity not verified / not ready |
 | ServiceCatalogPersistencePort | Present | `MongoServiceCatalogRepository` candidate | PARTIAL | Replica-set tests cover nullable code uniqueness, name/code conflicts, counts, tenant scoping, updates, and lifecycle CAS | MySQL collation/null semantics and service error parity not verified / not ready |
 
-**Totals:** 22 Prisma/MySQL ports present; 15 Mongo candidate port implementations; 7 ports without a full Mongo port adapter; 0 Mongo adapters registered; 0 ports approved for migration. The fifteen candidates are PARTIAL for migration readiness; none is classified COMPLETE.
+**Totals:** 22 Prisma/MySQL ports present; 16 Mongo candidate port implementations; 6 ports without a full Mongo port adapter; 0 Mongo adapters registered; 0 ports approved for migration. The sixteen candidates are PARTIAL for migration readiness; none is classified COMPLETE.
 
 Generic document CRUD is not counted as a port implementation. No production database was accessed or changed.

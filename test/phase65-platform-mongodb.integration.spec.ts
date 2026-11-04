@@ -39,6 +39,7 @@ import { MongoServiceCatalogRepository } from '../src/platform-mongo/mongo-servi
 import { MongoSubscriptionRepository } from '../src/platform-mongo/mongo-subscription.repository';
 import { MongoTenantRoleRepository } from '../src/platform-mongo/mongo-tenant-role.repository';
 import { MongoBranchRepository } from '../src/platform-mongo/mongo-branch.repository';
+import { MongoTenantMembershipRepository } from '../src/platform-mongo/mongo-tenant-membership.repository';
 import { TENANT_PERMISSION_DEFINITIONS } from '../src/tenant/tenant-authorization.constants';
 import {
   TenantOwnerBootstrapConflictError,
@@ -625,6 +626,114 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       repositories.memberships.create({ ...membership, _id: newStableId() }),
     ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
   });
+
+  it('implements the full tenant-membership port against synthetic Mongo documents', async () => {
+    const memberships = new MongoTenantMembershipRepository(manager);
+    const tenant = await repositories.tenants.create({
+      _id: newStableId(),
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      slug: `membership-${newStableId()}`,
+      legalName: 'Synthetic Membership Tenant',
+      displayName: 'Synthetic Membership Tenant',
+      status: 'ACTIVE',
+      statusChangedAt: new Date(),
+      suspendedAt: null,
+      deactivatedAt: null,
+    });
+    const userId = newStableId();
+    await repositories.users.create({
+      _id: userId,
+      ...documentTimestamps(),
+      schemaVersion: 1,
+      email: `membership-${userId}@example.test`,
+      passwordHash: 'synthetic-hash-only',
+      fullName: 'Synthetic Member',
+      status: 'ACTIVE',
+      tokenVersion: 0,
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+    });
+
+    const invited = await memberships.create({ tenantId: tenant._id, platformUserId: userId });
+    expect(invited).toMatchObject({
+      tenantId: tenant._id,
+      platformUserId: userId,
+      status: 'INVITED',
+    });
+    await expect(memberships.findByTenantAndPlatformUser(tenant._id, userId)).resolves.toEqual(
+      invited,
+    );
+    await expect(memberships.findByIdForTenant(invited.id, tenant._id)).resolves.toEqual(invited);
+    await expect(
+      memberships.findActiveForTenantAndPlatformUser(tenant._id, userId),
+    ).resolves.toBeNull();
+    await expect(
+      memberships.listForTenant({ tenantId: tenant._id, limit: 10, offset: 0 }),
+    ).resolves.toMatchObject([{ id: invited.id }]);
+    await expect(
+      memberships.listDirectoryForTenant({ tenantId: tenant._id, limit: 10, offset: 0 }),
+    ).resolves.toMatchObject([{ id: invited.id, platformUser: { fullName: 'Synthetic Member' } }]);
+    await expect(
+      memberships.create({ tenantId: tenant._id, platformUserId: userId }),
+    ).rejects.toBeInstanceOf(PlatformDocumentConflictError);
+
+    const activatedAt = new Date(Date.now() + 10);
+    const activated = await memberships.changeStatusIfCurrent(
+      invited.id,
+      tenant._id,
+      'INVITED',
+      'ACTIVE',
+      activatedAt,
+    );
+    expect(activated).toMatchObject({ kind: 'updated', membership: { status: 'ACTIVE' } });
+    await expect(memberships.hasActiveMembership(tenant._id, userId)).resolves.toBe(true);
+    await expect(
+      memberships.findActiveForTenantAndPlatformUser(tenant._id, userId),
+    ).resolves.toMatchObject({ status: 'ACTIVE' });
+    await expect(memberships.listActiveForPlatformUser(userId)).resolves.toMatchObject([
+      { tenantId: tenant._id, tenant: { slug: tenant.slug } },
+    ]);
+    await expect(
+      memberships.changeStatusIfCurrent(invited.id, tenant._id, 'INVITED', 'REMOVED', activatedAt),
+    ).resolves.toEqual({ kind: 'stale' });
+
+    const ownerRoleId = newStableId();
+    await manager.getDatabase().then((db) =>
+      db.collection('tenant_roles').insertOne({
+        _id: ownerRoleId,
+        ...documentTimestamps(),
+        schemaVersion: 1,
+        tenantId: tenant._id,
+        code: 'OWNER',
+        name: 'Owner',
+        description: null,
+        isSystemRole: true,
+      }),
+    );
+    await manager.getDatabase().then((db) =>
+      db.collection('tenant_membership_roles').insertOne({
+        _id: stableAssignmentId(invited.id, ownerRoleId),
+        tenantId: tenant._id,
+        membershipId: invited.id,
+        tenantRoleId: ownerRoleId,
+        assignedAt: new Date(),
+      }),
+    );
+    await expect(
+      memberships.changeStatusIfCurrent(invited.id, tenant._id, 'ACTIVE', 'SUSPENDED', activatedAt),
+    ).resolves.toEqual({ kind: 'owner-protected' });
+
+    const db = await manager.getDatabase();
+    await Promise.all([
+      db.collection('tenant_membership_roles').deleteMany({ membershipId: invited.id }),
+      db.collection('tenant_roles').deleteOne({ _id: ownerRoleId }),
+      db.collection('tenant_memberships').deleteOne({ _id: invited.id }),
+      db.collection('tenant_membership_locks').deleteOne({ _id: tenant._id }),
+      db.collection('platform_users').deleteOne({ _id: userId }),
+      db.collection('tenants').deleteOne({ _id: tenant._id }),
+    ]);
+  }, 20_000);
 
   it('implements tenant creation, filtering, stable pagination, and conditional lifecycle updates', async () => {
     const tenants = new MongoTenantRepository(manager);

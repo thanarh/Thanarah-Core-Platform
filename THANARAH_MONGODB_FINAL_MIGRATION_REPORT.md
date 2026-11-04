@@ -6,15 +6,15 @@
 ## Current state
 
 - Prisma/MySQL remains the only registered and active application persistence path.
-- Fifteen candidate Mongo adapters cover fifteen of 22 central persistence ports: tenant, facility, branch, platform audit/security, healthcare catalog, service catalog, subscription, tenant role, platform authorization, platform user, platform session, feature, plan, tenant entitlement, and tenant quota.
-- The latest disposable three-member replica-set suite passed Phase 65 (25 tests) and Phase 64 (6 tests), including branch parent scoping and lifecycle behavior. There is no MySQL differential evidence and no candidate is registered.
-- Seven persistence ports do not have a full Mongo port adapter.
+- Sixteen candidate Mongo adapters cover sixteen of 22 central persistence ports, now including tenant membership. All remain candidates, not active repositories.
+- The latest disposable three-member replica-set suite passed Phase 65 (26 tests) and Phase 64 (6 tests), including tenant-membership operations and owner protection. There is no MySQL differential evidence and no candidate is registered.
+- Six persistence ports do not have a full Mongo port adapter: tenant membership-role, tenant staff, tenant staff-role, tenant staff-scope, facility scheduling policy, and doctor.
 - Transaction parity remains unverified for all inventoried workflows. Failed-login and session-rotation candidates have Mongo-only tests, not proven MySQL equivalence; session failover/uncertain-commit recovery and encounter cross-store coordination remain unresolved.
 - MySQL development connectivity is blocked: sanitized diagnostics report `MYSQL_DATABASE_URL` parses but uses a non-MySQL scheme.
 - A separate TLS ping to the user-confirmed development-only Mongo cluster succeeded using the development secret and a dedicated probe database name. This confirms connectivity only; no data was read or written, and no candidate adapter was activated.
 - MySQL string collation, nullable/JSON semantics, pagination, duplicate behavior, transaction isolation, uncertain acknowledgements, recovery, and service-level error mapping are not fully compared.
 - Fresh scans report 2 critical, 2 high, and 11 moderate dependency findings. All 15 advisory/package instances are enumerated in the security findings report. Only one finding (`js-yaml` 5.3.0) has a reported non-major fix (5.4.1); no dependency changes were applied pending isolated compatibility checks.
-- Latest full default test result: 952 passed, 31 skipped, 0 failed. The 31 skips are the Phase 65/64 opt-in suites, which passed separately (25 + 6). Type-check, Nest build, formatting, diff validation, and lint (0 errors; 1 pre-existing warning) passed.
+- Latest full default test result: 952 passed, 32 skipped, 0 failed. The 32 skips are the Phase 65/64 opt-in suites, which passed separately (26 + 6). Type-check, Nest build, formatting, and lint (0 errors; 1 pre-existing warning) passed.
 
 ## Safety record
 
