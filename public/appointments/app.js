@@ -698,6 +698,7 @@
       permission(PERMISSIONS.servicesRead) ||
       permission(PERMISSIONS.departmentsRead) ||
       permission(PERMISSIONS.specialtiesRead);
+    const showDoctorSetup = permission(PERMISSIONS.doctorsRead);
     return `
       <div class="app-frame">
         <aside class="sidebar" aria-label="التنقل الرئيسي">
@@ -711,6 +712,7 @@
             ${showEncounters ? `<a class="nav-item" href="/encounters/" style="text-decoration:none"><span class="nav-icon">${icon('calendar')}</span><span>السجلات الطبية</span></a>` : ''}
             ${showTeamSetup ? `<a class="nav-item" href="/team-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الأعضاء والفريق</span></a>` : ''}
             ${showCatalogSetup ? `<a class="nav-item" href="/catalog-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>التخصصات والخدمات</span></a>` : ''}
+            ${showDoctorSetup ? `<a class="nav-item" href="/doctor-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الأطباء</span></a>` : ''}
             ${showPolicy ? `<button class="nav-item ${state.view === 'policy' ? 'active' : ''}" type="button" data-action="view-policy" ${state.view === 'policy' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('policy')}</span><span>سياسة الجدولة</span></button>` : ''}
           </nav>
           <div class="side-bottom">

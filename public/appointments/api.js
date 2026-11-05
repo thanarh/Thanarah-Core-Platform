@@ -468,6 +468,68 @@
       );
     },
 
+    listSetupDoctors(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/doctors'), listOptions(options)));
+    },
+
+    createDoctor(tenantId, input) {
+      return request(tenantPath(tenantId, '/doctors'), { method: 'POST', body: input });
+    },
+
+    updateDoctor(tenantId, doctorId, input) {
+      return request(tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    changeDoctorStatus(tenantId, doctorId, action) {
+      if (!['activate', 'suspend', 'deactivate'].includes(action)) {
+        throw new TypeError('A valid doctor lifecycle action is required.');
+      }
+      return request(tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/${action}`), {
+        method: 'POST',
+      });
+    },
+
+    listDoctorDepartments(tenantId, doctorId) {
+      return request(tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/departments`));
+    },
+
+    assignDoctorDepartment(tenantId, doctorId, departmentId) {
+      return request(tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/departments`), {
+        method: 'POST',
+        body: { departmentId },
+      });
+    },
+
+    unassignDoctorDepartment(tenantId, doctorId, departmentId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/doctors/${encodeURIComponent(doctorId)}/departments/${encodeURIComponent(departmentId)}`,
+        ),
+        { method: 'DELETE' },
+      );
+    },
+
+    assignDoctorSpecialty(tenantId, doctorId, specialtyId) {
+      return request(tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/specialties`), {
+        method: 'POST',
+        body: { specialtyId },
+      });
+    },
+
+    unassignDoctorSpecialty(tenantId, doctorId, specialtyId) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/doctors/${encodeURIComponent(doctorId)}/specialties/${encodeURIComponent(specialtyId)}`,
+        ),
+        { method: 'DELETE' },
+      );
+    },
+
     listDepartments(tenantId, options = {}) {
       return request(withQuery(tenantPath(tenantId, '/departments'), listOptions(options)));
     },

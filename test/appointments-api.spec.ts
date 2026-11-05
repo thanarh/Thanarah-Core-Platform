@@ -118,6 +118,33 @@ interface ThanarahApi {
     input: Record<string, unknown>,
   ): Promise<unknown>;
   changeServiceStatus(tenantId: string, serviceId: string, action: string): Promise<unknown>;
+  listSetupDoctors(
+    tenantId: string,
+    options: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  createDoctor(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateDoctor(
+    tenantId: string,
+    doctorId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  changeDoctorStatus(tenantId: string, doctorId: string, action: string): Promise<unknown>;
+  assignDoctorDepartment(
+    tenantId: string,
+    doctorId: string,
+    departmentId: string,
+  ): Promise<unknown>;
+  unassignDoctorDepartment(
+    tenantId: string,
+    doctorId: string,
+    departmentId: string,
+  ): Promise<unknown>;
+  assignDoctorSpecialty(tenantId: string, doctorId: string, specialtyId: string): Promise<unknown>;
+  unassignDoctorSpecialty(
+    tenantId: string,
+    doctorId: string,
+    specialtyId: string,
+  ): Promise<unknown>;
 }
 
 runInThisContext(readFileSync('public/appointments/api.js', 'utf8'));
@@ -462,6 +489,39 @@ describe('Thanarah browser API client', () => {
     );
     expect(() => api.changeServiceStatus('tenant-id', 'id', 'reset')).toThrow(
       'A valid service lifecycle action is required.',
+    );
+  });
+
+  it('exposes tenant-scoped doctor administration and assignment operations', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }));
+    for (let i = 0; i < 8; i += 1) {
+      fetchMock.mockResolvedValueOnce(jsonResponse({ items: [] }));
+    }
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    await api.listSetupDoctors('tenant-id', { status: 'SUSPENDED', limit: 25, offset: 0 });
+    await api.createDoctor('tenant-id', { staffId: 'staff-id', professionalTitle: 'طبيب' });
+    await api.updateDoctor('tenant-id', 'doctor/id', { professionalTitle: 'استشاري' });
+    await api.changeDoctorStatus('tenant-id', 'doctor/id', 'activate');
+    await api.assignDoctorDepartment('tenant-id', 'doctor/id', 'department/id');
+    await api.unassignDoctorDepartment('tenant-id', 'doctor/id', 'department/id');
+    await api.assignDoctorSpecialty('tenant-id', 'doctor/id', 'specialty/id');
+    await api.unassignDoctorSpecialty('tenant-id', 'doctor/id', 'specialty/id');
+
+    const requests = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(requests.map(([url]) => url)).toEqual([
+      '/api/v1/tenants/tenant-id/doctors?limit=25&offset=0&status=SUSPENDED',
+      '/api/v1/tenants/tenant-id/doctors',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid/activate',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid/departments',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid/departments/department%2Fid',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid/specialties',
+      '/api/v1/tenants/tenant-id/doctors/doctor%2Fid/specialties/specialty%2Fid',
+    ]);
+    expect(requests.every(([, options]) => options.credentials === 'include')).toBe(true);
+    expect(() => api.changeDoctorStatus('tenant-id', 'doctor-id', 'reset')).toThrow(
+      'A valid doctor lifecycle action is required.',
     );
   });
 });
