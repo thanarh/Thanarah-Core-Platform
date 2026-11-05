@@ -111,7 +111,7 @@ const MONGO_IMAGE = 'mongo:7.0.17';
 const MYSQL_IMAGE = 'mysql:8.0.41';
 const MONGO_ROOT_USER = 'phase30_test_root';
 const RUN_ID = randomBytes(6).toString('hex');
-const TEST_MYSQL_DATABASE = `phase30_${RUN_ID}`;
+const TEST_MYSQL_DATABASE = `phase30_test_${RUN_ID}`;
 const TEST_MYSQL_USER = 'phase30_test';
 const PATIENT_COLLECTION = 'patients';
 
@@ -322,7 +322,6 @@ let clinicalServiceId = '';
 let otherTenantDoctorId = '';
 let otherTenantServiceId = '';
 let clinicalPatientId = '';
-let otherTenantPatientId = '';
 let apiEncounterId = '';
 let browserEncounterId = '';
 let browserAppointmentId = '';
@@ -616,7 +615,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       payload: patientPayload(`P44-${RUN_ID}`),
     });
     expect(otherTenantPatientResponse.statusCode).toBe(201);
-    otherTenantPatientId = otherTenantPatientResponse.json<{ id: string }>().id;
 
     const createEncounter = async (): Promise<{ id: string }> => {
       const response = await getApplication().inject({
@@ -2415,6 +2413,22 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
   });
 
   it('walks through the signed-in encounter UI in headless Chromium', async () => {
+    const browserPatientResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantA)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P66-${RUN_ID}`),
+    });
+    expect(browserPatientResponse.statusCode, browserPatientResponse.body).toBe(201);
+    const browserPatientId = browserPatientResponse.json<{ id: string }>().id;
+    const browserOtherPatientResponse = await getApplication().inject({
+      method: 'POST',
+      url: `${tenantRoot(tenantB)}/patients`,
+      headers: bearerHeaders(),
+      payload: patientPayload(`P67-${RUN_ID}`),
+    });
+    expect(browserOtherPatientResponse.statusCode, browserOtherPatientResponse.body).toBe(201);
+    const browserOtherPatientId = browserOtherPatientResponse.json<{ id: string }>().id;
     const appointmentDay = new Date(Date.now() + 36 * 60 * 60 * 1_000);
     const appointmentDateParts = new Map(
       new Intl.DateTimeFormat('en-US', {
@@ -2440,7 +2454,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const worklistDate = `${worklistDateParts.get('year')}-${worklistDateParts.get('month')}-${worklistDateParts.get('day')}`;
     const appointmentStart = new Date(`${appointmentDate}T10:00:00+03:00`);
     const appointmentPayload = {
-      patientId: clinicalPatientId,
+      patientId: browserPatientId,
       doctorId: clinicalDoctorId,
       facilityId: clinicalFacilityId,
       branchId: clinicalBranchId,
@@ -2480,12 +2494,12 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const [tenantPatientResponse, otherTenantPatientLookup] = await Promise.all([
       getApplication().inject({
         method: 'GET',
-        url: `${tenantRoot(tenantA)}/patients/${clinicalPatientId}`,
+        url: `${tenantRoot(tenantA)}/patients/${browserPatientId}`,
         headers: bearerHeaders(),
       }),
       getApplication().inject({
         method: 'GET',
-        url: `${tenantRoot(tenantB)}/patients/${otherTenantPatientId}`,
+        url: `${tenantRoot(tenantB)}/patients/${browserOtherPatientId}`,
         headers: bearerHeaders(),
       }),
     ]);
@@ -2535,7 +2549,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     expect(deniedBranchRead.statusCode).toBe(403);
     const deniedClinicalRead = await getApplication().inject({
       method: 'GET',
-      url: `${tenantRoot(tenantA)}/encounters/${apiEncounterId}`,
+      url: `${tenantRoot(tenantA)}/encounters/${randomUUID()}`,
       headers: limitedHeaders,
     });
     expect(deniedClinicalRead.statusCode).toBe(403);
@@ -2661,7 +2675,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(await evaluateBrowser(client, searchTenantPatient)).toBe(true);
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('#patientId option[value="${clinicalPatientId}"]'))`,
+        `Boolean(document.querySelector('#patientId option[value="${browserPatientId}"]'))`,
         'tenant patient search result',
       );
       const searchOtherTenantPatient = `(() => {
@@ -2675,7 +2689,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await waitForBrowserCondition(
         client,
         `!Array.from(document.querySelectorAll('#patientId option')).some((option) =>
-          option.value === ${JSON.stringify(otherTenantPatientId)}) &&
+          option.value === ${JSON.stringify(browserOtherPatientId)}) &&
           !document.querySelector('#patient-search-help')?.textContent.includes('جارٍ البحث')`,
         'tenant-isolated patient search',
       );
@@ -3664,12 +3678,6 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `document.body.innerText.includes('الوصول محدود')`,
         'visible permission denial for an appointments-only user',
       );
-      await client.send('Page.navigate', { url: `${browserBaseUrl}/doctor-setup/` });
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes('لا تملك صلاحية قراءة ملفات الأطباء')`,
-        'doctor page denial for an appointments-only user',
-      );
       expect(
         await evaluateBrowser(
           client,
@@ -3677,17 +3685,23 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             !document.querySelector('[data-action="new-facility"]')`,
         ),
       ).toBe(true);
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/doctor-setup/` });
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('لا تملك صلاحية قراءة ملفات الأطباء')`,
+        'doctor page denial for an appointments-only user',
+      );
 
       await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="signin"]'))`,
+        `Boolean(document.querySelector('form[data-form="login"]'))`,
         'sign-out after permission-denied browser check',
       );
       await evaluateBrowser(
         client,
         `(() => {
-          const form = document.querySelector('form[data-form="signin"]');
+          const form = document.querySelector('form[data-form="login"]');
           if (!form) return false;
           form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
           form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
@@ -3697,13 +3711,13 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+        `Array.from(document.querySelectorAll('button[data-action="choose"]')).some((button) =>
           button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
         'authorized workspace restoration after sign-in',
       );
       await evaluateBrowser(
         client,
-        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+        `Array.from(document.querySelectorAll('button[data-action="choose"]'))
           .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
       );
 
@@ -3759,13 +3773,13 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${clinicalPatientId}"]'))`,
+        `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${browserPatientId}"]'))`,
         'authorized tenant patient picker',
       );
       expect(
         await evaluateBrowser(
           client,
-          `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${otherTenantPatientId}"]'))`,
+          `Boolean(document.querySelector('form[data-form="patient-history"] select[name="patientId"] option[value="${browserOtherPatientId}"]'))`,
         ),
       ).toBe(false);
       await evaluateBrowser(
@@ -4089,7 +4103,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         url: `${tenantRoot(tenantA)}/encounters/direct`,
         headers: bearerHeaders(),
         payload: {
-          patientId: clinicalPatientId,
+          patientId: browserPatientId,
           doctorId: clinicalDoctorId,
           facilityId: clinicalFacilityId,
           branchId: clinicalBranchId,
@@ -4226,7 +4240,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         url: `${tenantRoot(tenantA)}/encounters/direct`,
         headers: bearerHeaders(),
         payload: {
-          patientId: clinicalPatientId,
+          patientId: browserPatientId,
           doctorId: clinicalDoctorId,
           facilityId: clinicalFacilityId,
           branchId: clinicalBranchId,
