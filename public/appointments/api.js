@@ -204,6 +204,13 @@
     return `/tenants/${encodeURIComponent(tenantId)}${suffix}`;
   }
 
+  function platformTenantPath(tenantId, suffix = '') {
+    if (typeof tenantId !== 'string' || !tenantId.trim()) {
+      throw new TypeError('A platform tenant identifier is required.');
+    }
+    return `/platform/tenants/${encodeURIComponent(tenantId)}${suffix}`;
+  }
+
   function withQuery(path, values) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(values || {})) {
@@ -251,6 +258,50 @@
 
     listWorkspaces() {
       return request('/session/tenants');
+    },
+
+    listPlatformTenants(options = {}) {
+      return request(withQuery('/platform/tenants', listOptions(options)));
+    },
+
+    createPlatformTenant(input) {
+      return request('/platform/tenants', { method: 'POST', body: input });
+    },
+
+    changePlatformTenantStatus(tenantId, status) {
+      if (!['ACTIVE', 'SUSPENDED', 'DEACTIVATED'].includes(status)) {
+        throw new TypeError('A valid tenant lifecycle status is required.');
+      }
+      return request(platformTenantPath(tenantId, '/status'), {
+        method: 'PATCH',
+        body: { status },
+      });
+    },
+
+    listPlatformTenantMemberships(tenantId, options = {}) {
+      return request(
+        withQuery(platformTenantPath(tenantId, '/memberships'), listOptions(options)),
+      );
+    },
+
+    invitePlatformTenantMembership(tenantId, platformUserId) {
+      return request(platformTenantPath(tenantId, '/memberships'), {
+        method: 'POST',
+        body: { platformUserId },
+      });
+    },
+
+    changePlatformTenantMembershipStatus(tenantId, membershipId, action) {
+      if (!['activate', 'suspend', 'remove'].includes(action)) {
+        throw new TypeError('A valid membership lifecycle action is required.');
+      }
+      return request(
+        platformTenantPath(
+          tenantId,
+          `/memberships/${encodeURIComponent(membershipId)}/${action}`,
+        ),
+        { method: 'POST' },
+      );
     },
 
     listAppointments(tenantId, options = {}) {

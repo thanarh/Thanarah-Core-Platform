@@ -3824,6 +3824,19 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `document.body.innerText.includes('لا تملك صلاحية قراءة ملفات الأطباء')`,
         'doctor page denial for an appointments-only user',
       );
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-setup/` });
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('لا تملك صلاحية قراءة بيانات المنصة')`,
+        'platform administration denial for a user without platform permissions',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `!document.querySelector('form[data-form="tenant"]') &&
+            !document.querySelector('.platform-list')`,
+        ),
+      ).toBe(true);
 
       await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
       await waitForBrowserCondition(
@@ -3844,15 +3857,163 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Array.from(document.querySelectorAll('button[data-action="choose"]')).some((button) =>
-          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
-        'authorized workspace restoration after sign-in',
+        `Boolean(document.querySelector('form[data-form="tenant"]'))`,
+        'platform administration restoration after sign-in',
+      );
+
+      const platformTenantSlug = `phase69-${RUN_ID}`.toLowerCase();
+      const platformTenantName = `Phase 69 Clinic ${RUN_ID}`;
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-setup/` });
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="tenant"]')) &&
+          document.body.innerText.includes('المؤسسات والعضويات')`,
+        'authenticated platform administration workspace',
       );
       await evaluateBrowser(
         client,
-        `Array.from(document.querySelectorAll('button[data-action="choose"]'))
-          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+        `(() => {
+          const form = document.querySelector('form[data-form="tenant"]');
+          form.querySelector('[name="slug"]').value = ${JSON.stringify(platformTenantSlug)};
+          form.querySelector('[name="legalName"]').value = ${JSON.stringify(platformTenantName)};
+          form.querySelector('[name="displayName"]').value = ${JSON.stringify(platformTenantName)};
+          form.requestSubmit();
+          return true;
+        })()`,
       );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(platformTenantName)})`,
+        'platform tenant creation',
+      );
+      const platformTenant = await setupPrisma.tenant.findFirstOrThrow({
+        where: { slug: platformTenantSlug },
+        select: { id: true, status: true },
+      });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="tenant-status"][data-id="${platformTenant.id}"][data-status="SUSPENDED"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="tenant-status"][data-id="${platformTenant.id}"][data-status="ACTIVE"]')`,
+        'platform tenant suspension',
+      );
+      expect(
+        await setupPrisma.tenant.findUnique({ where: { id: platformTenant.id } }),
+      ).toMatchObject({ status: TenantStatus.SUSPENDED });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="tenant-status"][data-id="${platformTenant.id}"][data-status="ACTIVE"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="tenant-status"][data-id="${platformTenant.id}"][data-status="SUSPENDED"]')`,
+        'platform tenant reactivation',
+      );
+      expect(
+        await setupPrisma.tenant.findUnique({ where: { id: platformTenant.id } }),
+      ).toMatchObject({ status: TenantStatus.ACTIVE });
+
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="membership"]'))`,
+        'platform tenant membership form',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="membership"]');
+          form.querySelector('[name="platformUserId"]').value = ${JSON.stringify(limitedUserId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+          item.textContent?.includes(${JSON.stringify(limitedUserId)}) &&
+          item.textContent?.includes('بانتظار التفعيل'))`,
+        'platform membership invitation',
+      );
+      const platformMembership = await setupPrisma.tenantMembership.findFirstOrThrow({
+        where: { tenantId: platformTenant.id, platformUserId: limitedUserId },
+        select: { id: true, status: true },
+      });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="membership-status"][data-id="${platformMembership.id}"][data-status="activate"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+          item.textContent?.includes(${JSON.stringify(limitedUserId)}) &&
+          item.textContent?.includes('نشطة'))`,
+        'platform membership activation',
+      );
+      expect(
+        await setupPrisma.tenantMembership.findUnique({
+          where: { id: platformMembership.id },
+        }),
+      ).toMatchObject({ status: TenantMembershipStatus.ACTIVE });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="membership-status"][data-id="${platformMembership.id}"][data-status="suspend"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+          item.textContent?.includes(${JSON.stringify(limitedUserId)}) &&
+          item.textContent?.includes('موقوفة'))`,
+        'platform membership suspension',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="membership-status"][data-id="${platformMembership.id}"][data-status="activate"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+          item.textContent?.includes(${JSON.stringify(limitedUserId)}) &&
+          item.textContent?.includes('نشطة'))`,
+        'platform membership reactivation',
+      );
+      const removeMembership = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="membership-status"][data-id="${platformMembership.id}"][data-status="remove"]')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await removeMembership;
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+          item.textContent?.includes(${JSON.stringify(limitedUserId)}) &&
+          item.textContent?.includes('أزيلت'))`,
+        'platform membership removal',
+      );
+      expect(
+        await setupPrisma.tenantMembership.findUnique({
+          where: { id: platformMembership.id },
+        }),
+      ).toMatchObject({ status: TenantMembershipStatus.REMOVED });
+
+      await evaluateBrowser(
+        client,
+        `document.querySelector('.platform-item-select[data-action="select-tenant"][data-id="${tenantA.id}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('.platform-item.selected[data-id="${tenantA.id}"]') &&
+          Array.from(document.querySelectorAll('.platform-member')).some((item) =>
+            item.dataset.id === ${JSON.stringify(tenantA.membershipId)})`,
+        'tenant-scoped membership directory',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `Boolean(document.querySelector('.platform-member[data-id="${platformMembership.id}"]'))`,
+        ),
+      ).toBe(false);
 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
@@ -7634,6 +7795,13 @@ async function seedControlPlane(prisma: PrismaService): Promise<void> {
       status: UserStatus.ACTIVE,
       tokenVersion: 1,
     },
+  });
+  const platformOwnerRole = await prisma.platformRole.findUniqueOrThrow({
+    where: { code: 'OWNER' },
+    select: { id: true },
+  });
+  await prisma.userPlatformRole.create({
+    data: { userId: platformUserId, roleId: platformOwnerRole.id },
   });
 
   await prisma.platformSession.create({

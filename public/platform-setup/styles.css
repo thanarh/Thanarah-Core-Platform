@@ -1,0 +1,198 @@
+.platform-page {
+  width: min(1180px, 100%);
+  margin: 0 auto;
+}
+.platform-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 24px 0;
+}
+.platform-head h1 {
+  margin: 5px 0;
+  color: #214d3b;
+  font-size: clamp(25px, 4vw, 34px);
+}
+.platform-head p,
+.platform-muted {
+  color: #68756d;
+  font-size: 14px;
+  line-height: 1.7;
+}
+.platform-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 0.75fr) minmax(0, 1.25fr);
+  gap: 16px;
+  align-items: start;
+}
+.platform-card {
+  min-width: 0;
+  padding: 19px;
+  border: 1px solid #e1e6de;
+  border-radius: 14px;
+  background: #fff;
+}
+.platform-card h2 {
+  margin: 0;
+  color: #214d3b;
+  font-size: 18px;
+}
+.platform-card-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+.platform-form {
+  display: grid;
+  gap: 12px;
+}
+.platform-form .field {
+  margin: 0;
+}
+.platform-form input,
+.platform-filter select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #d9e0d7;
+  border-radius: 8px;
+  padding: 8px 10px;
+  color: #1c3028;
+  background: #fff;
+}
+.platform-list {
+  display: grid;
+  gap: 9px;
+  max-height: 540px;
+  overflow: auto;
+}
+.platform-item {
+  border: 1px solid #e4e8e1;
+  border-radius: 10px;
+  padding: 12px;
+  background: #fbfcf9;
+}
+.platform-item.selected {
+  border-color: #2b674d;
+  box-shadow: 0 0 0 2px #e5eee5;
+}
+.platform-item-main {
+  display: flex;
+  justify-content: space-between;
+  align-items: start;
+  gap: 12px;
+}
+.platform-item-select {
+  min-width: 0;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-align: right;
+  cursor: pointer;
+}
+.platform-item-select strong,
+.platform-item-select small {
+  display: block;
+  overflow-wrap: anywhere;
+}
+.platform-item-select small {
+  margin-top: 4px;
+  color: #68756d;
+  direction: ltr;
+  text-align: right;
+}
+.platform-status {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  padding: 3px 9px;
+  background: #e9f2eb;
+  color: #285e45;
+  font-size: 11px;
+}
+.platform-status.suspended,
+.platform-status.invited {
+  background: #f5e8d9;
+  color: #80501e;
+}
+.platform-status.deactivated,
+.platform-status.removed {
+  background: #f5e5e1;
+  color: #8a4938;
+}
+.platform-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 10px;
+}
+.platform-actions .btn {
+  min-height: 34px;
+  padding: 6px 10px;
+  font-size: 12px;
+}
+.platform-alert {
+  padding: 11px 13px;
+  border-radius: 9px;
+  margin: 12px 0;
+  background: #fff3e7;
+  color: #80501e;
+  font-size: 13px;
+  line-height: 1.7;
+}
+.platform-alert.error {
+  background: #f5e5e1;
+  color: #8a4938;
+}
+.platform-success {
+  padding: 10px 13px;
+  border-radius: 9px;
+  margin: 12px 0;
+  background: #e9f2eb;
+  color: #285e45;
+  font-size: 13px;
+}
+.platform-empty {
+  padding: 22px 12px;
+  border-radius: 10px;
+  background: #f8f9f5;
+  color: #68756d;
+  text-align: center;
+}
+.platform-members {
+  display: grid;
+  gap: 8px;
+  margin-top: 16px;
+}
+.platform-member {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-top: 1px solid #e8e9e2;
+  padding: 10px 0 0;
+}
+.platform-member code {
+  overflow-wrap: anywhere;
+  color: #52635a;
+}
+.platform-signout {
+  border: 1px solid #d9e0d7;
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: #214d3b;
+  background: white;
+  cursor: pointer;
+}
+@media (max-width: 800px) {
+  .platform-grid {
+    grid-template-columns: 1fr;
+  }
+  .platform-head {
+    align-items: start;
+  }
+  .platform-card {
+    padding: 15px;
+  }
+}
