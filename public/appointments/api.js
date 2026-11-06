@@ -304,6 +304,85 @@
       );
     },
 
+    listPlatformPlans(options = {}) {
+      return request(withQuery('/platform/plans', listOptions(options)));
+    },
+    createPlatformPlan(input) {
+      return request('/platform/plans', { method: 'POST', body: input });
+    },
+    updatePlatformPlan(planId, input) {
+      return request(`/platform/plans/${encodeURIComponent(planId)}`, {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+    changePlatformPlanStatus(planId, status) {
+      if (!['ACTIVE', 'INACTIVE', 'ARCHIVED'].includes(status)) {
+        throw new TypeError('A valid plan lifecycle status is required.');
+      }
+      return request(`/platform/plans/${encodeURIComponent(planId)}/status`, {
+        method: 'PATCH',
+        body: { status },
+      });
+    },
+    listPlatformFeatures(options = {}) {
+      return request(withQuery('/platform/features', listOptions(options)));
+    },
+    createPlatformFeature(input) {
+      return request('/platform/features', { method: 'POST', body: input });
+    },
+    updatePlatformFeature(featureId, input) {
+      return request(`/platform/features/${encodeURIComponent(featureId)}`, {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+    changePlatformFeatureStatus(featureId, status) {
+      if (!['ACTIVE', 'INACTIVE'].includes(status)) {
+        throw new TypeError('A valid feature lifecycle status is required.');
+      }
+      return request(`/platform/features/${encodeURIComponent(featureId)}/status`, {
+        method: 'PATCH',
+        body: { status },
+      });
+    },
+    listPlanFeatures(planId) {
+      return request(`/platform/plans/${encodeURIComponent(planId)}/features`);
+    },
+    attachPlanFeature(planId, featureId) {
+      return request(`/platform/plans/${encodeURIComponent(planId)}/features`, {
+        method: 'POST',
+        body: { featureId },
+      });
+    },
+    updatePlanFeature(planId, featureId, input) {
+      return request(
+        `/platform/plans/${encodeURIComponent(planId)}/features/${encodeURIComponent(featureId)}`,
+        { method: 'PATCH', body: input },
+      );
+    },
+    detachPlanFeature(planId, featureId) {
+      return request(
+        `/platform/plans/${encodeURIComponent(planId)}/features/${encodeURIComponent(featureId)}`,
+        { method: 'DELETE' },
+      );
+    },
+    listPlatformSubscriptions(options = {}) {
+      return request(withQuery('/platform/subscriptions', listOptions(options)));
+    },
+    createPlatformSubscription(input) {
+      return request('/platform/subscriptions', { method: 'POST', body: input });
+    },
+    changePlatformSubscriptionStatus(subscriptionId, action) {
+      if (!['activate', 'suspend', 'cancel', 'expire'].includes(action)) {
+        throw new TypeError('A valid subscription lifecycle action is required.');
+      }
+      return request(
+        `/platform/subscriptions/${encodeURIComponent(subscriptionId)}/${action}`,
+        { method: 'POST' },
+      );
+    },
+
     listAppointments(tenantId, options = {}) {
       return request(withQuery(tenantPath(tenantId, '/appointments'), listOptions(options)));
     },

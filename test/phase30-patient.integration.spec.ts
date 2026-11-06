@@ -3837,6 +3837,12 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             !document.querySelector('.platform-list')`,
         ),
       ).toBe(true);
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('لا تملك صلاحية قراءة خطط واشتراكات المنصة.')`,
+        'SaaS administration denial for a user without platform permissions',
+      );
 
       await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
       await waitForBrowserCondition(
@@ -3857,8 +3863,8 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="tenant"]'))`,
-        'platform administration restoration after sign-in',
+        `Boolean(document.querySelector('form[data-form="plan"]'))`,
+        'platform SaaS administration restoration after sign-in',
       );
 
       const platformTenantSlug = `phase69-${RUN_ID}`.toLowerCase();
@@ -4014,6 +4020,200 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           `Boolean(document.querySelector('.platform-member[data-id="${platformMembership.id}"]'))`,
         ),
       ).toBe(false);
+
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="plan"]')) &&
+          document.body.innerText.includes('الخطط والاشتراكات')`,
+        'authenticated platform SaaS workspace',
+      );
+      const planKey = `P70_${RUN_ID}`.toUpperCase();
+      const planName = `Phase 70 Plan ${RUN_ID}`;
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="plan"]');
+          form.querySelector('[name="key"]').value = ${JSON.stringify(planKey)};
+          form.querySelector('[name="name"]').value = ${JSON.stringify(planName)};
+          form.querySelector('[name="description"]').value = 'Disposable browser test';
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(planName)})`,
+        'platform plan creation',
+      );
+      const platformPlan = await setupPrisma.plan.findUniqueOrThrow({
+        where: { key: planKey },
+        select: { id: true, status: true, name: true },
+      });
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="edit-plan"][data-id="${platformPlan.id}"]');
+          form.querySelector('[name="name"]').value = ${JSON.stringify(`${planName} Updated`)};
+          form.querySelector('[name="description"]').value = 'Updated by browser';
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(`${planName} Updated`)})`,
+        'platform plan metadata update',
+      );
+      expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject({
+        name: `${planName} Updated`,
+        description: 'Updated by browser',
+      });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')`,
+        'platform plan deactivation',
+      );
+      expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject({
+        status: 'INACTIVE',
+      });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')`,
+        'platform plan reactivation',
+      );
+
+      const featureKey = `F70_${RUN_ID}`.toUpperCase();
+      const featureName = `Phase 70 Feature ${RUN_ID}`;
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="feature"]');
+          form.querySelector('[name="key"]').value = ${JSON.stringify(featureKey)};
+          form.querySelector('[name="name"]').value = ${JSON.stringify(featureName)};
+          form.querySelector('[name="description"]').value = 'Disposable browser test';
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(featureName)})`,
+        'platform feature creation',
+      );
+      const platformFeature = await setupPrisma.feature.findUniqueOrThrow({
+        where: { key: featureKey },
+        select: { id: true, status: true },
+      });
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="edit-feature"][data-id="${platformFeature.id}"]');
+          form.querySelector('[name="name"]').value = ${JSON.stringify(`${featureName} Updated`)};
+          form.querySelector('[name="description"]').value = 'Updated by browser';
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes(${JSON.stringify(`${featureName} Updated`)})`,
+        'platform feature metadata update',
+      );
+      expect(
+        await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
+      ).toMatchObject({ name: `${featureName} Updated`, description: 'Updated by browser' });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')`,
+        'platform feature deactivation',
+      );
+      expect(
+        await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
+      ).toMatchObject({ status: 'INACTIVE' });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')`,
+        'platform feature reactivation',
+      );
+
+      const subscriptionStart = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 16);
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="subscription"]');
+          form.querySelector('[name="tenantId"]').value = ${JSON.stringify(tenantA.id)};
+          form.querySelector('[name="planId"]').value = ${JSON.stringify(platformPlan.id)};
+          form.querySelector('[name="startsAt"]').value = ${JSON.stringify(subscriptionStart)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[role="status"]')?.textContent.includes('تم حفظ التغيير.')`,
+        'manual platform subscription assignment',
+      );
+      const platformSubscription = await setupPrisma.subscription.findFirstOrThrow({
+        where: { tenantId: tenantA.id, planId: platformPlan.id },
+        select: { id: true, status: true },
+      });
+      expect(platformSubscription.status).toBe('ACTIVE');
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')`,
+        'platform subscription suspension',
+      );
+      expect(
+        await setupPrisma.subscription.findUnique({
+          where: { id: platformSubscription.id },
+        }),
+      ).toMatchObject({ status: 'SUSPENDED' });
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')`,
+        'platform subscription reactivation',
+      );
+      const cancelSubscription = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="cancel"]')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await cancelSubscription;
+      await waitForBrowserCondition(
+        client,
+        `document.body.innerText.includes('ملغى')`,
+        'platform subscription cancellation',
+      );
+      expect(
+        await setupPrisma.subscription.findUnique({
+          where: { id: platformSubscription.id },
+        }),
+      ).toMatchObject({ status: 'CANCELLED' });
 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 

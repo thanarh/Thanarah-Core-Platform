@@ -1,0 +1,23 @@
+.saas-page { width: min(1180px, 100%); margin: 0 auto; }
+.saas-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.saas-card { min-width: 0; padding: 18px; border: 1px solid #e1e6de; border-radius: 14px; background: #fff; }
+.saas-card h2 { margin: 0 0 12px; color: #214d3b; font-size: 18px; }
+.saas-form { display: grid; gap: 10px; margin-bottom: 16px; }
+.saas-form .field { margin: 0; }
+.saas-form input, .saas-form select { width: 100%; min-height: 40px; border: 1px solid #d9e0d7; border-radius: 8px; padding: 8px 10px; background: white; }
+.saas-list { display: grid; gap: 10px; }
+.saas-item { border: 1px solid #e4e8e1; border-radius: 10px; padding: 12px; background: #fbfcf9; }
+.saas-item strong { color: #214d3b; }
+.saas-meta { color: #68756d; font-size: 12px; overflow-wrap: anywhere; }
+.saas-item .field { margin: 8px 0; }
+.saas-item .field input { min-height: 36px; }
+.saas-top { display:flex; align-items:center; justify-content:space-between; gap: 12px; margin: 20px 0; }
+.saas-top h1 { color:#214d3b; margin: 5px 0; }
+.saas-note { color:#68756d; font-size:13px; line-height:1.7; }
+.saas-status { display:inline-block; border-radius:999px; padding:3px 9px; background:#e9f2eb; color:#285e45; font-size:11px; }
+.saas-status.inactive,.saas-status.suspended,.saas-status.scheduled { background:#f5e8d9;color:#80501e; }
+.saas-status.archived,.saas-status.cancelled,.saas-status.expired { background:#f5e5e1;color:#8a4938; }
+.saas-actions { display:flex; flex-wrap:wrap; gap:7px; margin-top:9px; }
+.saas-actions .btn { min-height:32px; padding:5px 9px; font-size:12px; }
+.saas-period { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+@media(max-width:800px) { .saas-grid { grid-template-columns:1fr; } .saas-top { align-items:flex-start; } }
