@@ -3322,6 +3322,119 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           where: { staffId_branchId: { staffId: temporaryStaff.id, branchId: clinicalBranchId } },
         }),
       ).not.toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-staff-role"]');
+          if (!form) return false;
+          form.querySelector('[name="roleId"]').value = ${JSON.stringify(tenantA.roleId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.team-chip')).some((chip) =>
+          chip.textContent?.includes('Phase 30 integration role')) &&
+          Array.from(document.querySelectorAll('.team-chip button[data-action="remove-staff-role"]')).length > 0`,
+        'staff role assigned through authenticated UI',
+      );
+      expect(
+        await setupPrisma.staffRoleAssignment.findUnique({
+          where: { staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId } },
+        }),
+      ).not.toBeNull();
+      const removeStaffRole = evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="remove-staff-role"][data-id="${tenantA.roleId}"]')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await removeStaffRole;
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector('[data-action="remove-staff-role"][data-id="${tenantA.roleId}"]')`,
+        'staff role removed through authenticated UI',
+      );
+      expect(
+        await setupPrisma.staffRoleAssignment.findUnique({
+          where: { staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId } },
+        }),
+      ).toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-staff-role"]');
+          if (!form) return false;
+          form.querySelector('[name="roleId"]').value = ${JSON.stringify(tenantA.roleId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="remove-staff-role"][data-id="${tenantA.roleId}"]')`,
+        'staff role restored through authenticated UI',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="remove-facility-scope"][data-id="${clinicalFacilityId}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector('[data-action="remove-facility-scope"][data-id="${clinicalFacilityId}"]') &&
+          document.querySelector('form[data-form="add-facility"] option[value="${clinicalFacilityId}"]')`,
+        'staff facility scope removed through authenticated UI',
+      );
+      expect(
+        await setupPrisma.staffFacilityAssignment.findUnique({
+          where: { staffId_facilityId: { staffId: temporaryStaff.id, facilityId: clinicalFacilityId } },
+        }),
+      ).toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-facility"]');
+          if (!form) return false;
+          form.querySelector('[name="facilityId"]').value = ${JSON.stringify(clinicalFacilityId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="remove-facility-scope"][data-id="${clinicalFacilityId}"]')`,
+        'staff facility scope restored through authenticated UI',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector('[data-action="remove-branch-scope"][data-id="${clinicalBranchId}"]')?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector('[data-action="remove-branch-scope"][data-id="${clinicalBranchId}"]') &&
+          document.querySelector('form[data-form="add-branch"] option[value="${clinicalBranchId}"]')`,
+        'staff branch scope removed through authenticated UI',
+      );
+      expect(
+        await setupPrisma.staffBranchAssignment.findUnique({
+          where: { staffId_branchId: { staffId: temporaryStaff.id, branchId: clinicalBranchId } },
+        }),
+      ).toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="add-branch"]');
+          if (!form) return false;
+          form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="remove-branch-scope"][data-id="${clinicalBranchId}"]')`,
+        'staff branch scope restored through authenticated UI',
+      );
 
       const doctorDepartmentName = `Browser Department ${RUN_ID}`;
       const doctorSpecialtyName = `Browser Specialty ${RUN_ID}`;
@@ -3617,6 +3730,74 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await evaluateBrowser(
         client,
+        `document.querySelector(
+          '[data-action="unassign"][data-kind="department"][data-id="${doctorDepartment.id}"]'
+        )?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector('[data-action="unassign"][data-kind="department"][data-id="${doctorDepartment.id}"]') &&
+          document.querySelector('[data-form="assignment"][data-kind="department"] option[value="${doctorDepartment.id}"]')`,
+        'doctor department assignment removed through UI',
+      );
+      expect(
+        await setupPrisma.doctorDepartmentAssignment.findUnique({
+          where: {
+            doctorId_departmentId: { doctorId: browserDoctor.id, departmentId: doctorDepartment.id },
+          },
+        }),
+      ).toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('[data-form="assignment"][data-kind="department"]');
+          if (!form) return false;
+          form.querySelector('[name="targetId"]').value = ${JSON.stringify(doctorDepartment.id)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="unassign"][data-kind="department"][data-id="${doctorDepartment.id}"]')`,
+        'doctor department assignment restored through UI',
+      );
+      await evaluateBrowser(
+        client,
+        `document.querySelector(
+          '[data-action="unassign"][data-kind="specialty"][data-id="${doctorSpecialty.id}"]'
+        )?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector('[data-action="unassign"][data-kind="specialty"][data-id="${doctorSpecialty.id}"]') &&
+          document.querySelector('[data-form="assignment"][data-kind="specialty"] option[value="${doctorSpecialty.id}"]')`,
+        'doctor specialty assignment removed through UI',
+      );
+      expect(
+        await setupPrisma.doctorSpecialtyAssignment.findUnique({
+          where: {
+            doctorId_specialtyId: { doctorId: browserDoctor.id, specialtyId: doctorSpecialty.id },
+          },
+        }),
+      ).toBeNull();
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('[data-form="assignment"][data-kind="specialty"]');
+          if (!form) return false;
+          form.querySelector('[name="targetId"]').value = ${JSON.stringify(doctorSpecialty.id)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('[data-action="unassign"][data-kind="specialty"][data-id="${doctorSpecialty.id}"]')`,
+        'doctor specialty assignment restored through UI',
+      );
+      await evaluateBrowser(
+        client,
         `Array.from(document.querySelectorAll('[data-action="status"]'))
           .find((button) => button.dataset.status === 'suspend')?.click()`,
       );
@@ -3643,6 +3824,30 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         status: StaffStatus.ACTIVE,
         professionalTitle: 'Senior Consultant',
       });
+      expect(
+        await evaluateBrowser(
+          client,
+          `Boolean(document.querySelector(
+            '.doctor-row.selected button[data-id="${browserDoctor.id}"]'
+          ))`,
+        ),
+      ).toBe(true);
+      const deactivateDoctor = evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('[data-action="status"]'))
+          .find((button) => button.dataset.status === 'deactivate')?.click()`,
+      );
+      await respondToDialog('confirm');
+      await deactivateDoctor;
+      await waitForBrowserCondition(
+        client,
+        `document.querySelector('.doctor-row.selected .setup-status')?.textContent.includes('غير نشط') &&
+          !document.querySelector('[data-action="status"][data-status="activate"]')`,
+        'permanent doctor deactivation through authenticated UI',
+      );
+      expect(
+        await setupPrisma.doctor.findUnique({ where: { id: browserDoctor.id } }),
+      ).toMatchObject({ status: StaffStatus.DEACTIVATED });
       expect(
         await setupPrisma.staffFacilityAssignment.findUnique({
           where: {
@@ -3837,23 +4042,26 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             !document.querySelector('.platform-list')`,
         ),
       ).toBe(true);
-      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes('لا تملك صلاحية قراءة خطط واشتراكات المنصة.')`,
-        'SaaS administration denial for a user without platform permissions',
-      );
+      if (process.env.PHASE30_SKIP_SAAS_BROWSER !== '1') {
+        await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes('لا تملك صلاحية قراءة خطط واشتراكات المنصة.')`,
+          'SaaS administration denial for a user without platform permissions',
+        );
+      }
 
       await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
+      await client.send('Page.navigate', { url: `${browserBaseUrl}/appointments/` });
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="login"]'))`,
+        `Boolean(document.querySelector('#signin-form'))`,
         'sign-out after permission-denied browser check',
       );
       await evaluateBrowser(
         client,
         `(() => {
-          const form = document.querySelector('form[data-form="login"]');
+          const form = document.querySelector('#signin-form');
           if (!form) return false;
           form.querySelector('[name="email"]').value = ${JSON.stringify(testEmail)};
           form.querySelector('[name="password"]').value = ${JSON.stringify(testPassword)};
@@ -3863,8 +4071,19 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('form[data-form="plan"]'))`,
-        'platform SaaS administration restoration after sign-in',
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]')).some((button) =>
+          button.textContent?.includes(${JSON.stringify(tenantA.slug)}))`,
+        'tenant workspace after administrator sign-in',
+      );
+      await evaluateBrowser(
+        client,
+        `Array.from(document.querySelectorAll('button[data-action="choose-workspace"]'))
+          .find((button) => button.textContent?.includes(${JSON.stringify(tenantA.slug)}))?.click()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('#patient-search'))`,
+        'administrator workspace after sign-in',
       );
 
       const platformTenantSlug = `phase69-${RUN_ID}`.toLowerCase();
@@ -4021,6 +4240,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         ),
       ).toBe(false);
 
+      if (process.env.PHASE30_SKIP_SAAS_BROWSER !== '1') {
       await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
       await waitForBrowserCondition(
         client,
@@ -4214,6 +4434,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           where: { id: platformSubscription.id },
         }),
       ).toMatchObject({ status: 'CANCELLED' });
+      }
 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
 
