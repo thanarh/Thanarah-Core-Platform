@@ -22,3 +22,4 @@
 - [Mongo cross-port locks](mongo-cross-port-locking.md) — a candidate lock document only serializes writers that share that lock; it does not reproduce MySQL parent-row locking across adapters.
 - [Mongo transaction operation order](mongo-transaction-operation-order.md) — execute operations serially within a driver transaction; parallel collection calls can fail and be hidden by sanitized transaction errors.
 - [Thanarah hybrid storage boundary](thanarah-hybrid-storage.md) — keep central platform identity and subscription data in MySQL/Prisma; use MongoDB for tenant medical and operational data.
+- [Browser completion signals](browser-completion-signals.md) — navigation and mutation waits must distinguish transient documents and pre-existing content from completed operations.

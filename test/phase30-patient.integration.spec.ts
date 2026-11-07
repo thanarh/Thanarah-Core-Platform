@@ -8526,7 +8526,9 @@ async function evaluateBrowser(client: CdpClient, expression: string): Promise<u
     returnByValue: true,
     awaitPromise: true,
   });
-  if (response.exceptionDetails) throw new Error('Chromium evaluation failed');
+  if (response.exceptionDetails) {
+    throw new Error(`Chromium evaluation failed: ${JSON.stringify(response.exceptionDetails)}`);
+  }
   const remoteResult = response.result as { value?: unknown } | undefined;
   return remoteResult?.value;
 }
@@ -8537,7 +8539,7 @@ async function waitForBrowserCondition(
   description: string,
 ): Promise<void> {
   for (let attempt = 0; attempt < 100; attempt += 1) {
-    if (await evaluateBrowser(client, expression)) return;
+    if (await evaluateBrowser(client, `Boolean(document.body) && (${expression})`)) return;
     await delay(100);
   }
   const visibleText = await evaluateBrowser(client, 'document.body.innerText');

@@ -33,7 +33,7 @@
     } finally { state.loading=false; render(); }
   }
   function render() {
-    if(state.screen==='signin') return;
+    if(state.screen==='signin') return renderLogin(state.error);
     if(state.screen==='denied'||state.screen==='error') {
       app.innerHTML=`<section class="workspace-screen"><div class="workspace-card"><h1>${state.screen==='denied'?'الوصول محدود':'تعذّر فتح إدارة الاشتراكات'}</h1><p role="alert">${esc(state.error)}</p><button class="btn btn-secondary" data-action="${state.screen==='denied'?'logout':'retry'}" type="button">${state.screen==='denied'?'خروج':'إعادة المحاولة'}</button></div></section>`; return;
     }
