@@ -3803,7 +3803,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `document.body.innerText.includes('موقوف مؤقتًا')`,
+        `Array.from(document.querySelectorAll('.doctor-row'))
+          .find((row) => row.querySelector('button[data-action="select"][data-id="${browserDoctor.id}"]'))
+          ?.querySelector('.setup-status')?.textContent.includes('موقوف مؤقتًا')`,
         'doctor suspension through authenticated UI',
       );
       await evaluateBrowser(
@@ -3813,7 +3815,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `document.body.innerText.includes('نشط')`,
+        `Array.from(document.querySelectorAll('.doctor-row'))
+          .find((row) => row.querySelector('button[data-action="select"][data-id="${browserDoctor.id}"]'))
+          ?.querySelector('.setup-status')?.textContent.trim() === 'نشط'`,
         'doctor reactivation through authenticated UI',
       );
       expect(
@@ -3841,7 +3845,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       await deactivateDoctor;
       await waitForBrowserCondition(
         client,
-        `document.querySelector('.doctor-row.selected .setup-status')?.textContent.includes('غير نشط') &&
+        `Array.from(document.querySelectorAll('.doctor-row'))
+          .find((row) => row.querySelector('button[data-action="select"][data-id="${browserDoctor.id}"]'))
+          ?.querySelector('.setup-status')?.textContent.includes('غير نشط') &&
           !document.querySelector('[data-action="status"][data-status="activate"]')`,
         'permanent doctor deactivation through authenticated UI',
       );
@@ -4082,7 +4088,8 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       await waitForBrowserCondition(
         client,
-        `Boolean(document.querySelector('#patient-search'))`,
+        `Boolean(document.querySelector('button[data-action="new-appointment"]') &&
+          document.querySelector('#filter-form'))`,
         'administrator workspace after sign-in',
       );
 
