@@ -53,6 +53,8 @@
   const selected = () => state.doctors.find((item) => item.id === state.selectedId);
   const statusLabel = (s) =>
     ({ ACTIVE: 'نشط', SUSPENDED: 'موقوف مؤقتًا', DEACTIVATED: 'غير نشط' })[s] || 'غير محدد';
+  const dateLocale = () =>
+    window.ThanarahLocale ? window.ThanarahLocale.dateLocale('ar') : 'ar';
 
   document.addEventListener('click', onClick);
   document.addEventListener('submit', onSubmit);
@@ -361,7 +363,7 @@
     const timestamp = (value) => {
       if (!value) return '—';
       const date = new Date(value);
-      return Number.isNaN(date.getTime()) ? esc(value) : esc(date.toLocaleString('ar'));
+      return Number.isNaN(date.getTime()) ? esc(value) : esc(date.toLocaleString(dateLocale()));
     };
     return `<section class="doctor-assignment service-assignment"><div class="service-heading"><div><h3>ارتباطات الخدمات</h3><p>تعيين مستقل حسب المنشأة، مع فرع اختياري.</p></div><span class="service-count">${assignments.length.toLocaleString('ar')} ارتباط</span></div>${
       !canReadAssignments

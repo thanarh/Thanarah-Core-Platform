@@ -201,7 +201,12 @@
   function formatDate(value) {
     if (!value) return '—';
     const date = new Date(value);
-    return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('ar', { year: 'numeric', month: 'short', day: 'numeric' }).format(date);
+    return Number.isNaN(date.getTime())
+      ? String(value)
+      : new Intl.DateTimeFormat(
+          window.ThanarahLocale ? window.ThanarahLocale.dateLocale('ar') : 'ar',
+          { year: 'numeric', month: 'short', day: 'numeric' },
+        ).format(date);
   }
 
   function renderForm() {

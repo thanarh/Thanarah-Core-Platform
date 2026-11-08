@@ -23,6 +23,12 @@
   };
   const PAGE_SIZE = 20;
   const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone || null;
+  const formatNumber = (value) =>
+    window.ThanarahLocale
+      ? window.ThanarahLocale.formatNumber(value)
+      : Number(value).toLocaleString('ar');
+  const dateLocale = () =>
+    window.ThanarahLocale ? window.ThanarahLocale.dateLocale('ar') : 'ar';
   const state = {
     screen: 'boot',
     workspaces: [],
@@ -157,7 +163,7 @@
     const timeZone = timeZoneFor(facilityId);
     if (!timeZone) return 'المنطقة الزمنية غير متاحة';
     try {
-      return new Intl.DateTimeFormat('ar', {
+      return new Intl.DateTimeFormat(dateLocale(), {
         year: 'numeric',
         month: 'short',
         day: 'numeric',
@@ -176,7 +182,7 @@
     const timeZone = timeZoneFor(facilityId);
     if (!timeZone) return 'المنطقة الزمنية غير متاحة';
     try {
-      return new Intl.DateTimeFormat('ar', {
+      return new Intl.DateTimeFormat(dateLocale(), {
         hour: '2-digit',
         minute: '2-digit',
         timeZone,
@@ -736,8 +742,8 @@
     const countLabel = state.listLoading
       ? 'جارٍ تحديث النتائج…'
       : state.filters.search
-        ? `${state.total.toLocaleString('ar')} نتيجة مطابقة عبر النتائج المتاحة`
-        : `${state.total.toLocaleString('ar')} موعد`;
+        ? `${formatNumber(state.total)} نتيجة مطابقة عبر النتائج المتاحة`
+        : `${formatNumber(state.total)} موعد`;
     content.innerHTML = `
       <div class="page-heading">
         <div><span class="eyebrow">تنسيق اليوم، بوضوح</span><h1>المواعيد</h1><p>تابع حركة المواعيد ضمن صلاحيات مساحة العمل.</p></div>
@@ -805,7 +811,7 @@
           .join('')}</tbody>
       </table></div>
       <div class="pagination">
-        <span>${state.total ? `${(state.offset + 1).toLocaleString('ar')}–${Math.min(state.offset + state.appointments.length, state.total).toLocaleString('ar')} من ${state.total.toLocaleString('ar')}` : '—'}</span>
+        <span>${state.total ? `${formatNumber(state.offset + 1)}–${formatNumber(Math.min(state.offset + state.appointments.length, state.total))} من ${formatNumber(state.total)}` : '—'}</span>
         <div class="pagination-controls">
           <button class="btn btn-secondary btn-small" type="button" data-action="page-prev" ${state.offset <= 0 ? 'disabled' : ''}>السابق</button>
           <button class="btn btn-secondary btn-small" type="button" data-action="page-next" ${!state.hasNext ? 'disabled' : ''}>التالي</button>
@@ -1029,7 +1035,7 @@
           })
           .join('')}`;
         help.textContent = patients.length
-          ? `${patients.length.toLocaleString('ar')} نتيجة مطابقة. اختر المريض للمتابعة.`
+          ? `${formatNumber(patients.length)} نتيجة مطابقة. اختر المريض للمتابعة.`
           : 'لا توجد نتائج مطابقة ضمن دليل المرضى المسموح.';
       } catch (error) {
         if (epoch !== state.workspaceEpoch || requestId !== state.patientSearchRequestId) return;

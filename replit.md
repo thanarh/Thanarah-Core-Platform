@@ -198,7 +198,7 @@ src/
 prisma/
 ├── schema.prisma        # Current central platform models and audit/security records
 ├── migrations/          # Versioned schema changes; authorization baseline data is migration-owned
-public/                  # Static files — Coming Soon splash page + assets
+public/                  # Public landing page and authenticated staff/platform workspaces, shared API, locale, and UI assets
 ```
 
 ## Key URLs (development)
@@ -207,6 +207,10 @@ public/                  # Static files — Coming Soon splash page + assets
 - `/health` — process liveness; does not claim database availability
 - `/ready` — central database readiness; returns 503 when unavailable
 - `/docs` — Swagger UI
+
+## Web workspace language
+
+The authenticated clinic and platform workspaces support Arabic/RTL and English/LTR through the shared language control. The choice is stored in browser local storage and changes presentation only; API contracts, authorization, and stored data remain unchanged. Shared locale behavior, translations, and presentation styles live under `public/assets/`.
 
 ## Platform API and guard conventions
 

@@ -2656,6 +2656,116 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `Boolean(document.querySelector('[data-action="new-appointment"]'))`,
         'authorized appointments workspace',
       );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-locale-toggle]'))`,
+        'shared language switch',
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('.appointments-table tbody tr'))`,
+        'appointment list data before keyboard interaction',
+      );
+      await delay(300);
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.documentElement.lang === 'ar' && document.documentElement.dir === 'rtl'`,
+        ),
+      ).toBe(true);
+      await evaluateBrowser(client, `document.querySelector('[data-locale-toggle]')?.focus()`);
+      expect(
+        await evaluateBrowser(
+          client,
+          `document.activeElement === document.querySelector('[data-locale-toggle]')`,
+        ),
+      ).toBe(true);
+      await client.send('Input.dispatchKeyEvent', {
+        type: 'keyDown',
+        key: 'Enter',
+        code: 'Enter',
+        text: '\r',
+        unmodifiedText: '\r',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+      });
+      await client.send('Input.dispatchKeyEvent', {
+        type: 'keyUp',
+        key: 'Enter',
+        code: 'Enter',
+        windowsVirtualKeyCode: 13,
+        nativeVirtualKeyCode: 13,
+      });
+      await waitForBrowserCondition(
+        client,
+        `document.documentElement.lang === 'en' &&
+          document.documentElement.dir === 'ltr' &&
+          document.querySelector('[data-action="new-appointment"]')?.textContent.includes('New appointment')`,
+        'English LTR appointment workspace',
+      );
+      expect(
+        await evaluateBrowser(
+          client,
+          `getComputedStyle(document.querySelector('[data-locale-toggle]')).outlineStyle !== 'none'`,
+        ),
+      ).toBe(true);
+      await client.send('Emulation.setDeviceMetricsOverride', {
+        width: 390,
+        height: 844,
+        screenWidth: 390,
+        screenHeight: 844,
+        deviceScaleFactor: 1,
+        mobile: false,
+      });
+      await delay(100);
+      const mobileLayout = (await evaluateBrowser(
+        client,
+        `({
+          viewport: window.innerWidth,
+          innerWidth: window.innerWidth,
+          screenWidth: window.screen.width,
+          visualWidth: window.visualViewport?.width,
+          page: document.documentElement.scrollWidth,
+          toggleHeight: document.querySelector('[data-locale-toggle]')?.getBoundingClientRect().height || 0,
+          overflow: Array.from(document.body.querySelectorAll('*'))
+            .map((element) => {
+              const rect = element.getBoundingClientRect();
+              return {
+                tag: element.tagName,
+                className: String(element.className || ''),
+                left: Math.round(rect.left),
+                right: Math.round(rect.right),
+                width: Math.round(rect.width),
+                scrollWidth: element.scrollWidth,
+                clientWidth: element.clientWidth,
+                position: getComputedStyle(element).position
+              };
+            })
+            .filter((element) => element.right > window.innerWidth + 1 || element.left < -1)
+            .sort((left, right) => right.right - left.right)
+            .slice(0, 10)
+        })`,
+      )) as {
+        viewport: number;
+        innerWidth: number;
+        screenWidth: number;
+        visualWidth?: number;
+        page: number;
+        toggleHeight: number;
+        overflow: Array<Record<string, unknown>>;
+      };
+      expect(mobileLayout.viewport, JSON.stringify(mobileLayout)).toBe(390);
+      expect(mobileLayout.page, JSON.stringify(mobileLayout)).toBeLessThanOrEqual(
+        mobileLayout.viewport + 1,
+      );
+      expect(mobileLayout.toggleHeight).toBeGreaterThanOrEqual(44);
+      await evaluateBrowser(client, `document.querySelector('[data-locale-toggle]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `document.documentElement.lang === 'ar' && document.documentElement.dir === 'rtl'`,
+        'Arabic RTL restored from the language switch',
+      );
+      await client.send('Emulation.clearDeviceMetricsOverride');
       await evaluateBrowser(
         client,
         `document.querySelector('[data-action="new-appointment"]')?.click()`,
@@ -4179,15 +4289,42 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
             !document.querySelector('.platform-list')`,
         ),
       ).toBe(true);
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('[data-locale-toggle]'))`,
+        'language switch on the denied platform screen',
+      );
+      await evaluateBrowser(client, `document.querySelector('[data-locale-toggle]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `document.documentElement.lang === 'en' &&
+          document.documentElement.dir === 'ltr' &&
+          document.body.innerText.includes('You do not have permission to read platform data.')`,
+        'English LTR permission-denied state',
+      );
       if (process.env.PHASE30_SKIP_SAAS_BROWSER !== '1') {
         await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
         await waitForBrowserCondition(
           client,
-          `document.body.innerText.includes('لا تملك صلاحية قراءة خطط واشتراكات المنصة.')`,
-          'SaaS administration denial for a user without platform permissions',
+          `document.documentElement.lang === 'en' &&
+            document.documentElement.dir === 'ltr' &&
+            document.body.innerText.includes('You do not have permission to view platform plans and subscriptions.')`,
+          'English SaaS administration denial for a user without platform permissions',
         );
+        expect(
+          await evaluateBrowser(
+            client,
+            `!document.querySelector('form[data-form="subscription"]')`,
+          ),
+        ).toBe(true);
       }
 
+      await evaluateBrowser(client, `document.querySelector('[data-locale-toggle]')?.click()`);
+      await waitForBrowserCondition(
+        client,
+        `document.documentElement.lang === 'ar' && document.documentElement.dir === 'rtl'`,
+        'Arabic RTL restored after the English permission checks',
+      );
       await evaluateBrowser(client, `document.querySelector('[data-action="logout"]')?.click()`);
       await client.send('Page.navigate', { url: `${browserBaseUrl}/appointments/` });
       await waitForBrowserCondition(

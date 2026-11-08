@@ -2321,7 +2321,10 @@
     if (!Number.isFinite(date.getTime())) return '—';
     const options = { dateStyle: 'medium', timeStyle: 'short' };
     if (timeZone) options.timeZone = timeZone;
-    return new Intl.DateTimeFormat('ar-SA', options).format(date);
+    return new Intl.DateTimeFormat(
+      window.ThanarahLocale ? window.ThanarahLocale.dateLocale('ar-SA') : 'ar-SA',
+      options,
+    ).format(date);
   }
 
   function deviceTimeZone() {
