@@ -31,6 +31,9 @@ const staffId = '33333333-3333-4333-8333-333333333333';
 const doctorId = '44444444-4444-4444-8444-444444444444';
 const departmentId = '55555555-5555-4555-8555-555555555555';
 const specialtyId = '66666666-6666-4666-8666-666666666666';
+const serviceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const facilityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const branchId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const platformUserId = '77777777-7777-4777-8777-777777777777';
 
 const authenticatedUser: AuthenticatedPlatformUser = {
@@ -109,6 +112,9 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     listSpecialties: vi.fn(),
     assignSpecialty: vi.fn(),
     unassignSpecialty: vi.fn(),
+    listServiceAssignments: vi.fn(),
+    assignService: vi.fn(),
+    unassignService: vi.fn(),
   };
 
   beforeEach(async () => {
@@ -128,6 +134,19 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     doctorService.listSpecialties.mockResolvedValue({ items: doctorResponse.specialties });
     doctorService.assignSpecialty.mockResolvedValue(doctorResponse);
     doctorService.unassignSpecialty.mockResolvedValue(doctorResponse);
+    doctorService.listServiceAssignments.mockResolvedValue({ items: [] });
+    doctorService.assignService.mockResolvedValue({
+      serviceId,
+      facilityId,
+      branchId,
+      doctorId,
+    });
+    doctorService.unassignService.mockResolvedValue({
+      serviceId,
+      facilityId,
+      branchId,
+      doctorId,
+    });
 
     const tenantContextGuard = new TenantContextGuard(
       validator as unknown as TenantMembershipValidatorService,
@@ -459,6 +478,82 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
       authenticatedUser,
       expect.any(Object),
     );
+  });
+
+  it('lists, assigns and removes service links with explicit location scope', async () => {
+    const list = await app.inject({
+      method: 'GET',
+      url: `${root}/${doctorId}/services`,
+      headers,
+    });
+    expect(list.statusCode).toBe(200);
+    expect(doctorService.listServiceAssignments).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      doctorId,
+    );
+    expect(tenantAuthorization.authorize).toHaveBeenNthCalledWith(
+      1,
+      expect.objectContaining({ tenantId }),
+      'tenant.doctors.read',
+    );
+    expect(tenantAuthorization.authorize).toHaveBeenNthCalledWith(
+      4,
+      expect.objectContaining({ tenantId }),
+      'tenant.branches.read',
+    );
+
+    const assignment = await app.inject({
+      method: 'POST',
+      url: `${root}/${doctorId}/services`,
+      headers,
+      payload: { serviceId, facilityId, branchId },
+    });
+    expect(assignment.statusCode).toBe(201);
+    expect(doctorService.assignService).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      doctorId,
+      { serviceId, facilityId, branchId },
+      authenticatedUser,
+      expect.any(Object),
+    );
+
+    const removal = await app.inject({
+      method: 'DELETE',
+      url: `${root}/${doctorId}/services/${serviceId}?facilityId=${facilityId}&branchId=${branchId}`,
+      headers,
+    });
+    expect(removal.statusCode).toBe(200);
+    expect(doctorService.unassignService).toHaveBeenCalledWith(
+      expect.objectContaining({ tenantId }),
+      doctorId,
+      serviceId,
+      { facilityId, branchId },
+      authenticatedUser,
+      expect.any(Object),
+    );
+
+    const invalid = await app.inject({
+      method: 'POST',
+      url: `${root}/${doctorId}/services`,
+      headers,
+      payload: { serviceId, facilityId, branchId, tenantId: otherTenantId },
+    });
+    expect(invalid.statusCode).toBe(400);
+  });
+
+  it('requires both doctor and service/location permissions to create an assignment', async () => {
+    tenantAuthorization.authorize.mockImplementation(async (_context, permission) => {
+      if (permission === 'tenant.services.manage') throw new ForbiddenException();
+    });
+    const response = await app.inject({
+      method: 'POST',
+      url: `${root}/${doctorId}/services`,
+      headers,
+      payload: { serviceId, facilityId },
+    });
+    expect(response.statusCode).toBe(403);
+    expect(doctorService.assignService).not.toHaveBeenCalled();
+    tenantAuthorization.authorize.mockResolvedValue(undefined);
   });
 
   it('rejects cross-tenant context and client permission injection', async () => {

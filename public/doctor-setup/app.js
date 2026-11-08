@@ -10,7 +10,9 @@
     departmentsRead: 'tenant.departments.read',
     specialtiesRead: 'tenant.specialties.read',
     servicesRead: 'tenant.services.read',
+    servicesManage: 'tenant.services.manage',
     facilitiesRead: 'tenant.facilities.read',
+    branchesRead: 'tenant.branches.read',
   };
   const state = {
     screen: 'boot',
@@ -22,6 +24,14 @@
     specialties: [],
     services: [],
     facilities: [],
+    branches: [],
+    serviceAssignments: [],
+    selectedFacilityId: '',
+    assignmentLoading: false,
+    assignmentRequest: 0,
+    branchLoading: false,
+    assignmentSaving: false,
+    assignmentError: '',
     status: '',
     search: '',
     selectedId: '',
@@ -128,6 +138,8 @@
       await Promise.all(jobs);
       if (!state.doctors.some((item) => item.id === state.selectedId))
         state.selectedId = state.doctors[0]?.id || '';
+      if (!state.facilities.some((item) => item.id === state.selectedFacilityId))
+        state.selectedFacilityId = state.facilities[0]?.id || '';
     } catch (error) {
       if (error.status === 401) {
         state.screen = 'signin';
@@ -136,7 +148,71 @@
       state.error = message(error);
     } finally {
       state.loading = false;
-      if (state.screen !== 'signin') render();
+      if (state.screen !== 'signin') {
+        render();
+        if (state.selectedId) void loadDoctorServices();
+        if (state.selectedFacilityId) void loadBranches(state.selectedFacilityId);
+      }
+    }
+  }
+
+  async function loadDoctorServices() {
+    if (
+      !state.selectedId ||
+      !allowed(P.read) ||
+      !allowed(P.servicesRead) ||
+      !allowed(P.facilitiesRead) ||
+      !allowed(P.branchesRead)
+    ) {
+      state.serviceAssignments = [];
+      return;
+    }
+    const doctorId = state.selectedId;
+    const requestId = ++state.assignmentRequest;
+    state.serviceAssignments = [];
+    state.assignmentLoading = true;
+    state.assignmentError = '';
+    render();
+    try {
+      const result = await api.listDoctorServices(state.workspace.tenantId, doctorId);
+      if (requestId === state.assignmentRequest && doctorId === state.selectedId)
+        state.serviceAssignments = result?.items || [];
+    } catch (error) {
+      if (requestId !== state.assignmentRequest) return;
+      if (error.status === 401) {
+        state.screen = 'signin';
+        return signIn();
+      }
+      state.assignmentError = message(error);
+    } finally {
+      if (requestId === state.assignmentRequest) {
+        state.assignmentLoading = false;
+        if (state.screen !== 'signin') render();
+      }
+    }
+  }
+
+  async function loadBranches(facilityId) {
+    state.selectedFacilityId = facilityId;
+    state.branches = [];
+    if (!facilityId || !allowed(P.facilitiesRead) || !allowed(P.branchesRead)) {
+      render();
+      return;
+    }
+    state.branchLoading = true;
+    render();
+    try {
+      const result = await api.listBranches(state.workspace.tenantId, facilityId, {
+        status: 'ACTIVE',
+        limit: 100,
+        offset: 0,
+      });
+      if (state.selectedFacilityId === facilityId) state.branches = result.items || [];
+    } catch (error) {
+      state.assignmentError = message(error);
+    } finally {
+      state.branchLoading = false;
+      render();
     }
   }
 
@@ -174,7 +250,7 @@
                 }<label class="field"><span>الاسم المهني</span><input name="professionalDisplayName" maxlength="191" value="${esc(state.doctors.find((d) => d.id === state.editId)?.professionalDisplayName || '')}"></label><div class="doctor-grid"><label class="field"><span>المسمى المهني</span><input name="professionalTitle" maxlength="191" value="${esc(state.doctors.find((d) => d.id === state.editId)?.professionalTitle || '')}"></label><label class="field"><span>الرمز المهني</span><input name="professionalCode" maxlength="64" dir="ltr" value="${esc(state.doctors.find((d) => d.id === state.editId)?.professionalCode || '')}"></label></div><label class="field"><span>نبذة مهنية نصية</span><textarea name="bio" maxlength="2000">${esc(state.doctors.find((d) => d.id === state.editId)?.bio || '')}</textarea></label>${!state.editId ? `<label class="field"><span>القسم (اختياري)</span><select name="departmentIds" multiple>${state.departments.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></label><label class="field"><span>التخصص (اختياري)</span><select name="specialtyIds" multiple>${state.specialties.map((x) => `<option value="${esc(x.id)}">${esc(x.name)}</option>`).join('')}</select></label>` : ''}<div class="form-footer"><button class="btn btn-primary" type="submit" ${state.saving ? 'disabled' : ''}>${state.saving ? 'جارٍ الحفظ…' : 'حفظ'}</button>${state.editId ? '<button class="btn btn-quiet" type="button" data-action="cancel-edit">إلغاء</button>' : ''}</div></form>`
           }</section>`
         : ''
-    }<section class="doctor-panel"><div class="doctor-panel-head"><h2>قائمة الأطباء</h2><p>${filtered.length.toLocaleString('ar')} طبيب</p></div><div class="doctor-toolbar"><input aria-label="ابحث عن طبيب" data-search value="${esc(state.search)}" placeholder="ابحث بالاسم أو الرمز"><select aria-label="تصفية حسب الحالة" data-status><option value="">كل الحالات</option><option value="ACTIVE" ${state.status === 'ACTIVE' ? 'selected' : ''}>نشط</option><option value="SUSPENDED" ${state.status === 'SUSPENDED' ? 'selected' : ''}>موقوف مؤقتًا</option><option value="DEACTIVATED" ${state.status === 'DEACTIVATED' ? 'selected' : ''}>غير نشط</option></select></div>${state.loading ? '<div class="catalog-empty">جارٍ تحميل الأطباء…</div>' : filtered.length ? `<div class="doctor-list">${filtered.map((d) => `<article class="doctor-row ${d.id === state.selectedId ? 'selected' : ''}"><div class="doctor-row-main"><button type="button" data-action="select" data-id="${esc(d.id)}"><h3>${esc(d.professionalDisplayName || d.staff?.displayName || 'طبيب')}</h3><p>${esc([d.professionalTitle, d.professionalCode].filter(Boolean).join(' · '))}</p></button><span class="setup-status ${d.status === 'SUSPENDED' ? 'suspended' : d.status === 'DEACTIVATED' ? 'deactivated' : ''}">${statusLabel(d.status)}</span></div></article>`).join('')}</div>` : `<div class="catalog-empty"><h3>لا توجد نتائج</h3><p>${state.search ? 'جرّب عبارة بحث أخرى.' : 'أضف طبيبًا إلى مساحة العمل.'}</p></div>`}</section></div>${renderDetail(canManage)}<p class="doctor-note">صلاحيات المرافق والفروع تُدار على ملف عضو الفريق من <a href="/team-setup/">إدارة الفريق</a>. الخدمات المتاحة للمواعيد تُضبط عبر سياسة الجدولة. لا يوجد في API الحالي ربط مباشر مستقل بين الطبيب والخدمة.</p></div></section></div>`;
+    }<section class="doctor-panel"><div class="doctor-panel-head"><h2>قائمة الأطباء</h2><p>${filtered.length.toLocaleString('ar')} طبيب</p></div><div class="doctor-toolbar"><input aria-label="ابحث عن طبيب" data-search value="${esc(state.search)}" placeholder="ابحث بالاسم أو الرمز"><select aria-label="تصفية حسب الحالة" data-status><option value="">كل الحالات</option><option value="ACTIVE" ${state.status === 'ACTIVE' ? 'selected' : ''}>نشط</option><option value="SUSPENDED" ${state.status === 'SUSPENDED' ? 'selected' : ''}>موقوف مؤقتًا</option><option value="DEACTIVATED" ${state.status === 'DEACTIVATED' ? 'selected' : ''}>غير نشط</option></select></div>${state.loading ? '<div class="catalog-empty">جارٍ تحميل الأطباء…</div>' : filtered.length ? `<div class="doctor-list">${filtered.map((d) => `<article class="doctor-row ${d.id === state.selectedId ? 'selected' : ''}"><div class="doctor-row-main"><button type="button" data-action="select" data-id="${esc(d.id)}"><h3>${esc(d.professionalDisplayName || d.staff?.displayName || 'طبيب')}</h3><p>${esc([d.professionalTitle, d.professionalCode].filter(Boolean).join(' · '))}</p></button><span class="setup-status ${d.status === 'SUSPENDED' ? 'suspended' : d.status === 'DEACTIVATED' ? 'deactivated' : ''}">${statusLabel(d.status)}</span></div></article>`).join('')}</div>` : `<div class="catalog-empty"><h3>لا توجد نتائج</h3><p>${state.search ? 'جرّب عبارة بحث أخرى.' : 'أضف طبيبًا إلى مساحة العمل.'}</p></div>`}</section></div>${renderDetail(canManage)}<p class="doctor-note">تُدار صلاحيات المرافق والفروع على ملف عضو الفريق من <a href="/team-setup/">إدارة الفريق</a>.</p></div></section></div>`;
   }
 
   function renderDetail(canManage) {
@@ -195,7 +271,41 @@
               )}</select><button class="btn btn-secondary" type="submit">ربط</button></form>`
           : ''
       }</section>`;
-    return `<section class="doctor-panel"><div class="doctor-panel-head"><h2>تفاصيل الطبيب</h2><p>${esc(d.staff?.displayName || '')} · ${statusLabel(d.status)}</p></div><div class="doctor-detail"><div class="doctor-meta"><div><small>الاسم المهني</small><strong>${esc(d.professionalDisplayName || d.staff?.displayName || '—')}</strong></div><div><small>المسمى والرمز</small><strong>${esc([d.professionalTitle, d.professionalCode].filter(Boolean).join(' · ') || '—')}</strong></div></div>${d.bio ? `<p>${esc(d.bio)}</p>` : ''}<div class="doctor-actions">${canManage && d.status !== 'DEACTIVATED' ? `<button class="btn btn-secondary" type="button" data-action="edit" data-id="${esc(d.id)}">تعديل</button><button class="btn btn-quiet" type="button" data-action="status" data-status="${d.status === 'ACTIVE' ? 'suspend' : 'activate'}" data-id="${esc(d.id)}">${d.status === 'ACTIVE' ? 'إيقاف مؤقت' : 'تفعيل'}</button><button class="btn btn-quiet" type="button" data-action="status" data-status="deactivate" data-id="${esc(d.id)}">تعطيل نهائي</button>` : ''}</div>${assignments('department', d.departments)}${assignments('specialty', d.specialties)}<div class="doctor-assignment"><h3>الخدمات</h3><p>إتاحة الخدمات للطبيب ضمن المواعيد تُدار في سياسة الجدولة. ${allowed(P.servicesRead) ? `الخدمات النشطة: ${state.services.map((s) => esc(s.name)).join('، ') || 'لا توجد خدمات نشطة'}.` : 'ليس لديك صلاحية قراءة الخدمات.'}</p></div></div></section>`;
+    return `<section class="doctor-panel"><div class="doctor-panel-head"><h2>تفاصيل الطبيب</h2><p>${esc(d.staff?.displayName || '')} · ${statusLabel(d.status)}</p></div><div class="doctor-detail"><div class="doctor-meta"><div><small>الاسم المهني</small><strong>${esc(d.professionalDisplayName || d.staff?.displayName || '—')}</strong></div><div><small>المسمى والرمز</small><strong>${esc([d.professionalTitle, d.professionalCode].filter(Boolean).join(' · ') || '—')}</strong></div></div>${d.bio ? `<p>${esc(d.bio)}</p>` : ''}<div class="doctor-actions">${canManage && d.status !== 'DEACTIVATED' ? `<button class="btn btn-secondary" type="button" data-action="edit" data-id="${esc(d.id)}">تعديل</button><button class="btn btn-quiet" type="button" data-action="status" data-status="${d.status === 'ACTIVE' ? 'suspend' : 'activate'}" data-id="${esc(d.id)}">${d.status === 'ACTIVE' ? 'إيقاف مؤقت' : 'تفعيل'}</button><button class="btn btn-quiet" type="button" data-action="status" data-status="deactivate" data-id="${esc(d.id)}">تعطيل نهائي</button>` : ''}</div>${assignments('department', d.departments)}${assignments('specialty', d.specialties)}${renderServiceAssignments(d, canManage)}</div></section>`;
+  }
+
+  function renderServiceAssignments(doctor, canManage) {
+    const canReadAssignments =
+      allowed(P.read) &&
+      allowed(P.servicesRead) &&
+      allowed(P.facilitiesRead) &&
+      allowed(P.branchesRead);
+    const canManageAssignments =
+      canManage &&
+      allowed(P.servicesManage) &&
+      allowed(P.servicesRead) &&
+      allowed(P.facilitiesRead) &&
+      allowed(P.branchesRead);
+    const services = state.services.filter((item) => item.status === 'ACTIVE');
+    const assignments = state.serviceAssignments;
+    const timestamp = (value) => {
+      if (!value) return '—';
+      const date = new Date(value);
+      return Number.isNaN(date.getTime()) ? esc(value) : esc(date.toLocaleString('ar'));
+    };
+    return `<section class="doctor-assignment service-assignment"><div class="service-heading"><div><h3>ارتباطات الخدمات</h3><p>تعيين مستقل حسب المنشأة، مع فرع اختياري.</p></div><span class="service-count">${assignments.length.toLocaleString('ar')} ارتباط</span></div>${
+      !canReadAssignments
+        ? '<div class="doctor-notice">تحتاج إلى صلاحيات قراءة الأطباء والخدمات والمنشآت والفروع لعرض ارتباطاتها.</div>'
+        : !canManageAssignments && canReadAssignments
+          ? '<div class="doctor-notice">تحتاج إلى صلاحيات إدارة الأطباء والخدمات لتعديل الارتباطات.</div>'
+          : ''
+    }${state.assignmentError ? `<div class="doctor-notice" role="alert">${esc(state.assignmentError)} <button type="button" class="inline-retry" data-action="retry-services">إعادة المحاولة</button></div>` : ''}${
+      state.assignmentLoading
+        ? '<div class="catalog-empty service-state">جارٍ تحميل ارتباطات الخدمات…</div>'
+        : assignments.length
+          ? `<div class="service-assignment-list">${assignments.map((item) => `<article class="service-assignment-row"><div class="service-assignment-copy"><strong>${esc(item.serviceName || 'خدمة')}</strong><span>${esc(item.facilityName || 'منشأة غير محددة')}${item.branchName ? ` · ${esc(item.branchName)}` : ' · جميع فروع المنشأة'}</span><small>أُضيف في ${timestamp(item.assignedAt)}</small></div><span class="setup-status ${item.serviceStatus === 'ACTIVE' ? '' : 'deactivated'}">${statusLabel(item.serviceStatus)}</span>${canManageAssignments ? `<button class="btn btn-quiet service-remove" type="button" data-action="remove-service" data-service-id="${esc(item.serviceId)}" data-facility-id="${esc(item.facilityId)}" data-branch-id="${esc(item.branchId || '')}" aria-label="إزالة ${esc(item.serviceName)} من ${esc(item.facilityName)}${item.branchName ? `، ${esc(item.branchName)}` : ''}">إزالة</button>` : ''}</article>`).join('')}</div>`
+          : '<div class="catalog-empty service-state"><h3>لا توجد ارتباطات بعد</h3><p>أضف خدمة لهذا الطبيب ضمن منشأة محددة.</p></div>'
+    }${canManageAssignments ? `<form class="doctor-assignment-form service-assignment-form" data-form="service-assignment"><label class="field"><span>الخدمة</span><select name="serviceId" required ${services.length ? '' : 'disabled'}><option value="">اختر خدمة نشطة</option>${services.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><label class="field"><span>المنشأة</span><select name="facilityId" data-facility required ${state.facilities.length ? '' : 'disabled'}><option value="">اختر المنشأة</option>${state.facilities.map((item) => `<option value="${esc(item.id)}" ${item.id === state.selectedFacilityId ? 'selected' : ''}>${esc(item.name)}</option>`).join('')}</select></label><label class="field"><span>الفرع (اختياري)</span><select name="branchId" ${!state.selectedFacilityId || state.branchLoading ? 'disabled' : ''}><option value="">كل فروع المنشأة</option>${state.branches.map((item) => `<option value="${esc(item.id)}">${esc(item.name)}</option>`).join('')}</select></label><button class="btn btn-primary service-submit" type="submit" ${state.assignmentSaving || !services.length || !state.facilities.length ? 'disabled' : ''}>${state.assignmentSaving ? 'جارٍ الربط…' : 'إضافة ارتباط'}</button></form>${!services.length ? '<p class="service-hint">لا توجد خدمات نشطة متاحة في الكتالوج.</p>' : ''}${!state.facilities.length ? '<p class="service-hint">لا توجد منشآت نشطة متاحة.</p>' : ''}${state.branchLoading ? '<p class="service-hint">جارٍ تحميل فروع المنشأة…</p>' : ''}` : ''}</section>`;
   }
 
   async function onSubmit(event) {
@@ -260,6 +370,41 @@
         render();
       }
     }
+    if (form.dataset.form === 'service-assignment') {
+      if (
+        !allowed(P.manage) ||
+        !allowed(P.servicesManage) ||
+        !allowed(P.servicesRead) ||
+        !allowed(P.facilitiesRead) ||
+        !allowed(P.branchesRead)
+      ) return;
+      const data = new FormData(form);
+      const serviceId = String(data.get('serviceId') || '');
+      const facilityId = String(data.get('facilityId') || '');
+      const branchId = String(data.get('branchId') || '');
+      if (!serviceId || !facilityId || !state.services.some((item) => item.id === serviceId && item.status === 'ACTIVE')) {
+        state.assignmentError = 'اختر خدمة نشطة ومنشأة صالحة.';
+        render();
+        return;
+      }
+      state.assignmentSaving = true;
+      state.assignmentError = '';
+      render();
+      try {
+        await api.assignDoctorService(state.workspace.tenantId, state.selectedId, {
+          serviceId,
+          facilityId,
+          ...(branchId ? { branchId } : {}),
+        });
+        state.success = 'تم ربط الخدمة بالطبيب ضمن النطاق المحدد.';
+        state.assignmentSaving = false;
+        await loadDoctorServices();
+      } catch (error) {
+        state.assignmentSaving = false;
+        state.assignmentError = message(error);
+        render();
+      }
+    }
   }
 
   async function onClick(event) {
@@ -279,9 +424,12 @@
     }
     if (button.dataset.action === 'select') {
       state.selectedId = button.dataset.id;
+      state.serviceAssignments = [];
       state.editId = '';
-      return render();
+      render();
+      return loadDoctorServices();
     }
+    if (button.dataset.action === 'retry-services') return loadDoctorServices();
     if (button.dataset.action === 'edit') {
       state.editId = button.dataset.id;
       return render();
@@ -323,11 +471,49 @@
         render();
       }
     }
+    if (button.dataset.action === 'remove-service') {
+      if (
+        !allowed(P.manage) ||
+        !allowed(P.servicesManage) ||
+        !allowed(P.servicesRead) ||
+        !allowed(P.facilitiesRead) ||
+        !allowed(P.branchesRead)
+      ) return;
+      const { serviceId, facilityId, branchId } = button.dataset;
+      if (!serviceId || !facilityId) return;
+      const assignment = state.serviceAssignments.find(
+        (item) =>
+          item.serviceId === serviceId &&
+          item.facilityId === facilityId &&
+          String(item.branchId || '') === String(branchId || ''),
+      );
+      const scope = assignment
+        ? `${assignment.facilityName || 'المنشأة'}${assignment.branchName ? ` · ${assignment.branchName}` : ' · جميع الفروع'}`
+        : 'النطاق المحدد';
+      if (!window.confirm(`سيُزال ارتباط الخدمة من ${scope} فقط. هل تريد المتابعة؟`)) return;
+      try {
+        await api.unassignDoctorService(
+          state.workspace.tenantId,
+          state.selectedId,
+          serviceId,
+          facilityId,
+          branchId || undefined,
+        );
+        state.success = 'تمت إزالة ارتباط الخدمة من النطاق المحدد.';
+        await loadDoctorServices();
+      } catch (error) {
+        state.assignmentError = message(error);
+        render();
+      }
+    }
   }
   function onChange(event) {
     if (event.target.matches('[data-status]')) {
       state.status = event.target.value;
       void loadData();
+    }
+    if (event.target.matches('[data-facility]')) {
+      void loadBranches(event.target.value);
     }
   }
   function onInput(event) {

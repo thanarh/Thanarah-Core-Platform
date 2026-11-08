@@ -77,8 +77,27 @@ export const doctorDepartmentAssignmentSchema = z.object({ departmentId: uuid })
 
 export const doctorSpecialtyAssignmentSchema = z.object({ specialtyId: uuid }).strict();
 
+export const doctorServiceAssignmentSchema = z
+  .object({
+    serviceId: uuid,
+    facilityId: uuid,
+    branchId: uuid.optional().nullable(),
+  })
+  .strict()
+  .transform((input) => ({ ...input, branchId: input.branchId ?? null }));
+
+export const doctorServiceAssignmentLocationSchema = z
+  .object({
+    facilityId: uuid,
+    branchId: uuid.optional().nullable(),
+  })
+  .strict()
+  .transform((input) => ({ ...input, branchId: input.branchId ?? null }));
+
 export type CreateDoctorInput = z.infer<typeof createDoctorSchema>;
 export type UpdateDoctorInput = z.infer<typeof updateDoctorSchema>;
 export type ListDoctorsQuery = z.infer<typeof listDoctorsQuerySchema>;
 export type DoctorDepartmentAssignmentInput = z.infer<typeof doctorDepartmentAssignmentSchema>;
 export type DoctorSpecialtyAssignmentInput = z.infer<typeof doctorSpecialtyAssignmentSchema>;
+export type DoctorServiceAssignmentInput = z.infer<typeof doctorServiceAssignmentSchema>;
+export type DoctorServiceAssignmentLocation = z.infer<typeof doctorServiceAssignmentLocationSchema>;

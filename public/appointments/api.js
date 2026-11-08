@@ -660,6 +660,27 @@
       );
     },
 
+    listDoctorServices(tenantId, doctorId) {
+      return request(
+        tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/services`),
+      );
+    },
+
+    assignDoctorService(tenantId, doctorId, input) {
+      return request(
+        tenantPath(tenantId, `/doctors/${encodeURIComponent(doctorId)}/services`),
+        { method: 'POST', body: input },
+      );
+    },
+
+    unassignDoctorService(tenantId, doctorId, serviceId, facilityId, branchId) {
+      const path = tenantPath(
+        tenantId,
+        `/doctors/${encodeURIComponent(doctorId)}/services/${encodeURIComponent(serviceId)}`,
+      );
+      return request(withQuery(path, { facilityId, branchId }), { method: 'DELETE' });
+    },
+
     listDepartments(tenantId, options = {}) {
       return request(withQuery(tenantPath(tenantId, '/departments'), listOptions(options)));
     },

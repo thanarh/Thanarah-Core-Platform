@@ -44,22 +44,28 @@ import {
   createDoctorSchema,
   doctorDepartmentAssignmentSchema,
   doctorIdSchema,
+  doctorServiceAssignmentLocationSchema,
+  doctorServiceAssignmentSchema,
   doctorSpecialtyAssignmentSchema,
   listDoctorsQuerySchema,
   updateDoctorSchema,
   type CreateDoctorInput,
   type DoctorDepartmentAssignmentInput,
+  type DoctorServiceAssignmentInput,
+  type DoctorServiceAssignmentLocation,
   type DoctorSpecialtyAssignmentInput,
   type ListDoctorsQuery,
   type UpdateDoctorInput,
 } from './doctor.dto';
 import {
   AssignDoctorDepartmentRequestDto,
+  AssignDoctorServiceRequestDto,
   AssignDoctorSpecialtyRequestDto,
   CreateDoctorRequestDto,
   DoctorDepartmentListResponseDto,
   DoctorListResponseDto,
   DoctorResponseDto,
+  DoctorServiceAssignmentListResponseDto,
   DoctorSpecialtyListResponseDto,
   UpdateDoctorRequestDto,
 } from './doctor.openapi';
@@ -377,6 +383,94 @@ export class DoctorController {
       context,
       doctorId,
       specialtyId,
+      actor,
+      this.requestContext(request),
+    );
+  }
+
+  @Get(':doctorId/services')
+  @RequireTenantPermissions(
+    'tenant.doctors.read',
+    'tenant.services.read',
+    'tenant.facilities.read',
+    'tenant.branches.read',
+  )
+  @ApiParam({ name: 'tenantId', description: 'Tenant selector validated as trusted context' })
+  @ApiParam({ name: 'doctorId', description: 'Doctor profile identifier', format: 'uuid' })
+  @ApiOperation({ summary: 'List a Doctor’s service assignments by facility and branch' })
+  @ApiOkResponse({ type: DoctorServiceAssignmentListResponseDto })
+  @ApiBadRequestResponse({ description: 'Doctor identifier is invalid' })
+  @ApiNotFoundResponse({ description: 'Doctor profile was not found in this tenant' })
+  listServiceAssignments(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('doctorId', new ZodValidationPipe(doctorIdSchema)) doctorId: string,
+  ): ReturnType<DoctorService['listServiceAssignments']> {
+    return this.doctors.listServiceAssignments(context, doctorId);
+  }
+
+  @Post(':doctorId/services')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireTenantPermissions(
+    'tenant.doctors.manage',
+    'tenant.services.manage',
+    'tenant.facilities.read',
+    'tenant.branches.read',
+  )
+  @ApiParam({ name: 'tenantId', description: 'Tenant selector validated as trusted context' })
+  @ApiParam({ name: 'doctorId', description: 'Doctor profile identifier', format: 'uuid' })
+  @ApiOperation({
+    summary: 'Assign an active same-tenant service to a Doctor at a facility or branch',
+    description:
+      'The facility must be active. If branchId is supplied, that active branch must belong to facilityId. The Doctor’s Staff profile must be assigned to that facility or, for a branch-specific assignment, that branch.',
+  })
+  @ApiBody({ type: AssignDoctorServiceRequestDto })
+  @ApiCreatedResponse({ description: 'The scoped Doctor service assignment was created' })
+  @ApiBadRequestResponse({ description: 'The assignment identifiers are invalid' })
+  @ApiConflictResponse({
+    description: 'The Doctor is deactivated, outside this location, or already assigned',
+  })
+  @ApiNotFoundResponse({ description: 'An active same-tenant service or location was not found' })
+  assignService(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('doctorId', new ZodValidationPipe(doctorIdSchema)) doctorId: string,
+    @Body(new ZodValidationPipe(doctorServiceAssignmentSchema))
+    body: DoctorServiceAssignmentInput,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<DoctorService['assignService']> {
+    return this.doctors.assignService(context, doctorId, body, actor, this.requestContext(request));
+  }
+
+  @Delete(':doctorId/services/:serviceId')
+  @RequireTenantPermissions(
+    'tenant.doctors.manage',
+    'tenant.services.manage',
+    'tenant.facilities.read',
+    'tenant.branches.read',
+  )
+  @ApiParam({ name: 'tenantId', description: 'Tenant selector validated as trusted context' })
+  @ApiParam({ name: 'doctorId', description: 'Doctor profile identifier', format: 'uuid' })
+  @ApiParam({ name: 'serviceId', description: 'Service identifier', format: 'uuid' })
+  @ApiQuery({ name: 'facilityId', required: true, type: String, format: 'uuid' })
+  @ApiQuery({ name: 'branchId', required: false, type: String, format: 'uuid' })
+  @ApiOperation({ summary: 'Remove a Doctor service assignment from one facility or branch' })
+  @ApiOkResponse({ description: 'The scoped Doctor service assignment was removed' })
+  @ApiBadRequestResponse({ description: 'The assignment identifiers are invalid' })
+  @ApiNotFoundResponse({ description: 'The assignment was not found in this tenant and scope' })
+  unassignService(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('doctorId', new ZodValidationPipe(doctorIdSchema)) doctorId: string,
+    @Param('serviceId', new ZodValidationPipe(doctorIdSchema)) serviceId: string,
+    @Query(new ZodValidationPipe(doctorServiceAssignmentLocationSchema))
+    location: DoctorServiceAssignmentLocation,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ): ReturnType<DoctorService['unassignService']> {
+    return this.doctors.unassignService(
+      context,
+      doctorId,
+      serviceId,
+      location,
       actor,
       this.requestContext(request),
     );

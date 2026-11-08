@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { StaffStatus, TenantCatalogStatus } from '@prisma/client';
+import { DoctorServiceAssignmentScope, StaffStatus, TenantCatalogStatus } from '@prisma/client';
 
 export class CreateDoctorRequestDto {
   @ApiProperty({ type: String, format: 'uuid' })
@@ -105,6 +105,41 @@ export class DoctorSpecialtyDto {
   assignedAt!: Date;
 }
 
+export class DoctorServiceAssignmentDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  doctorId!: string;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  serviceId!: string;
+
+  @ApiProperty({ type: String, maxLength: 191 })
+  serviceName!: string;
+
+  @ApiProperty({ type: String, enum: TenantCatalogStatus })
+  serviceStatus!: TenantCatalogStatus;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  facilityId!: string;
+
+  @ApiProperty({ type: String, maxLength: 191 })
+  facilityName!: string;
+
+  @ApiProperty({ type: String, format: 'uuid', nullable: true })
+  branchId!: string | null;
+
+  @ApiProperty({ type: String, maxLength: 191, nullable: true })
+  branchName!: string | null;
+
+  @ApiProperty({ type: String, enum: DoctorServiceAssignmentScope })
+  scopeType!: DoctorServiceAssignmentScope;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  scopeId!: string;
+
+  @ApiProperty({ type: String, format: 'date-time' })
+  assignedAt!: Date;
+}
+
 export class DoctorStaffDto {
   @ApiProperty({ type: String, format: 'uuid' })
   id!: string;
@@ -190,6 +225,11 @@ export class DoctorSpecialtyListResponseDto {
   items!: DoctorSpecialtyDto[];
 }
 
+export class DoctorServiceAssignmentListResponseDto {
+  @ApiProperty({ type: [DoctorServiceAssignmentDto] })
+  items!: DoctorServiceAssignmentDto[];
+}
+
 export class AssignDoctorDepartmentRequestDto {
   @ApiProperty({ type: String, format: 'uuid' })
   departmentId!: string;
@@ -198,4 +238,15 @@ export class AssignDoctorDepartmentRequestDto {
 export class AssignDoctorSpecialtyRequestDto {
   @ApiProperty({ type: String, format: 'uuid' })
   specialtyId!: string;
+}
+
+export class AssignDoctorServiceRequestDto {
+  @ApiProperty({ type: String, format: 'uuid' })
+  serviceId!: string;
+
+  @ApiProperty({ type: String, format: 'uuid' })
+  facilityId!: string;
+
+  @ApiPropertyOptional({ type: String, format: 'uuid', nullable: true })
+  branchId?: string | null;
 }

@@ -16,11 +16,15 @@ import {
   createDoctorSchema,
   doctorDepartmentAssignmentSchema,
   doctorIdSchema,
+  doctorServiceAssignmentLocationSchema,
+  doctorServiceAssignmentSchema,
   doctorSpecialtyAssignmentSchema,
   listDoctorsQuerySchema,
   updateDoctorSchema,
   type CreateDoctorInput,
   type DoctorDepartmentAssignmentInput,
+  type DoctorServiceAssignmentInput,
+  type DoctorServiceAssignmentLocation,
   type DoctorSpecialtyAssignmentInput,
   type ListDoctorsQuery,
   type UpdateDoctorInput,
@@ -35,6 +39,10 @@ import {
   DoctorLifecycleConflictError,
   DoctorNotFoundError,
   DoctorProfessionalCodeConflictError,
+  DoctorServiceAssignmentConflictError,
+  DoctorServiceAssignmentNotFoundError,
+  DoctorServiceAssignmentScopeConflictError,
+  DoctorServiceAssignmentTargetNotFoundError,
   DoctorStaffIneligibleError,
   DoctorStaffNotFoundError,
   DoctorTenantUnavailableError,
@@ -45,6 +53,7 @@ import {
   type DoctorMutationResult,
   type DoctorPersistencePort,
   type DoctorRecord,
+  type DoctorServiceAssignmentRecord,
 } from '../persistence/platform-persistence.ports';
 
 export type DoctorAuditContext = Pick<
@@ -65,6 +74,8 @@ export interface DoctorSpecialtyResponse {
   status: TenantCatalogStatus;
   assignedAt: Date;
 }
+
+export type DoctorServiceAssignmentResponse = DoctorServiceAssignmentRecord;
 
 export interface DoctorResponse {
   id: string;
@@ -306,6 +317,106 @@ export class DoctorService {
     return { items: doctor.specialties };
   }
 
+  async listServiceAssignments(
+    context: TrustedTenantContext,
+    doctorId: string,
+  ): Promise<{ items: DoctorServiceAssignmentResponse[] }> {
+    const tenantId = this.tenantId(context);
+    const id = this.id(doctorId);
+    if (!(await this.doctors.findByIdForTenant(tenantId, id))) throw new DoctorNotFoundError();
+    const items = await this.doctors.listServiceAssignments(tenantId, id);
+    return { items };
+  }
+
+  async assignService(
+    context: TrustedTenantContext,
+    doctorId: string,
+    input: DoctorServiceAssignmentInput,
+    actor: AuthenticatedPlatformUser,
+    requestContext: DoctorAuditContext = {},
+  ): Promise<DoctorServiceAssignmentResponse> {
+    const tenantId = this.tenantId(context);
+    this.assertActor(context, actor);
+    const id = this.id(doctorId);
+    const parsed = doctorServiceAssignmentSchema.safeParse(input);
+    if (!parsed.success) throw new DoctorInputValidationError();
+    const assignment = this.serviceAssignmentChanged(
+      await this.doctors.assignService(tenantId, id, {
+        serviceId: parsed.data.serviceId,
+        facilityId: parsed.data.facilityId,
+        branchId: parsed.data.branchId,
+      }),
+    );
+    await this.audit.recordAudit({
+      eventType: PlatformAuditEventType.DOCTOR_SERVICE_ASSIGNED,
+      actorUserId: actor.userId,
+      subjectTenantId: tenantId,
+      sessionId: actor.sessionId,
+      ...requestContext,
+      metadata: {
+        doctorId: id,
+        serviceId: assignment.serviceId,
+        facilityId: assignment.facilityId,
+        branchId: assignment.branchId,
+        scopeType: assignment.scopeType,
+      },
+    });
+    return assignment;
+  }
+
+  async unassignService(
+    context: TrustedTenantContext,
+    doctorId: string,
+    serviceId: string,
+    location: DoctorServiceAssignmentLocation,
+    actor: AuthenticatedPlatformUser,
+    requestContext: DoctorAuditContext = {},
+  ): Promise<DoctorServiceAssignmentResponse> {
+    const tenantId = this.tenantId(context);
+    this.assertActor(context, actor);
+    const id = this.id(doctorId);
+    const targetId = this.id(serviceId);
+    const parsed = doctorServiceAssignmentLocationSchema.safeParse(location);
+    if (!parsed.success) throw new DoctorInputValidationError();
+    const assignment = this.serviceAssignmentChanged(
+      await this.doctors.unassignService(tenantId, id, {
+        serviceId: targetId,
+        facilityId: parsed.data.facilityId,
+        branchId: parsed.data.branchId,
+      }),
+    );
+    await this.audit.recordAudit({
+      eventType: PlatformAuditEventType.DOCTOR_SERVICE_UNASSIGNED,
+      actorUserId: actor.userId,
+      subjectTenantId: tenantId,
+      sessionId: actor.sessionId,
+      ...requestContext,
+      metadata: {
+        doctorId: id,
+        serviceId: targetId,
+        facilityId: assignment.facilityId,
+        branchId: assignment.branchId,
+        scopeType: assignment.scopeType,
+      },
+    });
+    return assignment;
+  }
+
+  async hasServiceAssignment(
+    context: TrustedTenantContext,
+    doctorId: string,
+    serviceId: string,
+    facilityId: string,
+    branchId: string | null,
+  ): Promise<boolean> {
+    const tenantId = this.tenantId(context);
+    const id = this.id(doctorId);
+    const service = this.id(serviceId);
+    const facility = this.id(facilityId);
+    const branch = branchId === null ? null : this.id(branchId);
+    return this.doctors.hasServiceAssignment(tenantId, id, service, facility, branch);
+  }
+
   async assignSpecialty(
     context: TrustedTenantContext,
     doctorId: string,
@@ -458,6 +569,20 @@ export class DoctorService {
       throw new DoctorAssignmentNotFoundError(target ?? 'department');
     }
     throw new DoctorLifecycleConflictError();
+  }
+
+  private serviceAssignmentChanged(
+    result: Awaited<ReturnType<DoctorPersistencePort['assignService']>>,
+  ): DoctorServiceAssignmentRecord {
+    if (result.kind === 'changed') return result.assignment;
+    if (result.kind === 'tenant-inactive') throw new DoctorTenantUnavailableError();
+    if (result.kind === 'doctor-not-found') throw new DoctorNotFoundError();
+    if (result.kind === 'doctor-deactivated') throw new DoctorLifecycleConflictError();
+    if (result.kind === 'target-not-found') throw new DoctorServiceAssignmentTargetNotFoundError();
+    if (result.kind === 'doctor-out-of-scope')
+      throw new DoctorServiceAssignmentScopeConflictError();
+    if (result.kind === 'assignment-conflict') throw new DoctorServiceAssignmentConflictError();
+    throw new DoctorServiceAssignmentNotFoundError();
   }
 
   private tenantId(context: TrustedTenantContext): string {

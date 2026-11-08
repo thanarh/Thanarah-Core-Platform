@@ -52,7 +52,7 @@ type AppointmentServiceHarness = {
     update: MockFunction;
   };
   patients: { findById: MockFunction };
-  doctors: { findById: MockFunction };
+  doctors: { findById: MockFunction; hasServiceAssignment: MockFunction };
   facilities: { findById: MockFunction };
   branches: { findById: MockFunction };
   services: { findById: MockFunction };
@@ -163,6 +163,7 @@ function makeService(): AppointmentServiceHarness {
       staffId,
       operationallyActive: true,
     }),
+    hasServiceAssignment: vi.fn().mockResolvedValue(true),
   };
   const facilities = {
     findById: vi.fn().mockResolvedValue({ id: facilityId, status: 'ACTIVE' }),
@@ -306,6 +307,48 @@ describe('AppointmentService', () => {
     expect(harness.lockedStorage.create).not.toHaveBeenCalled();
   });
 
+  it('rejects a new appointment when the service is not assigned to that doctor and location', async () => {
+    const harness = makeService();
+    harness.doctors.hasServiceAssignment.mockResolvedValueOnce(false);
+
+    await expect(
+      harness.service.create(context, createInput() as never, actor),
+    ).rejects.toBeInstanceOf(AppointmentReferenceInvalidError);
+    expect(harness.doctors.hasServiceAssignment).toHaveBeenCalledWith(
+      context,
+      doctorId,
+      serviceId,
+      facilityId,
+      branchId,
+    );
+    expect(harness.lockedStorage.create).not.toHaveBeenCalled();
+  });
+
+  it('checks a changed service but preserves unchanged legacy service references', async () => {
+    const harness = makeService();
+    harness.doctors.hasServiceAssignment.mockResolvedValueOnce(false);
+
+    await expect(
+      harness.service.update(
+        context,
+        appointmentId,
+        { serviceId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa' } as never,
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(AppointmentReferenceInvalidError);
+    expect(harness.appointments.update).not.toHaveBeenCalled();
+
+    harness.doctors.hasServiceAssignment.mockClear();
+    const updated = await harness.service.update(
+      context,
+      appointmentId,
+      { reason: 'Legacy appointment remains editable' } as never,
+      actor,
+    );
+    expect(updated.reason).toBe('Legacy appointment remains editable');
+    expect(harness.doctors.hasServiceAssignment).not.toHaveBeenCalled();
+  });
+
   it('rejects observed provider overlap and does not insert', async () => {
     const harness = makeService();
     harness.appointments.hasProviderOverlap.mockResolvedValueOnce(true);
@@ -321,6 +364,7 @@ describe('AppointmentService', () => {
 
   it('reschedules without conflicting with the appointment itself', async () => {
     const harness = makeService();
+    harness.doctors.hasServiceAssignment.mockResolvedValue(false);
     const nextStart = new Date('2026-10-15T10:00:00.000Z');
     const nextEnd = new Date('2026-10-15T10:45:00.000Z');
     const input = {
@@ -343,9 +387,37 @@ describe('AppointmentService', () => {
       expect.objectContaining({ startsAt: nextStart, endsAt: nextEnd }),
     );
     expect(result.startsAt).toEqual(nextStart);
+    expect(harness.doctors.hasServiceAssignment).not.toHaveBeenCalled();
     expect(harness.audit.recordAudit).toHaveBeenCalledWith(
       expect.objectContaining({ eventType: 'APPOINTMENT_RESCHEDULED' }),
     );
+  });
+
+  it('requires a service assignment when rescheduling changes the doctor', async () => {
+    const harness = makeService();
+    const nextDoctorId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    harness.doctors.hasServiceAssignment.mockResolvedValue(false);
+
+    await expect(
+      harness.service.reschedule(
+        context,
+        appointmentId,
+        {
+          doctorId: nextDoctorId,
+          startsAt: '2026-10-15T10:00:00.000Z',
+          endsAt: '2026-10-15T10:30:00.000Z',
+        } as never,
+        actor,
+      ),
+    ).rejects.toBeInstanceOf(AppointmentReferenceInvalidError);
+    expect(harness.doctors.hasServiceAssignment).toHaveBeenCalledWith(
+      context,
+      nextDoctorId,
+      serviceId,
+      facilityId,
+      branchId,
+    );
+    expect(harness.appointments.update).not.toHaveBeenCalled();
   });
 
   it('cancels once, treats repeated cancellation idempotently, and blocks reactivation by update', async () => {

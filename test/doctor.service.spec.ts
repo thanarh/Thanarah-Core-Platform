@@ -13,11 +13,14 @@ import {
   DoctorInputValidationError,
   DoctorLifecycleConflictError,
   DoctorProfessionalCodeConflictError,
+  DoctorServiceAssignmentConflictError,
+  DoctorServiceAssignmentScopeConflictError,
+  DoctorServiceAssignmentTargetNotFoundError,
   DoctorStaffIneligibleError,
   DoctorStaffNotFoundError,
 } from '../src/tenant/doctor.errors';
 import { DoctorService } from '../src/tenant/doctor.service';
-import type { DoctorRecord } from '../src/tenant/doctor.repository';
+import type { DoctorRecord, DoctorServiceAssignmentRecord } from '../src/tenant/doctor.repository';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const actorUserId = '22222222-2222-4222-8222-222222222222';
@@ -26,6 +29,9 @@ const staffId = '44444444-4444-4444-8444-444444444444';
 const doctorId = '55555555-5555-4555-8555-555555555555';
 const departmentId = '66666666-6666-4666-8666-666666666666';
 const specialtyId = '77777777-7777-4777-8777-777777777777';
+const serviceId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+const facilityId = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
+const branchId = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
 const fixedTime = new Date('2026-10-07T10:00:00.000Z');
 
 const context = {
@@ -93,6 +99,23 @@ function doctorRecord(
   } as DoctorRecord;
 }
 
+function serviceAssignment(): DoctorServiceAssignmentRecord {
+  return {
+    tenantId,
+    doctorId,
+    serviceId,
+    serviceName: 'Consultation',
+    serviceStatus: TenantCatalogStatus.ACTIVE,
+    facilityId,
+    facilityName: 'Central Clinic',
+    branchId,
+    branchName: 'North Branch',
+    scopeType: 'BRANCH',
+    scopeId: branchId,
+    assignedAt: fixedTime,
+  };
+}
+
 describe('DoctorService', () => {
   const repository = {
     create: vi.fn(),
@@ -104,6 +127,10 @@ describe('DoctorService', () => {
     unassignDepartment: vi.fn(),
     assignSpecialty: vi.fn(),
     unassignSpecialty: vi.fn(),
+    listServiceAssignments: vi.fn(),
+    assignService: vi.fn(),
+    unassignService: vi.fn(),
+    hasServiceAssignment: vi.fn(),
   };
   const audit = { recordAudit: vi.fn() };
   let service: DoctorService;
@@ -123,6 +150,16 @@ describe('DoctorService', () => {
     repository.unassignDepartment.mockResolvedValue({ kind: 'changed', doctor: doctorRecord() });
     repository.assignSpecialty.mockResolvedValue({ kind: 'changed', doctor: doctorRecord() });
     repository.unassignSpecialty.mockResolvedValue({ kind: 'changed', doctor: doctorRecord() });
+    repository.listServiceAssignments.mockResolvedValue([serviceAssignment()]);
+    repository.assignService.mockResolvedValue({
+      kind: 'changed',
+      assignment: serviceAssignment(),
+    });
+    repository.unassignService.mockResolvedValue({
+      kind: 'changed',
+      assignment: serviceAssignment(),
+    });
+    repository.hasServiceAssignment.mockResolvedValue(true);
     service = new DoctorService(repository as never, audit as never);
   });
 
@@ -642,6 +679,68 @@ describe('DoctorService', () => {
         eventType: PlatformAuditEventType.DOCTOR_SPECIALTY_UNASSIGNED,
       }),
     );
+  });
+
+  it('lists, creates, removes and checks location-scoped service assignments', async () => {
+    expect(await service.listServiceAssignments(context, doctorId)).toEqual({
+      items: [serviceAssignment()],
+    });
+    expect(repository.listServiceAssignments).toHaveBeenCalledWith(tenantId, doctorId);
+
+    const assigned = await service.assignService(
+      context,
+      doctorId,
+      { serviceId, facilityId, branchId },
+      actor,
+    );
+    expect(assigned).toEqual(serviceAssignment());
+    expect(repository.assignService).toHaveBeenCalledWith(tenantId, doctorId, {
+      serviceId,
+      facilityId,
+      branchId,
+    });
+    expect(audit.recordAudit).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.DOCTOR_SERVICE_ASSIGNED,
+        subjectTenantId: tenantId,
+        metadata: expect.objectContaining({ doctorId, serviceId, facilityId, branchId }),
+      }),
+    );
+
+    await service.unassignService(context, doctorId, serviceId, { facilityId, branchId }, actor);
+    expect(repository.unassignService).toHaveBeenCalledWith(tenantId, doctorId, {
+      serviceId,
+      facilityId,
+      branchId,
+    });
+    expect(audit.recordAudit).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        eventType: PlatformAuditEventType.DOCTOR_SERVICE_UNASSIGNED,
+      }),
+    );
+    await expect(
+      service.hasServiceAssignment(context, doctorId, serviceId, facilityId, branchId),
+    ).resolves.toBe(true);
+  });
+
+  it('rejects malformed service assignment IDs and maps target, scope and duplicate failures', async () => {
+    await expect(
+      service.assignService(context, doctorId, { serviceId: 'invalid', facilityId }, actor),
+    ).rejects.toBeInstanceOf(DoctorInputValidationError);
+    expect(repository.assignService).not.toHaveBeenCalled();
+
+    repository.assignService.mockResolvedValueOnce({ kind: 'doctor-out-of-scope' });
+    await expect(
+      service.assignService(context, doctorId, { serviceId, facilityId }, actor),
+    ).rejects.toBeInstanceOf(DoctorServiceAssignmentScopeConflictError);
+    repository.assignService.mockResolvedValueOnce({ kind: 'target-not-found' });
+    await expect(
+      service.assignService(context, doctorId, { serviceId, facilityId }, actor),
+    ).rejects.toBeInstanceOf(DoctorServiceAssignmentTargetNotFoundError);
+    repository.assignService.mockResolvedValueOnce({ kind: 'assignment-conflict' });
+    await expect(
+      service.assignService(context, doctorId, { serviceId, facilityId }, actor),
+    ).rejects.toBeInstanceOf(DoctorServiceAssignmentConflictError);
   });
 
   it('does not infer one catalog relationship from the other', async () => {

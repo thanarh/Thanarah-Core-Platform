@@ -3341,7 +3341,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       expect(
         await setupPrisma.staffRoleAssignment.findUnique({
-          where: { staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId } },
+          where: {
+            staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId },
+          },
         }),
       ).not.toBeNull();
       const removeStaffRole = evaluateBrowser(
@@ -3357,7 +3359,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       expect(
         await setupPrisma.staffRoleAssignment.findUnique({
-          where: { staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId } },
+          where: {
+            staffId_tenantRoleId: { staffId: temporaryStaff.id, tenantRoleId: tenantA.roleId },
+          },
         }),
       ).toBeNull();
       await evaluateBrowser(
@@ -3387,7 +3391,9 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       );
       expect(
         await setupPrisma.staffFacilityAssignment.findUnique({
-          where: { staffId_facilityId: { staffId: temporaryStaff.id, facilityId: clinicalFacilityId } },
+          where: {
+            staffId_facilityId: { staffId: temporaryStaff.id, facilityId: clinicalFacilityId },
+          },
         }),
       ).toBeNull();
       await evaluateBrowser(
@@ -3708,6 +3714,128 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
         `document.body.innerText.includes(${JSON.stringify(doctorSpecialtyUpdatedName)})`,
         'doctor department and specialty detail',
       );
+      const unassignedBookingStart = new Date(Date.now() + 5 * 24 * 60 * 60 * 1_000);
+      const unassignedBookingPayload = {
+        patientId: browserPatientId,
+        doctorId: browserDoctor.id,
+        facilityId: clinicalFacilityId,
+        branchId: clinicalBranchId,
+        serviceId: doctorService.id,
+        startsAt: unassignedBookingStart.toISOString(),
+        endsAt: new Date(unassignedBookingStart.getTime() + 30 * 60 * 1_000).toISOString(),
+      };
+      const unassignedBooking = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/appointments`,
+        headers: bearerHeaders(),
+        payload: unassignedBookingPayload,
+      });
+      expect(unassignedBooking.statusCode, unassignedBooking.body).toBe(422);
+
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="service-assignment"] [name="serviceId"] option[value="${doctorService.id}"]')) &&
+          Boolean(document.querySelector('form[data-form="service-assignment"] [name="facilityId"] option[value="${clinicalFacilityId}"]'))`,
+        'service assignment form with active catalog and facility options',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="service-assignment"]');
+          const facility = form?.querySelector('[name="facilityId"]');
+          if (!facility) return false;
+          facility.value = ${JSON.stringify(clinicalFacilityId)};
+          facility.dispatchEvent(new Event('change', { bubbles: true }));
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Boolean(document.querySelector('form[data-form="service-assignment"] [name="branchId"] option[value="${clinicalBranchId}"]'))`,
+        'active branch option for the selected facility',
+      );
+      await evaluateBrowser(
+        client,
+        `(() => {
+          const form = document.querySelector('form[data-form="service-assignment"]');
+          if (!form) return false;
+          form.querySelector('[name="serviceId"]').value = ${JSON.stringify(doctorService.id)};
+          form.querySelector('[name="branchId"]').value = ${JSON.stringify(clinicalBranchId)};
+          form.requestSubmit();
+          return true;
+        })()`,
+      );
+      await waitForBrowserCondition(
+        client,
+        `Array.from(document.querySelectorAll('.service-assignment-row')).some((row) =>
+          row.innerText.includes(${JSON.stringify(doctorServiceUpdatedName)}) &&
+          row.innerText.includes('Assigned Branch'))`,
+        'branch-scoped doctor service assignment created through the UI',
+      );
+      expect(
+        await setupPrisma.doctorServiceAssignment.findFirst({
+          where: {
+            tenantId: tenantA.id,
+            doctorId: browserDoctor.id,
+            serviceId: doctorService.id,
+            facilityId: clinicalFacilityId,
+            branchId: clinicalBranchId,
+            scopeType: 'BRANCH',
+            scopeId: clinicalBranchId,
+          },
+        }),
+      ).not.toBeNull();
+      const assignedBooking = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/appointments`,
+        headers: bearerHeaders(),
+        payload: unassignedBookingPayload,
+      });
+      expect(assignedBooking.statusCode, assignedBooking.body).toBe(201);
+      const assignedAppointmentId = assignedBooking.json<{ id: string }>().id;
+      const assignmentRequiredCrossTenantService = await getApplication().inject({
+        method: 'POST',
+        url: `${tenantRoot(tenantA)}/doctors/${browserDoctor.id}/services`,
+        headers: bearerHeaders(),
+        payload: { serviceId: otherTenantServiceId, facilityId: clinicalFacilityId },
+      });
+      expect(assignmentRequiredCrossTenantService.statusCode).toBe(404);
+      expect(
+        await mongoAdminClient!
+          .db(tenantA.databaseName)
+          .collection('appointments')
+          .deleteOne({ _id: assignedAppointmentId, _tenantId: tenantA.id }),
+      ).toMatchObject({ deletedCount: 1 });
+      const removeDoctorServiceAssignment = evaluateBrowser(
+        client,
+        `(() => {
+          const button = document.querySelector(
+            '[data-action="remove-service"][data-service-id="${doctorService.id}"][data-facility-id="${clinicalFacilityId}"][data-branch-id="${clinicalBranchId}"]'
+          );
+          button?.click();
+          return Boolean(button);
+        })()`,
+      );
+      await respondToDialog('confirm');
+      await removeDoctorServiceAssignment;
+      await waitForBrowserCondition(
+        client,
+        `!document.querySelector(
+          '[data-action="remove-service"][data-service-id="${doctorService.id}"][data-facility-id="${clinicalFacilityId}"][data-branch-id="${clinicalBranchId}"]'
+        )`,
+        'branch-scoped doctor service assignment removed through the UI',
+      );
+      expect(
+        await setupPrisma.doctorServiceAssignment.findFirst({
+          where: {
+            tenantId: tenantA.id,
+            doctorId: browserDoctor.id,
+            serviceId: doctorService.id,
+            facilityId: clinicalFacilityId,
+            branchId: clinicalBranchId,
+          },
+        }),
+      ).toBeNull();
       await evaluateBrowser(client, `document.querySelector('[data-action="edit"]')?.click()`);
       await waitForBrowserCondition(
         client,
@@ -3743,7 +3871,10 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       expect(
         await setupPrisma.doctorDepartmentAssignment.findUnique({
           where: {
-            doctorId_departmentId: { doctorId: browserDoctor.id, departmentId: doctorDepartment.id },
+            doctorId_departmentId: {
+              doctorId: browserDoctor.id,
+              departmentId: doctorDepartment.id,
+            },
           },
         }),
       ).toBeNull();
@@ -4248,18 +4379,18 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       ).toBe(false);
 
       if (process.env.PHASE30_SKIP_SAAS_BROWSER !== '1') {
-      await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
-      await waitForBrowserCondition(
-        client,
-        `Boolean(document.querySelector('form[data-form="plan"]')) &&
+        await client.send('Page.navigate', { url: `${browserBaseUrl}/platform-saas/` });
+        await waitForBrowserCondition(
+          client,
+          `Boolean(document.querySelector('form[data-form="plan"]')) &&
           document.body.innerText.includes('الخطط والاشتراكات')`,
-        'authenticated platform SaaS workspace',
-      );
-      const planKey = `P70_${RUN_ID}`.toUpperCase();
-      const planName = `Phase 70 Plan ${RUN_ID}`;
-      await evaluateBrowser(
-        client,
-        `(() => {
+          'authenticated platform SaaS workspace',
+        );
+        const planKey = `P70_${RUN_ID}`.toUpperCase();
+        const planName = `Phase 70 Plan ${RUN_ID}`;
+        await evaluateBrowser(
+          client,
+          `(() => {
           const form = document.querySelector('form[data-form="plan"]');
           form.querySelector('[name="key"]').value = ${JSON.stringify(planKey)};
           form.querySelector('[name="name"]').value = ${JSON.stringify(planName)};
@@ -4267,62 +4398,66 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           form.requestSubmit();
           return true;
         })()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes(${JSON.stringify(planName)})`,
-        'platform plan creation',
-      );
-      const platformPlan = await setupPrisma.plan.findUniqueOrThrow({
-        where: { key: planKey },
-        select: { id: true, status: true, name: true },
-      });
-      await evaluateBrowser(
-        client,
-        `(() => {
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes(${JSON.stringify(planName)})`,
+          'platform plan creation',
+        );
+        const platformPlan = await setupPrisma.plan.findUniqueOrThrow({
+          where: { key: planKey },
+          select: { id: true, status: true, name: true },
+        });
+        await evaluateBrowser(
+          client,
+          `(() => {
           const form = document.querySelector('form[data-form="edit-plan"][data-id="${platformPlan.id}"]');
           form.querySelector('[name="name"]').value = ${JSON.stringify(`${planName} Updated`)};
           form.querySelector('[name="description"]').value = 'Updated by browser';
           form.requestSubmit();
           return true;
         })()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes(${JSON.stringify(`${planName} Updated`)})`,
-        'platform plan metadata update',
-      );
-      expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject({
-        name: `${planName} Updated`,
-        description: 'Updated by browser',
-      });
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')`,
-        'platform plan deactivation',
-      );
-      expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject({
-        status: 'INACTIVE',
-      });
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')`,
-        'platform plan reactivation',
-      );
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes(${JSON.stringify(`${planName} Updated`)})`,
+          'platform plan metadata update',
+        );
+        expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject(
+          {
+            name: `${planName} Updated`,
+            description: 'Updated by browser',
+          },
+        );
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')`,
+          'platform plan deactivation',
+        );
+        expect(await setupPrisma.plan.findUnique({ where: { id: platformPlan.id } })).toMatchObject(
+          {
+            status: 'INACTIVE',
+          },
+        );
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="ACTIVE"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="plan-status"][data-id="${platformPlan.id}"][data-status="INACTIVE"]')`,
+          'platform plan reactivation',
+        );
 
-      const featureKey = `F70_${RUN_ID}`.toUpperCase();
-      const featureName = `Phase 70 Feature ${RUN_ID}`;
-      await evaluateBrowser(
-        client,
-        `(() => {
+        const featureKey = `F70_${RUN_ID}`.toUpperCase();
+        const featureName = `Phase 70 Feature ${RUN_ID}`;
+        await evaluateBrowser(
+          client,
+          `(() => {
           const form = document.querySelector('form[data-form="feature"]');
           form.querySelector('[name="key"]').value = ${JSON.stringify(featureKey)};
           form.querySelector('[name="name"]').value = ${JSON.stringify(featureName)};
@@ -4330,60 +4465,60 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           form.requestSubmit();
           return true;
         })()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes(${JSON.stringify(featureName)})`,
-        'platform feature creation',
-      );
-      const platformFeature = await setupPrisma.feature.findUniqueOrThrow({
-        where: { key: featureKey },
-        select: { id: true, status: true },
-      });
-      await evaluateBrowser(
-        client,
-        `(() => {
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes(${JSON.stringify(featureName)})`,
+          'platform feature creation',
+        );
+        const platformFeature = await setupPrisma.feature.findUniqueOrThrow({
+          where: { key: featureKey },
+          select: { id: true, status: true },
+        });
+        await evaluateBrowser(
+          client,
+          `(() => {
           const form = document.querySelector('form[data-form="edit-feature"][data-id="${platformFeature.id}"]');
           form.querySelector('[name="name"]').value = ${JSON.stringify(`${featureName} Updated`)};
           form.querySelector('[name="description"]').value = 'Updated by browser';
           form.requestSubmit();
           return true;
         })()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes(${JSON.stringify(`${featureName} Updated`)})`,
-        'platform feature metadata update',
-      );
-      expect(
-        await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
-      ).toMatchObject({ name: `${featureName} Updated`, description: 'Updated by browser' });
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')`,
-        'platform feature deactivation',
-      );
-      expect(
-        await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
-      ).toMatchObject({ status: 'INACTIVE' });
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')`,
-        'platform feature reactivation',
-      );
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes(${JSON.stringify(`${featureName} Updated`)})`,
+          'platform feature metadata update',
+        );
+        expect(
+          await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
+        ).toMatchObject({ name: `${featureName} Updated`, description: 'Updated by browser' });
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')`,
+          'platform feature deactivation',
+        );
+        expect(
+          await setupPrisma.feature.findUnique({ where: { id: platformFeature.id } }),
+        ).toMatchObject({ status: 'INACTIVE' });
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="ACTIVE"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="feature-status"][data-id="${platformFeature.id}"][data-status="INACTIVE"]')`,
+          'platform feature reactivation',
+        );
 
-      const subscriptionStart = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 16);
-      await evaluateBrowser(
-        client,
-        `(() => {
+        const subscriptionStart = new Date(Date.now() - 60 * 60 * 1000).toISOString().slice(0, 16);
+        await evaluateBrowser(
+          client,
+          `(() => {
           const form = document.querySelector('form[data-form="subscription"]');
           form.querySelector('[name="tenantId"]').value = ${JSON.stringify(tenantA.id)};
           form.querySelector('[name="planId"]').value = ${JSON.stringify(platformPlan.id)};
@@ -4391,56 +4526,56 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
           form.requestSubmit();
           return true;
         })()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[role="status"]')?.textContent.includes('تم حفظ التغيير.')`,
-        'manual platform subscription assignment',
-      );
-      const platformSubscription = await setupPrisma.subscription.findFirstOrThrow({
-        where: { tenantId: tenantA.id, planId: platformPlan.id },
-        select: { id: true, status: true },
-      });
-      expect(platformSubscription.status).toBe('ACTIVE');
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')`,
-        'platform subscription suspension',
-      );
-      expect(
-        await setupPrisma.subscription.findUnique({
-          where: { id: platformSubscription.id },
-        }),
-      ).toMatchObject({ status: 'SUSPENDED' });
-      await evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')?.click()`,
-      );
-      await waitForBrowserCondition(
-        client,
-        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')`,
-        'platform subscription reactivation',
-      );
-      const cancelSubscription = evaluateBrowser(
-        client,
-        `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="cancel"]')?.click()`,
-      );
-      await respondToDialog('confirm');
-      await cancelSubscription;
-      await waitForBrowserCondition(
-        client,
-        `document.body.innerText.includes('ملغى')`,
-        'platform subscription cancellation',
-      );
-      expect(
-        await setupPrisma.subscription.findUnique({
-          where: { id: platformSubscription.id },
-        }),
-      ).toMatchObject({ status: 'CANCELLED' });
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[role="status"]')?.textContent.includes('تم حفظ التغيير.')`,
+          'manual platform subscription assignment',
+        );
+        const platformSubscription = await setupPrisma.subscription.findFirstOrThrow({
+          where: { tenantId: tenantA.id, planId: platformPlan.id },
+          select: { id: true, status: true },
+        });
+        expect(platformSubscription.status).toBe('ACTIVE');
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')`,
+          'platform subscription suspension',
+        );
+        expect(
+          await setupPrisma.subscription.findUnique({
+            where: { id: platformSubscription.id },
+          }),
+        ).toMatchObject({ status: 'SUSPENDED' });
+        await evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="activate"]')?.click()`,
+        );
+        await waitForBrowserCondition(
+          client,
+          `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="suspend"]')`,
+          'platform subscription reactivation',
+        );
+        const cancelSubscription = evaluateBrowser(
+          client,
+          `document.querySelector('[data-action="subscription"][data-id="${platformSubscription.id}"][data-status="cancel"]')?.click()`,
+        );
+        await respondToDialog('confirm');
+        await cancelSubscription;
+        await waitForBrowserCondition(
+          client,
+          `document.body.innerText.includes('ملغى')`,
+          'platform subscription cancellation',
+        );
+        expect(
+          await setupPrisma.subscription.findUnique({
+            where: { id: platformSubscription.id },
+          }),
+        ).toMatchObject({ status: 'CANCELLED' });
       }
 
       await client.send('Page.navigate', { url: `${browserBaseUrl}/encounters/` });
@@ -8482,6 +8617,17 @@ async function seedClinicalFixtures(prisma: PrismaService): Promise<void> {
     },
   });
   clinicalServiceId = serviceA.id;
+  await prisma.doctorServiceAssignment.create({
+    data: {
+      tenantId: tenantA.id,
+      doctorId: doctorA.id,
+      serviceId: serviceA.id,
+      facilityId: facility.id,
+      branchId: branch.id,
+      scopeType: 'BRANCH',
+      scopeId: branch.id,
+    },
+  });
   const serviceB = await prisma.service.create({
     data: {
       tenantId: tenantB.id,

@@ -799,6 +799,37 @@ export interface DoctorRecord {
   }>;
 }
 
+export interface DoctorServiceAssignmentRecord {
+  tenantId: string;
+  doctorId: string;
+  serviceId: string;
+  serviceName: string;
+  serviceStatus: TenantCatalogStatusValue;
+  facilityId: string;
+  facilityName: string;
+  branchId: string | null;
+  branchName: string | null;
+  scopeType: 'FACILITY' | 'BRANCH';
+  scopeId: string;
+  assignedAt: Date;
+}
+
+export interface DoctorServiceAssignmentInputRecord {
+  serviceId: string;
+  facilityId: string;
+  branchId: string | null;
+}
+
+export type DoctorServiceAssignmentMutationResult =
+  | { kind: 'changed'; assignment: DoctorServiceAssignmentRecord }
+  | { kind: 'tenant-inactive' }
+  | { kind: 'doctor-not-found' }
+  | { kind: 'doctor-deactivated' }
+  | { kind: 'target-not-found' }
+  | { kind: 'doctor-out-of-scope' }
+  | { kind: 'assignment-conflict' }
+  | { kind: 'assignment-not-found' };
+
 export interface DoctorListFilter {
   status?: DoctorStatusValue;
   limit: number;
@@ -878,6 +909,27 @@ export interface DoctorPersistencePort {
     doctorId: string,
     specialtyId: string,
   ): Promise<DoctorMutationResult>;
+  listServiceAssignments(
+    tenantId: string,
+    doctorId: string,
+  ): Promise<DoctorServiceAssignmentRecord[]>;
+  assignService(
+    tenantId: string,
+    doctorId: string,
+    input: DoctorServiceAssignmentInputRecord,
+  ): Promise<DoctorServiceAssignmentMutationResult>;
+  unassignService(
+    tenantId: string,
+    doctorId: string,
+    input: DoctorServiceAssignmentInputRecord,
+  ): Promise<DoctorServiceAssignmentMutationResult>;
+  hasServiceAssignment(
+    tenantId: string,
+    doctorId: string,
+    serviceId: string,
+    facilityId: string,
+    branchId: string | null,
+  ): Promise<boolean>;
 }
 
 export type PlatformUserStatusValue = 'ACTIVE' | 'INACTIVE' | 'SUSPENDED';
@@ -1156,6 +1208,8 @@ export type PlatformAuditEvent =
   | 'DOCTOR_DEPARTMENT_UNASSIGNED'
   | 'DOCTOR_SPECIALTY_ASSIGNED'
   | 'DOCTOR_SPECIALTY_UNASSIGNED'
+  | 'DOCTOR_SERVICE_ASSIGNED'
+  | 'DOCTOR_SERVICE_UNASSIGNED'
   | 'PATIENT_CREATED'
   | 'PATIENT_UPDATED'
   | 'PATIENT_STATUS_CHANGED'

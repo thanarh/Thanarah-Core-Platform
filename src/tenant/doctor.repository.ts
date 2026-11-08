@@ -1,5 +1,11 @@
 import { Injectable } from '@nestjs/common';
-import { Prisma, StaffStatus, TenantCatalogStatus, TenantStatus } from '@prisma/client';
+import {
+  DoctorServiceAssignmentScope,
+  Prisma,
+  StaffStatus,
+  TenantCatalogStatus,
+  TenantStatus,
+} from '@prisma/client';
 import { PrismaService } from '../database/prisma.service';
 import type { CreateDoctorInput, UpdateDoctorInput } from './doctor.dto';
 import type {
@@ -8,6 +14,9 @@ import type {
   DoctorMutationResult as DoctorMutationResultContract,
   DoctorPersistencePort,
   DoctorRecord as DoctorRecordContract,
+  DoctorServiceAssignmentInputRecord,
+  DoctorServiceAssignmentMutationResult as DoctorServiceAssignmentMutationResultContract,
+  DoctorServiceAssignmentRecord as DoctorServiceAssignmentRecordContract,
 } from '../persistence/platform-persistence.ports';
 
 const doctorSelect = {
@@ -53,6 +62,8 @@ export type DoctorRecord = DoctorRecordContract;
 export type DoctorListFilter = DoctorListFilterContract;
 export type CreateDoctorResult = CreateDoctorResultContract;
 export type DoctorMutationResult = DoctorMutationResultContract;
+export type DoctorServiceAssignmentRecord = DoctorServiceAssignmentRecordContract;
+export type DoctorServiceAssignmentMutationResult = DoctorServiceAssignmentMutationResultContract;
 
 type Transaction = Prisma.TransactionClient;
 type CatalogTable = 'Department' | 'Specialty';
@@ -350,6 +361,279 @@ export class DoctorRepository implements DoctorPersistencePort {
       const doctor = await this.findWithTransaction(transaction, tenantId, doctorId);
       return doctor ? { kind: 'changed', doctor } : { kind: 'not-found' };
     });
+  }
+
+  async listServiceAssignments(
+    tenantId: string,
+    doctorId: string,
+  ): Promise<DoctorServiceAssignmentRecord[]> {
+    const assignments = await this.prisma.doctorServiceAssignment.findMany({
+      where: { tenantId, doctorId },
+      orderBy: [{ createdAt: 'asc' }, { scopeType: 'asc' }, { scopeId: 'asc' }],
+      select: {
+        tenantId: true,
+        doctorId: true,
+        serviceId: true,
+        facilityId: true,
+        branchId: true,
+        scopeType: true,
+        scopeId: true,
+        createdAt: true,
+        service: { select: { name: true, status: true } },
+        facility: { select: { name: true } },
+        branch: { select: { name: true } },
+      },
+    });
+    return assignments.map((assignment) => ({
+      tenantId: assignment.tenantId,
+      doctorId: assignment.doctorId,
+      serviceId: assignment.serviceId,
+      serviceName: assignment.service.name,
+      serviceStatus: assignment.service.status,
+      facilityId: assignment.facilityId,
+      facilityName: assignment.facility.name,
+      branchId: assignment.branchId,
+      branchName: assignment.branch?.name ?? null,
+      scopeType: assignment.scopeType,
+      scopeId: assignment.scopeId,
+      assignedAt: assignment.createdAt,
+    }));
+  }
+
+  async assignService(
+    tenantId: string,
+    doctorId: string,
+    input: DoctorServiceAssignmentInputRecord,
+  ): Promise<DoctorServiceAssignmentMutationResult> {
+    const scopeType = input.branchId
+      ? DoctorServiceAssignmentScope.BRANCH
+      : DoctorServiceAssignmentScope.FACILITY;
+    const scopeId = input.branchId ?? input.facilityId;
+    try {
+      return await this.prisma.$transaction(async (transaction) => {
+        if (!(await this.lockActiveTenant(transaction, tenantId))) {
+          return { kind: 'tenant-inactive' };
+        }
+
+        const doctorRows = await transaction.$queryRaw<
+          Array<{ id: string; staffId: string; status: string; staffStatus: string }>
+        >(Prisma.sql`
+          SELECT
+            \`doctor\`.\`id\` AS \`id\`,
+            \`doctor\`.\`staffId\` AS \`staffId\`,
+            \`doctor\`.\`status\` AS \`status\`,
+            \`staff\`.\`status\` AS \`staffStatus\`
+          FROM \`Doctor\` AS \`doctor\`
+          INNER JOIN \`Staff\` AS \`staff\`
+            ON \`staff\`.\`id\` = \`doctor\`.\`staffId\`
+            AND \`staff\`.\`tenantId\` = \`doctor\`.\`tenantId\`
+          WHERE \`doctor\`.\`id\` = ${doctorId}
+            AND \`doctor\`.\`tenantId\` = ${tenantId}
+          FOR UPDATE
+        `);
+        const doctor = doctorRows[0];
+        if (!doctor) return { kind: 'doctor-not-found' };
+        if (
+          doctor.status === StaffStatus.DEACTIVATED ||
+          doctor.staffStatus === StaffStatus.DEACTIVATED
+        ) {
+          return { kind: 'doctor-deactivated' };
+        }
+
+        const serviceRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT \`id\`
+          FROM \`Service\`
+          WHERE \`id\` = ${input.serviceId}
+            AND \`tenantId\` = ${tenantId}
+            AND \`status\` = ${TenantCatalogStatus.ACTIVE}
+          FOR UPDATE
+        `);
+        const facilityRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+          SELECT \`id\`
+          FROM \`Facility\`
+          WHERE \`id\` = ${input.facilityId}
+            AND \`tenantId\` = ${tenantId}
+            AND \`status\` = 'ACTIVE'
+          FOR UPDATE
+        `);
+        if (!serviceRows.length || !facilityRows.length) return { kind: 'target-not-found' };
+
+        if (input.branchId) {
+          const branchRows = await transaction.$queryRaw<Array<{ id: string }>>(Prisma.sql`
+            SELECT \`id\`
+            FROM \`Branch\`
+            WHERE \`id\` = ${input.branchId}
+              AND \`facilityId\` = ${input.facilityId}
+              AND \`status\` = 'ACTIVE'
+            FOR UPDATE
+          `);
+          if (!branchRows.length) return { kind: 'target-not-found' };
+        }
+
+        const facilityScopeRows = await transaction.$queryRaw<Array<{ staffId: string }>>(
+          Prisma.sql`
+            SELECT \`staffId\`
+            FROM \`StaffFacilityAssignment\`
+            WHERE \`tenantId\` = ${tenantId}
+              AND \`staffId\` = ${doctor.staffId}
+              AND \`facilityId\` = ${input.facilityId}
+            FOR UPDATE
+          `,
+        );
+        let branchScopeRows: Array<{ staffId: string }> = [];
+        if (input.branchId) {
+          branchScopeRows = await transaction.$queryRaw<Array<{ staffId: string }>>(Prisma.sql`
+            SELECT \`staffId\`
+            FROM \`StaffBranchAssignment\`
+            WHERE \`tenantId\` = ${tenantId}
+              AND \`staffId\` = ${doctor.staffId}
+              AND \`facilityId\` = ${input.facilityId}
+              AND \`branchId\` = ${input.branchId}
+            FOR UPDATE
+          `);
+        }
+        const inScope =
+          facilityScopeRows.length > 0 || (input.branchId !== null && branchScopeRows.length > 0);
+        if (!inScope) return { kind: 'doctor-out-of-scope' };
+
+        await transaction.doctorServiceAssignment.create({
+          data: {
+            tenantId,
+            doctorId,
+            serviceId: input.serviceId,
+            facilityId: input.facilityId,
+            branchId: input.branchId,
+            scopeType,
+            scopeId,
+          },
+        });
+        const assignment = await this.findServiceAssignment(
+          transaction,
+          tenantId,
+          doctorId,
+          input,
+          scopeType,
+          scopeId,
+        );
+        return assignment ? { kind: 'changed', assignment } : { kind: 'doctor-not-found' };
+      });
+    } catch (error) {
+      if (isPrismaError(error, 'P2002')) return { kind: 'assignment-conflict' };
+      throw error;
+    }
+  }
+
+  async unassignService(
+    tenantId: string,
+    doctorId: string,
+    input: DoctorServiceAssignmentInputRecord,
+  ): Promise<DoctorServiceAssignmentMutationResult> {
+    const scopeType = input.branchId
+      ? DoctorServiceAssignmentScope.BRANCH
+      : DoctorServiceAssignmentScope.FACILITY;
+    const scopeId = input.branchId ?? input.facilityId;
+    return this.prisma.$transaction(async (transaction) => {
+      if (!(await this.lockActiveTenant(transaction, tenantId))) {
+        return { kind: 'tenant-inactive' };
+      }
+      const assignment = await this.findServiceAssignment(
+        transaction,
+        tenantId,
+        doctorId,
+        input,
+        scopeType,
+        scopeId,
+      );
+      if (!assignment) return { kind: 'assignment-not-found' };
+      const deleted = await transaction.doctorServiceAssignment.deleteMany({
+        where: {
+          tenantId,
+          doctorId,
+          serviceId: input.serviceId,
+          facilityId: input.facilityId,
+          branchId: input.branchId,
+          scopeType,
+          scopeId,
+        },
+      });
+      return deleted.count === 1
+        ? { kind: 'changed', assignment }
+        : { kind: 'assignment-not-found' };
+    });
+  }
+
+  async hasServiceAssignment(
+    tenantId: string,
+    doctorId: string,
+    serviceId: string,
+    facilityId: string,
+    branchId: string | null,
+  ): Promise<boolean> {
+    const locationScopes = [
+      { scopeType: DoctorServiceAssignmentScope.FACILITY, scopeId: facilityId },
+      ...(branchId ? [{ scopeType: DoctorServiceAssignmentScope.BRANCH, scopeId: branchId }] : []),
+    ];
+    return (
+      (await this.prisma.doctorServiceAssignment.findFirst({
+        where: {
+          tenantId,
+          doctorId,
+          serviceId,
+          facilityId,
+          OR: locationScopes,
+        },
+        select: { doctorId: true },
+      })) !== null
+    );
+  }
+
+  private async findServiceAssignment(
+    transaction: Transaction,
+    tenantId: string,
+    doctorId: string,
+    input: DoctorServiceAssignmentInputRecord,
+    scopeType: DoctorServiceAssignmentScope,
+    scopeId: string,
+  ): Promise<DoctorServiceAssignmentRecord | null> {
+    const assignment = await transaction.doctorServiceAssignment.findUnique({
+      where: {
+        tenantId_doctorId_serviceId_scopeType_scopeId: {
+          tenantId,
+          doctorId,
+          serviceId: input.serviceId,
+          scopeType,
+          scopeId,
+        },
+      },
+      select: {
+        tenantId: true,
+        doctorId: true,
+        serviceId: true,
+        facilityId: true,
+        branchId: true,
+        scopeType: true,
+        scopeId: true,
+        createdAt: true,
+        service: { select: { name: true, status: true } },
+        facility: { select: { name: true } },
+        branch: { select: { name: true } },
+      },
+    });
+    if (!assignment || assignment.facilityId !== input.facilityId) return null;
+    return {
+      tenantId: assignment.tenantId,
+      doctorId: assignment.doctorId,
+      serviceId: assignment.serviceId,
+      serviceName: assignment.service.name,
+      serviceStatus: assignment.service.status,
+      facilityId: assignment.facilityId,
+      facilityName: assignment.facility.name,
+      branchId: assignment.branchId,
+      branchName: assignment.branch?.name ?? null,
+      scopeType: assignment.scopeType,
+      scopeId: assignment.scopeId,
+      assignedAt: assignment.createdAt,
+    };
   }
 
   private async lockAssignmentTargets(

@@ -99,3 +99,39 @@ export class DoctorAssignmentNotFoundError extends NotFoundException {
     });
   }
 }
+
+export class DoctorServiceAssignmentTargetNotFoundError extends NotFoundException {
+  constructor() {
+    super({
+      code: 'DOCTOR_SERVICE_ASSIGNMENT_TARGET_NOT_FOUND',
+      message: 'An active same-tenant service and location were not found',
+    });
+  }
+}
+
+export class DoctorServiceAssignmentScopeConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'DOCTOR_SERVICE_ASSIGNMENT_SCOPE_INVALID',
+      message: 'The doctor is not assigned to the requested facility or branch',
+    });
+  }
+}
+
+export class DoctorServiceAssignmentConflictError extends ConflictException {
+  constructor() {
+    super({
+      code: 'DOCTOR_SERVICE_ASSIGNMENT_EXISTS',
+      message: 'This service is already assigned to the doctor in this location',
+    });
+  }
+}
+
+export class DoctorServiceAssignmentNotFoundError extends NotFoundException {
+  constructor() {
+    super({
+      code: 'DOCTOR_SERVICE_ASSIGNMENT_NOT_FOUND',
+      message: 'The doctor service assignment was not found in this tenant and location',
+    });
+  }
+}

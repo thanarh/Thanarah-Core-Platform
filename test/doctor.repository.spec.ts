@@ -1,4 +1,10 @@
-import { Prisma, StaffStatus, TenantCatalogStatus, TenantStatus } from '@prisma/client';
+import {
+  DoctorServiceAssignmentScope,
+  Prisma,
+  StaffStatus,
+  TenantCatalogStatus,
+  TenantStatus,
+} from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { DoctorRepository, type DoctorRecord } from '../src/tenant/doctor.repository';
 
@@ -7,6 +13,9 @@ const staffId = '22222222-2222-4222-8222-222222222222';
 const doctorId = '33333333-3333-4333-8333-333333333333';
 const departmentId = '44444444-4444-4444-8444-444444444444';
 const specialtyId = '55555555-5555-4555-8555-555555555555';
+const serviceId = '77777777-7777-4777-8777-777777777777';
+const facilityId = '88888888-8888-4888-8888-888888888888';
+const branchId = '99999999-9999-4999-8999-999999999999';
 const changedAt = new Date('2026-10-07T11:00:00.000Z');
 
 const doctorRecord = {
@@ -34,6 +43,28 @@ const doctorRecord = {
   specialtyAssignments: [],
 } as DoctorRecord;
 
+const serviceAssignmentRecord = {
+  tenantId,
+  doctorId,
+  serviceId,
+  facilityId,
+  branchId,
+  scopeType: DoctorServiceAssignmentScope.BRANCH,
+  scopeId: branchId,
+  createdAt: changedAt,
+  service: { name: 'Consultation', status: TenantCatalogStatus.ACTIVE },
+  facility: { name: 'Central Clinic' },
+  branch: { name: 'North Branch' },
+};
+
+const facilityServiceAssignmentRecord = {
+  ...serviceAssignmentRecord,
+  branchId: null,
+  scopeType: DoctorServiceAssignmentScope.FACILITY,
+  scopeId: facilityId,
+  branch: null,
+};
+
 function duplicateKeyError(target?: string[]): Prisma.PrismaClientKnownRequestError {
   return new Prisma.PrismaClientKnownRequestError('Unique constraint failed', {
     code: 'P2002',
@@ -58,10 +89,19 @@ describe('DoctorRepository', () => {
       create: vi.fn(),
       deleteMany: vi.fn(),
     },
+    doctorServiceAssignment: {
+      create: vi.fn(),
+      findUnique: vi.fn(),
+      deleteMany: vi.fn(),
+    },
   };
   const prisma = {
     $transaction: vi.fn((callback: (tx: typeof transaction) => unknown) => callback(transaction)),
     doctor: {
+      findMany: vi.fn(),
+      findFirst: vi.fn(),
+    },
+    doctorServiceAssignment: {
       findMany: vi.fn(),
       findFirst: vi.fn(),
     },
@@ -78,8 +118,13 @@ describe('DoctorRepository', () => {
     transaction.doctorDepartmentAssignment.deleteMany.mockResolvedValue({ count: 1 });
     transaction.doctorSpecialtyAssignment.create.mockResolvedValue({});
     transaction.doctorSpecialtyAssignment.deleteMany.mockResolvedValue({ count: 1 });
+    transaction.doctorServiceAssignment.create.mockResolvedValue({});
+    transaction.doctorServiceAssignment.findUnique.mockResolvedValue(serviceAssignmentRecord);
+    transaction.doctorServiceAssignment.deleteMany.mockResolvedValue({ count: 1 });
     prisma.doctor.findMany.mockResolvedValue([doctorRecord]);
     prisma.doctor.findFirst.mockResolvedValue(doctorRecord);
+    prisma.doctorServiceAssignment.findMany.mockResolvedValue([serviceAssignmentRecord]);
+    prisma.doctorServiceAssignment.findFirst.mockResolvedValue({ doctorId });
     repository = new DoctorRepository(prisma as never);
   });
 
@@ -574,5 +619,148 @@ describe('DoctorRepository', () => {
     await expect(repository.unassignDepartment(tenantId, doctorId, departmentId)).resolves.toEqual({
       kind: 'assignment-not-found',
     });
+  });
+
+  it('lists service assignments with their tenant-owned facility and branch context', async () => {
+    await expect(repository.listServiceAssignments(tenantId, doctorId)).resolves.toEqual([
+      {
+        tenantId,
+        doctorId,
+        serviceId,
+        serviceName: 'Consultation',
+        serviceStatus: TenantCatalogStatus.ACTIVE,
+        facilityId,
+        facilityName: 'Central Clinic',
+        branchId,
+        branchName: 'North Branch',
+        scopeType: DoctorServiceAssignmentScope.BRANCH,
+        scopeId: branchId,
+        assignedAt: changedAt,
+      },
+    ]);
+    expect(prisma.doctorServiceAssignment.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { tenantId, doctorId } }),
+    );
+  });
+
+  it('creates a facility-wide assignment only for active same-tenant targets and an in-scope doctor', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{ id: tenantId }])
+      .mockResolvedValueOnce([
+        { id: doctorId, staffId, status: StaffStatus.ACTIVE, staffStatus: StaffStatus.ACTIVE },
+      ])
+      .mockResolvedValueOnce([{ id: serviceId }])
+      .mockResolvedValueOnce([{ id: facilityId }])
+      .mockResolvedValueOnce([{ staffId }]);
+    transaction.doctorServiceAssignment.findUnique.mockResolvedValueOnce(
+      facilityServiceAssignmentRecord,
+    );
+
+    const result = await repository.assignService(tenantId, doctorId, {
+      serviceId,
+      facilityId,
+      branchId: null,
+    });
+
+    expect(result).toEqual({
+      kind: 'changed',
+      assignment: expect.objectContaining({
+        tenantId,
+        doctorId,
+        serviceId,
+        facilityId,
+        branchId: null,
+        scopeType: DoctorServiceAssignmentScope.FACILITY,
+        scopeId: facilityId,
+      }),
+    });
+    expect(transaction.doctorServiceAssignment.create).toHaveBeenCalledWith({
+      data: {
+        tenantId,
+        doctorId,
+        serviceId,
+        facilityId,
+        branchId: null,
+        scopeType: DoctorServiceAssignmentScope.FACILITY,
+        scopeId: facilityId,
+      },
+    });
+  });
+
+  it('rejects branch-specific assignment to a doctor outside that branch and rejects mismatched branches', async () => {
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{ id: tenantId }])
+      .mockResolvedValueOnce([
+        { id: doctorId, staffId, status: StaffStatus.ACTIVE, staffStatus: StaffStatus.ACTIVE },
+      ])
+      .mockResolvedValueOnce([{ id: serviceId }])
+      .mockResolvedValueOnce([{ id: facilityId }])
+      .mockResolvedValueOnce([{ id: branchId }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    await expect(
+      repository.assignService(tenantId, doctorId, { serviceId, facilityId, branchId }),
+    ).resolves.toEqual({ kind: 'doctor-out-of-scope' });
+    expect(transaction.doctorServiceAssignment.create).not.toHaveBeenCalled();
+
+    transaction.$queryRaw
+      .mockResolvedValueOnce([{ id: tenantId }])
+      .mockResolvedValueOnce([
+        { id: doctorId, staffId, status: StaffStatus.ACTIVE, staffStatus: StaffStatus.ACTIVE },
+      ])
+      .mockResolvedValueOnce([{ id: serviceId }])
+      .mockResolvedValueOnce([{ id: facilityId }])
+      .mockResolvedValueOnce([]);
+    await expect(
+      repository.assignService(tenantId, doctorId, { serviceId, facilityId, branchId }),
+    ).resolves.toEqual({ kind: 'target-not-found' });
+    expect(transaction.doctorServiceAssignment.create).not.toHaveBeenCalled();
+  });
+
+  it('removes only the matching tenant, doctor, service and location assignment', async () => {
+    transaction.$queryRaw.mockResolvedValueOnce([{ id: tenantId }]);
+
+    await expect(
+      repository.unassignService(tenantId, doctorId, {
+        serviceId,
+        facilityId,
+        branchId,
+      }),
+    ).resolves.toMatchObject({
+      kind: 'changed',
+      assignment: { tenantId, doctorId, serviceId, facilityId, branchId },
+    });
+    expect(transaction.doctorServiceAssignment.deleteMany).toHaveBeenCalledWith({
+      where: {
+        tenantId,
+        doctorId,
+        serviceId,
+        facilityId,
+        branchId,
+        scopeType: DoctorServiceAssignmentScope.BRANCH,
+        scopeId: branchId,
+      },
+    });
+  });
+
+  it('checks facility-wide and exact branch assignments within the same tenant', async () => {
+    await expect(
+      repository.hasServiceAssignment(tenantId, doctorId, serviceId, facilityId, branchId),
+    ).resolves.toBe(true);
+    expect(prisma.doctorServiceAssignment.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId,
+          doctorId,
+          serviceId,
+          facilityId,
+          OR: [
+            { scopeType: DoctorServiceAssignmentScope.FACILITY, scopeId: facilityId },
+            { scopeType: DoctorServiceAssignmentScope.BRANCH, scopeId: branchId },
+          ],
+        }),
+      }),
+    );
   });
 });

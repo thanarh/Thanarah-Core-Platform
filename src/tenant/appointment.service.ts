@@ -135,15 +135,19 @@ export class AppointmentService {
           return { appointment: existing, created: false };
         }
       }
-      await this.validateReferences(context, {
-        patientId: record.patientId,
-        doctorId: record.doctorId,
-        facilityId: record.facilityId,
-        branchId: record.branchId,
-        serviceId: record.serviceId,
-        startsAt: record.startsAt,
-        endsAt: record.endsAt,
-      });
+      await this.validateReferences(
+        context,
+        {
+          patientId: record.patientId,
+          doctorId: record.doctorId,
+          facilityId: record.facilityId,
+          branchId: record.branchId,
+          serviceId: record.serviceId,
+          startsAt: record.startsAt,
+          endsAt: record.endsAt,
+        },
+        true,
+      );
       await this.schedulingPolicies.assertBookingAllowed(context, {
         facilityId: record.facilityId,
         doctorId: record.doctorId,
@@ -283,15 +287,19 @@ export class AppointmentService {
     const patientId = parsed.data.patientId ?? current.patientId;
     const serviceId =
       parsed.data.serviceId === undefined ? current.serviceId : parsed.data.serviceId;
-    await this.validateReferences(context, {
-      patientId,
-      doctorId: current.doctorId,
-      facilityId: current.facilityId,
-      branchId: current.branchId,
-      serviceId,
-      startsAt: current.startsAt,
-      endsAt: current.endsAt,
-    });
+    await this.validateReferences(
+      context,
+      {
+        patientId,
+        doctorId: current.doctorId,
+        facilityId: current.facilityId,
+        branchId: current.branchId,
+        serviceId,
+        startsAt: current.startsAt,
+        endsAt: current.endsAt,
+      },
+      parsed.data.serviceId !== undefined && serviceId !== current.serviceId,
+    );
     const patch = {
       ...(parsed.data.patientId === undefined ? {} : { patientId: parsed.data.patientId }),
       ...(parsed.data.serviceId === undefined ? {} : { serviceId: parsed.data.serviceId }),
@@ -383,11 +391,18 @@ export class AppointmentService {
       ) {
         throw new AppointmentNotFoundError();
       }
-      await this.validateReferences(context, {
-        patientId: latest.patientId,
-        ...next,
-        serviceId: latest.serviceId,
-      });
+      await this.validateReferences(
+        context,
+        {
+          patientId: latest.patientId,
+          ...next,
+          serviceId: latest.serviceId,
+        },
+        latest.serviceId !== null &&
+          (next.doctorId !== latest.doctorId ||
+            next.facilityId !== latest.facilityId ||
+            next.branchId !== latest.branchId),
+      );
       const now = new Date();
       await this.schedulingPolicies.assertReschedulingAllowed(
         context,
@@ -530,6 +545,7 @@ export class AppointmentService {
       startsAt: Date;
       endsAt: Date;
     },
+    requireDoctorServiceAssignment = false,
   ): Promise<void> {
     const [patient, doctor, facility, service] = await Promise.all([
       this.reference(() => this.patients.findById(context, input.patientId)),
@@ -547,6 +563,19 @@ export class AppointmentService {
       throw new AppointmentReferenceInvalidError();
     }
     if (service && service.status !== 'ACTIVE') throw new AppointmentReferenceInvalidError();
+    if (
+      requireDoctorServiceAssignment &&
+      input.serviceId &&
+      !(await this.doctors.hasServiceAssignment(
+        context,
+        input.doctorId,
+        input.serviceId,
+        input.facilityId,
+        input.branchId,
+      ))
+    ) {
+      throw new AppointmentReferenceInvalidError();
+    }
 
     if (input.branchId) {
       const branch = await this.reference(() =>
