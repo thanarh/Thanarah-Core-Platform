@@ -54,6 +54,11 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.encounters.amendments.update',
   'tenant.encounters.amendments.finalize',
   'tenant.encounters.audit.reconcile',
+  'tenant.finance.read',
+  'tenant.finance.manage',
+  'tenant.finance.settings.manage',
+  'tenant.finance.review',
+  'tenant.finance.issue',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -213,6 +218,17 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.encounters.audit.reconcile',
     description: 'Reconcile failed encounter audit delivery within this tenant',
   },
+  { code: 'tenant.finance.read', description: 'Read clinic invoices and finance settings' },
+  { code: 'tenant.finance.manage', description: 'Create and update clinic invoice drafts' },
+  {
+    code: 'tenant.finance.settings.manage',
+    description: 'Configure clinic invoice currency, fields, taxes, and numbering',
+  },
+  { code: 'tenant.finance.review', description: 'Review clinic invoice drafts before issue' },
+  {
+    code: 'tenant.finance.issue',
+    description: 'Issue reviewed clinic invoices without collecting payment',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -265,6 +281,11 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.appointments.reschedule',
       'tenant.appointments.cancel',
       'tenant.appointments.policy.manage',
+      'tenant.finance.read',
+      'tenant.finance.manage',
+      'tenant.finance.settings.manage',
+      'tenant.finance.review',
+      'tenant.finance.issue',
     ],
   },
   {

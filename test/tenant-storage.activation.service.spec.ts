@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { MongoTenantPatientStorage } from '../src/tenant/mongo-tenant-patient.storage';
 import type { MongoTenantAppointmentStorage } from '../src/tenant/mongo-tenant-appointment.storage';
 import type { MongoTenantEncounterStorage } from '../src/tenant/mongo-tenant-encounter.storage';
+import type { MongoTenantClinicFinanceStorage } from '../src/tenant/mongo-tenant-clinic-finance.storage';
 import type { PrismaService } from '../src/database/prisma.service';
 import { TenantStorageActivationService } from '../src/tenant/tenant-storage.activation.service';
 import { TenantStorageUnavailableError } from '../src/tenant/tenant-storage.errors';
@@ -67,6 +68,7 @@ interface ActivationServiceHarness {
   patientStorage: { ensureIndexesForTarget: MockFunction };
   appointmentStorage: { ensureIndexesForTarget: MockFunction };
   encounterStorage: { ensureIndexesForTarget: MockFunction };
+  clinicFinanceStorage: { ensureIndexesForTarget: MockFunction };
   updateMany: MockFunction;
 }
 
@@ -130,11 +132,15 @@ function makeActivationService(
   const encounterStorage = {
     ensureIndexesForTarget: vi.fn().mockResolvedValue(undefined),
   };
+  const clinicFinanceStorage = {
+    ensureIndexesForTarget: vi.fn().mockResolvedValue(undefined),
+  };
   const service = new TenantStorageActivationService(
     prismaMock as unknown as PrismaService,
     patientStorage as unknown as MongoTenantPatientStorage,
     appointmentStorage as unknown as MongoTenantAppointmentStorage,
     encounterStorage as unknown as MongoTenantEncounterStorage,
+    clinicFinanceStorage as unknown as MongoTenantClinicFinanceStorage,
   );
 
   return {
@@ -144,6 +150,7 @@ function makeActivationService(
     patientStorage,
     appointmentStorage,
     encounterStorage,
+    clinicFinanceStorage,
     rawQueries,
     updateMany,
   };
@@ -161,6 +168,7 @@ describe('TenantStorageActivationService', () => {
     expect(harness.patientStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
     expect(harness.appointmentStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
     expect(harness.encounterStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
+    expect(harness.clinicFinanceStorage.ensureIndexesForTarget).toHaveBeenCalledWith(target);
     expect(harness.patientStorage.ensureIndexesForTarget.mock.invocationCallOrder[0]).toBeLessThan(
       harness.prismaMock.$transaction.mock.invocationCallOrder[0] ?? Infinity,
     );
@@ -177,6 +185,21 @@ describe('TenantStorageActivationService', () => {
     expect(harness.prismaMock.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
     });
+  });
+
+  it('does not activate a target when clinic-finance indexes cannot be verified', async () => {
+    const target = makeTarget(targetId);
+    const harness = makeActivationService([target]);
+    harness.clinicFinanceStorage.ensureIndexesForTarget.mockRejectedValueOnce(
+      new Error('index failure'),
+    );
+
+    await expect(
+      harness.service.setTargetStatus(tenantId, targetId, TenantStorageTargetStatus.ACTIVE),
+    ).rejects.toBeInstanceOf(TenantStorageUnavailableError);
+
+    expect(harness.targets[0]?.status).toBe(TenantStorageTargetStatus.INACTIVE);
+    expect(harness.prismaMock.$transaction).not.toHaveBeenCalled();
   });
 
   it('rejects activation if the database name changes after index preflight', async () => {

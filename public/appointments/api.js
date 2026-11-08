@@ -43,6 +43,16 @@
     SCHEDULING_POLICY_REFERENCE_INVALID: 'أحد الأطباء أو الخدمات في السياسة لم يعد متاحًا.',
     SCHEDULING_POLICY_VERSION_CONFLICT: 'تغيّرت السياسة منذ فتحها. أعد تحميلها قبل الحفظ.',
     SCHEDULING_POLICY_UNAVAILABLE: 'تعذّر التحقق من سياسة الجدولة. حاول لاحقًا.',
+    CLINIC_FINANCE_INPUT_INVALID: 'تحقق من بيانات الإعداد أو الفاتورة.',
+    CLINIC_FINANCE_SETTINGS_CONFLICT: 'تغيّرت إعدادات الفوترة. أعد تحميلها قبل الحفظ.',
+    CLINIC_INVOICE_NOT_FOUND: 'لم تعد الفاتورة متاحة ضمن مساحة العمل.',
+    CLINIC_INVOICE_STATE_CONFLICT: 'تغيّرت حالة الفاتورة. حدّثها قبل المتابعة.',
+    CLINIC_INVOICE_NUMBER_CONFLICT: 'رقم الفاتورة مستخدم بالفعل ضمن هذه العيادة.',
+    CLINIC_INVOICE_IDEMPOTENCY_CONFLICT: 'استخدم مفتاح إعادة المحاولة لطلب واحد فقط.',
+    CLINIC_INVOICE_POLICY_UNAVAILABLE:
+      'أكمل إعدادات العملة والضريبة والترقيم والحقول المطلوبة قبل المراجعة.',
+    CLINIC_FINANCE_AUDIT_CAPACITY:
+      'بلغ سجل التدقيق الحد المسموح. يلزم مراجعة تشغيلية قبل المتابعة.',
   };
 
   class ApiError extends Error {
@@ -145,10 +155,13 @@
     const fingerprint = JSON.stringify(options.body ?? null);
     const previous = pendingMutationKeys.get(path);
     if (previous?.uncertain && previous.fingerprint !== fingerprint) {
+      const code = path.includes('/finance/')
+        ? 'CLINIC_INVOICE_IDEMPOTENCY_CONFLICT'
+        : 'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED';
       throw new ApiError(
         409,
-        'ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED',
-        safeMessages.ENCOUNTER_IDEMPOTENCY_REVIEW_REQUIRED,
+        code,
+        safeMessages[code],
       );
     }
     const key = previous?.fingerprint === fingerprint ? previous.key : createIdempotencyKey();
@@ -380,6 +393,68 @@
       return request(
         `/platform/subscriptions/${encodeURIComponent(subscriptionId)}/${action}`,
         { method: 'POST' },
+      );
+    },
+
+    getClinicFinanceSettings(tenantId) {
+      return request(tenantPath(tenantId, '/finance/settings'));
+    },
+
+    updateClinicFinanceSettings(tenantId, input) {
+      return request(tenantPath(tenantId, '/finance/settings'), {
+        method: 'PUT',
+        body: input,
+      });
+    },
+
+    listClinicInvoices(tenantId, options = {}) {
+      return request(withQuery(tenantPath(tenantId, '/finance/invoices'), options));
+    },
+
+    getClinicInvoice(tenantId, invoiceId) {
+      return request(
+        tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}`),
+      );
+    },
+
+    createClinicInvoice(tenantId, input) {
+      return mutationRequest(tenantPath(tenantId, '/finance/invoices'), {
+        method: 'POST',
+        body: input,
+      });
+    },
+
+    updateClinicInvoice(tenantId, invoiceId, input) {
+      return request(
+        tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}`),
+        { method: 'PATCH', body: input },
+      );
+    },
+
+    reviewClinicInvoice(tenantId, invoiceId, expectedVersion) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/finance/invoices/${encodeURIComponent(invoiceId)}/review`,
+        ),
+        { method: 'POST', body: { expectedVersion } },
+      );
+    },
+
+    returnClinicInvoiceToDraft(tenantId, invoiceId, expectedVersion, reason) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/finance/invoices/${encodeURIComponent(invoiceId)}/return-to-draft`,
+        ),
+        { method: 'POST', body: { expectedVersion, reason } },
+      );
+    },
+
+    issueClinicInvoice(tenantId, invoiceId, expectedVersion) {
+      return request(
+        tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}/issue`),
+        { method: 'POST', body: { expectedVersion } },
       );
     },
 

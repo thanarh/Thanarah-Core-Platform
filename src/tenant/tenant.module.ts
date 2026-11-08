@@ -53,6 +53,9 @@ import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy
 import { TenantWorkspaceController } from './tenant-workspace.controller';
 import { TenantEncounterController } from './tenant-encounter.controller';
 import { EncounterService } from './encounter.service';
+import { TenantClinicFinanceController } from './tenant-clinic-finance.controller';
+import { ClinicFinanceService } from './clinic-finance.service';
+import { ClinicFinanceRepository } from './clinic-finance.repository';
 
 @Module({
   imports: [
@@ -90,6 +93,7 @@ import { EncounterService } from './encounter.service';
     TenantAppointmentController,
     FacilitySchedulingPolicyController,
     TenantEncounterController,
+    TenantClinicFinanceController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -109,6 +113,8 @@ import { EncounterService } from './encounter.service';
     AppointmentService,
     FacilitySchedulingPolicyService,
     EncounterService,
+    ClinicFinanceService,
+    ClinicFinanceRepository,
     TenantRoleService,
     TenantService,
     TrustedTenantContextFactoryService,

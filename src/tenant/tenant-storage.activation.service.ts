@@ -4,6 +4,7 @@ import { PrismaService } from '../database/prisma.service';
 import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
 import { MongoTenantAppointmentStorage } from './mongo-tenant-appointment.storage';
 import { MongoTenantEncounterStorage } from './mongo-tenant-encounter.storage';
+import { MongoTenantClinicFinanceStorage } from './mongo-tenant-clinic-finance.storage';
 import { TenantStorageUnavailableError } from './tenant-storage.errors';
 import {
   TENANT_STORAGE_TARGET_SELECT,
@@ -28,6 +29,7 @@ export class TenantStorageActivationService {
     private readonly patientStorage: MongoTenantPatientStorage,
     private readonly appointmentStorage: MongoTenantAppointmentStorage,
     private readonly encounterStorage: MongoTenantEncounterStorage,
+    private readonly clinicFinanceStorage: MongoTenantClinicFinanceStorage,
   ) {}
 
   async setTargetStatus(
@@ -174,6 +176,7 @@ export class TenantStorageActivationService {
       await this.patientStorage.ensureIndexesForTarget(target);
       await this.appointmentStorage.ensureIndexesForTarget(target);
       await this.encounterStorage.ensureIndexesForTarget(target);
+      await this.clinicFinanceStorage.ensureIndexesForTarget(target);
     } catch {
       throw new TenantStorageUnavailableError();
     }

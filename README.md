@@ -260,9 +260,24 @@ implementation.
 answers whether a user may perform an operation. Subscription records which
 commercial Plan is assigned to a Tenant. Phase 17 resolves entitlement
 separately, and Phase 18 adds quota definitions and a decision foundation.
-Billing, payments, invoices, authoritative usage metering, business-route quota
-enforcement, automatic renewals, upgrade/downgrade workflows, trials, and
-payment providers remain out of scope.
+Automated billing, payment collection, authoritative usage metering,
+business-route quota enforcement, automatic renewals, upgrade/downgrade
+workflows, trials, and payment providers remain out of scope. The configurable
+clinic invoice foundation is a separate tenant workflow; it does not add clinic
+payment collection or change SaaS subscription behavior.
+
+## Tenant Clinic Invoice Foundation
+
+Clinic invoice settings and records are stored in the active tenant MongoDB
+target, separate from central MySQL/Prisma SaaS subscriptions. The Arabic
+workspace at `/finance/` supports configured invoice drafts, review, issue,
+search, and tenant-local audit history with separate permissions. `SAR` is an
+initial configurable currency only. Tax rules, rounding, custom fields, and
+manual or sequential numbering must be explicitly configured; no rates, legal
+fields, pricing, or reset policy are inferred. Issuing an invoice does not
+collect payment. See [`docs/tenant-clinic-finance.md`](docs/tenant-clinic-finance.md)
+for the full lifecycle, storage boundary, and decisions required before legal or
+payment readiness.
 
 ## SaaS Subscription Entitlement Runtime
 

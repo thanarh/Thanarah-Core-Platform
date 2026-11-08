@@ -145,6 +145,35 @@ interface ThanarahApi {
     doctorId: string,
     specialtyId: string,
   ): Promise<unknown>;
+  getClinicFinanceSettings(tenantId: string): Promise<unknown>;
+  updateClinicFinanceSettings(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  listClinicInvoices(
+    tenantId: string,
+    options?: Record<string, string | number | undefined>,
+  ): Promise<unknown>;
+  getClinicInvoice(tenantId: string, invoiceId: string): Promise<unknown>;
+  createClinicInvoice(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
+  updateClinicInvoice(
+    tenantId: string,
+    invoiceId: string,
+    input: Record<string, unknown>,
+  ): Promise<unknown>;
+  reviewClinicInvoice(
+    tenantId: string,
+    invoiceId: string,
+    expectedVersion: number,
+  ): Promise<unknown>;
+  returnClinicInvoiceToDraft(
+    tenantId: string,
+    invoiceId: string,
+    expectedVersion: number,
+    reason: string,
+  ): Promise<unknown>;
+  issueClinicInvoice(
+    tenantId: string,
+    invoiceId: string,
+    expectedVersion: number,
+  ): Promise<unknown>;
 }
 
 runInThisContext(readFileSync('public/appointments/api.js', 'utf8'));
@@ -216,6 +245,62 @@ describe('Thanarah browser API client', () => {
     expect(
       new Headers((fetchMock.mock.calls[3]?.[1] as RequestInit).headers).get('authorization'),
     ).toBe('Bearer rotated-token');
+  });
+
+  it('uses tenant-scoped finance API routes and sends create payloads with idempotency headers', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
+      .mockResolvedValueOnce(jsonResponse({ version: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ version: 1 }))
+      .mockResolvedValueOnce(jsonResponse({ items: [], total: 0, limit: 25, offset: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }, 201))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }))
+      .mockResolvedValueOnce(jsonResponse({ id: 'invoice-id' }));
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    const settings = { expectedVersion: 0, currencyCode: 'SAR' };
+    const invoice = { recipientName: 'Synthetic', lines: [] };
+    await api.getClinicFinanceSettings('tenant-id');
+    await api.updateClinicFinanceSettings('tenant-id', settings);
+    await api.listClinicInvoices('tenant-id', { status: 'DRAFT', limit: 25, offset: 0 });
+    await api.getClinicInvoice('tenant-id', 'invoice-id');
+    await api.createClinicInvoice('tenant-id', invoice);
+    await api.updateClinicInvoice('tenant-id', 'invoice-id', { expectedVersion: 1 });
+    await api.reviewClinicInvoice('tenant-id', 'invoice-id', 2);
+    await api.returnClinicInvoiceToDraft('tenant-id', 'invoice-id', 3, 'Correction requested');
+    await api.issueClinicInvoice('tenant-id', 'invoice-id', 4);
+
+    const calls = fetchMock.mock.calls.slice(1) as [string, RequestInit][];
+    expect(calls.map(([url]) => new URL(url, 'http://same-origin').pathname)).toEqual([
+      '/api/v1/tenants/tenant-id/finance/settings',
+      '/api/v1/tenants/tenant-id/finance/settings',
+      '/api/v1/tenants/tenant-id/finance/invoices',
+      '/api/v1/tenants/tenant-id/finance/invoices/invoice-id',
+      '/api/v1/tenants/tenant-id/finance/invoices',
+      '/api/v1/tenants/tenant-id/finance/invoices/invoice-id',
+      '/api/v1/tenants/tenant-id/finance/invoices/invoice-id/review',
+      '/api/v1/tenants/tenant-id/finance/invoices/invoice-id/return-to-draft',
+      '/api/v1/tenants/tenant-id/finance/invoices/invoice-id/issue',
+    ]);
+    expect(calls.map(([, options]) => options.method || 'GET')).toEqual([
+      'GET',
+      'PUT',
+      'GET',
+      'GET',
+      'POST',
+      'PATCH',
+      'POST',
+      'POST',
+      'POST',
+    ]);
+    const createOptions = calls[4]?.[1];
+    expect(new Headers(createOptions?.headers).get('idempotency-key')).toMatch(
+      /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|enc-.+)$/iu,
+    );
+    expect(JSON.parse(String(createOptions?.body))).toEqual(invoice);
   });
 
   it('sends tenant-scoped filters and stable idempotency keys without putting them in the body', async () => {

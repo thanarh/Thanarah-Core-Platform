@@ -11,6 +11,7 @@ import {
 import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
 import { MongoTenantAppointmentStorage } from './mongo-tenant-appointment.storage';
 import { MongoTenantEncounterStorage } from './mongo-tenant-encounter.storage';
+import { MongoTenantClinicFinanceStorage } from './mongo-tenant-clinic-finance.storage';
 import { TenantStorageActivationService } from './tenant-storage.activation.service';
 import { PATIENT_REPOSITORY, TenantStoragePatientRepository } from './patient.repository';
 import { TenantAppointmentRepository } from './appointment.repository';
@@ -49,6 +50,12 @@ import { UnconfiguredTenantEncounterStorage } from './unconfigured-tenant-encoun
 import { TenantStorageEncounterRepository } from './encounter.repository';
 import { ENCOUNTER_REPOSITORY, ENCOUNTER_STORAGE } from './tenant-encounter.storage';
 import type { EncounterStorage } from './tenant-encounter.storage';
+import {
+  CLINIC_FINANCE_STORAGE,
+  InMemoryClinicFinanceStorage,
+  UnconfiguredClinicFinanceStorage,
+} from './tenant-clinic-finance.storage';
+import type { ClinicFinanceStorage } from './tenant-clinic-finance.storage';
 
 @Module({
   imports: [ConfigModule, DatabaseModule],
@@ -117,6 +124,7 @@ import type { EncounterStorage } from './tenant-encounter.storage';
     MongoTenantPatientStorage,
     MongoTenantAppointmentStorage,
     MongoTenantEncounterStorage,
+    MongoTenantClinicFinanceStorage,
     TenantStorageConfigurationNotice,
     InMemoryTenantPatientStorage,
     UnconfiguredTenantPatientStorage,
@@ -124,6 +132,8 @@ import type { EncounterStorage } from './tenant-encounter.storage';
     UnconfiguredTenantAppointmentStorage,
     InMemoryTenantEncounterStorage,
     UnconfiguredTenantEncounterStorage,
+    InMemoryClinicFinanceStorage,
+    UnconfiguredClinicFinanceStorage,
     {
       provide: TENANT_PATIENT_STORAGE,
       inject: [
@@ -198,6 +208,29 @@ import type { EncounterStorage } from './tenant-encounter.storage';
         return unconfigured;
       },
     },
+    {
+      provide: CLINIC_FINANCE_STORAGE,
+      inject: [
+        ConfigService,
+        MongoTenantClinicFinanceStorage,
+        InMemoryClinicFinanceStorage,
+        UnconfiguredClinicFinanceStorage,
+      ],
+      useFactory: (
+        config: ConfigService,
+        persistent: MongoTenantClinicFinanceStorage,
+        memory: InMemoryClinicFinanceStorage,
+        unconfigured: UnconfiguredClinicFinanceStorage,
+      ): ClinicFinanceStorage => {
+        const provider = effectiveTenantStorageProvider(
+          config.tenantStorageProvider,
+          config.isDevelopment,
+        );
+        if (provider === 'mongodb') return persistent;
+        if (provider === 'memory') return memory;
+        return unconfigured;
+      },
+    },
     TenantAppointmentRepository,
     {
       provide: APPOINTMENT_REPOSITORY,
@@ -220,6 +253,8 @@ import type { EncounterStorage } from './tenant-encounter.storage';
     MongoTenantPatientStorage,
     MongoTenantAppointmentStorage,
     MongoTenantEncounterStorage,
+    CLINIC_FINANCE_STORAGE,
+    MongoTenantClinicFinanceStorage,
   ],
 })
 export class TenantStorageModule {}
