@@ -58,6 +58,7 @@
     loading: false,
     saving: false,
     error: '',
+    itemsRequestId: 0,
   };
   const esc = (value) =>
     String(value ?? '').replace(
@@ -99,13 +100,32 @@
   }
 
   async function chooseWorkspace(workspace) {
+    clearWorkspaceData();
     state.workspace = workspace;
     state.screen = 'workspace';
     await loadItems();
   }
 
+  function clearWorkspaceData() {
+    state.itemsRequestId += 1;
+    state.items = [];
+    state.status = '';
+    state.editId = '';
+    state.loading = false;
+    state.saving = false;
+    state.error = '';
+  }
+
   async function loadItems() {
-    if (!allowed(current().read)) {
+    const workspace = state.workspace;
+    const resource = current();
+    const requestId = ++state.itemsRequestId;
+    const isCurrent = () =>
+      requestId === state.itemsRequestId &&
+      state.workspace === workspace &&
+      current() === resource;
+    if (!workspace) return;
+    if (!allowed(resource.read)) {
       state.items = [];
       state.loading = false;
       render();
@@ -113,23 +133,28 @@
     }
     state.loading = true;
     state.error = '';
+    state.items = [];
     render();
     try {
-      const result = await api[current().list](state.workspace.tenantId, {
+      const result = await api[resource.list](workspace.tenantId, {
         ...(state.status ? { status: state.status } : {}),
         limit: 50,
         offset: 0,
       });
+      if (!isCurrent()) return;
       state.items = Array.isArray(result.items) ? result.items : [];
     } catch (error) {
+      if (!isCurrent()) return;
       if (error.status === 401) {
         state.screen = 'signin';
         return renderSignIn();
       }
       state.error = safeMessage(error);
     } finally {
-      state.loading = false;
-      render();
+      if (isCurrent()) {
+        state.loading = false;
+        render();
+      }
     }
   }
 
@@ -251,12 +276,14 @@
     if (action === 'choose') return chooseWorkspace(state.workspaces[Number(button.dataset.index)]);
     if (action === 'retry') return state.workspace ? loadItems() : loadWorkspaces();
     if (action === 'switch') {
+      clearWorkspaceData();
       state.workspace = null;
       state.screen = 'select';
       return render();
     }
     if (action === 'logout') {
       await api.logout();
+      clearWorkspaceData();
       state.workspace = null;
       return renderSignIn();
     }

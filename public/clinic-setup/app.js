@@ -25,6 +25,7 @@
     selectedFacilityId: null, branches: [], branchOffset: 0, branchHasNext: false,
     branchStatus: '', branchLoading: false, branchError: null, facilityForm: null,
     branchForm: null, saving: false, busyId: null, screenMessage: '',
+    workspaceEpoch: 0, facilityRequestId: 0, branchRequestId: 0,
   };
   const esc = (value) => String(value == null ? '' : value)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
@@ -70,15 +71,38 @@
     if (!workspace || typeof workspace.tenantId !== 'string' || !Array.isArray(workspace.permissionCodes)) {
       state.screen = 'none'; render(); return;
     }
+    clearWorkspaceData();
     state.workspace = workspace;
     state.screen = 'workspace';
-    state.facilities = []; state.selectedFacilityId = null; state.branches = [];
-    state.facilityOffset = 0; state.branchOffset = 0; state.facilityError = null; state.branchError = null;
     render();
     if (allowed(PERMISSIONS.facilityRead)) await loadFacilities();
   }
 
+  function clearWorkspaceData() {
+    state.workspaceEpoch += 1;
+    state.facilityRequestId += 1;
+    state.branchRequestId += 1;
+    state.facilities = [];
+    state.selectedFacilityId = null;
+    state.branches = [];
+    state.facilityOffset = 0;
+    state.branchOffset = 0;
+    state.facilityHasNext = false;
+    state.branchHasNext = false;
+    state.facilityStatus = '';
+    state.branchStatus = '';
+    state.facilityLoading = false;
+    state.branchLoading = false;
+    state.facilityError = null;
+    state.branchError = null;
+    state.facilityForm = null;
+    state.branchForm = null;
+    state.saving = false;
+    state.busyId = null;
+  }
+
   function expireSession() {
+    clearWorkspaceData();
     state.workspace = null; state.workspaces = []; state.screen = 'signin'; state.facilities = [];
     state.branches = []; render();
   }
@@ -89,41 +113,75 @@
 
   async function loadFacilities() {
     if (!state.workspace || !allowed(PERMISSIONS.facilityRead)) return;
+    const workspace = state.workspace;
+    const tenantId = workspace.tenantId;
+    const epoch = state.workspaceEpoch;
+    const requestId = ++state.facilityRequestId;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.facilityRequestId &&
+      state.workspace === workspace;
     state.facilityLoading = true; state.facilityError = null; render();
     try {
-      const result = await api.listFacilities(state.workspace.tenantId, {
+      const result = await api.listFacilities(tenantId, {
         status: state.facilityStatus || undefined, limit: PAGE_SIZE, offset: state.facilityOffset,
       });
+      if (!isCurrent()) return;
       state.facilities = Array.isArray(result.items) ? result.items : [];
       state.facilityHasNext = state.facilities.length === PAGE_SIZE;
       if (!state.facilities.some((item) => item.id === state.selectedFacilityId)) {
         state.selectedFacilityId = null; state.branches = [];
+        state.branchRequestId += 1;
       }
     } catch (error) {
+      if (!isCurrent()) return;
       if (error.status === 401) return expireSession();
       state.facilityError = error;
     } finally {
-      state.facilityLoading = false; render();
+      if (isCurrent()) {
+        state.facilityLoading = false;
+        render();
+      }
     }
   }
 
   async function loadBranches() {
     const facility = selectedFacility();
+    const workspace = state.workspace;
+    const tenantId = workspace?.tenantId;
+    const epoch = state.workspaceEpoch;
+    const requestId = ++state.branchRequestId;
+    const facilityId = facility?.id;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.branchRequestId &&
+      state.workspace === workspace &&
+      selectedFacility()?.id === facilityId;
     if (!state.workspace || !allowed(PERMISSIONS.branchRead) || !facility || facility.status !== 'ACTIVE') {
-      state.branches = []; render(); return;
+      if (isCurrent()) {
+        state.branches = [];
+        state.branchLoading = false;
+        render();
+      }
+      return;
     }
     state.branchLoading = true; state.branchError = null; render();
     try {
-      const result = await api.listSetupBranches(state.workspace.tenantId, facility.id, {
+      const result = await api.listSetupBranches(tenantId, facility.id, {
         status: state.branchStatus || undefined, limit: PAGE_SIZE, offset: state.branchOffset,
       });
+      if (!isCurrent()) return;
       state.branches = Array.isArray(result.items) ? result.items : [];
       state.branchHasNext = state.branches.length === PAGE_SIZE;
     } catch (error) {
+      if (!isCurrent()) return;
       if (error.status === 401) return expireSession();
       state.branchError = error;
     } finally {
-      state.branchLoading = false; render();
+      if (isCurrent()) {
+        state.branchLoading = false;
+        render();
+      }
     }
   }
 
@@ -260,30 +318,39 @@
     }
     const name = String(new FormData(form).get('name') || '').trim();
     if (!name || !state.workspace) return;
+    const workspace = state.workspace;
+    const epoch = state.workspaceEpoch;
     state.saving = true;
     if (type === 'facility') state.facilityForm.error = null;
     else state.branchForm.error = null;
     render();
     try {
       if (type === 'facility') {
-        if (state.facilityForm.id) await api.updateFacility(state.workspace.tenantId, state.facilityForm.id, { name });
-        else await api.createFacility(state.workspace.tenantId, { name });
+        if (state.facilityForm.id) await api.updateFacility(workspace.tenantId, state.facilityForm.id, { name });
+        else await api.createFacility(workspace.tenantId, { name });
+        if (epoch !== state.workspaceEpoch || state.workspace !== workspace) return;
         state.facilityForm = null; state.facilityOffset = 0;
         toast('تم حفظ بيانات المنشأة.'); await loadFacilities();
       } else {
         const facility = selectedFacility();
         if (!facility) throw new Error('اختر منشأة نشطة قبل إضافة الفرع.');
-        if (state.branchForm.id) await api.updateBranch(state.workspace.tenantId, facility.id, state.branchForm.id, { name });
-        else await api.createBranch(state.workspace.tenantId, facility.id, { name });
+        if (state.branchForm.id) await api.updateBranch(workspace.tenantId, facility.id, state.branchForm.id, { name });
+        else await api.createBranch(workspace.tenantId, facility.id, { name });
+        if (epoch !== state.workspaceEpoch || state.workspace !== workspace) return;
         state.branchForm = null; state.branchOffset = 0;
         toast('تم حفظ بيانات الفرع.'); await loadBranches();
       }
     } catch (error) {
+      if (epoch !== state.workspaceEpoch || state.workspace !== workspace) return;
       if (error.status === 401) { expireSession(); return; }
+      if (!state.workspace) return;
       if (type === 'facility' && state.facilityForm) state.facilityForm.error = error;
       if (type === 'branch' && state.branchForm) state.branchForm.error = error;
     } finally {
-      state.saving = false; render();
+      if (epoch === state.workspaceEpoch && state.workspace === workspace) {
+        state.saving = false;
+        render();
+      }
     }
   }
 
@@ -295,6 +362,7 @@
     if (action === 'logout') { await logout(); return; }
     if (action === 'retry') { await bootstrap(); return; }
     if (action === 'switch-workspace') {
+      clearWorkspaceData();
       state.workspace = null;
       if (state.workspaces.length > 1) { state.screen = 'select'; render(); }
       else await loadWorkspaces();
@@ -342,6 +410,9 @@
     const facilityAction = action.endsWith('-facility');
     const item = facilityAction ? state.facilities.find((entry) => entry.id === id) : branch;
     if (!item || !state.workspace) return;
+    const workspace = state.workspace;
+    const tenantId = workspace.tenantId;
+    const epoch = state.workspaceEpoch;
     const [, entity] = action.split('-');
     const verb = action.startsWith('activate-') ? 'activate' : action.startsWith('suspend-') ? 'suspend' : 'deactivate';
     const permission = PERMISSIONS[`${entity}${verb[0].toUpperCase()}${verb.slice(1)}`];
@@ -353,18 +424,25 @@
       : verb === 'suspend' ? `إيقاف ${label} مؤقتًا؟` : `إعادة تفعيل ${label}؟`)) return;
     state.busyId = id; render();
     try {
-      if (entity === 'facility') await api.changeFacilityStatus(state.workspace.tenantId, id, verb);
+      if (entity === 'facility') await api.changeFacilityStatus(tenantId, id, verb);
       else {
         if (!facility || facility.status !== 'ACTIVE') throw new Error('فعّل المنشأة قبل تعديل حالة الفرع.');
-        await api.changeBranchStatus(state.workspace.tenantId, facility.id, id, verb);
+        await api.changeBranchStatus(tenantId, facility.id, id, verb);
       }
+      if (epoch !== state.workspaceEpoch || state.workspace !== workspace) return;
       toast(verb === 'activate' ? `تم تفعيل ${label}.` : verb === 'suspend' ? `تم إيقاف ${label} مؤقتًا.` : `تم إيقاف ${label} نهائيًا.`);
       if (entity === 'facility') await loadFacilities();
       else await loadBranches();
     } catch (error) {
+      if (epoch !== state.workspaceEpoch || state.workspace !== workspace) return;
       if (error.status === 401) return expireSession();
       toast(message(error), true);
-    } finally { state.busyId = null; render(); }
+    } finally {
+      if (epoch === state.workspaceEpoch && state.workspace === workspace) {
+        state.busyId = null;
+        render();
+      }
+    }
   }
 
   function toast(text,isError) {
@@ -376,7 +454,9 @@
   }
 
   async function logout() {
+    clearWorkspaceData();
+    state.workspace = null; state.workspaces = []; state.screen = 'signin';
+    render();
     try { await api.logout(); } catch (_) { /* The API client clears the access token. */ }
-    state.workspace = null; state.workspaces = []; state.screen = 'signin'; render();
   }
 })();

@@ -38,6 +38,9 @@
     detailError: '',
     saving: false,
     editStaff: false,
+    workspaceEpoch: 0,
+    directoryRequestId: 0,
+    detailRequestId: 0,
   };
   const esc = (v) =>
     String(v == null ? '' : v).replace(
@@ -84,23 +87,60 @@
       state.screen = 'none';
       return render();
     }
+    const epoch = ++state.workspaceEpoch;
+    state.directoryRequestId += 1;
+    state.detailRequestId += 1;
     state.workspace = w;
     state.screen = 'workspace';
+    state.members = [];
+    state.staff = [];
+    state.roles = [];
+    state.facilities = [];
+    state.branches = [];
+    state.status = '';
+    state.offset = 0;
+    state.hasNext = false;
     state.selectedId = '';
+    state.memberRoles = [];
+    state.staffRoles = [];
+    state.facilityScopes = [];
+    state.branchScopes = [];
+    state.detailError = '';
+    state.error = '';
+    state.editStaff = false;
     render();
-    await loadDirectory();
+    await loadDirectory(epoch);
   }
 
   function msg(e) {
     return e?.message || 'تعذّر إكمال الطلب. حاول مرة أخرى.';
   }
 
-  async function loadDirectory() {
-    if (!state.workspace) return;
+  function attachDirectoryRetry() {
+    if (!state.error || typeof app.querySelector !== 'function') return;
+    const alert = app.querySelector('.team-alert');
+    if (!alert || alert.querySelector('[data-action="retry-directory"]')) return;
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'inline-retry';
+    retry.dataset.action = 'retry-directory';
+    retry.textContent = 'إعادة المحاولة';
+    alert.appendChild(retry);
+  }
+
+  async function loadDirectory(expectedEpoch = state.workspaceEpoch) {
+    const epoch = expectedEpoch;
+    const workspace = state.workspace;
+    if (!workspace || epoch !== state.workspaceEpoch) return;
+    const requestId = ++state.directoryRequestId;
     state.loading = true;
     state.error = '';
     render();
-    const tenantId = state.workspace.tenantId;
+    const tenantId = workspace.tenantId;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.directoryRequestId &&
+      state.workspace === workspace;
     try {
       const jobs = [];
       if (allowed(P.memberRead))
@@ -112,6 +152,7 @@
               offset: state.offset,
             })
             .then((r) => {
+              if (!isCurrent()) return;
               state.members = r.items || [];
               state.hasNext = state.members.length === PAGE_SIZE;
             }),
@@ -120,6 +161,7 @@
       if (allowed(P.staffRead))
         jobs.push(
           api.listTenantStaff(tenantId, { limit: 100, offset: 0 }).then((r) => {
+            if (!isCurrent()) return;
             state.staff = r.items || [];
           }),
         );
@@ -127,6 +169,7 @@
       if (allowed(P.rolesRead))
         jobs.push(
           api.listTenantRoles(tenantId).then((r) => {
+            if (!isCurrent()) return;
             state.roles = Array.isArray(r) ? r : r.items || [];
           }),
         );
@@ -134,21 +177,22 @@
       if (allowed(P.scopeManage) && allowed(P.facilityRead)) {
         jobs.push(
           api.listFacilities(tenantId, { limit: 100, offset: 0 }).then(async (r) => {
+            if (!isCurrent()) return;
             state.facilities = r.items || [];
+            const activeFacilities = state.facilities.filter((facility) => facility.status === 'ACTIVE');
             const all = allowed(P.branchRead)
               ? await Promise.all(
-                  state.facilities.map((f) =>
-                    api
-                      .listBranches(tenantId, f.id, { limit: 100, offset: 0 })
-                      .catch(() => ({ items: [] })),
+                  activeFacilities.map((f) =>
+                    api.listBranches(tenantId, f.id, { limit: 100, offset: 0 }),
                   ),
                 )
               : [];
-            state.branches = all.flatMap((b) => b.items || []);
+            if (isCurrent()) state.branches = all.flatMap((b) => b.items || []);
           }),
         );
       }
       await Promise.all(jobs);
+      if (!isCurrent()) return;
       if (!allowed(P.memberRead) && allowed(P.staffRead)) {
         state.members = state.staff.map((s) => ({
           id: s.membershipId,
@@ -162,20 +206,33 @@
         state.selectedId = state.members[0]?.id || '';
       state.screen = 'workspace';
     } catch (e) {
+      if (!isCurrent()) return;
       if (e.status === 401) {
         state.screen = 'signin';
         state.workspace = null;
       } else state.error = msg(e);
     } finally {
-      state.loading = false;
-      render();
+      if (isCurrent()) {
+        state.loading = false;
+        render();
+        attachDirectoryRetry();
+      }
     }
-    if (state.selectedId) await loadDetails();
+    if (isCurrent() && state.selectedId) await loadDetails();
   }
 
   async function loadDetails() {
-    const m = member();
-    const s = staffer();
+    const workspace = state.workspace;
+    const epoch = state.workspaceEpoch;
+    const requestId = ++state.detailRequestId;
+    const selectedId = state.selectedId;
+    const m = state.members.find((item) => item.id === selectedId) || null;
+    const s = state.staff.find((item) => item.membershipId === selectedId) || null;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.detailRequestId &&
+      state.workspace === workspace &&
+      state.selectedId === selectedId;
     if (!m) {
       render();
       return;
@@ -185,11 +242,12 @@
     state.staffRoles = [];
     state.facilityScopes = [];
     state.branchScopes = [];
-    const id = state.workspace.tenantId;
+    const id = workspace.tenantId;
     const requests = [];
     if (allowed(P.memberRead))
       requests.push(
         api.listTenantMembershipRoles(id, m.id).then((r) => {
+          if (!isCurrent()) return;
           state.memberRoles = (Array.isArray(r) ? r : r.items || []).map((item) => ({
             roleId: item.role?.id,
             roleCode: item.role?.code,
@@ -200,17 +258,20 @@
     if (s && allowed(P.staffRolesRead))
       requests.push(
         api.listStaffRoles(id, s.id).then((r) => {
+          if (!isCurrent()) return;
           state.staffRoles = r.items || [];
         }),
       );
     if (s && allowed(P.scopeRead)) {
       requests.push(
         api.listStaffFacilityScope(id, s.id).then((r) => {
+          if (!isCurrent()) return;
           state.facilityScopes = r.items || [];
         }),
       );
       requests.push(
         api.listStaffBranchScope(id, s.id).then((r) => {
+          if (!isCurrent()) return;
           state.branchScopes = r.items || [];
         }),
       );
@@ -218,12 +279,13 @@
     try {
       await Promise.all(requests);
     } catch (e) {
+      if (!isCurrent()) return;
       if (e.status === 401) {
         state.screen = 'signin';
         state.workspace = null;
       } else state.detailError = msg(e);
     }
-    render();
+    if (isCurrent()) render();
   }
 
   function render() {
@@ -316,7 +378,7 @@
     return `<section class="team-section"><h3>أدوار الموظف</h3>${chips(state.staffRoles, 'staff-role', canRoles)}${canRoles && allowed(P.staffRolesRead) ? roleSelect('staff-role') : ''}</section><div class="team-grid"><section class="team-section"><h3>نطاق المنشآت</h3>${chips(state.facilityScopes, 'facility-scope', canScope)}${
       canScope
         ? `<form class="team-inline" data-form="add-facility"><select class="control" name="facilityId" required><option value="">اختر منشأة نشطة</option>${state.facilities
-            .filter((f) => !state.facilityScopes.some((a) => a.facilityId === f.id))
+            .filter((f) => f.status === 'ACTIVE' && !state.facilityScopes.some((a) => a.facilityId === f.id))
             .map((f) => `<option value="${esc(f.id)}">${esc(f.name)}</option>`)
             .join(
               '',
@@ -325,7 +387,7 @@
     }</section><section class="team-section"><h3>نطاق الفروع</h3>${chips(state.branchScopes, 'branch-scope', canScope)}${
       canScope
         ? `<form class="team-inline" data-form="add-branch"><select class="control" name="branchId" required><option value="">اختر فرعًا نشطًا</option>${state.branches
-            .filter((b) => !state.branchScopes.some((a) => a.branchId === b.id))
+            .filter((b) => b.status === 'ACTIVE' && !state.branchScopes.some((a) => a.branchId === b.id))
             .map(
               (b) =>
                 `<option value="${esc(b.id)}">${esc(b.name)} — ${esc(b.facility?.name || '')}</option>`,
@@ -350,13 +412,39 @@
         return loadDetails();
       }
       if (a === 'retry') return bootstrap();
+      if (a === 'retry-directory') return loadDirectory();
       if (a === 'switch') {
+        state.workspaceEpoch += 1;
+        state.directoryRequestId += 1;
+        state.detailRequestId += 1;
         state.workspace = null;
+        state.members = [];
+        state.staff = [];
+        state.roles = [];
+        state.facilities = [];
+        state.branches = [];
+        state.selectedId = '';
+        state.memberRoles = [];
+        state.staffRoles = [];
+        state.facilityScopes = [];
+        state.branchScopes = [];
+        state.error = '';
+        state.detailError = '';
+        state.screen = 'boot';
+        render();
         return bootstrap();
       }
       if (a === 'logout') {
         await api.logout();
+        state.workspaceEpoch += 1;
+        state.directoryRequestId += 1;
+        state.detailRequestId += 1;
         state.workspace = null;
+        state.members = [];
+        state.staff = [];
+        state.facilities = [];
+        state.branches = [];
+        state.selectedId = '';
         state.screen = 'signin';
         return render();
       }

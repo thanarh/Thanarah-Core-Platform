@@ -6654,6 +6654,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
     const baselineLogin = await getApplication().inject({
       method: 'POST',
       url: `${authRoot}/login`,
+      remoteAddress: '127.0.0.2',
       payload: { email: testEmail, password: testPassword },
     });
     expect(baselineLogin.statusCode).toBe(200);
@@ -6674,6 +6675,7 @@ describe('Real tenant MongoDB Patient and Appointment runtime verification', () 
       const login = await getApplication().inject({
         method: 'POST',
         url: `${authRoot}/login`,
+        remoteAddress: '127.0.0.2',
         payload: { email: testEmail, password: testPassword },
       });
       const refresh = await getApplication().inject({

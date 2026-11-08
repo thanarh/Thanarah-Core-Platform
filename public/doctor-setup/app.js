@@ -40,6 +40,9 @@
     saving: false,
     error: '',
     success: '',
+    workspaceEpoch: 0,
+    dataRequestId: 0,
+    branchRequestId: 0,
   };
   const esc = (v) =>
     String(v ?? '').replace(
@@ -73,10 +76,43 @@
     }
   }
   async function chooseWorkspace(workspace) {
+    if (!workspace || typeof workspace.tenantId !== 'string' || !Array.isArray(workspace.permissionCodes)) {
+      state.screen = 'error';
+      state.error = 'تعذّر فتح مساحة العمل.';
+      return render();
+    }
+    clearWorkspaceData();
     state.workspace = workspace;
     state.screen = 'workspace';
     render();
     await loadData();
+  }
+  function clearWorkspaceData() {
+    state.workspaceEpoch += 1;
+    state.dataRequestId += 1;
+    state.assignmentRequest += 1;
+    state.branchRequestId += 1;
+    state.doctors = [];
+    state.staff = [];
+    state.departments = [];
+    state.specialties = [];
+    state.services = [];
+    state.facilities = [];
+    state.branches = [];
+    state.serviceAssignments = [];
+    state.selectedFacilityId = '';
+    state.selectedId = '';
+    state.editId = '';
+    state.assignmentLoading = false;
+    state.branchLoading = false;
+    state.assignmentSaving = false;
+    state.assignmentError = '';
+    state.status = '';
+    state.search = '';
+    state.loading = false;
+    state.saving = false;
+    state.error = '';
+    state.success = '';
   }
   function signIn(error = '') {
     state.screen = 'signin';
@@ -88,7 +124,17 @@
   }
 
   async function loadData() {
+    const epoch = state.workspaceEpoch;
+    const requestId = ++state.dataRequestId;
+    const workspace = state.workspace;
+    if (!workspace) return;
+    const tenantId = workspace.tenantId;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.dataRequestId &&
+      state.workspace === workspace;
     if (!allowed(P.read)) {
+      if (!isCurrent()) return;
       state.error = 'لا تملك صلاحية قراءة ملفات الأطباء.';
       render();
       return;
@@ -96,59 +142,60 @@
     state.loading = true;
     state.error = '';
     render();
-    const tenantId = state.workspace.tenantId;
     const jobs = [
       api
         .listSetupDoctors(tenantId, { status: state.status || undefined, limit: 100, offset: 0 })
         .then((r) => {
-          state.doctors = r.items || [];
+          if (isCurrent()) state.doctors = r.items || [];
         }),
     ];
     if (allowed(P.staffRead))
       jobs.push(
         api.listTenantStaff(tenantId, { status: 'ACTIVE', limit: 100, offset: 0 }).then((r) => {
-          state.staff = r.items || [];
+          if (isCurrent()) state.staff = r.items || [];
         }),
       );
     if (allowed(P.departmentsRead))
       jobs.push(
         api.listDepartments(tenantId, { status: 'ACTIVE', limit: 100, offset: 0 }).then((r) => {
-          state.departments = r.items || [];
+          if (isCurrent()) state.departments = r.items || [];
         }),
       );
     if (allowed(P.specialtiesRead))
       jobs.push(
         api.listSpecialties(tenantId, { status: 'ACTIVE', limit: 100, offset: 0 }).then((r) => {
-          state.specialties = r.items || [];
+          if (isCurrent()) state.specialties = r.items || [];
         }),
       );
     if (allowed(P.servicesRead))
       jobs.push(
         api.listSetupServices(tenantId, { status: 'ACTIVE', limit: 100, offset: 0 }).then((r) => {
-          state.services = r.items || [];
+          if (isCurrent()) state.services = r.items || [];
         }),
       );
     if (allowed(P.facilitiesRead))
       jobs.push(
         api.listFacilities(tenantId, { status: 'ACTIVE', limit: 100, offset: 0 }).then((r) => {
-          state.facilities = r.items || [];
+          if (isCurrent()) state.facilities = r.items || [];
         }),
       );
     try {
       await Promise.all(jobs);
+      if (!isCurrent()) return;
       if (!state.doctors.some((item) => item.id === state.selectedId))
         state.selectedId = state.doctors[0]?.id || '';
       if (!state.facilities.some((item) => item.id === state.selectedFacilityId))
         state.selectedFacilityId = state.facilities[0]?.id || '';
     } catch (error) {
+      if (!isCurrent()) return;
       if (error.status === 401) {
         state.screen = 'signin';
         return signIn();
       }
       state.error = message(error);
     } finally {
-      state.loading = false;
-      if (state.screen !== 'signin') {
+      if (isCurrent()) state.loading = false;
+      if (isCurrent() && state.screen !== 'signin') {
         render();
         if (state.selectedId) void loadDoctorServices();
         if (state.selectedFacilityId) void loadBranches(state.selectedFacilityId);
@@ -157,35 +204,45 @@
   }
 
   async function loadDoctorServices() {
+    const epoch = state.workspaceEpoch;
+    const tenantId = state.workspace?.tenantId;
+    const doctorId = state.selectedId;
+    const requestId = ++state.assignmentRequest;
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.assignmentRequest &&
+      state.workspace?.tenantId === tenantId &&
+      state.selectedId === doctorId;
     if (
-      !state.selectedId ||
+      !doctorId ||
       !allowed(P.read) ||
       !allowed(P.servicesRead) ||
       !allowed(P.facilitiesRead) ||
       !allowed(P.branchesRead)
     ) {
-      state.serviceAssignments = [];
+      if (isCurrent()) {
+        state.serviceAssignments = [];
+        state.assignmentLoading = false;
+      }
       return;
     }
-    const doctorId = state.selectedId;
-    const requestId = ++state.assignmentRequest;
     state.serviceAssignments = [];
     state.assignmentLoading = true;
     state.assignmentError = '';
     render();
     try {
-      const result = await api.listDoctorServices(state.workspace.tenantId, doctorId);
-      if (requestId === state.assignmentRequest && doctorId === state.selectedId)
+      const result = await api.listDoctorServices(tenantId, doctorId);
+      if (isCurrent())
         state.serviceAssignments = result?.items || [];
     } catch (error) {
-      if (requestId !== state.assignmentRequest) return;
+      if (!isCurrent()) return;
       if (error.status === 401) {
         state.screen = 'signin';
         return signIn();
       }
       state.assignmentError = message(error);
     } finally {
-      if (requestId === state.assignmentRequest) {
+      if (isCurrent()) {
         state.assignmentLoading = false;
         if (state.screen !== 'signin') render();
       }
@@ -193,26 +250,39 @@
   }
 
   async function loadBranches(facilityId) {
+    const epoch = state.workspaceEpoch;
+    const tenantId = state.workspace?.tenantId;
+    const requestId = ++state.branchRequestId;
     state.selectedFacilityId = facilityId;
     state.branches = [];
+    const isCurrent = () =>
+      epoch === state.workspaceEpoch &&
+      requestId === state.branchRequestId &&
+      state.workspace?.tenantId === tenantId &&
+      state.selectedFacilityId === facilityId;
     if (!facilityId || !allowed(P.facilitiesRead) || !allowed(P.branchesRead)) {
-      render();
+      if (isCurrent()) {
+        state.branchLoading = false;
+        render();
+      }
       return;
     }
     state.branchLoading = true;
     render();
     try {
-      const result = await api.listBranches(state.workspace.tenantId, facilityId, {
+      const result = await api.listBranches(tenantId, facilityId, {
         status: 'ACTIVE',
         limit: 100,
         offset: 0,
       });
-      if (state.selectedFacilityId === facilityId) state.branches = result.items || [];
+      if (isCurrent()) state.branches = result.items || [];
     } catch (error) {
-      state.assignmentError = message(error);
+      if (isCurrent()) state.assignmentError = message(error);
     } finally {
-      state.branchLoading = false;
-      render();
+      if (isCurrent()) {
+        state.branchLoading = false;
+        render();
+      }
     }
   }
 
@@ -414,12 +484,14 @@
       return chooseWorkspace(state.workspaces[Number(button.dataset.index)]);
     if (button.dataset.action === 'retry') return state.workspace ? loadData() : bootstrap();
     if (button.dataset.action === 'switch') {
+      clearWorkspaceData();
       state.workspace = null;
       state.screen = 'select';
       return render();
     }
     if (button.dataset.action === 'logout') {
       await api.logout();
+      clearWorkspaceData();
       return signIn();
     }
     if (button.dataset.action === 'select') {
