@@ -123,4 +123,20 @@ export class ConfigService {
   get trustedProxies(): string[] {
     return this.config.get('AUTH_TRUSTED_PROXIES', { infer: true });
   }
+
+  get aiExternalInferenceEnabled(): boolean {
+    return this.config.get('AI_EXTERNAL_INFERENCE_ENABLED', { infer: true });
+  }
+
+  get aiOpenAiApiKey(): string {
+    return this.config.get('AI_OPENAI_API_KEY', { infer: true });
+  }
+
+  get aiOpenAiBaseUrl(): string {
+    return this.config.get('AI_OPENAI_BASE_URL', { infer: true });
+  }
+
+  get aiOllamaEnabled(): boolean {
+    return this.config.get('AI_OLLAMA_ENABLED', { infer: true });
+  }
 }

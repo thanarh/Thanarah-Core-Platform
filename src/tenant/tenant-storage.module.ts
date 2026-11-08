@@ -250,6 +250,8 @@ import type { ClinicFinanceStorage } from './tenant-clinic-finance.storage';
     TenantStorageRegistryService,
     TenantStorageActivationService,
     TenantStorageReadinessService,
+    TENANT_STORAGE_TARGET_RESOLVER,
+    TenantMongoClientManager,
     MongoTenantPatientStorage,
     MongoTenantAppointmentStorage,
     MongoTenantEncounterStorage,

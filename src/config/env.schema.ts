@@ -82,6 +82,16 @@ export const envSchema = z
       .default('false')
       .transform((value) => value === 'true'),
     AUTH_REFRESH_COOKIE_SAME_SITE: z.enum(['strict', 'lax', 'none']).default('strict'),
+    AI_EXTERNAL_INFERENCE_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
+    AI_OPENAI_API_KEY: z.string().default(''),
+    AI_OPENAI_BASE_URL: z.string().url().default('https://api.openai.com/v1'),
+    AI_OLLAMA_ENABLED: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((value) => value === 'true'),
     AUTH_TRUSTED_PROXIES: trustedProxySchema,
     THROTTLE_TTL: z.coerce.number().int().positive().default(60000),
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
@@ -169,6 +179,30 @@ export const envSchema = z
         path: ['AUTH_REFRESH_COOKIE_SECURE'],
         message: 'Secure cookies are required with SameSite=None',
       });
+    }
+    if (config.AI_EXTERNAL_INFERENCE_ENABLED && !config.AI_OPENAI_API_KEY.trim()) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['AI_OPENAI_API_KEY'],
+        message: 'An AI provider secret is required when external inference is enabled',
+      });
+    }
+    if (config.AI_EXTERNAL_INFERENCE_ENABLED) {
+      try {
+        if (new URL(config.AI_OPENAI_BASE_URL).protocol !== 'https:') {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['AI_OPENAI_BASE_URL'],
+            message: 'Hosted AI provider endpoints must use HTTPS',
+          });
+        }
+      } catch {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['AI_OPENAI_BASE_URL'],
+          message: 'Hosted AI provider endpoint is invalid',
+        });
+      }
     }
   });
 

@@ -59,6 +59,11 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.finance.settings.manage',
   'tenant.finance.review',
   'tenant.finance.issue',
+  'tenant.ai.read',
+  'tenant.ai.manage',
+  'tenant.ai.knowledge.manage',
+  'tenant.ai.budget.manage',
+  'tenant.ai.run',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -229,6 +234,14 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.finance.issue',
     description: 'Issue reviewed clinic invoices without collecting payment',
   },
+  { code: 'tenant.ai.read', description: 'View tenant AI agents, knowledge sources, and usage' },
+  { code: 'tenant.ai.manage', description: 'Create and update tenant AI agents and tool access' },
+  {
+    code: 'tenant.ai.knowledge.manage',
+    description: 'Manage approved tenant knowledge sources for AI retrieval',
+  },
+  { code: 'tenant.ai.budget.manage', description: 'Configure tenant AI token budgets and limits' },
+  { code: 'tenant.ai.run', description: 'Run tenant AI agents within approved token limits' },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -286,6 +299,11 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.finance.settings.manage',
       'tenant.finance.review',
       'tenant.finance.issue',
+      'tenant.ai.read',
+      'tenant.ai.manage',
+      'tenant.ai.knowledge.manage',
+      'tenant.ai.budget.manage',
+      'tenant.ai.run',
     ],
   },
   {

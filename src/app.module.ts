@@ -14,6 +14,7 @@ import { TenantModule } from './tenant/tenant.module';
 import { PlatformCatalogModule } from './platform-catalog/platform-catalog.module';
 import { SubscriptionsModule } from './subscriptions/subscriptions.module';
 import { PlatformMongoModule } from './platform-mongo/platform-mongo.module';
+import { AiPlatformModule } from './ai-platform/ai-platform.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { PlatformMongoModule } from './platform-mongo/platform-mongo.module';
     TenantModule,
     PlatformCatalogModule,
     SubscriptionsModule,
+    AiPlatformModule,
     ThrottlerModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

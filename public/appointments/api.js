@@ -1027,6 +1027,67 @@
       });
     },
 
+    listAiProviders(tenantId) {
+      return request(tenantPath(tenantId, '/ai/providers'));
+    },
+
+    listAiTools(tenantId) {
+      return request(tenantPath(tenantId, '/ai/tools'));
+    },
+
+    listAiAgents(tenantId) {
+      return request(tenantPath(tenantId, '/ai/agents'));
+    },
+
+    createAiAgent(tenantId, input) {
+      return request(tenantPath(tenantId, '/ai/agents'), { method: 'POST', body: input });
+    },
+
+    updateAiAgent(tenantId, agentId, input) {
+      return request(tenantPath(tenantId, `/ai/agents/${encodeURIComponent(agentId)}`), {
+        method: 'PATCH',
+        body: input,
+      });
+    },
+
+    listAiKnowledge(tenantId) {
+      return request(tenantPath(tenantId, '/ai/knowledge'));
+    },
+
+    createAiKnowledge(tenantId, input) {
+      return request(tenantPath(tenantId, '/ai/knowledge'), { method: 'POST', body: input });
+    },
+
+    deleteAiKnowledge(tenantId, knowledgeId) {
+      return request(
+        tenantPath(tenantId, `/ai/knowledge/${encodeURIComponent(knowledgeId)}`),
+        { method: 'DELETE' },
+      );
+    },
+
+    getAiBudget(tenantId) {
+      return request(tenantPath(tenantId, '/ai/budget'));
+    },
+
+    saveAiBudget(tenantId, input) {
+      return request(tenantPath(tenantId, '/ai/budget'), { method: 'PUT', body: input });
+    },
+
+    getAiUsage(tenantId) {
+      return request(tenantPath(tenantId, '/ai/usage'));
+    },
+
+    listAiAudit(tenantId) {
+      return request(tenantPath(tenantId, '/ai/audit'));
+    },
+
+    runAiAgent(tenantId, agentId, prompt) {
+      return request(
+        tenantPath(tenantId, `/ai/agents/${encodeURIComponent(agentId)}/run`),
+        { method: 'POST', body: { prompt } },
+      );
+    },
+
     getSchedulingPolicy(tenantId, facilityId) {
       return request(
         tenantPath(tenantId, `/facilities/${encodeURIComponent(facilityId)}/scheduling-policy`),

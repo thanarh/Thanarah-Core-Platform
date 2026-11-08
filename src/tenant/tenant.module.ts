@@ -125,6 +125,11 @@ import { ClinicFinanceRepository } from './clinic-finance.repository';
     TenantMembershipService,
     TenantService,
     TenantStorageModule,
+    TenantAuthorizationGuard,
+    TenantAuthorizationService,
+    TenantContextGuard,
+    TenantMembershipValidatorService,
+    TrustedTenantContextFactoryService,
   ],
 })
 export class TenantModule {}

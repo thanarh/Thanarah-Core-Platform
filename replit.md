@@ -86,11 +86,30 @@ security-event resolution separate from the original event evidence. Their
 metadata is constrained to safe scalar values; authentication credentials and
 raw internal errors are never persisted.
 
+## Thanarah AI Platform Boundaries
+
+The repository includes a tenant-scoped AI administration foundation and an
+isolated inference runtime. The authenticated NestJS control plane owns tenant
+permissions, storage routing, audit, budgets, and knowledge retrieval. The
+runtime is a separate process without database credentials or direct clinical
+repository access. See `docs/ai-platform-boundaries.md`.
+
+- Hosted and local model adapters remain disabled unless explicitly configured.
+- Do not send patient data or secrets to an external model without explicit
+  approval, secret-manager setup, and privacy/security review.
+- Tenant tools must be a fixed allowlist of authorized Thanarah service
+  operations. Never grant raw database, arbitrary query, or free-form webhook
+  access to an agent.
+- Knowledge sources are tenant-scoped; inference accepts synthetic test prompts
+  only in the current workspace.
+- Telemetry and audit records must not contain prompts, completions, patient
+  information, credentials, or knowledge text.
+
 ## FUTURE / PLANNED — Thanarah AI Voice Receptionist
 
 Thanarah may offer an optional paid AI voice receptionist add-on for healthcare
-tenants. This is a long-term architectural direction only and is **not part of
-the current implementation**.
+tenants. The tenant AI administration foundation does not include live voice or
+telephony, which remains a future implementation.
 
 ### Tenant isolation and configuration
 
@@ -142,9 +161,9 @@ configurable business hours, and human handoff. Billing and usage tracking are
 not implemented yet. A general PlanFeature quota-definition and decision
 foundation exists, but authoritative call-minute usage and enforcement do not.
 
-Do not add voice or telephony dependencies, database models or migrations,
-authentication changes, APIs, or tests until a future implementation phase
-explicitly authorizes that work.
+Do not add voice- or telephony-specific dependencies, database models or
+migrations, authentication changes, APIs, or tests until a future
+implementation phase explicitly authorizes that work.
 
 ## How to run on Replit
 

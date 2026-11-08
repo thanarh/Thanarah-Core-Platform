@@ -242,6 +242,7 @@ describe('TenantRoleRepository', () => {
       'prisma/migrations/20261023100000_phase46b_encounter_operation_ledger/migration.sql',
       'prisma/migrations/20261023110000_phase46c_encounter_prewrite_markers/migration.sql',
       'prisma/migrations/20261109110000_clinic_finance_foundation/migration.sql',
+      'prisma/migrations/20261109150000_ai_platform_permissions/migration.sql',
     ]
       .map((path) => readFileSync(path, 'utf8'))
       .join('\n');
