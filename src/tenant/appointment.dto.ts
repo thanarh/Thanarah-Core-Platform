@@ -94,10 +94,7 @@ const appointmentLocalDateSchema = z
     );
   });
 
-const listIntegerSchema = (
-  minimum: number,
-  maximum: number,
-): z.ZodType<number, z.ZodTypeDef, number | string> =>
+const listIntegerSchema = (minimum: number, maximum: number): z.ZodType<number> =>
   z
     .union([z.number().int(), z.string().regex(/^\d+$/u).transform(Number)])
     .pipe(z.number().int().min(minimum).max(maximum));

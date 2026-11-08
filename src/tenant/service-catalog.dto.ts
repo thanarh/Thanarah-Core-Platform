@@ -38,10 +38,7 @@ export const updateServiceSchema = z
 
 export const MAX_SERVICE_LIST_OFFSET = 100_000;
 
-const serviceListIntegerSchema = (
-  minimum: number,
-  maximum: number,
-): z.ZodType<number, z.ZodTypeDef, number | string> =>
+const serviceListIntegerSchema = (minimum: number, maximum: number): z.ZodType<number> =>
   z
     .union([
       z.number().int(),

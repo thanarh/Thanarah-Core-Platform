@@ -75,6 +75,10 @@ type AppointmentServiceHarness = {
   audit: { recordAudit: MockFunction };
 };
 
+function invokeMock<T>(mock: MockFunction, ...args: unknown[]): T {
+  return (mock as unknown as (...args: unknown[]) => T)(...args);
+}
+
 const start = new Date('2026-10-15T09:00:00.000Z');
 const end = new Date('2026-10-15T09:30:00.000Z');
 
@@ -140,16 +144,30 @@ function makeService(): AppointmentServiceHarness {
     withSchedulingLocks: vi.fn(),
   };
   const lockedStorage = {
-    create: vi.fn().mockImplementation((newRecord) => appointments.create(context, newRecord)),
+    create: vi
+      .fn()
+      .mockImplementation((newRecord) =>
+        invokeMock<Promise<AppointmentRecord>>(appointments.create, context, newRecord),
+      ),
     findById: vi
       .fn()
       .mockImplementation(async (id) => (id === currentRecord.id ? currentRecord : null)),
     hasProviderOverlap: vi
       .fn()
-      .mockImplementation((input) => appointments.hasProviderOverlap(context, input)),
+      .mockImplementation((input) =>
+        invokeMock<Promise<boolean>>(appointments.hasProviderOverlap, context, input),
+      ),
     update: vi
       .fn()
-      .mockImplementation((id, version, patch) => appointments.update(context, id, version, patch)),
+      .mockImplementation((id, version, patch) =>
+        invokeMock<Promise<AppointmentRecord | null>>(
+          appointments.update,
+          context,
+          id,
+          version,
+          patch,
+        ),
+      ),
   };
   appointments.withSchedulingLocks.mockImplementation((_context, _locks, operation) =>
     operation(lockedStorage),

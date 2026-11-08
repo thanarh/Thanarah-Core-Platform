@@ -6,7 +6,14 @@ const uuid = z.string().uuid();
 const timestamp = z.date();
 const optionalTimestamp = timestamp.nullable();
 const jsonValue: z.ZodType<unknown> = z.lazy(() =>
-  z.union([z.string(), z.number(), z.boolean(), z.null(), z.array(jsonValue), z.record(jsonValue)]),
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValue),
+    z.record(z.string(), jsonValue),
+  ]),
 );
 const common = {
   _id: uuid,
@@ -154,7 +161,10 @@ export const branchSchema = z
   })
   .strict();
 
-const safeMetadataSchema = z.record(z.union([z.string(), z.number(), z.boolean(), z.null()]));
+const safeMetadataSchema = z.record(
+  z.string(),
+  z.union([z.string(), z.number(), z.boolean(), z.null()]),
+);
 const auditContextSchema = {
   actorUserId: uuid.nullable(),
   subjectUserId: uuid.nullable(),

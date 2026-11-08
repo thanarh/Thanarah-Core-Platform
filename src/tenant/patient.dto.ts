@@ -56,7 +56,7 @@ const patientPhoneSchema = z
     return digits >= 5 && digits <= 15;
   });
 
-const patientOptionalTextSchema = (maxLength: number): z.ZodType<string, z.ZodTypeDef, string> =>
+const patientOptionalTextSchema = (maxLength: number): z.ZodType<string> =>
   z
     .string()
     .transform((value) => value.normalize('NFKC').trim())
@@ -93,10 +93,7 @@ const patientAddressSchema = z
     message: 'Address must contain plain text, not HTML markup',
   });
 
-const patientListIntegerSchema = (
-  minimum: number,
-  maximum: number,
-): z.ZodType<number, z.ZodTypeDef, number | string> =>
+const patientListIntegerSchema = (minimum: number, maximum: number): z.ZodType<number> =>
   z
     .union([z.number().int(), z.string().regex(/^\d+$/u).transform(Number)])
     .pipe(z.number().int().min(minimum).max(maximum));

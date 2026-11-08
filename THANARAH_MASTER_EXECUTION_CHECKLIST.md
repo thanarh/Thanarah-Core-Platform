@@ -47,7 +47,7 @@ Do not promote a feature to “implemented and tested” based only on a page, A
 | Mobile application | **Not found in this repository scan** | No Flutter `pubspec.yaml` or mobile project manifest was found. Do not create a parallel application without an explicit platform/stack decision. |
 | AI platform and RAG | **Not implemented in this repository** | `replit.md` documents a future voice receptionist direction only. No model registry, AI service, agent administration, RAG, vector store, or AI dashboard was found. |
 | WhatsApp, SMS, voice and workflow automation | **Not implemented in this repository** | No live provider or channel integration was evidenced. Provider choice, consent, message retention, call handling, and delivery operations require decisions and verified credentials. |
-| Security and dependencies | **Implemented baseline; current release assessment required** | Authentication and tenant-scope controls have tests; staging/production CORS fails closed for untrusted origins. The Phase 51 security report is historical: it records unresolved audit findings and no production/staging origin allowlist. Re-run current scans before claiming readiness. |
+| Security and dependencies | **Critical/high findings cleared; release gate remains open** | Fresh 2026-11-08 scans report 0 critical/high and 5 moderate dependency findings; SAST completed with 0 findings and HoundDog reported 0 findings. Auth, CORS, and tenant-scope unit tests pass. Staging/production CORS remains fail-closed; no approved origin allowlist is configured. This is not penetration testing or production certification. |
 | Storage, database and recovery operations | **Partially implemented; production readiness blocked** | The application uses MySQL/Prisma centrally and MongoDB behind tenant storage. Mongo provider/topology, TLS/network controls, transaction guarantees, backup/restore, residency, ownership, and RPO/RTO remain unapproved or unverified. Phase 61/62 replica-set backup/restore was not run. |
 
 ## 4. Ordered execution and acceptance register
@@ -57,7 +57,7 @@ The task queue enforces this order. Each completed stage must add its evidence a
 | Stage | Area | Task | Status at update | Acceptance evidence |
 |---|---|---:|---|---|
 | A | Evidence inventory and master register | #82 | **Complete for this documentation stage** | This file reflects current code, historical evidence limits, existing proposals, blockers, and the A–J acceptance order. |
-| B | Security and operational readiness | #83 | **Queued** | Current security/dependency scans; auth and tenant-scope tests; safe non-production recovery/operations evidence where an approved environment exists; explicit unresolved blockers. No production readiness claim without approvals. |
+| B | Security and operational readiness | #83 | **Complete — release readiness remains blocked** | Fresh scans, auth/CORS/tenant-scope tests, dependency fixes, and unresolved operational blockers are recorded in Section 7. No production readiness claim without approvals. |
 | C | Clinic and clinical workflows | #84 | **Queued** | Authorized synthetic tenant completes required setup and patient-to-appointment-to-encounter flows; API and browser tests verify permissions, tenant/facility/branch scope, failure states, and persistence. Existing proposals #73, #74, #80, and #81 remain separate and must not be duplicated. |
 | D | Web experience and responsive behavior | #85 | **Queued** | Approved workflows work in Arabic RTL and English LTR across supported phone/desktop sizes, with accessible loading, empty, success, error, and permission-denied states; authenticated browser evidence is recorded. |
 | E | Clinic finance foundation | #86 | **Queued** | Configurable invoice lifecycle and audit behavior are tested with approved fields and policies; clinic invoices remain distinct from platform SaaS subscriptions; no payment collection is enabled. |
@@ -89,8 +89,8 @@ These are already in the task list and are not recreated by this roadmap:
 
 ### Security and operations
 
-- Phase 51 recorded historical audit totals of 4 high and 2 moderate production-tree findings, and 2 critical, 4 high, and 4 moderate in the full npm tree; Replit's dependency audit reported different totals. These are not current scan results and must not be combined.
-- CORS intentionally rejects untrusted staging/production origins; a narrow allowlist has not been established in the cited report.
+- Fresh 2026-11-08 scans after remediation: dependency audit reports 0 critical, 0 high, and 5 moderate findings; SAST completed with 0 findings; HoundDog reports 0 findings. The two critical `tinypool` findings were removed by upgrading Vitest and coverage to 5.1.0; the `zod` high finding was removed by upgrading to 4.6.7; Prisma 6.19.3 remains in place with a scoped `deepmerge-ts` 8.0.2 override for `@prisma/config`. The remaining moderate findings are `deepmerge@4.3.1` under Nest CLI's `fork-ts-checker-webpack-plugin` (no fix reported), `glob@10.5.0` under Testcontainers' `archiver-utils`, `glob@13.0.6` under Nest CLI, and `minimatch@9.0.9` / `10.2.6` under those glob versions. The Fastify static path now uses patched `glob@14`. Do not treat these scans as a penetration test.
+- Staging/production CORS rejects all origins until an owner-approved allowlist is configured. Do not invent production origins or open cross-origin access to make clients connect.
 - The latest documented development database diagnostic classified the configured URL as non-MySQL without reading or displaying its value. Live MySQL-backed checks remain blocked until safe development configuration is corrected.
 - No approved MongoDB production provider/topology or transaction profile is documented. TLS/certificate validation, network access, shard policy, residency, and operating owner still require evidence.
 - Phase 61 and Phase 62 did not create or restore a backup because an approved isolated replica-set source and separate restore target were unavailable. RPO/RTO and restore timing are therefore not measured.
@@ -106,15 +106,15 @@ These are already in the task list and are not recreated by this roadmap:
 
 ## 6. Repository and workflow state
 
-- The branch observed for this update is `main`; the available branch list contained no `develop` branch. Do not switch or create a branch implicitly. The requested development-branch workflow must be reconciled before subsequent code tasks.
-- The worktree was clean immediately before this document update. Existing code and committed work were not reset, stashed, or rewritten.
-- This task changes documentation only. It does not run migrations, alter application behavior, inspect secret values, or change database configuration.
+- The active branch remains `main`; no `develop` branch was available. This assigned task was completed on the existing worktree without creating or switching branches. The requested development-branch workflow remains unresolved for future code tasks.
+- This task updated dependencies and validation code, removed admin-email logging, and added Zod 4 compatibility updates. No migrations, production changes, deployment, production data access, or secret-value access occurred.
 
 ## 7. Acceptance log
 
 | Date | Stage | Result and evidence | Limits / next gate |
 |---|---|---|---|
 | 2026-11-08 | A — Inventory and master register | Reviewed current source, `replit.md`, README, product roadmap, MongoDB decisions, Phase 51/60/61/62 reports, task queue, branch list, and code/test references for doctor-service assignments. Replaced this file's MongoDB-only checklist with the current A–J product roadmap and acceptance register. | Documentation review only; no tests were rerun for this task. Previously recorded verification after the doctor-service assignment work: 966 tests passed, 33 skipped; Phase 30 integration suite 39/39; build, type-check, formatting, and Prisma validation passed; lint had one existing warning. These are prior results, not validation of the present documentation edit. No production data or secrets were accessed. |
+| 2026-11-08 | B — Security and operational readiness | Updated Vitest and coverage to 5.1.0, Zod to 4.6.7, `@nestjs/swagger` to 11.4.8, and `@fastify/static` to 10.1.10; used a scoped `deepmerge-ts` 8.0.2 override so Prisma 6 remains in place. Removed the configured admin email from bootstrap success and duplicate-account output. Fresh scans: 0 critical/high, 5 moderate; SAST complete with 0 findings; HoundDog 0 findings. `npm test`: 966 passed, 33 skipped; focused auth/CORS/storage checks: 135 passed. Build, both type checks, formatting, Prisma validation, script syntax, and diff checks passed. Lint had 0 errors and 1 existing warning. The app restarted successfully; readiness remains unavailable because the sanitized development database check reports a non-MySQL URL. | No Phase 30 database integration or backup/restore exercise was run. The development MySQL configuration was diagnosed as non-MySQL through sanitized checks; no secret value was inspected. Production/staging origins, Mongo provider/topology, transaction profile, isolated recovery target, and RPO/RTO remain unapproved or unverified. No production data, secrets, migrations, or deployment were used. |
 
 ### Next evidence to record
 
