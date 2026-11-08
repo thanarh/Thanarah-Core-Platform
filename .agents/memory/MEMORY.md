@@ -23,3 +23,4 @@
 - [Mongo transaction operation order](mongo-transaction-operation-order.md) — execute operations serially within a driver transaction; parallel collection calls can fail and be hidden by sanitized transaction errors.
 - [Thanarah hybrid storage boundary](thanarah-hybrid-storage.md) — keep central platform identity and subscription data in MySQL/Prisma; use MongoDB for tenant medical and operational data.
 - [Browser completion signals](browser-completion-signals.md) — navigation and mutation waits must distinguish transient documents and pre-existing content from completed operations.
+- [Geidea payment sequencing](geidea-payment-sequencing.md) — use Geidea for payments, and make payment integration the final roadmap stage.
