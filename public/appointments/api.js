@@ -53,6 +53,14 @@
       'أكمل إعدادات العملة والضريبة والترقيم والحقول المطلوبة قبل المراجعة.',
     CLINIC_FINANCE_AUDIT_CAPACITY:
       'بلغ سجل التدقيق الحد المسموح. يلزم مراجعة تشغيلية قبل المتابعة.',
+    COMMUNICATION_RETENTION_POLICY_REQUIRED:
+      'حدد سياسة الاحتفاظ قبل قبول أحداث التواصل أو تسجيلها.',
+    COMMUNICATION_RETENTION_POLICY_INVALID:
+      'قيمة مدة الاحتفاظ لا يمكن تمثيلها بأمان. تحقق من القيمة.',
+    COMMUNICATION_SYNTHETIC_INPUT_REQUIRED:
+      'تقبل المحاكاة مراجع اصطناعية فقط ولا ترسل أي رسالة أو مكالمة.',
+    COMMUNICATION_PROVIDER_UNAVAILABLE:
+      'موفرو التواصل الحي غير معتمدين أو غير مهيئين لهذه المساحة.',
   };
 
   class ApiError extends Error {
@@ -1086,6 +1094,50 @@
         tenantPath(tenantId, `/ai/agents/${encodeURIComponent(agentId)}/run`),
         { method: 'POST', body: { prompt } },
       );
+    },
+
+    listCommunicationProviders(tenantId) {
+      return request(tenantPath(tenantId, '/communications/providers'));
+    },
+
+    getCommunicationPolicy(tenantId) {
+      return request(tenantPath(tenantId, '/communications/policy'));
+    },
+
+    saveCommunicationPolicy(tenantId, input) {
+      return request(tenantPath(tenantId, '/communications/policy'), {
+        method: 'PUT',
+        body: input,
+      });
+    },
+
+    getCommunicationConsent(tenantId, subjectRef, channel) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/communications/consents/${encodeURIComponent(subjectRef)}/${encodeURIComponent(channel)}`,
+        ),
+      );
+    },
+
+    saveCommunicationConsent(tenantId, input) {
+      return request(tenantPath(tenantId, '/communications/consents'), {
+        method: 'PUT',
+        body: input,
+      });
+    },
+
+    listCommunicationEvents(tenantId, options = {}) {
+      return request(
+        withQuery(tenantPath(tenantId, '/communications/events'), listOptions(options)),
+      );
+    },
+
+    simulateCommunication(tenantId, input) {
+      return request(tenantPath(tenantId, '/communications/simulate'), {
+        method: 'POST',
+        body: input,
+      });
     },
 
     getSchedulingPolicy(tenantId, facilityId) {

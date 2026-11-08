@@ -26,3 +26,4 @@
 - [Geidea payment sequencing](geidea-payment-sequencing.md) — use Geidea for payments, and make payment integration the final roadmap stage.
 - [Vitest package alignment](vitest-package-alignment.md) — keep Vitest and its coverage provider on the same exact release when npm peer resolution fails.
 - [Browser focus during page loads](browser-focus-during-load.md) — let asynchronous workspace rendering settle before testing focus; root replacement can drop focus.
+- [Mongo tenant event expiry](mongo-tenant-event-expiry.md) — TTL indexes require BSON dates; filter reads on the same expiry field because TTL cleanup is asynchronous.

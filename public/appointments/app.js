@@ -700,6 +700,7 @@
     const showPolicy = permission(PERMISSIONS.policyManage);
     const showEncounters = permission('tenant.encounters.read');
     const showFinance = permission('tenant.finance.read');
+    const showCommunications = permission('tenant.communications.read');
     const showTeamSetup = permission('tenant.members.read') || permission('tenant.staff.read');
     const showCatalogSetup =
       permission(PERMISSIONS.servicesRead) ||
@@ -718,6 +719,7 @@
             ${showAppointments ? `<button class="nav-item ${state.view === 'appointments' ? 'active' : ''}" type="button" data-action="view-appointments" ${state.view === 'appointments' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('calendar')}</span><span>المواعيد</span></button>` : ''}
             ${showEncounters ? `<a class="nav-item" href="/encounters/" style="text-decoration:none"><span class="nav-icon">${icon('calendar')}</span><span>السجلات الطبية</span></a>` : ''}
             ${showFinance ? `<a class="nav-item" href="/finance/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الفوترة والماليات</span></a>` : ''}
+            ${showCommunications ? `<a class="nav-item" href="/communications/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>قنوات التواصل</span></a>` : ''}
             ${showTeamSetup ? `<a class="nav-item" href="/team-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الأعضاء والفريق</span></a>` : ''}
             ${showCatalogSetup ? `<a class="nav-item" href="/catalog-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>التخصصات والخدمات</span></a>` : ''}
             ${showDoctorSetup ? `<a class="nav-item" href="/doctor-setup/" style="text-decoration:none"><span class="nav-icon">${icon('policy')}</span><span>الأطباء</span></a>` : ''}

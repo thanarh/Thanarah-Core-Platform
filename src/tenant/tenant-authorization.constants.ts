@@ -64,6 +64,10 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.ai.knowledge.manage',
   'tenant.ai.budget.manage',
   'tenant.ai.run',
+  'tenant.communications.read',
+  'tenant.communications.manage',
+  'tenant.communications.consent.manage',
+  'tenant.communications.simulate',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -242,6 +246,22 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
   },
   { code: 'tenant.ai.budget.manage', description: 'Configure tenant AI token budgets and limits' },
   { code: 'tenant.ai.run', description: 'Run tenant AI agents within approved token limits' },
+  {
+    code: 'tenant.communications.read',
+    description: 'View tenant communication policies, consents, providers, and delivery status',
+  },
+  {
+    code: 'tenant.communications.manage',
+    description: 'Configure tenant communication retention and retry policies',
+  },
+  {
+    code: 'tenant.communications.consent.manage',
+    description: 'Record and update tenant communication consent and opt-out preferences',
+  },
+  {
+    code: 'tenant.communications.simulate',
+    description: 'Run synthetic communication scenarios without external delivery',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -304,6 +324,10 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.ai.knowledge.manage',
       'tenant.ai.budget.manage',
       'tenant.ai.run',
+      'tenant.communications.read',
+      'tenant.communications.manage',
+      'tenant.communications.consent.manage',
+      'tenant.communications.simulate',
     ],
   },
   {

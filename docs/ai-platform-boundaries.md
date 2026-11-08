@@ -50,6 +50,9 @@ contracts.
 
 ## Deferred boundary
 
-Live voice, WhatsApp, external webhooks, patient-data inference, vector
-embeddings, and hosted-provider activation remain outside this implementation.
-The separate channels-and-automation phase owns those live integrations.
+Live voice and WhatsApp providers, accepted external webhooks, patient-data
+inference, vector embeddings, and hosted-provider activation remain disabled.
+The tenant communications foundation supports consent, retention, synthetic
+simulation, normalized status storage, and a fail-closed webhook adapter
+contract, but it does not send messages, place calls, run retries, or perform
+handoff actions. See `docs/communications-boundaries.md` for its release gates.
