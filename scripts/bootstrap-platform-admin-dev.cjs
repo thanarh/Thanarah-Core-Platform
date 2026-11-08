@@ -65,7 +65,7 @@ async function main() {
     ]);
 
     if (existingUser) {
-      throw new Error(`Blocked: ${EMAIL} already exists; no account changes were made.`);
+      throw new Error('Blocked: the configured platform administrator already exists; no account changes were made.');
     }
     if (!role || permissionCount === 0 || role.permissions.length !== permissionCount) {
       throw new Error(
@@ -90,7 +90,7 @@ async function main() {
       },
     });
 
-    console.log(`Created ${EMAIL} with ${ROLE_CODE} on the verified development database.`);
+    console.log(`Created the configured platform administrator with ${ROLE_CODE} on the verified development database.`);
   } finally {
     process.env.BOOTSTRAP_PASSWORD = '';
     await prisma.$disconnect();
