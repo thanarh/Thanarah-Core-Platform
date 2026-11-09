@@ -2,6 +2,7 @@
   'use strict';
   root.ThanarahTranslations = root.ThanarahTranslations || {};
   root.ThanarahTranslations['/appointments/'] = {
+    ...(root.ThanarahTranslations['/appointments/'] || {}),
     'قنوات التواصل': 'Communications',
   };
   root.ThanarahTranslations['/communications/'] = {
