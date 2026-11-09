@@ -10,6 +10,8 @@ import {
   Post,
   Put,
   Query,
+  Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -31,6 +33,8 @@ import {
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { CurrentPlatformUser } from '../auth/decorators/current-platform-user.decorator';
 import { PlatformAuthGuard } from '../auth/guards/platform-auth.guard';
+import { readReceiptMultipartForm } from '../common/receipt-upload';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { APP_CONSTANTS } from '../common/constants/app.constants';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import { CurrentTenantContext } from './tenant-current-context.decorator';
@@ -46,6 +50,9 @@ import {
   updateClinicFinanceSettingsSchema,
   updateClinicInvoiceSchema,
   clinicInvoiceTransitionSchema,
+  clinicInvoiceTransferIdSchema,
+  clinicInvoiceTransferStatusSchema,
+  reviewClinicInvoiceTransferSchema,
 } from './clinic-finance.dto';
 import type {
   CreateClinicInvoiceInput,
@@ -257,5 +264,101 @@ export class TenantClinicFinanceController {
     @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
   ) {
     return this.finance.issueInvoice(context, invoiceId, body, actor);
+  }
+
+  @Post('invoices/:invoiceId/transfers')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireTenantPermissions('tenant.finance.payments.submit')
+  @ApiOperation({ summary: 'Submit a transfer receipt for an issued clinic invoice' })
+  @ApiCreatedResponse({ description: 'Receipt stored for admin review' })
+  @ApiBadRequestResponse({ description: 'Receipt file or request is invalid' })
+  @ApiConflictResponse({ description: 'Invoice already has a pending or approved transfer' })
+  @ApiUnprocessableEntityResponse({ description: 'Bank transfer is disabled or not configured' })
+  submitInvoiceTransfer(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('invoiceId', new ZodValidationPipe(clinicInvoiceIdSchema)) invoiceId: string,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+    @Headers('idempotency-key') idempotencyKey: string | string[] | undefined,
+  ) {
+    if (Array.isArray(idempotencyKey)) throw new ClinicFinanceInputError();
+    return readReceiptMultipartForm(request).then(({ receipt }) =>
+      this.finance.submitInvoiceTransfer(context, invoiceId, receipt, actor, idempotencyKey),
+    );
+  }
+
+  @Get('invoices/:invoiceId/transfers')
+  @RequireTenantPermissions('tenant.finance.payments.read')
+  @ApiOperation({ summary: 'List transfer submissions for a tenant invoice' })
+  @ApiOkResponse({ description: 'Invoice transfer submissions returned without file bytes' })
+  listInvoiceTransfers(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('invoiceId', new ZodValidationPipe(clinicInvoiceIdSchema)) invoiceId: string,
+  ) {
+    return this.finance.listInvoiceTransfers(context, { invoiceId });
+  }
+
+  @Get('transfers')
+  @RequireTenantPermissions('tenant.finance.payments.read')
+  @ApiOperation({ summary: 'List transfer submissions for the trusted tenant' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING_REVIEW', 'APPROVED', 'REJECTED'] })
+  listTransfers(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Query('status', new ZodValidationPipe(clinicInvoiceTransferStatusSchema.optional()))
+    status: 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED' | undefined,
+  ) {
+    return this.finance.listInvoiceTransfers(context, { status });
+  }
+
+  @Get('transfers/:transferId/receipt')
+  @RequireTenantPermissions('tenant.finance.payments.read')
+  @ApiOperation({ summary: 'Download a tenant-scoped transfer receipt' })
+  async downloadTransferReceipt(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('transferId', new ZodValidationPipe(clinicInvoiceTransferIdSchema)) transferId: string,
+    @Res() reply: FastifyReply,
+  ) {
+    const transfer = await this.finance.getTransferReceipt(context, transferId);
+    const fileName = transfer.receiptFileName.replace(/["\\\r\n]/gu, '_').slice(0, 120);
+    return reply
+      .type(transfer.receiptMimeType)
+      .header('Content-Disposition', `attachment; filename="${fileName}"`)
+      .header('Cache-Control', 'no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .send(transfer.receiptBytes);
+  }
+
+  @Post('transfers/:transferId/approve')
+  @HttpCode(HttpStatus.OK)
+  @RequireTenantPermissions('tenant.finance.payments.read', 'tenant.finance.payments.review')
+  @ApiOperation({ summary: 'Approve a pending transfer receipt with a reason' })
+  @ApiOkResponse({ description: 'Transfer receipt approved and audit event recorded' })
+  @ApiBadRequestResponse({ description: 'Review reason or version is invalid' })
+  @ApiConflictResponse({ description: 'Transfer is not pending or its version changed' })
+  approveTransfer(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('transferId', new ZodValidationPipe(clinicInvoiceTransferIdSchema)) transferId: string,
+    @Body(new ZodValidationPipe(reviewClinicInvoiceTransferSchema))
+    body: { expectedVersion: number; reason: string },
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.finance.reviewInvoiceTransfer(context, transferId, body, 'APPROVED', actor);
+  }
+
+  @Post('transfers/:transferId/reject')
+  @HttpCode(HttpStatus.OK)
+  @RequireTenantPermissions('tenant.finance.payments.read', 'tenant.finance.payments.review')
+  @ApiOperation({ summary: 'Reject a pending transfer receipt with a reason' })
+  @ApiOkResponse({ description: 'Transfer receipt rejected and audit event recorded' })
+  @ApiBadRequestResponse({ description: 'Review reason or version is invalid' })
+  @ApiConflictResponse({ description: 'Transfer is not pending or its version changed' })
+  rejectTransfer(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Param('transferId', new ZodValidationPipe(clinicInvoiceTransferIdSchema)) transferId: string,
+    @Body(new ZodValidationPipe(reviewClinicInvoiceTransferSchema))
+    body: { expectedVersion: number; reason: string },
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.finance.reviewInvoiceTransfer(context, transferId, body, 'REJECTED', actor);
   }
 }

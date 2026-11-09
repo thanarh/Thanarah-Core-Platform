@@ -4,6 +4,7 @@ import { FastifyAdapter } from '@nestjs/platform-fastify';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import helmet from '@fastify/helmet';
 import cookie from '@fastify/cookie';
+import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import { Logger } from 'nestjs-pino';
 import { join } from 'path';
@@ -17,7 +18,11 @@ async function bootstrap(): Promise<void> {
     .split(',')
     .map((value) => value.trim())
     .filter(Boolean);
-  const adapter = new FastifyAdapter({ logger: false, trustProxy: trustedProxies });
+  const adapter = new FastifyAdapter({
+    logger: false,
+    trustProxy: trustedProxies,
+    bodyLimit: 5 * 1024 * 1024,
+  });
 
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bufferLogs: true,
@@ -38,6 +43,10 @@ async function bootstrap(): Promise<void> {
   });
 
   await app.register(cookie);
+  await app.register(multipart, {
+    limits: { fileSize: 4 * 1024 * 1024, files: 1, fields: 8, parts: 9 },
+    throwFileSizeLimit: true,
+  });
 
   await app.register(fastifyStatic, {
     root: join(process.cwd(), 'public'),

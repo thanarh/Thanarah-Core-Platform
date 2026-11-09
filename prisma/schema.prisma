@@ -87,6 +87,12 @@ enum SubscriptionStatus {
   EXPIRED
 }
 
+enum SubscriptionTransferStatus {
+  PENDING_REVIEW
+  APPROVED
+  REJECTED
+}
+
 enum FeatureStatus {
   ACTIVE
   INACTIVE
@@ -363,6 +369,7 @@ model Tenant {
   memberships                TenantMembership[]         @relation("TenantMembershipTenant")
   roles                      TenantRole[]
   subscriptions              Subscription[]
+  subscriptionTransfers      SubscriptionTransfer[]
   facilitySchedulingPolicies FacilitySchedulingPolicy[]
 
   @@index([status])
@@ -819,9 +826,51 @@ model Subscription {
   updatedAt   DateTime           @updatedAt
   tenant      Tenant             @relation(fields: [tenantId], references: [id], onDelete: Restrict)
   plan        Plan               @relation(fields: [planId], references: [id], onDelete: Restrict)
+  transfers   SubscriptionTransfer[]
 
+  @@unique([id, tenantId], map: "Subscription_id_tenantId_key")
   @@index([tenantId, status, startsAt, endsAt])
   @@index([planId, createdAt])
+}
+
+model SubscriptionPaymentSettings {
+  id             String   @id @db.VarChar(16)
+  enabled        Boolean  @default(false)
+  bankName       String?  @db.VarChar(100)
+  accountHolder  String?  @db.VarChar(191)
+  iban           String?  @db.VarChar(64)
+  currencyCode   String?  @db.Char(3)
+  version        Int      @default(0)
+  updatedAt      DateTime @updatedAt
+  updatedBy      String?  @db.Char(36)
+  history        Json?
+}
+
+model SubscriptionTransfer {
+  id                   String                    @id @default(uuid()) @db.Char(36)
+  tenantId             String                    @db.Char(36)
+  subscriptionId       String                    @db.Char(36)
+  status               SubscriptionTransferStatus @default(PENDING_REVIEW)
+  amountMinor          BigInt?
+  currencyCode         String?                   @db.Char(3)
+  receiptFileName      String                    @db.VarChar(120)
+  receiptMimeType      String                    @db.VarChar(50)
+  receiptSha256        String                    @db.Char(64)
+  receiptBytes         Bytes                     @db.LongBlob
+  submittedBy          String                    @db.Char(36)
+  submittedAt          DateTime                  @default(now())
+  reviewedBy           String?                   @db.Char(36)
+  reviewedAt           DateTime?
+  reviewReason         String?                   @db.VarChar(500)
+  version              Int                       @default(1)
+  history              Json
+  idempotencyKeyHash   String?                   @db.Char(64)
+  tenant               Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
+  subscription         Subscription              @relation(fields: [subscriptionId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, idempotencyKeyHash], map: "SubscriptionTransfer_tenant_idempotency_key")
+  @@index([tenantId, status, submittedAt, id], map: "SubscriptionTransfer_tenant_status_submitted_idx")
+  @@index([subscriptionId, tenantId, status], map: "SubscriptionTransfer_subscription_tenant_status_idx")
 }
 
 model PlatformAuditLog {

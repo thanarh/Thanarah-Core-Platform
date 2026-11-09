@@ -48,6 +48,16 @@ const numberingPolicySchema = z.discriminatedUnion('mode', [
   }),
 ]);
 
+const bankTransferSchema = z
+  .object({
+    enabled: z.boolean(),
+    bankName: z.string().trim().min(1).max(100).nullable(),
+    accountHolder: z.string().trim().min(1).max(191).nullable(),
+    iban: z.string().trim().min(8).max(64).nullable(),
+    currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/u).nullable(),
+  })
+  .strict();
+
 export const updateClinicFinanceSettingsSchema = z.object({
   expectedVersion: z.number().int().min(0).max(Number.MAX_SAFE_INTEGER),
   currencyCode: z
@@ -60,6 +70,7 @@ export const updateClinicFinanceSettingsSchema = z.object({
   customFields: z.array(customFieldSchema).max(20),
   taxPolicies: z.array(z.union([noTaxPolicySchema, rateTaxPolicySchema])).max(20),
   numberingPolicy: numberingPolicySchema.nullable(),
+  bankTransfer: bankTransferSchema.optional(),
 });
 
 const lineSchema = z.object({
@@ -100,6 +111,17 @@ export const updateClinicInvoiceSchema = z
   .refine(({ expectedVersion: _expectedVersion, ...fields }) => Object.keys(fields).length > 0);
 
 export const clinicInvoiceIdSchema = invoiceIdSchema;
+export const clinicInvoiceTransferIdSchema = z.string().uuid();
+export const clinicInvoiceTransferStatusSchema = z.enum([
+  'PENDING_REVIEW',
+  'APPROVED',
+  'REJECTED',
+]);
+
+export const reviewClinicInvoiceTransferSchema = z.object({
+  expectedVersion: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),
+  reason: z.string().trim().min(3).max(500),
+});
 
 export const clinicInvoiceTransitionSchema = z.object({
   expectedVersion: z.number().int().min(1).max(Number.MAX_SAFE_INTEGER),

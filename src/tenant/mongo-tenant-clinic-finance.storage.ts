@@ -14,6 +14,8 @@ import type {
   ClinicInvoiceReviewedPolicy,
   ClinicInvoiceSettings,
   ClinicInvoiceTotals,
+  ClinicInvoiceTransfer,
+  ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
 import type {
   ListClinicInvoicesQuery,
@@ -53,6 +55,7 @@ import { DEFAULT_CLINIC_INVOICE_SETTINGS } from './clinic-finance.model';
 
 const SETTINGS_COLLECTION_NAME = 'clinic_finance_settings';
 const INVOICE_COLLECTION_NAME = 'clinic_invoices';
+const TRANSFER_COLLECTION_NAME = 'clinic_invoice_transfers';
 const SETTINGS_UNIQUE_INDEX = {
   name: 'clinic_finance_settings_tenant_unique',
   key: { _tenantId: 1 },
@@ -80,8 +83,38 @@ const INVOICE_INDEXES: ReadonlyArray<{
     partialFilterExpression: { creationKeyHash: { $type: 'string' } },
   },
 ];
+const TRANSFER_INDEXES: ReadonlyArray<{
+  name: string;
+  key: IndexSpecification;
+  unique?: boolean;
+  partialFilterExpression?: Document;
+}> = [
+  {
+    name: 'clinic_invoice_transfer_status_submitted_idx',
+    key: { _tenantId: 1, status: 1, submittedAt: -1, _id: -1 },
+  },
+  {
+    name: 'clinic_invoice_transfer_pending_unique',
+    key: { _tenantId: 1, invoiceId: 1 },
+    unique: true,
+    partialFilterExpression: { status: 'PENDING_REVIEW' },
+  },
+  {
+    name: 'clinic_invoice_transfer_approved_unique',
+    key: { _tenantId: 1, invoiceId: 1 },
+    unique: true,
+    partialFilterExpression: { status: 'APPROVED' },
+  },
+  {
+    name: 'clinic_invoice_transfer_idempotency_unique',
+    key: { _tenantId: 1, invoiceId: 1, submittedBy: 1, idempotencyKeyHash: 1 },
+    unique: true,
+    partialFilterExpression: { idempotencyKeyHash: { $type: 'string' } },
+  },
+];
 const MAX_AUDIT_EVENTS = 1_000;
 const MAX_SETTINGS_REVISIONS = 1_000;
+const MAX_TRANSFER_HISTORY = 100;
 
 interface PendingIssue {
   invoiceId: string;
@@ -98,6 +131,13 @@ interface ClinicInvoiceSettingsDocument extends Document, Omit<ClinicInvoiceSett
 }
 
 interface ClinicInvoiceDocument extends Document, Omit<ClinicInvoice, 'id' | 'tenantId'> {
+  _id: string;
+  _tenantId: string;
+}
+
+interface ClinicInvoiceTransferDocument
+  extends Document,
+    Omit<ClinicInvoiceTransfer, 'id' | 'tenantId'> {
   _id: string;
   _tenantId: string;
 }
@@ -163,6 +203,7 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
         customFields: structuredClone(input.customFields),
         taxPolicies: structuredClone(input.taxPolicies),
         numberingPolicy: structuredClone(input.numberingPolicy),
+        bankTransfer: structuredClone(input.bankTransfer ?? current.bankTransfer),
         nextSequence,
       };
       const revision = createSettingsRevision(version, actorUserId, at, settingsSnapshot);
@@ -543,11 +584,127 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
     );
   }
 
+  async createTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transfer: ClinicInvoiceTransfer,
+  ): Promise<ClinicInvoiceTransfer> {
+    const collection = await this.getTransferCollection(context, route);
+    await this.assertTransferIndexes(collection);
+    const document: ClinicInvoiceTransferDocument = {
+      ...structuredClone(transfer),
+      _id: transfer.id,
+      _tenantId: context.tenantId,
+    };
+    delete (document as Document).id;
+    delete (document as Document).tenantId;
+    try {
+      await collection.insertOne(document);
+      return toTransfer(document);
+    } catch (error) {
+      if (isDuplicateKeyError(error)) {
+        if (transfer.idempotencyKeyHash) {
+          const existing = await collection.findOne({
+            _tenantId: context.tenantId,
+            invoiceId: transfer.invoiceId,
+            submittedBy: transfer.submittedBy,
+            idempotencyKeyHash: transfer.idempotencyKeyHash,
+          });
+          if (existing) return toTransfer(existing);
+        }
+        throw new ClinicInvoiceStateConflictError();
+      }
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  async listTransfers(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
+  ): Promise<ClinicInvoiceTransfer[]> {
+    const collection = await this.getTransferCollection(context, route);
+    await this.assertTransferIndexes(collection);
+    try {
+      const documents = await collection
+        .find({
+          _tenantId: context.tenantId,
+          ...(filters.invoiceId ? { invoiceId: filters.invoiceId } : {}),
+          ...(filters.status ? { status: filters.status } : {}),
+        })
+        .sort({ submittedAt: -1, _id: -1 })
+        .limit(100)
+        .toArray();
+      return documents.map(toTransfer);
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  async findTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    const collection = await this.getTransferCollection(context, route);
+    await this.assertTransferIndexes(collection);
+    try {
+      const document = await collection.findOne({ _id: transferId, _tenantId: context.tenantId });
+      return document ? toTransfer(document) : null;
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  async reviewTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+    expectedVersion: number,
+    status: 'APPROVED' | 'REJECTED',
+    actorUserId: string,
+    reason: string,
+    at: Date,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    const collection = await this.getTransferCollection(context, route);
+    await this.assertTransferIndexes(collection);
+    const event = { action: status, actorUserId, at: new Date(at), reason };
+    try {
+      const result = await collection.updateOne(
+        {
+          _id: transferId,
+          _tenantId: context.tenantId,
+          status: 'PENDING_REVIEW',
+          version: expectedVersion,
+          $expr: { $lt: [{ $size: '$history' }, MAX_TRANSFER_HISTORY] },
+        },
+        {
+          $set: {
+            status,
+            reviewedBy: actorUserId,
+            reviewedAt: new Date(at),
+            reviewReason: reason,
+            version: expectedVersion + 1,
+          },
+          $push: { history: event },
+        } as Document,
+      );
+      if (result.matchedCount !== 1) return null;
+      const updated = await collection.findOne({ _id: transferId, _tenantId: context.tenantId });
+      return updated ? toTransfer(updated) : null;
+    } catch (error) {
+      if (isDuplicateKeyError(error)) return null;
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
   async ensureIndexesForTarget(target: TenantStorageTargetRecord): Promise<void> {
     try {
       const database = await this.clients.getDatabase(target);
       const settings = database.collection<ClinicInvoiceSettingsDocument>(SETTINGS_COLLECTION_NAME);
       const invoices = database.collection<ClinicInvoiceDocument>(INVOICE_COLLECTION_NAME);
+      const transfers =
+        database.collection<ClinicInvoiceTransferDocument>(TRANSFER_COLLECTION_NAME);
       await settings.createIndex(SETTINGS_UNIQUE_INDEX.key, {
         name: SETTINGS_UNIQUE_INDEX.name,
         unique: true,
@@ -561,7 +718,16 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
             : {}),
         });
       }
-      if (!(await this.hasRequiredIndexes(settings, invoices))) {
+      for (const definition of TRANSFER_INDEXES) {
+        await transfers.createIndex(definition.key, {
+          name: definition.name,
+          ...(definition.unique ? { unique: true } : {}),
+          ...(definition.partialFilterExpression
+            ? { partialFilterExpression: definition.partialFilterExpression }
+            : {}),
+        });
+      }
+      if (!(await this.hasRequiredIndexes(settings, invoices, transfers))) {
         throw new TenantStorageUnavailableError();
       }
     } catch {
@@ -583,6 +749,14 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
   ): Promise<Collection<ClinicInvoiceDocument>> {
     const database = await this.getDatabase(context, route);
     return database.collection<ClinicInvoiceDocument>(INVOICE_COLLECTION_NAME);
+  }
+
+  private async getTransferCollection(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+  ): Promise<Collection<ClinicInvoiceTransferDocument>> {
+    const database = await this.getDatabase(context, route);
+    return database.collection<ClinicInvoiceTransferDocument>(TRANSFER_COLLECTION_NAME);
   }
 
   private async getDatabase(context: TrustedTenantContext, route: TenantStorageRoute): Promise<Db> {
@@ -655,9 +829,23 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
     }
   }
 
+  private async assertTransferIndexes(
+    collection: Collection<ClinicInvoiceTransferDocument>,
+  ): Promise<void> {
+    try {
+      const indexes = await collection.indexes();
+      if (!TRANSFER_INDEXES.every((definition) => indexes.some((index) => matchesIndex(index, definition)))) {
+        throw new TenantStorageUnavailableError();
+      }
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
   private async hasRequiredIndexes(
     settings: Collection<ClinicInvoiceSettingsDocument>,
     invoices: Collection<ClinicInvoiceDocument>,
+    transfers: Collection<ClinicInvoiceTransferDocument>,
   ): Promise<boolean> {
     const settingsReady = await this.hasIndex(
       settings,
@@ -666,10 +854,14 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
       true,
     );
     const invoiceIndexes = await invoices.indexes();
+    const transferIndexes = await transfers.indexes();
     return (
       settingsReady &&
       INVOICE_INDEXES.every((definition) =>
         invoiceIndexes.some((index) => matchesIndex(index, definition)),
+      ) &&
+      TRANSFER_INDEXES.every((definition) =>
+        transferIndexes.some((index) => matchesIndex(index, definition)),
       )
     );
   }
@@ -852,10 +1044,36 @@ function toSettings(document: ClinicInvoiceSettingsDocument): ClinicInvoiceSetti
     customFields: structuredClone(document.customFields),
     taxPolicies: structuredClone(document.taxPolicies),
     numberingPolicy: structuredClone(document.numberingPolicy),
+    bankTransfer: structuredClone(
+      document.bankTransfer ?? DEFAULT_CLINIC_INVOICE_SETTINGS.bankTransfer,
+    ),
     nextSequence: document.nextSequence,
     updatedAt: document.updatedAt ? new Date(document.updatedAt) : null,
     updatedBy: document.updatedBy ?? null,
     revisions: structuredClone(document.revisions ?? []),
+  };
+}
+
+function toTransfer(document: ClinicInvoiceTransferDocument): ClinicInvoiceTransfer {
+  return {
+    id: document._id,
+    tenantId: document._tenantId,
+    invoiceId: document.invoiceId,
+    status: document.status,
+    amountMinor: document.amountMinor,
+    currencyCode: document.currencyCode,
+    receiptFileName: document.receiptFileName,
+    receiptMimeType: document.receiptMimeType,
+    receiptSha256: document.receiptSha256,
+    receiptBytes: Buffer.from(document.receiptBytes),
+    submittedBy: document.submittedBy,
+    submittedAt: new Date(document.submittedAt),
+    reviewedBy: document.reviewedBy ?? null,
+    reviewedAt: document.reviewedAt ? new Date(document.reviewedAt) : null,
+    reviewReason: document.reviewReason ?? null,
+    version: document.version,
+    history: structuredClone(document.history ?? []),
+    idempotencyKeyHash: document.idempotencyKeyHash ?? null,
   };
 }
 

@@ -37,6 +37,14 @@ export type ClinicInvoiceNumberingPolicy =
       startingNumber: number;
     };
 
+export interface ClinicBankTransferSettings {
+  enabled: boolean;
+  bankName: string | null;
+  accountHolder: string | null;
+  iban: string | null;
+  currencyCode: string | null;
+}
+
 export interface ClinicInvoiceSettings {
   tenantId: string;
   version: number;
@@ -45,6 +53,7 @@ export interface ClinicInvoiceSettings {
   customFields: ClinicInvoiceCustomField[];
   taxPolicies: ClinicInvoiceTaxPolicy[];
   numberingPolicy: ClinicInvoiceNumberingPolicy | null;
+  bankTransfer: ClinicBankTransferSettings;
   nextSequence: number | null;
   updatedAt: Date | null;
   updatedBy: string | null;
@@ -120,6 +129,41 @@ export interface ClinicInvoice {
   history: ClinicInvoiceAuditEvent[];
 }
 
+export type ClinicInvoiceTransferStatus = 'PENDING_REVIEW' | 'APPROVED' | 'REJECTED';
+
+export interface ClinicInvoiceTransferEvent {
+  action: 'SUBMITTED' | 'APPROVED' | 'REJECTED';
+  actorUserId: string;
+  at: Date;
+  reason: string | null;
+}
+
+export interface ClinicInvoiceTransfer {
+  id: string;
+  tenantId: string;
+  invoiceId: string;
+  status: ClinicInvoiceTransferStatus;
+  amountMinor: number;
+  currencyCode: string;
+  receiptFileName: string;
+  receiptMimeType: string;
+  receiptSha256: string;
+  receiptBytes: Buffer;
+  submittedBy: string;
+  submittedAt: Date;
+  reviewedBy: string | null;
+  reviewedAt: Date | null;
+  reviewReason: string | null;
+  version: number;
+  history: ClinicInvoiceTransferEvent[];
+  idempotencyKeyHash: string | null;
+}
+
+export type ClinicInvoiceTransferView = Omit<
+  ClinicInvoiceTransfer,
+  'tenantId' | 'receiptBytes' | 'idempotencyKeyHash'
+>;
+
 export interface ClinicInvoiceListResult {
   items: ClinicInvoice[];
   total: number;
@@ -150,6 +194,13 @@ export const DEFAULT_CLINIC_INVOICE_SETTINGS: Omit<ClinicInvoiceSettings, 'tenan
   customFields: [],
   taxPolicies: [],
   numberingPolicy: null,
+  bankTransfer: {
+    enabled: false,
+    bankName: null,
+    accountHolder: null,
+    iban: null,
+    currencyCode: null,
+  },
   nextSequence: null,
   updatedAt: null,
   updatedBy: null,

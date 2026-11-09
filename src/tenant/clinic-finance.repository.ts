@@ -16,6 +16,8 @@ import type {
   ClinicInvoiceReviewedPolicy,
   ClinicInvoiceSettings,
   ClinicInvoiceTotals,
+  ClinicInvoiceTransfer,
+  ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
 import type {
   ListClinicInvoicesQuery,
@@ -134,6 +136,52 @@ export class ClinicFinanceRepository {
   ): Promise<ClinicInvoice | null> {
     return this.withRoute(context, (route) =>
       this.storage.issueInvoice(context, route, invoiceId, expectedVersion, actorUserId, at),
+    );
+  }
+
+  createTransfer(
+    context: TrustedTenantContext,
+    transfer: ClinicInvoiceTransfer,
+  ): Promise<ClinicInvoiceTransfer> {
+    return this.withRoute(context, (route) => this.storage.createTransfer(context, route, transfer));
+  }
+
+  listTransfers(
+    context: TrustedTenantContext,
+    filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
+  ): Promise<ClinicInvoiceTransfer[]> {
+    return this.withRoute(context, (route) => this.storage.listTransfers(context, route, filters));
+  }
+
+  findTransfer(
+    context: TrustedTenantContext,
+    transferId: string,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    return this.withRoute(context, (route) =>
+      this.storage.findTransfer(context, route, transferId),
+    );
+  }
+
+  reviewTransfer(
+    context: TrustedTenantContext,
+    transferId: string,
+    expectedVersion: number,
+    status: 'APPROVED' | 'REJECTED',
+    actorUserId: string,
+    reason: string,
+    at: Date,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    return this.withRoute(context, (route) =>
+      this.storage.reviewTransfer(
+        context,
+        route,
+        transferId,
+        expectedVersion,
+        status,
+        actorUserId,
+        reason,
+        at,
+      ),
     );
   }
 

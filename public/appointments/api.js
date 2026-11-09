@@ -51,6 +51,18 @@
     CLINIC_INVOICE_IDEMPOTENCY_CONFLICT: 'استخدم مفتاح إعادة المحاولة لطلب واحد فقط.',
     CLINIC_INVOICE_POLICY_UNAVAILABLE:
       'أكمل إعدادات العملة والضريبة والترقيم والحقول المطلوبة قبل المراجعة.',
+    CLINIC_INVOICE_PAYMENT_UNAVAILABLE:
+      'التحويل البنكي غير مفعّل أو غير مضبوط لهذه الفاتورة.',
+    CLINIC_INVOICE_TRANSFER_NOT_FOUND: 'لم يعد طلب التحويل متاحًا ضمن مساحة العمل.',
+    CLINIC_INVOICE_TRANSFER_STATE_CONFLICT:
+      'تغيّرت حالة التحويل. حدّث البيانات قبل المتابعة.',
+    SUBSCRIPTION_TRANSFER_UNAVAILABLE:
+      'التحويل البنكي للاشتراكات غير مفعّل أو غير مضبوط.',
+    SUBSCRIPTION_TRANSFER_STATE_CONFLICT:
+      'تغيّرت حالة التحويل أو يوجد طلب آخر قيد المراجعة.',
+    SUBSCRIPTION_TRANSFER_NOT_FOUND: 'لم يعد طلب تحويل الاشتراك متاحًا.',
+    SUBSCRIPTION_PAYMENT_SETTINGS_CONFLICT:
+      'تغيّرت إعدادات التحويل. أعد تحميلها قبل الحفظ.',
     CLINIC_FINANCE_AUDIT_CAPACITY:
       'بلغ سجل التدقيق الحد المسموح. يلزم مراجعة تشغيلية قبل المتابعة.',
     COMMUNICATION_RETENTION_POLICY_REQUIRED:
@@ -109,7 +121,8 @@
   async function rawRequest(path, options, token) {
     const headers = new Headers(options.headers || {});
     let body = options.body;
-    if (body !== undefined && body !== null && typeof body !== 'string') {
+    const isFormData = typeof root.FormData === 'function' && body instanceof root.FormData;
+    if (body !== undefined && body !== null && typeof body !== 'string' && !isFormData) {
       headers.set('Content-Type', 'application/json');
       body = JSON.stringify(body);
     }
@@ -157,6 +170,25 @@
     const payload = await readPayload(response);
     if (!response.ok) throw responseError(response, payload);
     return payload;
+  }
+
+  async function requestBlob(path) {
+    let response = await rawRequest(path, {}, accessToken);
+    if (response.status === 401 && (await refreshAccessToken())) {
+      response = await rawRequest(path, {}, accessToken);
+    }
+    if (!response.ok) throw responseError(response, await readPayload(response));
+    return response.blob();
+  }
+
+  async function downloadAttachment(path, fileName) {
+    const blob = await requestBlob(path);
+    const url = root.URL.createObjectURL(blob);
+    const anchor = root.document.createElement('a');
+    anchor.href = url;
+    anchor.download = fileName || 'receipt';
+    anchor.click();
+    root.URL.revokeObjectURL(url);
   }
 
   async function mutationRequest(path, options) {
@@ -403,6 +435,47 @@
         { method: 'POST' },
       );
     },
+    getPlatformSubscriptionPaymentSettings() {
+      return request('/platform/subscriptions/bank-transfer-settings');
+    },
+    updatePlatformSubscriptionPaymentSettings(input) {
+      return request('/platform/subscriptions/bank-transfer-settings', {
+        method: 'PUT',
+        body: input,
+      });
+    },
+    listPlatformSubscriptionTransfers(options = {}) {
+      return request(withQuery('/platform/subscriptions/transfers', options));
+    },
+    submitPlatformSubscriptionTransfer(subscriptionId, file, details = {}) {
+      const form = new root.FormData();
+      form.append('receipt', file);
+      if (details.amountMinor) form.append('amountMinor', details.amountMinor);
+      if (details.currencyCode) form.append('currencyCode', details.currencyCode);
+      return request(
+        `/platform/subscriptions/${encodeURIComponent(subscriptionId)}/transfers`,
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': createIdempotencyKey() },
+          body: form,
+        },
+      );
+    },
+    reviewPlatformSubscriptionTransfer(transferId, action, expectedVersion, reason) {
+      if (!['approve', 'reject'].includes(action)) {
+        throw new TypeError('A valid transfer review action is required.');
+      }
+      return request(
+        `/platform/subscriptions/transfers/${encodeURIComponent(transferId)}/${action}`,
+        { method: 'POST', body: { expectedVersion, reason } },
+      );
+    },
+    downloadPlatformSubscriptionTransferReceipt(transferId) {
+      return downloadAttachment(
+        `/platform/subscriptions/transfers/${encodeURIComponent(transferId)}/receipt`,
+        'subscription-transfer-receipt',
+      );
+    },
 
     getClinicFinanceSettings(tenantId) {
       return request(tenantPath(tenantId, '/finance/settings'));
@@ -422,6 +495,44 @@
     getClinicInvoice(tenantId, invoiceId) {
       return request(
         tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}`),
+      );
+    },
+    listClinicInvoiceTransfers(tenantId, invoiceId) {
+      return request(
+        tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}/transfers`),
+      );
+    },
+    submitClinicInvoiceTransfer(tenantId, invoiceId, file) {
+      const form = new root.FormData();
+      form.append('receipt', file);
+      return request(
+        tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}/transfers`),
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': createIdempotencyKey() },
+          body: form,
+        },
+      );
+    },
+    reviewClinicInvoiceTransfer(tenantId, transferId, action, expectedVersion, reason) {
+      if (!['approve', 'reject'].includes(action)) {
+        throw new TypeError('A valid transfer review action is required.');
+      }
+      return request(
+        tenantPath(
+          tenantId,
+          `/finance/transfers/${encodeURIComponent(transferId)}/${action}`,
+        ),
+        { method: 'POST', body: { expectedVersion, reason } },
+      );
+    },
+    downloadClinicInvoiceTransferReceipt(tenantId, transferId) {
+      return downloadAttachment(
+        tenantPath(
+          tenantId,
+          `/finance/transfers/${encodeURIComponent(transferId)}/receipt`,
+        ),
+        'invoice-transfer-receipt',
       );
     },
 

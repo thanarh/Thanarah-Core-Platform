@@ -2,13 +2,16 @@ import {
   Body,
   Controller,
   Get,
+  Headers,
   HttpCode,
   HttpStatus,
   Inject,
   Param,
   Post,
+  Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -27,13 +30,14 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import type { FastifyRequest } from 'fastify';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { CurrentPlatformUser } from '../auth/decorators/current-platform-user.decorator';
 import { RequirePermissions } from '../auth/decorators/require-permissions.decorator';
 import { PlatformAuthGuard } from '../auth/guards/platform-auth.guard';
 import { PlatformAuthorizationGuard } from '../auth/guards/platform-authorization.guard';
 import { APP_CONSTANTS } from '../common/constants/app.constants';
+import { readReceiptMultipartForm } from '../common/receipt-upload';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';
 import {
   currentSubscriptionQuerySchema,
@@ -50,13 +54,25 @@ import {
   subscriptionResponseSchema,
 } from './subscription.openapi';
 import { SubscriptionService } from './subscription.service';
+import { SubscriptionPaymentService } from './subscription-payment.service';
+import { SubscriptionPaymentInputError } from './subscription-payment.errors';
+import {
+  reviewSubscriptionTransferSchema,
+  subscriptionTransferIdSchema,
+  subscriptionTransferListSchema,
+  updateSubscriptionPaymentSettingsSchema,
+} from './subscription-payment.dto';
 
 @ApiTags('Platform Subscriptions')
 @ApiBearerAuth()
 @UseGuards(PlatformAuthGuard, PlatformAuthorizationGuard)
 @Controller(`${APP_CONSTANTS.apiVersion}/platform/subscriptions`)
 export class SubscriptionController {
-  constructor(@Inject(SubscriptionService) private readonly subscriptions: SubscriptionService) {}
+  constructor(
+    @Inject(SubscriptionService) private readonly subscriptions: SubscriptionService,
+    @Inject(SubscriptionPaymentService)
+    private readonly payments: SubscriptionPaymentService,
+  ) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -188,6 +204,46 @@ export class SubscriptionController {
     @Query(new ZodValidationPipe(currentSubscriptionQuerySchema)) query: { tenantId: string },
   ): ReturnType<SubscriptionService['findCurrentForTenant']> {
     return this.subscriptions.findCurrentForTenant(query.tenantId);
+  }
+
+  @Get('bank-transfer-settings')
+  @RequirePermissions('subscriptions.read')
+  @ApiOperation({ summary: 'Read centrally managed subscription bank transfer settings' })
+  @ApiOkResponse({ description: 'Payment settings returned; disabled by default' })
+  getPaymentSettings() {
+    return this.payments.getSettings();
+  }
+
+  @Put('bank-transfer-settings')
+  @RequirePermissions('subscriptions.manage')
+  @ApiOperation({
+    summary: 'Configure bank transfer instructions for platform subscriptions',
+    description:
+      'Does not define plan prices, taxes, due dates, refunds, or automatically change subscription periods.',
+  })
+  @ApiOkResponse({ description: 'Settings saved and revision recorded' })
+  @ApiBadRequestResponse({ description: 'Payment settings are invalid' })
+  @ApiConflictResponse({ description: 'Settings version changed; reload before saving' })
+  updatePaymentSettings(
+    @Body(new ZodValidationPipe(updateSubscriptionPaymentSettingsSchema))
+    body: Parameters<SubscriptionPaymentService['updateSettings']>[0],
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.payments.updateSettings(body, actor);
+  }
+
+  @Get('transfers')
+  @RequirePermissions('subscriptions.read')
+  @ApiOperation({ summary: 'List centrally stored subscription transfer submissions' })
+  @ApiQuery({ name: 'tenantId', required: false, format: 'uuid' })
+  @ApiQuery({ name: 'subscriptionId', required: false, format: 'uuid' })
+  @ApiQuery({ name: 'status', required: false, enum: ['PENDING_REVIEW', 'APPROVED', 'REJECTED'] })
+  @ApiOkResponse({ description: 'Transfer metadata returned without receipt bytes' })
+  listTransfers(
+    @Query(new ZodValidationPipe(subscriptionTransferListSchema))
+    query: Parameters<SubscriptionPaymentService['listTransfers']>[0],
+  ) {
+    return this.payments.listTransfers(query);
   }
 
   @Get(':subscriptionId')
@@ -389,5 +445,75 @@ export class SubscriptionController {
     @Req() request: FastifyRequest,
   ): ReturnType<SubscriptionService['expire']> {
     return this.subscriptions.expire(subscriptionId, actor, subscriptionAuditContext(request));
+  }
+
+  @Post(':subscriptionId/transfers')
+  @HttpCode(HttpStatus.CREATED)
+  @RequirePermissions('subscriptions.manage')
+  @ApiOperation({ summary: 'Submit a bank transfer receipt for a platform subscription' })
+  @ApiCreatedResponse({ description: 'Receipt stored for review; subscription dates unchanged' })
+  @ApiBadRequestResponse({ description: 'Receipt or transfer details are invalid' })
+  @ApiConflictResponse({ description: 'A pending or approved transfer already exists' })
+  async submitTransfer(
+    @Param('subscriptionId', new ZodValidationPipe(subscriptionIdSchema)) subscriptionId: string,
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+    @Headers('idempotency-key') idempotencyKey: string | string[] | undefined,
+  ) {
+    if (Array.isArray(idempotencyKey)) throw new SubscriptionPaymentInputError();
+    const { receipt, fields } = await readReceiptMultipartForm(request);
+    if (Object.keys(fields).some((key) => !['amountMinor', 'currencyCode'].includes(key))) {
+      throw new SubscriptionPaymentInputError();
+    }
+    return this.payments.submitTransfer(subscriptionId, receipt, fields, actor, idempotencyKey);
+  }
+
+  @Post('transfers/:transferId/approve')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('subscriptions.manage')
+  @ApiOperation({ summary: 'Approve a subscription transfer with an audit reason' })
+  @ApiOkResponse({ description: 'Transfer approved; subscription status and period unchanged' })
+  @ApiBadRequestResponse({ description: 'Review reason or version is invalid' })
+  @ApiConflictResponse({ description: 'Transfer is not pending or its version changed' })
+  approveTransfer(
+    @Param('transferId', new ZodValidationPipe(subscriptionTransferIdSchema)) transferId: string,
+    @Body(new ZodValidationPipe(reviewSubscriptionTransferSchema))
+    body: Parameters<SubscriptionPaymentService['reviewTransfer']>[1],
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.payments.reviewTransfer(transferId, body, 'APPROVED', actor);
+  }
+
+  @Post('transfers/:transferId/reject')
+  @HttpCode(HttpStatus.OK)
+  @RequirePermissions('subscriptions.manage')
+  @ApiOperation({ summary: 'Reject a subscription transfer with an audit reason' })
+  @ApiOkResponse({ description: 'Transfer rejected; subscription status and period unchanged' })
+  @ApiBadRequestResponse({ description: 'Review reason or version is invalid' })
+  @ApiConflictResponse({ description: 'Transfer is not pending or its version changed' })
+  rejectTransfer(
+    @Param('transferId', new ZodValidationPipe(subscriptionTransferIdSchema)) transferId: string,
+    @Body(new ZodValidationPipe(reviewSubscriptionTransferSchema))
+    body: Parameters<SubscriptionPaymentService['reviewTransfer']>[1],
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.payments.reviewTransfer(transferId, body, 'REJECTED', actor);
+  }
+
+  @Get('transfers/:transferId/receipt')
+  @RequirePermissions('subscriptions.read')
+  @ApiOperation({ summary: 'Download a central subscription transfer receipt' })
+  async downloadTransferReceipt(
+    @Param('transferId', new ZodValidationPipe(subscriptionTransferIdSchema)) transferId: string,
+    @Res() reply: FastifyReply,
+  ) {
+    const transfer = await this.payments.getTransferReceipt(transferId);
+    const fileName = transfer.receiptFileName.replace(/["\\\r\n]/gu, '_').slice(0, 120);
+    return reply
+      .type(transfer.receiptMimeType)
+      .header('Content-Disposition', `attachment; filename="${fileName}"`)
+      .header('Cache-Control', 'no-store')
+      .header('X-Content-Type-Options', 'nosniff')
+      .send(transfer.receiptBytes);
   }
 }

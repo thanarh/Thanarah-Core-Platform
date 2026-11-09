@@ -12,12 +12,17 @@
     settings: 'tenant.finance.settings.manage',
     review: 'tenant.finance.review',
     issue: 'tenant.finance.issue',
+    paymentRead: 'tenant.finance.payments.read',
+    paymentSubmit: 'tenant.finance.payments.submit',
+    paymentReview: 'tenant.finance.payments.review',
   };
   const state = {
     screen: 'boot', workspaces: [], workspace: null, view: 'invoices',
     invoices: [], total: 0, offset: 0, hasNext: false, statusFilter: '', search: '',
     listLoading: false, listError: null, settings: null, settingsLoading: false,
     settingsError: null, savingSettings: false, settingsForm: null,
+    invoiceTransfers: [], transferLoading: false, transferBusy: false,
+    transferError: null,
     invoice: null, detailLoading: false, detailError: null, detailId: null,
     editor: null, transition: null, busy: false, workspaceEpoch: 0, listRequestId: 0,
   };
@@ -134,6 +139,8 @@
     state.listRequestId++;
     state.invoices = []; state.total = 0; state.offset = 0; state.hasNext = false;
     state.listError = null; state.listLoading = false; state.settings = null;
+    state.invoiceTransfers = []; state.transferLoading = false; state.transferBusy = false;
+    state.transferError = null;
     state.settingsError = null; state.settingsLoading = false; state.invoice = null;
     state.detailError = null; state.detailLoading = false; state.editor = null;
     state.transition = null; state.busy = false; state.settingsForm = null;
@@ -227,12 +234,20 @@
   async function openInvoice(id) {
     if (!canRead() || !state.workspace) return;
     state.detailId = id; state.invoice = null; state.detailError = null; state.detailLoading = true;
+    state.invoiceTransfers = []; state.transferError = null; state.transferBusy = false;
     renderModal();
     const workspace = state.workspace; const epoch = state.workspaceEpoch;
     try {
-      const result = await api.getClinicInvoice(workspace.tenantId, id);
+      const [result, transfers] = await Promise.all([
+        api.getClinicInvoice(workspace.tenantId, id),
+        allowed(PERMISSIONS.paymentRead)
+          ? api.listClinicInvoiceTransfers(workspace.tenantId, id)
+          : Promise.resolve([]),
+      ]);
       if (epoch !== state.workspaceEpoch || state.detailId !== id) return;
-      state.invoice = result; state.detailLoading = false; renderModal();
+      state.invoice = result;
+      state.invoiceTransfers = Array.isArray(transfers) ? transfers : itemsOf(transfers);
+      state.detailLoading = false; renderModal();
     } catch (error) {
       if (epoch !== state.workspaceEpoch || state.detailId !== id) return;
       state.detailLoading = false; state.detailError = error;
@@ -260,6 +275,7 @@
     app.innerHTML = shellMarkup();
     if (state.view === 'invoices') renderInvoices();
     else renderSettings();
+    if (state.view === 'settings' && state.settings) enhanceSettingsView();
     renderModal();
   }
   function renderSignIn() {
@@ -319,6 +335,28 @@
     }
     host.innerHTML = `<div class="page-heading"><div><span class="eyebrow">سياسات يحددها مسؤول المنشأة</span><h1>إعدادات الفوترة</h1><p>لا تُفترض سياسة ضريبة أو ترقيم. يجب ضبط الخيارات صراحةً قبل مراجعة الفاتورة.</p></div><div class="heading-actions">${writable && !state.settingsForm ? '<button class="btn btn-primary" type="button" data-action="edit-settings">تعديل الإعدادات</button>' : ''}</div></div>${state.settingsLoading && !state.settings ? loadingMarkup() : state.settingsForm ? settingsEditor() : state.settingsError ? errorMarkup('settings') : state.settings ? settingsMarkup(state.settings, writable) : '<div class="permission-note">لم تُحمّل الإعدادات بعد.</div>'}`;
   }
+  function enhanceSettingsView() {
+    const host = document.getElementById('page-view');
+    const settings = state.settings;
+    if (!host || !settings) return;
+    if (state.settingsForm) {
+      const form = host.querySelector('form[data-form="settings"]');
+      const footer = form?.querySelector('.dialog-footer');
+      if (form && footer) {
+        footer.insertAdjacentHTML('beforebegin', bankTransferEditorMarkup(settings.bankTransfer));
+      }
+      return;
+    }
+    host.insertAdjacentHTML('beforeend', bankTransferSettingsMarkup(settings.bankTransfer));
+  }
+  function bankTransferSettingsMarkup(bank) {
+    const transfer = bank || {};
+    return `<section class="settings-section"><div class="settings-head"><h2>التحويل البنكي للفواتير</h2><span class="status-pill" data-status="${transfer.enabled ? 'ISSUED' : 'DRAFT'}">${transfer.enabled ? 'مفعّل' : 'معطّل'}</span></div><div class="settings-body">${transfer.enabled ? `<div class="detail-grid"><div class="detail-item"><small>البنك</small><strong>${esc(transfer.bankName)}</strong></div><div class="detail-item"><small>صاحب الحساب</small><strong>${esc(transfer.accountHolder)}</strong></div><div class="detail-item"><small>IBAN</small><strong class="mono" dir="ltr">${esc(transfer.iban)}</strong></div><div class="detail-item"><small>العملة</small><strong class="mono">${esc(transfer.currencyCode)}</strong></div></div>` : '<div class="permission-note">التحويل البنكي غير مفعّل. لا يمكن رفع إيصالات حتى يضبط مسؤول المنشأة بيانات الحساب ويفعّل المسار.</div>'}<p class="form-note" style="margin-top:12px">قبول الإيصال يسجل حالة المراجعة فقط، ولا يغيّر الفاتورة أو ينفذ تحصيلًا.</p></div></section>`;
+  }
+  function bankTransferEditorMarkup(bank) {
+    const transfer = bank || {};
+    return `<section class="settings-section"><div class="settings-head"><h2>التحويل البنكي للفواتير</h2><span class="form-note">المسار معطّل حتى يضبطه مسؤول المنشأة</span></div><div class="settings-body"><div class="form-grid"><label class="field"><span>تفعيل استقبال الإيصالات</span><select class="control" name="bankTransferEnabled"><option value="false" ${!transfer.enabled ? 'selected' : ''}>معطّل</option><option value="true" ${transfer.enabled ? 'selected' : ''}>مفعّل</option></select></label><label class="field"><span>اسم البنك</span><input class="control" name="bankName" maxlength="100" value="${esc(transfer.bankName||'')}"></label><label class="field"><span>صاحب الحساب</span><input class="control" name="accountHolder" maxlength="191" value="${esc(transfer.accountHolder||'')}"></label><label class="field"><span>IBAN</span><input class="control mono" name="iban" maxlength="64" dir="ltr" value="${esc(transfer.iban||'')}"></label><label class="field"><span>عملة التحويل</span><input class="control mono" name="bankTransferCurrency" maxlength="3" pattern="[A-Za-z]{3}" dir="ltr" value="${esc(transfer.currencyCode||'')}"></label></div><p class="form-note" style="margin-top:10px">لا تُستنتج رسوم أو مواعيد استحقاق أو قواعد استرداد. يجب أن تطابق العملة عملة الفاتورة قبل السماح برفع الإيصال.</p></div></section>`;
+  }
   function settingsMarkup(settings, writable) {
     const numbering = settings.numberingPolicy;
     return `<section class="settings-section"><div class="settings-head"><h2>العملة والتقريب</h2><span class="cell-sub">الإصدار <bdi dir="ltr">${esc(settings.version)}</bdi></span></div><div class="settings-body"><div class="detail-grid"><div class="detail-item"><small>عملة الفواتير الجديدة</small><strong class="mono">${esc(settings.currencyCode || 'غير مضبوط')}</strong></div><div class="detail-item"><small>تقريب بنود الفاتورة</small><strong>${roundingLabel(settings.lineRounding)}</strong></div></div><p class="form-note" style="margin:12px 0 0">الريال السعودي هو العملة الابتدائية للنظام فقط؛ تغيير العملة أو التقريب من مسؤولية الإدارة.</p></div></section><section class="settings-section"><div class="settings-head"><h2>سياسة الترقيم</h2></div><div class="settings-body">${numbering ? `<div class="settings-item"><div class="settings-item-row"><div><h3>${numbering.mode === 'MANUAL' ? 'إدخال يدوي' : 'تسلسل'}</h3><p>البادئة: <bdi dir="ltr">${esc(numbering.prefix || '—')}</bdi> · الحد الأدنى للأرقام: <bdi dir="ltr">${esc(numbering.minimumDigits)}</bdi>${numbering.mode === 'SEQUENTIAL' ? ` · رقم البداية: <bdi dir="ltr">${esc(numbering.startingNumber)}</bdi> · الرقم التالي المعروض من الخادم: <bdi dir="ltr">${esc(settings.nextSequence ?? '—')}</bdi>` : settings.nextSequence !== null ? ` · آخر عداد تسلسلي محفوظ: <bdi dir="ltr">${esc(settings.nextSequence)}</bdi>` : ''}</p></div></div><p class="form-note">لا تعيد تغييرات الإعدادات ضبط العداد. لا توجد إعادة ضبط دورية أو سياسة قانونية مفترضة.</p></div>` : `<div class="permission-note">لم تُضبط سياسة ترقيم. يلزم أن يحدد مسؤول المنشأة سياسة صراحةً قبل الإصدار؛ لا توجد سياسة افتراضية.${settings.nextSequence !== null ? ` العداد التسلسلي المحفوظ: <bdi dir="ltr">${esc(settings.nextSequence)}</bdi>.` : ''}</div>`}</div></section><section class="settings-section"><div class="settings-head"><h2>سياسات الضريبة</h2></div><div class="settings-body">${settings.taxPolicies?.length ? settings.taxPolicies.map((policy) => `<div class="settings-item"><h3>${esc(policy.name)}</h3><p>${policy.type === 'NO_TAX' ? 'لا توجد ضريبة ضمن هذه السياسة.' : `معدل مُدخل من الإدارة: <bdi dir="ltr">${esc(policy.rateBasisPoints / 100)}%</bdi> · طريقة الحساب: ${policy.calculation === 'PER_LINE' ? 'لكل بند' : 'على المجموع الفرعي'} · التقريب: ${roundingLabel(policy.rounding)}`}</p></div>`).join('') : '<div class="permission-note">لا توجد سياسة ضريبية مضبوطة. لا يُفترض أي معدل أو إعفاء؛ يجب أن يحدد مسؤول المنشأة السياسة المطلوبة صراحةً.</div>'}</div></section><section class="settings-section"><div class="settings-head"><h2>الحقول الإضافية</h2></div><div class="settings-body">${settings.customFields?.length ? settings.customFields.map((field) => `<div class="settings-item"><h3>${esc(field.label)} ${field.required ? '· مطلوب' : '· اختياري'}</h3><p><bdi dir="ltr">${esc(field.key)}</bdi> · ${({ TEXT: 'نص', DATE: 'تاريخ', BOOLEAN: 'نعم أو لا' })[field.type] || esc(field.type)}</p></div>`).join('') : '<div class="permission-note">لا توجد حقول إضافية مضبوطة.</div>'}</div></section><section class="settings-section"><div class="settings-head"><h2>سجل مراجعات الإعدادات</h2></div><div class="settings-body">${settings.revisions?.length ? `<div class="setting-revision">${settings.revisions.map((revision) => `<div class="history-entry"><strong>الإصدار ${esc(revision.version)}</strong><span>${esc(formatStamp(revision.changedAt))}</span></div>`).join('')}</div>` : '<p class="form-note">لا توجد مراجعات سابقة.</p>'}</div></section>${!writable ? `<div class="permission-note">العرض فقط. يتطلب التعديل صلاحية <bdi dir="ltr">${PERMISSIONS.settings}</bdi>.</div>` : ''}`;
@@ -352,7 +390,18 @@
   function renderModal() {
     if (state.editor) { modalRoot.innerHTML = editorMarkup(); return; }
     if (state.transition) { modalRoot.innerHTML = transitionMarkup(); return; }
-    if (state.detailId) { modalRoot.innerHTML = detailMarkup(); return; }
+    if (state.detailId) {
+      modalRoot.innerHTML = detailMarkup();
+      const auditHeading = [...modalRoot.querySelectorAll('.detail-section h3')]
+        .find((heading) => heading.textContent === 'سجل التدقيق');
+      if (auditHeading && state.invoice) {
+        auditHeading.closest('.detail-section')?.insertAdjacentHTML(
+          'beforebegin',
+          invoiceTransferMarkup(state.invoice),
+        );
+      }
+      return;
+    }
     modalRoot.innerHTML = '';
   }
   function editorMarkup() {
@@ -382,6 +431,33 @@
     const tax = state.settings?.taxPolicies?.find((policy) => policy.id === invoice.taxPolicyId);
     const history = Array.isArray(invoice.history) ? invoice.history : [];
     return `<div class="overlay" data-action="overlay-close"><section class="dialog" role="dialog" aria-modal="true" aria-labelledby="detail-title"><header class="dialog-header"><div><span class="status-pill" data-status="${esc(invoice.status)}">${statusLabel(invoice.status)}</span><h2 id="detail-title" style="margin-top:9px">${esc(invoice.invoiceNumber || invoice.manualInvoiceNumber || 'مسودة بلا رقم')}</h2><p>${esc(invoice.recipientName)} · ${esc(formatDate(invoice.invoiceDate))}</p></div><button class="icon-button" type="button" data-action="close-modal" aria-label="إغلاق">×</button></header><div class="dialog-body"><div class="detail-grid"><div class="detail-item"><small>الحالة</small><strong>${statusLabel(invoice.status)}</strong></div><div class="detail-item"><small>العملة</small><strong class="mono">${esc(currency)}</strong></div><div class="detail-item"><small>الإصدار الحالي</small><strong class="mono">${esc(invoice.version)}</strong></div><div class="detail-item"><small>السياسة المرتبطة</small><strong>${esc(invoice.reviewedPolicy?.taxPolicy?.name || tax?.name || 'غير محددة')}</strong></div>${customFields}</div><section class="detail-section"><h3>بنود الفاتورة</h3>${lines.length ? `<div class="table-wrap"><table class="detail-lines"><thead><tr><th>الوصف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr></thead><tbody>${lines.map((line, index) => `<tr><td>${esc(line.description)}</td><td class="mono">${esc(quantityInput(line.quantityMilli))}</td><td>${formatMinor(line.unitPriceMinor, currency)}</td><td>${formatMinor(invoice.totals?.lineTotalsMinor?.[index], currency)}</td></tr>`).join('')}</tbody></table></div>` : '<div class="permission-note">لا توجد بنود.</div>'}${invoice.totals ? `<div class="totals"><div class="total-row"><span>المجموع الفرعي</span><strong>${moneyText(invoice.totals.subtotalMinor, currency)}</strong></div><div class="total-row"><span>الضريبة وفق السياسة</span><strong>${moneyText(invoice.totals.taxMinor, currency)}</strong></div><div class="total-row grand"><span>الإجمالي</span><strong>${moneyText(invoice.totals.totalMinor, currency)}</strong></div></div>` : '<p class="form-note">الإجماليات النهائية تظهر بعد مراجعة المسودة.</p>'}</section>${invoice.status === 'ISSUED' ? '<div class="notice">تم إصدار الفاتورة. الإصدار لا يجمع أي مدفوعات ولا ينفذ عملية تحصيل.</div>' : ''}${invoice.status === 'REVIEWED' ? '<div class="notice">تم تثبيت إجماليات المراجعة وفق نسخة السياسات المحفوظة. الإصدار لا يجمع أي مدفوعات.</div>' : ''}<section class="detail-section"><h3>سجل التدقيق</h3>${history.length ? `<div class="history-list">${history.map((event) => `<div class="history-entry"><strong>${({ CREATED: 'إنشاء المسودة', UPDATED: 'تحديث المسودة', REVIEWED: 'مراجعة', RETURNED_TO_DRAFT: 'إعادة إلى المسودة', ISSUED: 'إصدار' })[event.action] || esc(event.action)} · الإصدار ${esc(event.version)}</strong><span>${esc(formatStamp(event.at))}<br>${esc(event.summary || '')}</span></div>`).join('')}</div>` : '<p class="form-note">لا توجد أحداث تدقيق معروضة.</p>'}</section><div class="detail-actions">${invoice.status === 'DRAFT' && allowed(PERMISSIONS.manage) ? '<button class="btn btn-secondary" type="button" data-action="edit-invoice">تعديل المسودة</button>' : ''}${invoice.status === 'DRAFT' && allowed(PERMISSIONS.review) ? '<button class="btn btn-primary" type="button" data-action="review-invoice">إرسال للمراجعة</button>' : ''}${invoice.status === 'REVIEWED' && allowed(PERMISSIONS.review) ? '<button class="btn btn-secondary" type="button" data-action="return-draft">إعادة إلى المسودة</button>' : ''}${invoice.status === 'REVIEWED' && allowed(PERMISSIONS.issue) ? '<button class="btn btn-primary" type="button" data-action="issue-invoice">إصدار الفاتورة</button>' : ''}</div></div></section></div>`;
+  }
+  function invoiceTransferMarkup(invoice) {
+    if (!invoice || invoice.status !== 'ISSUED') return '';
+    const bank = state.settings?.bankTransfer || {};
+    const canSubmit = allowed(PERMISSIONS.paymentSubmit);
+    const canReadTransfers = allowed(PERMISSIONS.paymentRead);
+    const canReview = allowed(PERMISSIONS.paymentReview);
+    if (!canSubmit && !canReadTransfers && !canReview) return '';
+    const configured = bank.enabled && bank.bankName && bank.accountHolder && bank.iban &&
+      bank.currencyCode && bank.currencyCode === invoice.currencyCode;
+    const transfers = state.invoiceTransfers || [];
+    const activeTransfer = transfers.find((item) =>
+      item.status === 'PENDING_REVIEW' || item.status === 'APPROVED',
+    );
+    const transferCards = transfers.map((transfer) => {
+      const history = Array.isArray(transfer.history) ? transfer.history : [];
+      return `<article class="settings-item"><div class="settings-item-row"><div><h3>${transferStatusLabel(transfer.status)}</h3><p>إرسال: ${esc(formatStamp(transfer.submittedAt))} · ${esc(transfer.receiptFileName)}</p></div><button class="btn btn-secondary btn-small" type="button" data-action="download-invoice-transfer" data-id="${esc(transfer.id)}">تنزيل الإيصال</button></div>${transfer.reviewReason ? `<p class="form-note">سبب المراجعة: ${esc(transfer.reviewReason)}</p>` : ''}${history.length ? `<div class="history-list">${history.map((event) => `<div class="history-entry"><strong>${transferStatusLabel(event.action)}</strong><span>${esc(formatStamp(event.at))}${event.reason ? `<br>${esc(event.reason)}` : ''}</span></div>`).join('')}</div>` : ''}${transfer.status === 'PENDING_REVIEW' && canReview ? `<form class="transfer-review-form" data-form="invoice-transfer-review" data-id="${esc(transfer.id)}"><input type="hidden" name="expectedVersion" value="${esc(transfer.version)}"><label class="field"><span>سبب القرار *</span><textarea class="control" name="reason" minlength="3" maxlength="500" required></textarea></label><div class="detail-actions"><button class="btn btn-primary" name="decision" value="approve" type="submit" ${state.transferBusy ? 'disabled' : ''}>قبول الإيصال</button><button class="btn btn-secondary" name="decision" value="reject" type="submit" ${state.transferBusy ? 'disabled' : ''}>رفض الإيصال</button></div></form>` : ''}${transfer.status === 'APPROVED' ? '<p class="notice">تم قبول الإيصال للمراجعة فقط. لا يغيّر ذلك حالة الفاتورة أو يسجل تحصيلًا آليًا.</p>' : ''}</article>`;
+    }).join('');
+    const uploadForm = canSubmit && configured && !activeTransfer
+      ? `<form class="transfer-upload-form" data-form="invoice-transfer"><label class="field"><span>إرفاق إيصال PDF أو JPG أو PNG *</span><input class="control" name="receipt" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label><p class="form-note">المبلغ المعروض على الفاتورة: ${moneyText(invoice.totals?.totalMinor, invoice.currencyCode)}. لا يوجد تحصيل تلقائي.</p><button class="btn btn-primary" type="submit" ${state.transferBusy ? 'disabled' : ''}>إرسال الإيصال للمراجعة</button></form>`
+      : canSubmit && !configured
+        ? '<div class="permission-note">رفع الإيصال غير متاح: التحويل معطّل أو بياناته غير مكتملة أو عملته لا تطابق الفاتورة.</div>'
+        : '';
+    return `<section class="detail-section"><h3>التحويل البنكي وإيصالات المراجعة</h3>${configured ? `<div class="detail-grid"><div class="detail-item"><small>البنك</small><strong>${esc(bank.bankName)}</strong></div><div class="detail-item"><small>صاحب الحساب</small><strong>${esc(bank.accountHolder)}</strong></div><div class="detail-item"><small>IBAN</small><strong class="mono" dir="ltr">${esc(bank.iban)}</strong></div></div>` : '<p class="form-note">تعليمات التحويل غير مفعّلة أو غير مضبوطة لهذه الفاتورة.</p>'}${state.transferError ? `<div class="inline-message" role="alert">${esc(message(state.transferError))}</div>` : ''}${state.transferLoading ? loadingMarkup() : transferCards || (canReadTransfers ? '<p class="form-note">لا توجد إيصالات مسجلة.</p>' : '')}${uploadForm}<p class="form-note">قبول الإيصال يسجل قرار المراجعة فقط؛ لا يغيّر حالة الفاتورة، ولا ينفذ تحصيلًا أو استردادًا.</p></section>`;
+  }
+  function transferStatusLabel(status) {
+    return ({ PENDING_REVIEW: 'بانتظار المراجعة', APPROVED: 'مقبول', REJECTED: 'مرفوض', SUBMITTED: 'تم الإرسال' })[status] || esc(status);
   }
   function transitionMarkup() {
     const isReturn = state.transition.type === 'return';
@@ -511,6 +587,13 @@
         currencyCode: String(formData.get('currencyCode') || '').trim().toUpperCase(),
         lineRounding: String(formData.get('lineRounding') || '') || null,
         customFields, taxPolicies, numberingPolicy,
+        bankTransfer: {
+          enabled: String(formData.get('bankTransferEnabled') || 'false') === 'true',
+          bankName: String(formData.get('bankName') || '').trim() || null,
+          accountHolder: String(formData.get('accountHolder') || '').trim() || null,
+          iban: String(formData.get('iban') || '').trim() || null,
+          currencyCode: String(formData.get('bankTransferCurrency') || '').trim().toUpperCase() || null,
+        },
       };
       const updated = await api.updateClinicFinanceSettings(state.workspace.tenantId, input);
       state.settings = updated; state.settingsForm = null; toast('تم حفظ إعدادات الفوترة وتسجيل مراجعتها.');
@@ -525,6 +608,56 @@
     } finally {
       state.savingSettings = false;
       if (state.settingsForm) render();
+    }
+  }
+  async function submitInvoiceTransfer(form) {
+    if (!state.invoice || !state.workspace || !allowed(PERMISSIONS.paymentSubmit)) return;
+    const file = new FormData(form).get('receipt');
+    if (!(file instanceof File) || !file.size) {
+      state.transferError = new Error('اختر إيصالًا صالحًا قبل الإرسال.');
+      renderModal();
+      return;
+    }
+    const invoiceId = state.invoice.id;
+    state.transferBusy = true; state.transferError = null; renderModal();
+    try {
+      await api.submitClinicInvoiceTransfer(state.workspace.tenantId, invoiceId, file);
+      toast('تم حفظ الإيصال بانتظار المراجعة.');
+      state.transferBusy = false;
+      await openInvoice(invoiceId);
+    } catch (error) {
+      if (error.status === 401) return expireSession();
+      state.transferError = error;
+      state.transferBusy = false;
+      renderModal();
+    }
+  }
+  async function reviewInvoiceTransfer(form, decision) {
+    if (!state.invoice || !state.workspace || !allowed(PERMISSIONS.paymentReview)) return;
+    if (!['approve', 'reject'].includes(decision)) {
+      state.transferError = new Error('اختر قبول الإيصال أو رفضه.');
+      renderModal();
+      return;
+    }
+    const data = new FormData(form);
+    const invoiceId = state.invoice.id;
+    state.transferBusy = true; state.transferError = null; renderModal();
+    try {
+      await api.reviewClinicInvoiceTransfer(
+        state.workspace.tenantId,
+        form.dataset.id,
+        decision,
+        Number(data.get('expectedVersion')),
+        String(data.get('reason') || '').trim(),
+      );
+      toast(decision === 'approve' ? 'تم قبول الإيصال وتسجيل سبب المراجعة.' : 'تم رفض الإيصال وتسجيل السبب.');
+      state.transferBusy = false;
+      await openInvoice(invoiceId);
+    } catch (error) {
+      if (error.status === 401) return expireSession();
+      state.transferError = error;
+      state.transferBusy = false;
+      renderModal();
     }
   }
   function decimalToBasisPoints(value) {
@@ -602,6 +735,10 @@
       await saveSettings(form);
     } else if (type === 'transition') {
       await submitTransition(form);
+    } else if (type === 'invoice-transfer') {
+      await submitInvoiceTransfer(form);
+    } else if (type === 'invoice-transfer-review') {
+      await reviewInvoiceTransfer(form, event.submitter?.value);
     }
   }
   function onChange(event) {
@@ -617,6 +754,11 @@
     if (target.id === 'numbering-mode') {
       const field = document.getElementById('starting-number-field');
       if (field) field.hidden = target.value !== 'SEQUENTIAL';
+    }
+    if (target.name === 'bankTransferEnabled') {
+      const enabled = target.value === 'true';
+      target.form?.querySelectorAll('[name="bankName"],[name="accountHolder"],[name="iban"],[name="bankTransferCurrency"]')
+        .forEach((field) => { field.required = enabled; });
     }
     if (target.dataset.customKey && state.editor) {
       state.editor.customFieldValues[target.dataset.customKey] = target.type === 'checkbox' ? target.checked : target.value;
@@ -646,6 +788,16 @@
     if (action === 'retry-invoices') { await loadInvoices(); return; }
      if (action === 'retry-settings') { state.settingsForm = null; state.settingsError = null; await loadSettings(); return; }
     if (action === 'retry-detail') { if (state.detailId) await openInvoice(state.detailId); return; }
+    if (action === 'download-invoice-transfer') {
+      if (!state.workspace || !allowed(PERMISSIONS.paymentRead)) return;
+      try {
+        await api.downloadClinicInvoiceTransferReceipt(state.workspace.tenantId, id);
+      } catch (error) {
+        if (error.status === 401) return expireSession();
+        state.transferError = error; renderModal();
+      }
+      return;
+    }
     if (action === 'refresh-editor') {
       const invoiceId = state.editor?.id;
       state.editor = null;
@@ -693,6 +845,7 @@
   }
   function closeModal() {
     state.editor = null; state.invoice = null; state.detailId = null; state.detailError = null;
-    state.detailLoading = false; state.transition = null; modalRoot.innerHTML = '';
+    state.detailLoading = false; state.transition = null; state.invoiceTransfers = [];
+    state.transferError = null; state.transferBusy = false; modalRoot.innerHTML = '';
   }
 })();

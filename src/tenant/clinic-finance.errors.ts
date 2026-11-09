@@ -62,6 +62,24 @@ export class ClinicInvoicePolicyUnavailableError extends UnprocessableEntityExce
   }
 }
 
+export class ClinicInvoicePaymentUnavailableError extends UnprocessableEntityException {
+  constructor() {
+    super({
+      code: 'CLINIC_INVOICE_PAYMENT_UNAVAILABLE',
+      message: 'Bank transfer is not configured for this invoice',
+    });
+  }
+}
+
+export class ClinicInvoiceTransferNotFoundError extends NotFoundException {
+  constructor() {
+    super({
+      code: 'CLINIC_INVOICE_TRANSFER_NOT_FOUND',
+      message: 'Transfer receipt was not found in this tenant',
+    });
+  }
+}
+
 export class ClinicFinanceAuditCapacityError extends ConflictException {
   constructor() {
     super({

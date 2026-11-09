@@ -8,6 +8,8 @@ import type {
   ClinicInvoiceSettings,
   ClinicInvoiceSettingsRevision,
   ClinicInvoiceTotals,
+  ClinicInvoiceTransfer,
+  ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
 import type {
   ListClinicInvoicesQuery,
@@ -100,12 +102,38 @@ export interface ClinicFinanceStorage {
     actorUserId: string,
     at: Date,
   ): Promise<ClinicInvoice | null>;
+  createTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transfer: ClinicInvoiceTransfer,
+  ): Promise<ClinicInvoiceTransfer>;
+  listTransfers(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
+  ): Promise<ClinicInvoiceTransfer[]>;
+  findTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+  ): Promise<ClinicInvoiceTransfer | null>;
+  reviewTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+    expectedVersion: number,
+    status: 'APPROVED' | 'REJECTED',
+    actorUserId: string,
+    reason: string,
+    at: Date,
+  ): Promise<ClinicInvoiceTransfer | null>;
 }
 
 @Injectable()
 export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
   private readonly settingsByTenant = new Map<string, ClinicInvoiceSettings>();
   private readonly invoicesByTenant = new Map<string, Map<string, ClinicInvoice>>();
+  private readonly transfersByTenant = new Map<string, Map<string, ClinicInvoiceTransfer>>();
 
   async getSettings(
     context: TrustedTenantContext,
@@ -139,6 +167,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
       customFields: clone(input.customFields),
       taxPolicies: clone(input.taxPolicies),
       numberingPolicy: clone(input.numberingPolicy),
+      bankTransfer: clone(input.bankTransfer ?? current.bankTransfer),
       nextSequence,
       updatedAt: new Date(at),
       updatedBy: actorUserId,
@@ -150,6 +179,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
           customFields: input.customFields,
           taxPolicies: input.taxPolicies,
           numberingPolicy: input.numberingPolicy,
+          bankTransfer: input.bankTransfer ?? current.bankTransfer,
           nextSequence,
         }),
       ],
@@ -393,6 +423,96 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     return clone(issued);
   }
 
+  async createTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transfer: ClinicInvoiceTransfer,
+  ): Promise<ClinicInvoiceTransfer> {
+    this.assertScope(context, route);
+    const transfers = this.transferPartition(context);
+    const existing = [...transfers.values()].find(
+      (candidate) =>
+        candidate.invoiceId === transfer.invoiceId &&
+        ((transfer.idempotencyKeyHash &&
+          candidate.idempotencyKeyHash === transfer.idempotencyKeyHash &&
+          candidate.submittedBy === transfer.submittedBy) ||
+          candidate.status === 'PENDING_REVIEW' ||
+          candidate.status === 'APPROVED'),
+    );
+    if (existing) return cloneTransfer(existing);
+    transfers.set(transfer.id, cloneTransfer(transfer));
+    return cloneTransfer(transfer);
+  }
+
+  async listTransfers(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
+  ): Promise<ClinicInvoiceTransfer[]> {
+    this.assertScope(context, route);
+    return [...this.transferPartition(context).values()]
+      .filter((transfer) => !filters.invoiceId || transfer.invoiceId === filters.invoiceId)
+      .filter((transfer) => !filters.status || transfer.status === filters.status)
+      .sort((left, right) => right.submittedAt.getTime() - left.submittedAt.getTime())
+      .map(cloneTransfer);
+  }
+
+  async findTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    this.assertScope(context, route);
+    const transfer = this.transferPartition(context).get(transferId);
+    return transfer ? cloneTransfer(transfer) : null;
+  }
+
+  async reviewTransfer(
+    context: TrustedTenantContext,
+    route: TenantStorageRoute,
+    transferId: string,
+    expectedVersion: number,
+    status: 'APPROVED' | 'REJECTED',
+    actorUserId: string,
+    reason: string,
+    at: Date,
+  ): Promise<ClinicInvoiceTransfer | null> {
+    this.assertScope(context, route);
+    const transfers = this.transferPartition(context);
+    const current = transfers.get(transferId);
+    if (
+      !current ||
+      current.status !== 'PENDING_REVIEW' ||
+      current.version !== expectedVersion ||
+      current.history.length >= 100
+    ) {
+      return null;
+    }
+    if (
+      status === 'APPROVED' &&
+      [...transfers.values()].some(
+        (candidate) =>
+          candidate.invoiceId === current.invoiceId && candidate.status === 'APPROVED',
+      )
+    ) {
+      return null;
+    }
+    const updated: ClinicInvoiceTransfer = {
+      ...current,
+      status,
+      reviewedBy: actorUserId,
+      reviewedAt: new Date(at),
+      reviewReason: reason,
+      version: current.version + 1,
+      history: [
+        ...current.history,
+        { action: status, actorUserId, at: new Date(at), reason },
+      ],
+    };
+    transfers.set(transferId, updated);
+    return cloneTransfer(updated);
+  }
+
   private reserveSequence(context: TrustedTenantContext, settingsVersion: number): number {
     const current = this.settingsByTenant.get(keyFor(context));
     if (
@@ -426,6 +546,16 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
       this.invoicesByTenant.set(key, invoices);
     }
     return invoices;
+  }
+
+  private transferPartition(context: TrustedTenantContext): Map<string, ClinicInvoiceTransfer> {
+    const key = keyFor(context);
+    let transfers = this.transfersByTenant.get(key);
+    if (!transfers) {
+      transfers = new Map();
+      this.transfersByTenant.set(key, transfers);
+    }
+    return transfers;
   }
 
   private assertScope(context: TrustedTenantContext, route: TenantStorageRoute): void {
@@ -473,6 +603,22 @@ export class UnconfiguredClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async issueInvoice(): Promise<ClinicInvoice | null> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async createTransfer(): Promise<ClinicInvoiceTransfer> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async listTransfers(): Promise<ClinicInvoiceTransfer[]> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async findTransfer(): Promise<ClinicInvoiceTransfer | null> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async reviewTransfer(): Promise<ClinicInvoiceTransfer | null> {
     throw new TenantStorageUnavailableError();
   }
 }
@@ -532,4 +678,11 @@ function keyFor(context: TrustedTenantContext): string {
 
 function clone<T>(value: T): T {
   return structuredClone(value);
+}
+
+function cloneTransfer(transfer: ClinicInvoiceTransfer): ClinicInvoiceTransfer {
+  return {
+    ...structuredClone(transfer),
+    receiptBytes: Buffer.from(transfer.receiptBytes),
+  };
 }
