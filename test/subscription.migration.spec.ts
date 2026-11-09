@@ -7,7 +7,12 @@ const migration = readFileSync(
   'prisma/migrations/20261006140000_saas_subscription_foundation/migration.sql',
   'utf8',
 );
+const transferMigration = readFileSync(
+  'prisma/migrations/20261109170000_subscription_bank_transfer_review/migration.sql',
+  'utf8',
+);
 const subscriptionModel = schema.match(/model Subscription\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
+const transferModel = schema.match(/model SubscriptionTransfer\s*\{([\s\S]*?)\n\}/)?.[1] ?? '';
 
 describe('SaaS Subscription schema and migration', () => {
   it('stores only the tenant-specific Plan assignment and required period/lifecycle fields', () => {
@@ -63,5 +68,27 @@ describe('SaaS Subscription schema and migration', () => {
     expect(migration).toContain("`role`.`code` = 'PLATFORM_ADMIN'");
     expect(migration).not.toMatch(/`role`\.`code`.*(SECURITY_ADMIN|SUPPORT_ADMIN)/);
     expect(migration).not.toMatch(/subscriptions\.(?:billing|payment|invoice|usage)/i);
+  });
+
+  it('keeps subscription transfer receipts centralized and disabled until configured', () => {
+    expect(schema).toMatch(
+      /enum SubscriptionTransferStatus\s*\{\s*PENDING_REVIEW\s+APPROVED\s+REJECTED\s*\}/,
+    );
+    expect(transferModel).toMatch(/\btenantId\s+String/);
+    expect(transferModel).toMatch(/\bsubscriptionId\s+String/);
+    expect(transferModel).toMatch(/\breceiptBytes\s+Bytes\s+@db\.LongBlob/);
+    expect(transferModel).toMatch(/@@index\(\[subscriptionId, tenantId, status\]/);
+    expect(transferModel).not.toMatch(/\b(price|tax|dueAt|refund|provider|autoCharge)\b/i);
+    expect(transferMigration).toContain('CREATE TABLE `SubscriptionPaymentSettings`');
+    expect(transferMigration).toContain('`enabled` BOOLEAN NOT NULL DEFAULT false');
+    expect(transferMigration).toContain('CREATE TABLE `SubscriptionTransfer`');
+    expect(transferMigration).toContain('ENUM(');
+    expect(transferMigration).toContain('`receiptBytes` LONGBLOB NOT NULL');
+    expect(transferMigration).toContain('FOREIGN KEY (`subscriptionId`, `tenantId`)');
+    expect(transferMigration).not.toContain('CREATE TYPE');
+    expect(transferMigration).not.toMatch(
+      /UPDATE `Subscription`|ALTER TABLE `Subscription`.*status/u,
+    );
+    expect(transferMigration).not.toMatch(/subscriptions\.(?:payment|billing|invoice)/i);
   });
 });

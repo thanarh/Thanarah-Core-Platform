@@ -5,9 +5,12 @@ import {
   ClinicFinanceSettingsConflictError,
   ClinicInvoiceIdempotencyConflictError,
   ClinicInvoiceNotFoundError,
+  ClinicInvoicePaymentUnavailableError,
   ClinicInvoicePolicyUnavailableError,
+  ClinicInvoiceStateConflictError,
 } from '../src/tenant/clinic-finance.errors';
 import { ClinicFinanceService } from '../src/tenant/clinic-finance.service';
+import type { ReceiptUpload } from '../src/common/receipt-upload';
 import { ClinicFinanceRepository } from '../src/tenant/clinic-finance.repository';
 import { InMemoryClinicFinanceStorage } from '../src/tenant/tenant-clinic-finance.storage';
 import { TrustedTenantContextFactoryService } from '../src/tenant/tenant-context.service';
@@ -240,5 +243,150 @@ describe('ClinicFinanceService', () => {
     await expect(
       unconfigured.reviewInvoice(context, draft.id, { expectedVersion: draft.version }, actor),
     ).rejects.toBeInstanceOf(ClinicInvoicePolicyUnavailableError);
+  });
+
+  it('keeps transfer receipts disabled by default and accepts only issued invoices', async () => {
+    const service = serviceFixture();
+    const context = trustedContext(tenantId);
+    const draft = await service.createInvoice(
+      context,
+      { ...invoiceInput(), taxPolicyId: null },
+      actor,
+    );
+    const receipt: ReceiptUpload = {
+      bytes: Buffer.from('%PDF-1.4\nfixture'),
+      fileName: 'receipt.pdf',
+      mimeType: 'application/pdf',
+      sha256: 'a'.repeat(64),
+    };
+
+    await expect(
+      service.submitInvoiceTransfer(context, draft.id, receipt, actor),
+    ).rejects.toBeInstanceOf(ClinicInvoicePaymentUnavailableError);
+
+    await service.updateSettings(context, settingsInput(), actor);
+    await service.updatePaymentSettings(
+      context,
+      {
+        expectedVersion: 1,
+        bankTransfer: {
+          enabled: true,
+          bankName: 'Configured Bank',
+          accountHolder: 'Clinic Account',
+          iban: 'SA0000000000000000000000',
+          currencyCode: 'SAR',
+        },
+      },
+      actor,
+    );
+    await expect(
+      service.submitInvoiceTransfer(context, draft.id, receipt, actor),
+    ).rejects.toBeInstanceOf(ClinicInvoicePaymentUnavailableError);
+  });
+
+  it('records tenant-scoped transfer submissions and review without settling the invoice', async () => {
+    const service = serviceFixture();
+    const context = trustedContext(tenantId);
+    await service.updateSettings(context, settingsInput(), actor);
+    await service.updatePaymentSettings(
+      context,
+      {
+        expectedVersion: 1,
+        bankTransfer: {
+          enabled: true,
+          bankName: 'Configured Bank',
+          accountHolder: 'Clinic Account',
+          iban: 'SA0000000000000000000000',
+          currencyCode: 'SAR',
+        },
+      },
+      actor,
+    );
+    const financeSettings = await service.getSettings(context);
+    const paymentSettings = await service.getPaymentSettings(context);
+    expect(financeSettings).not.toHaveProperty('bankTransfer');
+    expect(financeSettings.revisions[1]).not.toHaveProperty('settings');
+    expect(paymentSettings).toMatchObject({
+      version: 2,
+      bankTransfer: {
+        enabled: true,
+        bankName: 'Configured Bank',
+        currencyCode: 'SAR',
+      },
+    });
+    expect(paymentSettings.revisions[1]).toMatchObject({
+      version: 2,
+      bankTransfer: { bankName: 'Configured Bank' },
+    });
+    const invoice = await service.createInvoice(context, invoiceInput(), actor);
+    const reviewedInvoice = await service.reviewInvoice(
+      context,
+      invoice.id,
+      { expectedVersion: invoice.version },
+      actor,
+    );
+    const issuedInvoice = await service.issueInvoice(
+      context,
+      invoice.id,
+      { expectedVersion: reviewedInvoice.version },
+      actor,
+    );
+    const receipt: ReceiptUpload = {
+      bytes: Buffer.from('%PDF-1.4\nclinic receipt'),
+      fileName: 'clinic-transfer.pdf',
+      mimeType: 'application/pdf',
+      sha256: 'b'.repeat(64),
+    };
+
+    const submitted = await service.submitInvoiceTransfer(
+      context,
+      issuedInvoice.id,
+      receipt,
+      actor,
+      'invoice-transfer-1',
+    );
+    const retried = await service.submitInvoiceTransfer(
+      context,
+      issuedInvoice.id,
+      receipt,
+      actor,
+      'invoice-transfer-1',
+    );
+
+    expect(submitted).toMatchObject({
+      status: 'PENDING_REVIEW',
+      amountMinor: 12_500,
+      currencyCode: 'SAR',
+      receiptFileName: 'clinic-transfer.pdf',
+    });
+    expect(submitted.id).toBe(retried.id);
+    expect(submitted).not.toHaveProperty('receiptBytes');
+    expect(submitted).not.toHaveProperty('idempotencyKeyHash');
+    await expect(
+      service.submitInvoiceTransfer(
+        context,
+        issuedInvoice.id,
+        { ...receipt, sha256: 'c'.repeat(64) },
+        actor,
+        'invoice-transfer-1',
+      ),
+    ).rejects.toBeInstanceOf(ClinicInvoiceStateConflictError);
+
+    const approved = await service.reviewInvoiceTransfer(
+      context,
+      submitted.id,
+      { expectedVersion: submitted.version, reason: 'Receipt checked against bank record' },
+      'APPROVED',
+      actor,
+    );
+    expect(approved).toMatchObject({
+      status: 'APPROVED',
+      reviewReason: 'Receipt checked against bank record',
+      history: [
+        { action: 'SUBMITTED' },
+        { action: 'APPROVED', reason: 'Receipt checked against bank record' },
+      ],
+    });
+    expect((await service.getInvoice(context, issuedInvoice.id)).status).toBe('ISSUED');
   });
 });

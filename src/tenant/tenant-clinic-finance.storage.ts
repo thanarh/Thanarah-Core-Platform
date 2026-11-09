@@ -39,6 +39,10 @@ export type ClinicInvoiceCreateResult =
   | { kind: 'existing'; invoice: ClinicInvoice }
   | { kind: 'idempotency-conflict' };
 
+export type ClinicFinanceSettingsSaveInput = UpdateClinicFinanceSettingsInput & {
+  bankTransfer?: ClinicInvoiceSettings['bankTransfer'];
+};
+
 export interface ClinicFinanceStorage {
   getSettings(
     context: TrustedTenantContext,
@@ -47,7 +51,7 @@ export interface ClinicFinanceStorage {
   saveSettings(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
-    input: UpdateClinicFinanceSettingsInput,
+    input: ClinicFinanceSettingsSaveInput,
     actorUserId: string,
     at: Date,
   ): Promise<ClinicInvoiceSettings | null>;
@@ -146,7 +150,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
   async saveSettings(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
-    input: UpdateClinicFinanceSettingsInput,
+    input: ClinicFinanceSettingsSaveInput,
     actorUserId: string,
     at: Date,
   ): Promise<ClinicInvoiceSettings | null> {
@@ -491,8 +495,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     if (
       status === 'APPROVED' &&
       [...transfers.values()].some(
-        (candidate) =>
-          candidate.invoiceId === current.invoiceId && candidate.status === 'APPROVED',
+        (candidate) => candidate.invoiceId === current.invoiceId && candidate.status === 'APPROVED',
       )
     ) {
       return null;
@@ -504,10 +507,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
       reviewedAt: new Date(at),
       reviewReason: reason,
       version: current.version + 1,
-      history: [
-        ...current.history,
-        { action: status, actorUserId, at: new Date(at), reason },
-      ],
+      history: [...current.history, { action: status, actorUserId, at: new Date(at), reason }],
     };
     transfers.set(transferId, updated);
     return cloneTransfer(updated);

@@ -19,13 +19,10 @@ import type {
   ClinicInvoiceTransfer,
   ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
-import type {
-  ListClinicInvoicesQuery,
-  UpdateClinicFinanceSettingsInput,
-  UpdateClinicInvoiceInput,
-} from './clinic-finance.dto';
+import type { ListClinicInvoicesQuery, UpdateClinicInvoiceInput } from './clinic-finance.dto';
 import {
   CLINIC_FINANCE_STORAGE,
+  type ClinicFinanceSettingsSaveInput,
   type ClinicFinanceStorage,
   type ClinicInvoiceCreateResult,
 } from './tenant-clinic-finance.storage';
@@ -43,7 +40,7 @@ export class ClinicFinanceRepository {
 
   saveSettings(
     context: TrustedTenantContext,
-    input: UpdateClinicFinanceSettingsInput,
+    input: ClinicFinanceSettingsSaveInput,
     actorUserId: string,
     at: Date,
   ): Promise<ClinicInvoiceSettings | null> {
@@ -143,7 +140,9 @@ export class ClinicFinanceRepository {
     context: TrustedTenantContext,
     transfer: ClinicInvoiceTransfer,
   ): Promise<ClinicInvoiceTransfer> {
-    return this.withRoute(context, (route) => this.storage.createTransfer(context, route, transfer));
+    return this.withRoute(context, (route) =>
+      this.storage.createTransfer(context, route, transfer),
+    );
   }
 
   listTransfers(

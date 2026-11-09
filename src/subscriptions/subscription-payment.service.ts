@@ -28,13 +28,6 @@ import { SubscriptionNotFoundError } from './subscription.errors';
 
 const SETTINGS_ID = 'default';
 
-interface TransferHistoryEntry {
-  action: 'SUBMITTED' | 'APPROVED' | 'REJECTED';
-  actorUserId: string;
-  at: string;
-  reason: string | null;
-}
-
 export interface SubscriptionPaymentSettingsView {
   enabled: boolean;
   bankName: string | null;
@@ -260,7 +253,9 @@ export class SubscriptionPaymentService {
           where: {
             tenantId: subscription.tenantId,
             subscriptionId,
-            status: { in: [SubscriptionTransferStatus.PENDING_REVIEW, SubscriptionTransferStatus.APPROVED] },
+            status: {
+              in: [SubscriptionTransferStatus.PENDING_REVIEW, SubscriptionTransferStatus.APPROVED],
+            },
           },
         });
         if (existing) throw new SubscriptionTransferConflictError();
@@ -270,7 +265,9 @@ export class SubscriptionPaymentService {
             tenantId: subscription.tenantId,
             subscriptionId,
             status: SubscriptionTransferStatus.PENDING_REVIEW,
-            amountMinor: parsedAmount.data.amountMinor ? BigInt(parsedAmount.data.amountMinor) : null,
+            amountMinor: parsedAmount.data.amountMinor
+              ? BigInt(parsedAmount.data.amountMinor)
+              : null,
             currencyCode: parsedAmount.data.currencyCode ?? null,
             receiptFileName: receipt.fileName,
             receiptMimeType: receipt.mimeType,
@@ -393,13 +390,10 @@ function asHistory(value: Prisma.JsonValue | null): unknown[] {
 }
 
 function presentTransfer(record: StoredTransfer): SubscriptionTransferView {
-  const {
-    receiptBytes: _receiptBytes,
-    idempotencyKeyHash: _idempotencyKeyHash,
-    amountMinor,
-    ...view
-  } = record;
-  return { ...view, amountMinor: amountMinor?.toString() ?? null };
+  const view = { ...record };
+  delete (view as Partial<StoredTransfer>).receiptBytes;
+  delete (view as Partial<StoredTransfer>).idempotencyKeyHash;
+  return { ...view, amountMinor: record.amountMinor?.toString() ?? null };
 }
 
 function isDuplicateKeyError(error: unknown): boolean {

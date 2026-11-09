@@ -24,9 +24,7 @@ export const updateSubscriptionPaymentSettingsSchema = z
   .refine(
     (value) =>
       !value.enabled ||
-      Boolean(
-        value.bankName && value.accountHolder && value.iban && value.currencyCode,
-      ),
+      Boolean(value.bankName && value.accountHolder && value.iban && value.currencyCode),
   );
 
 export const subscriptionTransferListSchema = z
@@ -50,8 +48,16 @@ export const reviewSubscriptionTransferSchema = z
 
 export const subscriptionTransferAmountSchema = z
   .object({
-    amountMinor: z.string().regex(/^[1-9]\d{0,17}$/u).optional(),
-    currencyCode: z.string().trim().toUpperCase().regex(/^[A-Z]{3}$/u).optional(),
+    amountMinor: z
+      .string()
+      .regex(/^[1-9]\d{0,17}$/u)
+      .optional(),
+    currencyCode: z
+      .string()
+      .trim()
+      .toUpperCase()
+      .regex(/^[A-Z]{3}$/u)
+      .optional(),
   })
   .strict()
   .refine((value) => Boolean(value.amountMinor) === Boolean(value.currencyCode));
@@ -60,6 +66,4 @@ export type UpdateSubscriptionPaymentSettingsInput = z.infer<
   typeof updateSubscriptionPaymentSettingsSchema
 >;
 export type SubscriptionTransferListInput = z.infer<typeof subscriptionTransferListSchema>;
-export type ReviewSubscriptionTransferInput = z.infer<
-  typeof reviewSubscriptionTransferSchema
->;
+export type ReviewSubscriptionTransferInput = z.infer<typeof reviewSubscriptionTransferSchema>;

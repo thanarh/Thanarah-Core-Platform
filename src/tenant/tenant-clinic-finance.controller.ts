@@ -48,6 +48,7 @@ import {
   listClinicInvoicesQuerySchema,
   returnClinicInvoiceToDraftSchema,
   updateClinicFinanceSettingsSchema,
+  updateClinicPaymentSettingsSchema,
   updateClinicInvoiceSchema,
   clinicInvoiceTransitionSchema,
   clinicInvoiceTransferIdSchema,
@@ -78,6 +79,29 @@ export class TenantClinicFinanceController {
   @ApiForbiddenResponse({ description: 'Tenant finance read permission is required' })
   getSettings(@CurrentTenantContext() context: TrustedTenantContext) {
     return this.finance.getSettings(context);
+  }
+
+  @Get('payment-settings')
+  @RequireTenantPermissions('tenant.finance.payments.read')
+  @ApiOperation({ summary: 'Read tenant bank-transfer instructions and revision' })
+  @ApiOkResponse({ description: 'Tenant transfer settings returned without invoice settings' })
+  getPaymentSettings(@CurrentTenantContext() context: TrustedTenantContext) {
+    return this.finance.getPaymentSettings(context);
+  }
+
+  @Put('payment-settings')
+  @RequireTenantPermissions('tenant.finance.payments.settings.manage')
+  @ApiOperation({ summary: 'Configure tenant bank-transfer instructions' })
+  @ApiOkResponse({ description: 'Transfer settings updated with optimistic version control' })
+  @ApiBadRequestResponse({ description: 'Transfer settings are invalid' })
+  @ApiConflictResponse({ description: 'Settings version changed or audit capacity is reached' })
+  updatePaymentSettings(
+    @CurrentTenantContext() context: TrustedTenantContext,
+    @Body(new ZodValidationPipe(updateClinicPaymentSettingsSchema))
+    body: Parameters<ClinicFinanceService['updatePaymentSettings']>[1],
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+  ) {
+    return this.finance.updatePaymentSettings(context, body, actor);
   }
 
   @Put('settings')
@@ -268,7 +292,7 @@ export class TenantClinicFinanceController {
 
   @Post('invoices/:invoiceId/transfers')
   @HttpCode(HttpStatus.CREATED)
-  @RequireTenantPermissions('tenant.finance.payments.submit')
+  @RequireTenantPermissions('tenant.finance.payments.read', 'tenant.finance.payments.submit')
   @ApiOperation({ summary: 'Submit a transfer receipt for an issued clinic invoice' })
   @ApiCreatedResponse({ description: 'Receipt stored for admin review' })
   @ApiBadRequestResponse({ description: 'Receipt file or request is invalid' })

@@ -68,10 +68,7 @@ export async function readReceiptMultipartForm(
   return { receipt, fields };
 }
 
-function verifiedMimeType(
-  declared: string,
-  bytes: Buffer,
-): ReceiptUpload['mimeType'] {
+function verifiedMimeType(declared: string, bytes: Buffer): ReceiptUpload['mimeType'] {
   const pdf = bytes.subarray(0, 5).toString('ascii') === '%PDF-';
   const png =
     bytes.length >= 8 &&

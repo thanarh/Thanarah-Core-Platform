@@ -188,7 +188,7 @@
     anchor.href = url;
     anchor.download = fileName || 'receipt';
     anchor.click();
-    root.URL.revokeObjectURL(url);
+    root.setTimeout(() => root.URL.revokeObjectURL(url), 1000);
   }
 
   async function mutationRequest(path, options) {
@@ -483,6 +483,15 @@
 
     updateClinicFinanceSettings(tenantId, input) {
       return request(tenantPath(tenantId, '/finance/settings'), {
+        method: 'PUT',
+        body: input,
+      });
+    },
+    getClinicPaymentSettings(tenantId) {
+      return request(tenantPath(tenantId, '/finance/payment-settings'));
+    },
+    updateClinicPaymentSettings(tenantId, input) {
+      return request(tenantPath(tenantId, '/finance/payment-settings'), {
         method: 'PUT',
         body: input,
       });

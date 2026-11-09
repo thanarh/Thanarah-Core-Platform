@@ -2,10 +2,12 @@ import { createHash } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import type {
+  ClinicBankTransferSettings,
   ClinicInvoice,
   ClinicInvoicePage,
   ClinicInvoiceReviewedPolicy,
   ClinicInvoiceSettings,
+  ClinicInvoiceSettingsRevision,
   ClinicInvoiceTotals,
   ClinicInvoiceTransfer,
   ClinicInvoiceTransferStatus,
@@ -23,12 +25,14 @@ import {
   listClinicInvoicesQuerySchema,
   returnClinicInvoiceToDraftSchema,
   updateClinicFinanceSettingsSchema,
+  updateClinicPaymentSettingsSchema,
   updateClinicInvoiceSchema,
 } from './clinic-finance.dto';
 import type {
   CreateClinicInvoiceInput,
   ListClinicInvoicesQuery,
   UpdateClinicFinanceSettingsInput,
+  UpdateClinicPaymentSettingsInput,
   UpdateClinicInvoiceInput,
 } from './clinic-finance.dto';
 import {
@@ -48,6 +52,23 @@ import type { ReceiptUpload } from '../common/receipt-upload';
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const MAX_INVOICE_HISTORY = 1_000;
 
+export interface ClinicInvoicePaymentSettingsView {
+  version: number;
+  bankTransfer: ClinicBankTransferSettings;
+  revisions: Array<
+    Pick<ClinicInvoiceSettingsRevision, 'version' | 'changedAt' | 'changedBy'> & {
+      bankTransfer: ClinicBankTransferSettings;
+    }
+  >;
+}
+
+type ClinicInvoiceFinanceSettingsView = Omit<
+  ClinicInvoiceSettings,
+  'tenantId' | 'bankTransfer' | 'revisions'
+> & {
+  revisions: Array<Pick<ClinicInvoiceSettingsRevision, 'version' | 'changedAt' | 'changedBy'>>;
+};
+
 export interface ClinicFinanceRequestContext {
   requestId?: string;
 }
@@ -59,7 +80,7 @@ export class ClinicFinanceService {
   ) {}
 
   async getSettings(context: Parameters<ClinicFinanceRepository['getSettings']>[0]) {
-    return presentSettings(await this.repository.getSettings(context));
+    return presentInvoiceSettings(await this.repository.getSettings(context));
   }
 
   async updateSettings(
@@ -78,7 +99,44 @@ export class ClinicFinanceService {
       new Date(),
     );
     if (!settings) throw new ClinicFinanceSettingsConflictError();
-    return presentSettings(settings);
+    return presentInvoiceSettings(settings);
+  }
+
+  async getPaymentSettings(context: Parameters<ClinicFinanceRepository['getSettings']>[0]) {
+    return presentPaymentSettings(await this.repository.getSettings(context));
+  }
+
+  async updatePaymentSettings(
+    context: Parameters<ClinicFinanceRepository['getSettings']>[0],
+    input: UpdateClinicPaymentSettingsInput,
+    actor: AuthenticatedPlatformUser,
+  ) {
+    this.assertActor(context, actor);
+    const parsed = updateClinicPaymentSettingsSchema.safeParse(input);
+    if (
+      !parsed.success ||
+      (parsed.data.bankTransfer.enabled &&
+        !isSupportedCurrencyCode(parsed.data.bankTransfer.currencyCode ?? ''))
+    ) {
+      throw new ClinicFinanceInputError();
+    }
+    const current = await this.repository.getSettings(context);
+    const settings = await this.repository.saveSettings(
+      context,
+      {
+        expectedVersion: parsed.data.expectedVersion,
+        currencyCode: current.currencyCode,
+        lineRounding: current.lineRounding,
+        customFields: current.customFields,
+        taxPolicies: current.taxPolicies,
+        numberingPolicy: current.numberingPolicy,
+        bankTransfer: parsed.data.bankTransfer,
+      },
+      actor.userId,
+      new Date(),
+    );
+    if (!settings) throw new ClinicFinanceSettingsConflictError();
+    return presentPaymentSettings(settings);
   }
 
   async listInvoices(
@@ -345,7 +403,11 @@ export class ClinicFinanceService {
     };
     const saved = await this.repository.createTransfer(context, transfer);
     if (saved.id !== transfer.id) {
-      if (!keyHash || saved.idempotencyKeyHash !== keyHash || saved.receiptSha256 !== receipt.sha256) {
+      if (
+        !keyHash ||
+        saved.idempotencyKeyHash !== keyHash ||
+        saved.receiptSha256 !== receipt.sha256
+      ) {
         throw new ClinicInvoiceStateConflictError();
       }
     }
@@ -444,15 +506,6 @@ function validateSettings(input: UpdateClinicFinanceSettingsInput): void {
     throw new ClinicFinanceInputError();
   }
   if (input.numberingPolicy && !isSafePrefix(input.numberingPolicy.prefix)) {
-    throw new ClinicFinanceInputError();
-  }
-  if (
-    input.bankTransfer?.enabled &&
-    (!input.bankTransfer.bankName ||
-      !input.bankTransfer.accountHolder ||
-      !input.bankTransfer.iban ||
-      !input.bankTransfer.currencyCode)
-  ) {
     throw new ClinicFinanceInputError();
   }
 }
@@ -606,11 +659,34 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value);
 }
 
-function presentSettings(settings: ClinicInvoiceSettings) {
-  return Object.fromEntries(Object.entries(settings).filter(([key]) => key !== 'tenantId')) as Omit<
-    ClinicInvoiceSettings,
-    'tenantId'
-  >;
+function presentInvoiceSettings(settings: ClinicInvoiceSettings): ClinicInvoiceFinanceSettingsView {
+  const { revisions, ...settingsWithoutRevisions } = settings;
+  const safeSettings = Object.fromEntries(
+    Object.entries(settingsWithoutRevisions).filter(
+      ([key]) => key !== 'tenantId' && key !== 'bankTransfer',
+    ),
+  ) as Omit<ClinicInvoiceSettings, 'tenantId' | 'bankTransfer' | 'revisions'>;
+  return {
+    ...safeSettings,
+    revisions: revisions.map(({ version, changedAt, changedBy }) => ({
+      version,
+      changedAt,
+      changedBy,
+    })),
+  };
+}
+
+function presentPaymentSettings(settings: ClinicInvoiceSettings): ClinicInvoicePaymentSettingsView {
+  return {
+    version: settings.version,
+    bankTransfer: settings.bankTransfer,
+    revisions: settings.revisions.map(({ version, changedAt, changedBy, settings: revision }) => ({
+      version,
+      changedAt,
+      changedBy,
+      bankTransfer: revision.bankTransfer,
+    })),
+  };
 }
 
 function presentInvoice(invoice: ClinicInvoice) {
@@ -638,7 +714,9 @@ function presentInvoice(invoice: ClinicInvoice) {
 }
 
 function presentTransfer(transfer: ClinicInvoiceTransfer): ClinicInvoiceTransferView {
-  const { tenantId: _tenantId, receiptBytes: _receiptBytes, idempotencyKeyHash: _key, ...view } =
-    transfer;
+  const view = { ...transfer };
+  delete (view as Partial<ClinicInvoiceTransfer>).tenantId;
+  delete (view as Partial<ClinicInvoiceTransfer>).receiptBytes;
+  delete (view as Partial<ClinicInvoiceTransfer>).idempotencyKeyHash;
   return view;
 }

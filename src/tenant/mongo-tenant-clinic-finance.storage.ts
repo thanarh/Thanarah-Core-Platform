@@ -17,11 +17,7 @@ import type {
   ClinicInvoiceTransfer,
   ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
-import type {
-  ListClinicInvoicesQuery,
-  UpdateClinicFinanceSettingsInput,
-  UpdateClinicInvoiceInput,
-} from './clinic-finance.dto';
+import type { ListClinicInvoicesQuery, UpdateClinicInvoiceInput } from './clinic-finance.dto';
 import {
   ClinicFinanceAuditCapacityError,
   ClinicInvoiceIdempotencyConflictError,
@@ -48,6 +44,7 @@ import { formatClinicInvoiceNumber } from './clinic-finance.calculation';
 import {
   createClinicInvoiceAuditEvent,
   createSettingsRevision,
+  type ClinicFinanceSettingsSaveInput,
   type ClinicFinanceStorage,
   type ClinicInvoiceCreateResult,
 } from './tenant-clinic-finance.storage';
@@ -136,8 +133,7 @@ interface ClinicInvoiceDocument extends Document, Omit<ClinicInvoice, 'id' | 'te
 }
 
 interface ClinicInvoiceTransferDocument
-  extends Document,
-    Omit<ClinicInvoiceTransfer, 'id' | 'tenantId'> {
+  extends Document, Omit<ClinicInvoiceTransfer, 'id' | 'tenantId'> {
   _id: string;
   _tenantId: string;
 }
@@ -172,7 +168,7 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
   async saveSettings(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
-    input: UpdateClinicFinanceSettingsInput,
+    input: ClinicFinanceSettingsSaveInput,
     actorUserId: string,
     at: Date,
   ): Promise<ClinicInvoiceSettings | null> {
@@ -834,7 +830,11 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
   ): Promise<void> {
     try {
       const indexes = await collection.indexes();
-      if (!TRANSFER_INDEXES.every((definition) => indexes.some((index) => matchesIndex(index, definition)))) {
+      if (
+        !TRANSFER_INDEXES.every((definition) =>
+          indexes.some((index) => matchesIndex(index, definition)),
+        )
+      ) {
         throw new TenantStorageUnavailableError();
       }
     } catch {

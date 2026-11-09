@@ -7,13 +7,17 @@ import {
 import { TENANT_REQUIRED_PERMISSIONS } from '../src/tenant/tenant-require-permissions.decorator';
 
 describe('clinic finance permissions', () => {
-  it('registers separate read, draft, settings, review, and issue permissions', () => {
+  it('registers separate finance, invoice, transfer, and settings permissions', () => {
     const required = [
       'tenant.finance.read',
       'tenant.finance.manage',
       'tenant.finance.settings.manage',
       'tenant.finance.review',
       'tenant.finance.issue',
+      'tenant.finance.payments.read',
+      'tenant.finance.payments.submit',
+      'tenant.finance.payments.review',
+      'tenant.finance.payments.settings.manage',
     ];
     for (const code of required) expect(TENANT_PERMISSION_CODES).toContain(code);
 
@@ -51,5 +55,31 @@ describe('clinic finance permissions', () => {
       'tenant.finance.read',
       'tenant.finance.manage',
     ]);
+    expect(
+      Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.submitInvoiceTransfer),
+    ).toEqual(['tenant.finance.payments.read', 'tenant.finance.payments.submit']);
+    expect(
+      Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.listInvoiceTransfers),
+    ).toEqual(['tenant.finance.payments.read']);
+    expect(Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.listTransfers)).toEqual([
+      'tenant.finance.payments.read',
+    ]);
+    expect(
+      Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.downloadTransferReceipt),
+    ).toEqual(['tenant.finance.payments.read']);
+    expect(Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.approveTransfer)).toEqual([
+      'tenant.finance.payments.read',
+      'tenant.finance.payments.review',
+    ]);
+    expect(Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.rejectTransfer)).toEqual([
+      'tenant.finance.payments.read',
+      'tenant.finance.payments.review',
+    ]);
+    expect(Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.getPaymentSettings)).toEqual(
+      ['tenant.finance.payments.read'],
+    );
+    expect(
+      Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, controller.updatePaymentSettings),
+    ).toEqual(['tenant.finance.payments.settings.manage']);
   });
 });

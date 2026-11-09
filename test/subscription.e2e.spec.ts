@@ -12,6 +12,7 @@ import type { PlatformAuthorizationService } from '../src/auth/services/platform
 import { APP_CONSTANTS } from '../src/common/constants/app.constants';
 import { SubscriptionController } from '../src/subscriptions/subscription.controller';
 import { SubscriptionService } from '../src/subscriptions/subscription.service';
+import { SubscriptionPaymentService } from '../src/subscriptions/subscription-payment.service';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const planId = '22222222-2222-4222-8222-222222222222';
@@ -69,6 +70,14 @@ describe('Platform Subscription administration HTTP contract', () => {
     cancel: vi.fn(),
     expire: vi.fn(),
   };
+  const payments = {
+    getSettings: vi.fn(),
+    updateSettings: vi.fn(),
+    listTransfers: vi.fn(),
+    submitTransfer: vi.fn(),
+    reviewTransfer: vi.fn(),
+    getTransferReceipt: vi.fn(),
+  };
 
   beforeEach(async () => {
     vi.clearAllMocks();
@@ -81,6 +90,23 @@ describe('Platform Subscription administration HTTP contract', () => {
     subscriptions.suspend.mockResolvedValue(sampleSubscription);
     subscriptions.cancel.mockResolvedValue(sampleSubscription);
     subscriptions.expire.mockResolvedValue(sampleSubscription);
+    payments.getSettings.mockResolvedValue({
+      enabled: false,
+      bankName: null,
+      accountHolder: null,
+      iban: null,
+      currencyCode: null,
+      version: 0,
+      history: [],
+    });
+    payments.updateSettings.mockImplementation(async (input) => ({
+      ...input,
+      version: input.expectedVersion + 1,
+      updatedAt: new Date('2026-11-09T00:00:00.000Z'),
+      updatedBy: authenticatedUser.userId,
+      history: [],
+    }));
+    payments.listTransfers.mockResolvedValue({ items: [], total: 0, limit: 50, offset: 0 });
 
     const authorizationGuard = new PlatformAuthorizationGuard(
       new Reflector(),
@@ -88,7 +114,7 @@ describe('Platform Subscription administration HTTP contract', () => {
     );
     const module = await Test.createTestingModule({
       controllers: [SubscriptionController],
-      providers: [PlatformAuthorizationGuard, SubscriptionService],
+      providers: [PlatformAuthorizationGuard, SubscriptionService, SubscriptionPaymentService],
     })
       .overrideGuard(PlatformAuthGuard)
       .useClass(TestAuthenticationGuard)
@@ -96,6 +122,8 @@ describe('Platform Subscription administration HTTP contract', () => {
       .useValue(authorizationGuard)
       .overrideProvider(SubscriptionService)
       .useValue(subscriptions)
+      .overrideProvider(SubscriptionPaymentService)
+      .useValue(payments)
       .compile();
 
     app = module.createNestApplication<NestFastifyApplication>(new FastifyAdapter());
@@ -251,6 +279,51 @@ describe('Platform Subscription administration HTTP contract', () => {
     expect(response.statusCode).toBe(200);
     expect(subscriptions.findCurrentForTenant).toHaveBeenCalledWith(tenantId);
     expect(subscriptions.activate).not.toHaveBeenCalled();
+  });
+
+  it('protects centralized transfer settings and review reads with platform permissions', async () => {
+    const deniedSettings = await app.inject({
+      method: 'GET',
+      url: '/api/v1/platform/subscriptions/bank-transfer-settings',
+      headers: { authorization: 'Bearer valid' },
+    });
+    expect(deniedSettings.statusCode).toBe(403);
+    expect(payments.getSettings).not.toHaveBeenCalled();
+
+    grantedPermissions.add('subscriptions.read');
+    const settings = await app.inject({
+      method: 'GET',
+      url: '/api/v1/platform/subscriptions/bank-transfer-settings',
+      headers: { authorization: 'Bearer valid' },
+    });
+    const transfers = await app.inject({
+      method: 'GET',
+      url: '/api/v1/platform/subscriptions/transfers',
+      headers: { authorization: 'Bearer valid' },
+    });
+    expect(settings.statusCode).toBe(200);
+    expect(settings.json()).toMatchObject({ enabled: false, version: 0 });
+    expect(transfers.statusCode).toBe(200);
+    expect(payments.getSettings).toHaveBeenCalledTimes(1);
+    expect(payments.listTransfers).toHaveBeenCalledWith(
+      expect.objectContaining({ limit: 50, offset: 0 }),
+    );
+
+    const deniedUpdate = await app.inject({
+      method: 'PUT',
+      url: '/api/v1/platform/subscriptions/bank-transfer-settings',
+      headers: { authorization: 'Bearer valid' },
+      payload: {
+        expectedVersion: 0,
+        enabled: false,
+        bankName: null,
+        accountHolder: null,
+        iban: null,
+        currencyCode: null,
+      },
+    });
+    expect(deniedUpdate.statusCode).toBe(403);
+    expect(payments.updateSettings).not.toHaveBeenCalled();
   });
 
   it('validates Subscription UUID paths before calling a lifecycle operation', async () => {
