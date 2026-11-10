@@ -56,6 +56,8 @@ import { EncounterService } from './encounter.service';
 import { TenantClinicFinanceController } from './tenant-clinic-finance.controller';
 import { ClinicFinanceService } from './clinic-finance.service';
 import { ClinicFinanceRepository } from './clinic-finance.repository';
+import { TenantSubscriptionPortalController } from './tenant-subscription-portal.controller';
+import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 
 @Module({
   imports: [
@@ -73,6 +75,7 @@ import { ClinicFinanceRepository } from './clinic-finance.repository';
     TenantStaffAuthorizationPersistenceModule,
     FacilitySchedulingPolicyPersistenceModule,
     DoctorPersistenceModule,
+    SubscriptionsModule,
   ],
   controllers: [
     TenantController,
@@ -94,6 +97,7 @@ import { ClinicFinanceRepository } from './clinic-finance.repository';
     FacilitySchedulingPolicyController,
     TenantEncounterController,
     TenantClinicFinanceController,
+    TenantSubscriptionPortalController,
   ],
   providers: [
     TenantAuthorizationGuard,

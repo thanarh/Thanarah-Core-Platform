@@ -476,6 +476,18 @@
         'subscription-transfer-receipt',
       );
     },
+    getTenantSubscriptionPortal(tenantId) {
+      return request(tenantPath(tenantId, '/subscription-portal'));
+    },
+    submitTenantSubscriptionTransfer(tenantId, file) {
+      const form = new root.FormData();
+      form.append('receipt', file);
+      return request(tenantPath(tenantId, '/subscription-portal/transfers'), {
+        method: 'POST',
+        headers: { 'Idempotency-Key': createIdempotencyKey() },
+        body: form,
+      });
+    },
 
     getClinicFinanceSettings(tenantId) {
       return request(tenantPath(tenantId, '/finance/settings'));

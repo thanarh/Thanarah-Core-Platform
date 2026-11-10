@@ -63,6 +63,8 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.finance.payments.submit',
   'tenant.finance.payments.review',
   'tenant.finance.payments.settings.manage',
+  'tenant.subscriptions.read',
+  'tenant.subscriptions.payments.submit',
   'tenant.ai.read',
   'tenant.ai.manage',
   'tenant.ai.knowledge.manage',
@@ -255,6 +257,14 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.finance.payments.settings.manage',
     description: 'Configure tenant bank transfer instructions',
   },
+  {
+    code: 'tenant.subscriptions.read',
+    description: 'Read the tenant SaaS subscription and its bank-transfer review status',
+  },
+  {
+    code: 'tenant.subscriptions.payments.submit',
+    description: 'Submit a bank-transfer receipt for the tenant SaaS subscription',
+  },
   { code: 'tenant.ai.read', description: 'View tenant AI agents, knowledge sources, and usage' },
   { code: 'tenant.ai.manage', description: 'Create and update tenant AI agents and tool access' },
   {
@@ -340,6 +350,8 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.finance.payments.submit',
       'tenant.finance.payments.review',
       'tenant.finance.payments.settings.manage',
+      'tenant.subscriptions.read',
+      'tenant.subscriptions.payments.submit',
       'tenant.ai.read',
       'tenant.ai.manage',
       'tenant.ai.knowledge.manage',

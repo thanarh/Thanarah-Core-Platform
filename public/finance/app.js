@@ -16,6 +16,8 @@
     paymentSubmit: 'tenant.finance.payments.submit',
     paymentReview: 'tenant.finance.payments.review',
     paymentSettings: 'tenant.finance.payments.settings.manage',
+    subscriptionRead: 'tenant.subscriptions.read',
+    subscriptionSubmit: 'tenant.subscriptions.payments.submit',
   };
   const state = {
     screen: 'boot', workspaces: [], workspace: null, view: 'invoices',
@@ -23,6 +25,8 @@
     listLoading: false, listError: null, settings: null, paymentSettings: null,
     paymentSettingsError: null, settingsLoading: false,
     settingsError: null, savingSettings: false, settingsForm: null,
+    subscriptionPortal: null, subscriptionLoading: false, subscriptionError: null,
+    subscriptionUploading: false,
     invoiceTransfers: [], transferLoading: false, transferBusy: false,
     savingPaymentSettings: false,
     transferError: null,
@@ -143,6 +147,8 @@
     state.invoices = []; state.total = 0; state.offset = 0; state.hasNext = false;
     state.listError = null; state.listLoading = false; state.settings = null;
     state.paymentSettings = null; state.paymentSettingsError = null;
+    state.subscriptionPortal = null; state.subscriptionLoading = false;
+    state.subscriptionError = null; state.subscriptionUploading = false;
     state.invoiceTransfers = []; state.transferLoading = false; state.transferBusy = false;
     state.savingPaymentSettings = false;
     state.transferError = null;
@@ -183,10 +189,12 @@
     state.screen = 'workspace';
     state.view = canRead()
       ? 'invoices'
-      : allowed(PERMISSIONS.settings) || allowed(PERMISSIONS.paymentSettings) ||
-        allowed(PERMISSIONS.paymentRead)
-        ? 'settings'
-        : 'no-access';
+      : allowed(PERMISSIONS.subscriptionRead)
+        ? 'subscription'
+        : allowed(PERMISSIONS.settings) || allowed(PERMISSIONS.paymentSettings) ||
+          allowed(PERMISSIONS.paymentRead)
+          ? 'settings'
+          : 'no-access';
     render();
     if (canRead()) {
       await Promise.all([
@@ -199,6 +207,29 @@
     } else if (allowed(PERMISSIONS.settings) || allowed(PERMISSIONS.paymentSettings)) {
       state.settingsError = new Error('تتطلب قراءة الإعدادات صلاحية tenant.finance.read.');
       render();
+    }
+    if (allowed(PERMISSIONS.subscriptionRead)) await loadSubscriptionPortal();
+  }
+  async function loadSubscriptionPortal() {
+    if (!state.workspace || !allowed(PERMISSIONS.subscriptionRead)) return;
+    const workspace = state.workspace;
+    const epoch = state.workspaceEpoch;
+    state.subscriptionLoading = true;
+    state.subscriptionError = null;
+    render();
+    try {
+      const result = await api.getTenantSubscriptionPortal(workspace.tenantId);
+      if (epoch !== state.workspaceEpoch || workspace !== state.workspace) return;
+      state.subscriptionPortal = result;
+    } catch (error) {
+      if (epoch !== state.workspaceEpoch || workspace !== state.workspace) return;
+      if (error.status === 401) return expireSession();
+      state.subscriptionError = error;
+    } finally {
+      if (epoch === state.workspaceEpoch && workspace === state.workspace) {
+        state.subscriptionLoading = false;
+        render();
+      }
     }
   }
   async function loadSettings() {
@@ -293,6 +324,9 @@
     state.view = view;
     render();
     if (view === 'invoices') await loadInvoices();
+    if (view === 'subscription' && !state.subscriptionPortal && !state.subscriptionLoading) {
+      await loadSubscriptionPortal();
+    }
     if (view === 'settings' && canRead() && !state.settings && !state.settingsLoading) {
       await loadSettings();
     }
@@ -313,7 +347,8 @@
     }
     app.innerHTML = shellMarkup();
     if (state.view === 'invoices') renderInvoices();
-    else renderSettings();
+    else if (state.view === 'settings') renderSettings();
+    else renderSubscriptionPortal();
     if (state.view === 'settings') enhanceSettingsView();
     renderModal();
   }
@@ -332,7 +367,9 @@
     const links = [];
     if (canRead()) links.push(`<button class="nav-item ${state.view === 'invoices' ? 'active' : ''}" data-action="view-invoices" type="button" ${state.view === 'invoices' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('invoice')}</span><span>الفواتير</span></button>`);
     if (allowed(PERMISSIONS.settings) || allowed(PERMISSIONS.paymentSettings) || allowed(PERMISSIONS.paymentRead)) links.push(`<button class="nav-item ${state.view === 'settings' ? 'active' : ''}" data-action="view-settings" type="button" ${state.view === 'settings' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('settings')}</span><span>الإعدادات</span></button>`);
-    return `<div class="app-frame"><aside class="sidebar" aria-label="التنقل الرئيسي"><a class="brand" href="/finance/" aria-label="ثناره — فواتير العيادة"><img src="/assets/logo-transparent.png" alt=""><span class="brand-copy"><strong>ثناره</strong><small>THANARAH</small></span></a><div class="side-kicker">الإدارة المالية للعيادة</div><nav class="side-nav">${links.join('')}</nav><div class="side-bottom"><div class="scope-note"><span class="scope-dot"></span>مساحة نشطة<span class="workspace-name">${name}</span></div><div class="side-actions"><button type="button" data-action="switch-workspace">تبديل المساحة</button><button type="button" data-action="logout">خروج</button></div></div></aside><section class="main-area"><header class="topbar"><div class="breadcrumbs"><span>إدارة العيادة</span><span aria-hidden="true"> / </span><strong>${state.view === 'settings' ? 'إعدادات الفوترة' : 'فواتير العيادة'}</strong></div><div class="top-actions"><span class="user-chip">${name}</span></div></header><div class="page-content">${state.view === 'settings' ? '' : ''}<div id="page-view"></div></div></section></div>`;
+    if (allowed(PERMISSIONS.subscriptionRead)) links.push(`<button class="nav-item ${state.view === 'subscription' ? 'active' : ''}" data-action="view-subscription" type="button" ${state.view === 'subscription' ? 'aria-current="page"' : ''}><span class="nav-icon">${icon('invoice')}</span><span>اشتراك ثناره</span></button>`);
+    const title = state.view === 'settings' ? 'إعدادات الفوترة' : state.view === 'subscription' ? 'اشتراك ثناره' : 'فواتير العيادة';
+    return `<div class="app-frame"><aside class="sidebar" aria-label="التنقل الرئيسي"><a class="brand" href="/finance/" aria-label="ثناره — الإدارة المالية"><img src="/assets/logo-transparent.png" alt=""><span class="brand-copy"><strong>ثناره</strong><small>THANARAH</small></span></a><div class="side-kicker">الإدارة المالية للعيادة</div><nav class="side-nav">${links.join('')}</nav><div class="side-bottom"><div class="scope-note"><span class="scope-dot"></span>مساحة نشطة<span class="workspace-name">${name}</span></div><div class="side-actions"><button type="button" data-action="switch-workspace">تبديل المساحة</button><button type="button" data-action="logout">خروج</button></div></div></aside><section class="main-area"><header class="topbar"><div class="breadcrumbs"><span>إدارة العيادة</span><span aria-hidden="true"> / </span><strong>${title}</strong></div><div class="top-actions"><span class="user-chip">${name}</span></div></header><div class="page-content"><div id="page-view"></div></div></section></div>`;
   }
   function icon(name) {
     const icons = {
@@ -346,6 +383,46 @@
     if (!host) return;
     const canCreate = allowed(PERMISSIONS.manage);
     host.innerHTML = `<div class="page-heading"><div><span class="eyebrow">فواتير تشغيلية مستقلة</span><h1>فواتير العيادة</h1><p>أنشئ المسودات، راجعها، ثم أصدرها عند اكتمال الإعداد.</p></div><div class="heading-actions">${canCreate ? '<button class="btn btn-primary" type="button" data-action="new-invoice"><span aria-hidden="true">＋</span> فاتورة جديدة</button>' : ''}</div></div><form class="filters-panel" data-form="filters"><label class="field search-field"><span>بحث</span><input class="control" name="search" type="search" maxlength="100" placeholder="ابحث باسم المستلم أو رقم الفاتورة" value="${esc(state.search)}"></label><label class="field"><span>الحالة</span><select class="control" name="status"><option value="">كل الحالات</option>${['DRAFT','REVIEWED','ISSUED'].map((status) => `<option value="${status}" ${state.statusFilter === status ? 'selected' : ''}>${statusLabel(status)}</option>`).join('')}</select></label><button class="btn btn-secondary filter-submit" type="submit">تطبيق المرشحات</button></form><div class="list-status"><span>${state.listLoading ? 'جارٍ تحديث قائمة الفواتير…' : `عدد النتائج: ${new Intl.NumberFormat('ar').format(state.total)}`}</span><span>تعرض هذه المساحة فواتير العيادة فقط، وليست اشتراكات ثناره.</span></div><section class="records">${state.listLoading && !state.invoices.length ? loadingMarkup() : state.listError ? errorMarkup('invoices') : !state.invoices.length ? emptyInvoices(canCreate) : invoiceTable()}${state.invoices.length && !state.listError ? pagination() : ''}</section>`;
+  }
+  function subscriptionStatusLabel(status) {
+    return ({
+      ACTIVE: 'نشط',
+      SUSPENDED: 'معلّق',
+      CANCELLED: 'ملغى',
+      EXPIRED: 'منتهي',
+      PENDING_REVIEW: 'بانتظار المراجعة',
+      APPROVED: 'مقبول',
+      REJECTED: 'مرفوض',
+    })[status] || 'غير محدد';
+  }
+  function hasCurrentSubscription(subscription) {
+    if (!subscription || subscription.status !== 'ACTIVE') return false;
+    const now = Date.now();
+    const start = new Date(subscription.startsAt).getTime();
+    const end = subscription.endsAt ? new Date(subscription.endsAt).getTime() : null;
+    return Number.isFinite(start) && start <= now && (end === null || (Number.isFinite(end) && end > now));
+  }
+  function renderSubscriptionPortal() {
+    const host = document.getElementById('page-view');
+    if (!host) return;
+    const portal = state.subscriptionPortal;
+    const subscription = portal?.subscription;
+    const bank = portal?.bankTransfer || {};
+    const transfers = Array.isArray(portal?.transfers) ? portal.transfers : [];
+    const bankReady = !!(bank.enabled && bank.bankName && bank.accountHolder && bank.iban && bank.currencyCode);
+    const canSubmit = allowed(PERMISSIONS.subscriptionRead) &&
+      allowed(PERMISSIONS.subscriptionSubmit) && bankReady && hasCurrentSubscription(subscription);
+    const rows = transfers.length ? transfers.map((transfer) => {
+      const reason = transfer.status === 'REJECTED' && transfer.reviewReason
+        ? `<p class="form-note"><strong>سبب الرفض:</strong> ${esc(transfer.reviewReason)}</p>`
+        : transfer.status === 'PENDING_REVIEW'
+          ? '<p class="form-note">الإيصال لدى فريق ثناره للمراجعة.</p>'
+          : transfer.status === 'APPROVED'
+            ? '<p class="notice">تمت مراجعة الإيصال فقط؛ لم يتغير الاشتراك ولم يُنفذ تحصيل.</p>'
+            : '';
+      return `<article class="settings-item"><div class="settings-item-row"><div><h3>${subscriptionStatusLabel(transfer.status)}</h3><p>تاريخ الإرسال: ${esc(formatStamp(transfer.submittedAt))} · ${esc(transfer.receiptFileName || 'إيصال')}</p></div></div>${reason}</article>`;
+    }).join('') : '<div class="permission-note">لا توجد إيصالات تحويل مسجلة لهذا الحساب.</div>';
+    host.innerHTML = `<div class="page-heading"><div><span class="eyebrow">مسار اشتراك مستقل</span><h1>اشتراك ثناره</h1><p>تابع اشتراك منشأتك وتعليمات التحويل وحالة الإيصال. لا تظهر أسعار غير معتمدة هنا.</p></div><div class="heading-actions"><button class="btn btn-secondary" type="button" data-action="retry-subscription" ${state.subscriptionLoading ? 'disabled' : ''}>تحديث</button></div></div>${state.subscriptionLoading && !portal ? loadingMarkup() : ''}${state.subscriptionError ? `<div class="error-state" role="alert"><h2>تعذّر تحميل بيانات الاشتراك</h2><p>${esc(message(state.subscriptionError))}</p><button class="btn btn-secondary" type="button" data-action="retry-subscription">إعادة المحاولة</button></div>` : ''}${!state.subscriptionLoading && portal ? `<section class="settings-section"><div class="settings-head"><h2>اشتراك المنشأة</h2></div><div class="settings-body">${subscription ? `<div class="detail-grid"><div class="detail-item"><small>الخطة</small><strong>${esc(subscription.planName || subscription.planKey || '—')}</strong></div><div class="detail-item"><small>الحالة</small><strong>${subscriptionStatusLabel(subscription.status)}</strong></div><div class="detail-item"><small>تاريخ البداية</small><strong>${esc(formatStamp(subscription.startsAt))}</strong></div><div class="detail-item"><small>تاريخ النهاية</small><strong>${esc(formatStamp(subscription.endsAt))}</strong></div></div>` : '<div class="permission-note">لا يوجد اشتراك مسجل لهذه المنشأة حاليًا.</div>'}</div></section><section class="settings-section"><div class="settings-head"><h2>تعليمات التحويل البنكي</h2></div><div class="settings-body">${bankReady ? `<div class="detail-grid"><div class="detail-item"><small>البنك</small><strong>${esc(bank.bankName)}</strong></div><div class="detail-item"><small>اسم المستفيد</small><strong>${esc(bank.accountHolder)}</strong></div><div class="detail-item"><small>رقم الحساب الدولي</small><strong class="mono"><bdi dir="ltr">${esc(bank.iban)}</bdi></strong></div><div class="detail-item"><small>العملة المسجلة</small><strong class="mono"><bdi dir="ltr">${esc(bank.currencyCode)}</bdi></strong></div></div><p class="form-note">لا يُعرض مبلغ مستحق لعدم وجود قيمة اشتراك معتمدة في هذا السجل. أرفق الإيصال للتحقق اليدوي فقط.</p>` : '<div class="permission-note">تعليمات التحويل غير متاحة بعد. لا ترسل أي مبلغ حتى تهيئ المنصة بيانات التحويل المعتمدة.</div>'}</div></section><section class="settings-section"><div class="settings-head"><h2>إيصالات التحويل ومراجعتها</h2></div><div class="settings-body">${canSubmit ? `<form class="transfer-upload-form" data-form="subscription-transfer"><label class="field"><span>إرفاق إيصال PDF أو JPG أو PNG</span><input class="control" name="receipt" type="file" accept="application/pdf,image/jpeg,image/png,.pdf,.jpg,.jpeg,.png" required></label><p class="form-note">الإرسال يضيف طلب مراجعة فقط. لا يمدد الاشتراك ولا ينفذ تحصيلًا تلقائيًا.</p><button class="btn btn-primary" type="submit" ${state.subscriptionUploading ? 'disabled' : ''}>${state.subscriptionUploading ? 'جارٍ الإرسال…' : 'إرسال الإيصال للمراجعة'}</button></form>` : allowed(PERMISSIONS.subscriptionRead) && !allowed(PERMISSIONS.subscriptionSubmit) ? '<div class="permission-note">حسابك يستطيع قراءة الاشتراك فقط، ولا يملك صلاحية إرسال إيصال.</div>' : bankReady && !hasCurrentSubscription(subscription) ? '<div class="permission-note">يتطلب إرسال إيصال وجود اشتراك نشط حاليًا.</div>' : ''}${rows}</div></section>` : ''}`;
   }
   function loadingMarkup() { return `<div class="loading-state" aria-label="جارٍ التحميل"><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div><p class="form-note">جارٍ تحميل البيانات…</p></div>`; }
   function errorMarkup(kind) {
@@ -700,6 +777,31 @@
       renderModal();
     }
   }
+  async function submitSubscriptionTransfer(form) {
+    if (!state.workspace ||
+        !allowed(PERMISSIONS.subscriptionRead) ||
+        !allowed(PERMISSIONS.subscriptionSubmit)) return;
+    const file = new FormData(form).get('receipt');
+    if (!(file instanceof File) || !file.size) {
+      state.subscriptionError = new Error('اختر إيصالًا صالحًا قبل الإرسال.');
+      render();
+      return;
+    }
+    state.subscriptionUploading = true;
+    state.subscriptionError = null;
+    render();
+    try {
+      await api.submitTenantSubscriptionTransfer(state.workspace.tenantId, file);
+      toast('تم إرسال الإيصال للمراجعة اليدوية.');
+      state.subscriptionUploading = false;
+      await loadSubscriptionPortal();
+    } catch (error) {
+      if (error.status === 401) return expireSession();
+      state.subscriptionError = error;
+      state.subscriptionUploading = false;
+      render();
+    }
+  }
   async function reviewInvoiceTransfer(form, decision) {
     if (!state.invoice || !state.workspace ||
         !allowed(PERMISSIONS.paymentRead) || !allowed(PERMISSIONS.paymentReview)) return;
@@ -808,6 +910,8 @@
       await submitTransition(form);
     } else if (type === 'invoice-transfer') {
       await submitInvoiceTransfer(form);
+    } else if (type === 'subscription-transfer') {
+      await submitSubscriptionTransfer(form);
     } else if (type === 'invoice-transfer-review') {
       await reviewInvoiceTransfer(form, event.submitter?.value);
     }
@@ -857,6 +961,9 @@
     if (action === 'switch-workspace') { await switchWorkspace(); return; }
     if (action === 'retry') { await bootstrap(); return; }
     if (action === 'retry-invoices') { await loadInvoices(); return; }
+    if (action === 'retry-subscription' && allowed(PERMISSIONS.subscriptionRead)) {
+      await loadSubscriptionPortal(); return;
+    }
     if (action === 'retry-settings') { state.settingsForm = null; state.settingsError = null; await loadSettings(); return; }
     if (action === 'retry-payment-settings') { await loadPaymentSettings(); return; }
     if (action === 'retry-detail') { if (state.detailId) await openInvoice(state.detailId); return; }
@@ -884,6 +991,9 @@
     }
     if (action === 'view-invoices' && canRead()) { await changeView('invoices'); return; }
     if (action === 'view-settings' && (allowed(PERMISSIONS.settings) || allowed(PERMISSIONS.paymentSettings) || allowed(PERMISSIONS.paymentRead))) { await changeView('settings'); return; }
+    if (action === 'view-subscription' && allowed(PERMISSIONS.subscriptionRead)) {
+      await changeView('subscription'); return;
+    }
     if (action === 'new-invoice') { openEditor(null); return; }
     if (action === 'open-invoice' && canRead()) { await openInvoice(id); return; }
     if (action === 'edit-invoice' && state.invoice?.status === 'DRAFT' && allowed(PERMISSIONS.manage)) { const invoice = state.invoice; state.detailId = null; openEditor(invoice); return; }

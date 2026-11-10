@@ -183,12 +183,87 @@ export class SubscriptionPaymentService {
     }
   }
 
+  async getTenantPortal(tenantId: string) {
+    try {
+      const [subscription, settings, transfers] = await Promise.all([
+        this.prisma.subscription.findFirst({
+          where: { tenantId },
+          orderBy: [{ startsAt: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
+          include: { plan: { select: { name: true, key: true } } },
+        }),
+        this.getSettings(),
+        this.listTransfers({ tenantId, limit: 50, offset: 0 }),
+      ]);
+
+      return {
+        subscription: subscription
+          ? {
+              id: subscription.id,
+              planName: subscription.plan.name,
+              planKey: subscription.plan.key,
+              status: subscription.status,
+              startsAt: subscription.startsAt,
+              endsAt: subscription.endsAt,
+              cancelledAt: subscription.cancelledAt,
+            }
+          : null,
+        bankTransfer: {
+          enabled: settings.enabled,
+          bankName: settings.bankName,
+          accountHolder: settings.accountHolder,
+          iban: settings.iban,
+          currencyCode: settings.currencyCode,
+        },
+        transfers: transfers.items.map(presentTenantTransfer),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      throw new SubscriptionPaymentStorageUnavailableError();
+    }
+  }
+
+  async submitTenantTransfer(
+    tenantId: string,
+    receipt: ReceiptUpload,
+    actor: AuthenticatedPlatformUser,
+    idempotencyKey?: string,
+  ): Promise<SubscriptionTransferView> {
+    const now = new Date();
+    let subscription: { id: string } | null;
+    try {
+      subscription = await this.prisma.subscription.findFirst({
+        where: {
+          tenantId,
+          status: 'ACTIVE',
+          startsAt: { lte: now },
+          OR: [{ endsAt: null }, { endsAt: { gt: now } }],
+        },
+        orderBy: [{ startsAt: 'desc' }, { id: 'desc' }],
+        select: { id: true },
+      });
+    } catch {
+      throw new SubscriptionPaymentStorageUnavailableError();
+    }
+    if (!subscription) throw new SubscriptionTransferPaymentUnavailableError();
+
+    const transfer = await this.submitTransfer(
+      subscription.id,
+      receipt,
+      {},
+      actor,
+      idempotencyKey,
+      tenantId,
+    );
+    return presentTenantTransfer(transfer);
+  }
+
   async submitTransfer(
     subscriptionId: string,
     receipt: ReceiptUpload,
     fields: Record<string, string>,
     actor: AuthenticatedPlatformUser,
     idempotencyKey?: string,
+    expectedTenantId?: string,
   ): Promise<SubscriptionTransferView> {
     if (
       !subscriptionTransferIdSchema.safeParse(subscriptionId).success ||
@@ -222,14 +297,24 @@ export class SubscriptionPaymentService {
         ) {
           throw new SubscriptionTransferPaymentUnavailableError();
         }
-        const subscriptionRows = await tx.$queryRaw<Array<{ id: string; tenantId: string }>>(
-          Prisma.sql`
-            SELECT \`id\`, \`tenantId\`
-            FROM \`Subscription\`
-            WHERE \`id\` = ${subscriptionId}
-            FOR UPDATE
-          `,
-        );
+        const subscriptionRows = expectedTenantId
+          ? await tx.$queryRaw<Array<{ id: string; tenantId: string }>>(
+              Prisma.sql`
+                SELECT \`id\`, \`tenantId\`
+                FROM \`Subscription\`
+                WHERE \`id\` = ${subscriptionId}
+                  AND \`tenantId\` = ${expectedTenantId}
+                FOR UPDATE
+              `,
+            )
+          : await tx.$queryRaw<Array<{ id: string; tenantId: string }>>(
+              Prisma.sql`
+                SELECT \`id\`, \`tenantId\`
+                FROM \`Subscription\`
+                WHERE \`id\` = ${subscriptionId}
+                FOR UPDATE
+              `,
+            );
         const subscription = subscriptionRows[0];
         if (!subscription) throw new SubscriptionNotFoundError();
 
@@ -394,6 +479,18 @@ function presentTransfer(record: StoredTransfer): SubscriptionTransferView {
   delete (view as Partial<StoredTransfer>).receiptBytes;
   delete (view as Partial<StoredTransfer>).idempotencyKeyHash;
   return { ...view, amountMinor: record.amountMinor?.toString() ?? null };
+}
+
+function presentTenantTransfer(transfer: SubscriptionTransferView) {
+  return {
+    id: transfer.id,
+    subscriptionId: transfer.subscriptionId,
+    status: transfer.status,
+    submittedAt: transfer.submittedAt,
+    reviewedAt: transfer.reviewedAt,
+    reviewReason: transfer.reviewReason,
+    receiptFileName: transfer.receiptFileName,
+  };
 }
 
 function isDuplicateKeyError(error: unknown): boolean {
