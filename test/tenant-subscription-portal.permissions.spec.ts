@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { REQUIRED_PERMISSIONS_KEY } from '../src/auth/auth.constants';
 import { SubscriptionController } from '../src/subscriptions/subscription.controller';
 import { TenantSubscriptionPortalController } from '../src/tenant/tenant-subscription-portal.controller';
 import {
@@ -35,16 +36,13 @@ describe('tenant subscription portal permissions', () => {
       ),
     ).toEqual(['tenant.subscriptions.read', 'tenant.subscriptions.payments.submit']);
     expect(
-      Reflect.getMetadata(
-        TENANT_REQUIRED_PERMISSIONS,
-        SubscriptionController.prototype.listTransfers,
-      ),
+      Reflect.getMetadata(REQUIRED_PERMISSIONS_KEY, SubscriptionController.prototype.listTransfers),
     ).toEqual(['subscriptions.read']);
     expect(
       Reflect.getMetadata(
-        TENANT_REQUIRED_PERMISSIONS,
+        REQUIRED_PERMISSIONS_KEY,
         SubscriptionController.prototype.approveTransfer,
       ),
-    ).toBeUndefined();
+    ).toEqual(['subscriptions.manage']);
   });
 });

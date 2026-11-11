@@ -4,6 +4,7 @@ import {
   Headers,
   HttpCode,
   HttpStatus,
+  Inject,
   Post,
   Req,
   UseGuards,
@@ -36,7 +37,10 @@ import { RequireTenantPermissions } from './tenant-require-permissions.decorator
 @UseGuards(PlatformAuthGuard, TenantContextGuard, TenantAuthorizationGuard)
 @Controller(`${APP_CONSTANTS.apiVersion}/tenants/:tenantId/subscription-portal`)
 export class TenantSubscriptionPortalController {
-  constructor(private readonly payments: SubscriptionPaymentService) {}
+  constructor(
+    @Inject(SubscriptionPaymentService)
+    private readonly payments: SubscriptionPaymentService,
+  ) {}
 
   @Get()
   @RequireTenantPermissions('tenant.subscriptions.read')
@@ -52,10 +56,7 @@ export class TenantSubscriptionPortalController {
 
   @Post('transfers')
   @HttpCode(HttpStatus.CREATED)
-  @RequireTenantPermissions(
-    'tenant.subscriptions.read',
-    'tenant.subscriptions.payments.submit',
-  )
+  @RequireTenantPermissions('tenant.subscriptions.read', 'tenant.subscriptions.payments.submit')
   @ApiOperation({
     summary: 'Submit a bank-transfer receipt for the current tenant subscription',
     description:
@@ -73,11 +74,6 @@ export class TenantSubscriptionPortalController {
     if (Array.isArray(idempotencyKey)) throw new SubscriptionPaymentInputError();
     const { receipt, fields } = await readReceiptMultipartForm(request);
     if (Object.keys(fields).length) throw new SubscriptionPaymentInputError();
-    return this.payments.submitTenantTransfer(
-      context.tenantId,
-      receipt,
-      actor,
-      idempotencyKey,
-    );
+    return this.payments.submitTenantTransfer(context.tenantId, receipt, actor, idempotencyKey);
   }
 }

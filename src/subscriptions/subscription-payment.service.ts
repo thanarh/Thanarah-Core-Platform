@@ -47,6 +47,16 @@ export type SubscriptionTransferView = Omit<
   'receiptBytes' | 'idempotencyKeyHash' | 'amountMinor'
 > & { amountMinor: string | null };
 
+export interface TenantSubscriptionTransferView {
+  id: string;
+  subscriptionId: string;
+  status: SubscriptionTransferStatus;
+  submittedAt: Date;
+  reviewedAt: Date | null;
+  reviewReason: string | null;
+  receiptFileName: string;
+}
+
 @Injectable()
 export class SubscriptionPaymentService {
   constructor(private readonly prisma: PrismaService) {}
@@ -227,7 +237,7 @@ export class SubscriptionPaymentService {
     receipt: ReceiptUpload,
     actor: AuthenticatedPlatformUser,
     idempotencyKey?: string,
-  ): Promise<SubscriptionTransferView> {
+  ): Promise<TenantSubscriptionTransferView> {
     const now = new Date();
     let subscription: { id: string } | null;
     try {
@@ -304,6 +314,9 @@ export class SubscriptionPaymentService {
                 FROM \`Subscription\`
                 WHERE \`id\` = ${subscriptionId}
                   AND \`tenantId\` = ${expectedTenantId}
+                  AND \`status\` = 'ACTIVE'
+                  AND \`startsAt\` <= ${now}
+                  AND (\`endsAt\` IS NULL OR \`endsAt\` > ${now})
                 FOR UPDATE
               `,
             )
@@ -481,7 +494,7 @@ function presentTransfer(record: StoredTransfer): SubscriptionTransferView {
   return { ...view, amountMinor: record.amountMinor?.toString() ?? null };
 }
 
-function presentTenantTransfer(transfer: SubscriptionTransferView) {
+function presentTenantTransfer(transfer: SubscriptionTransferView): TenantSubscriptionTransferView {
   return {
     id: transfer.id,
     subscriptionId: transfer.subscriptionId,
