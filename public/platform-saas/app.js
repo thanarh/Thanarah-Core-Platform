@@ -73,6 +73,7 @@
     const form=event.target; if(!(form instanceof HTMLFormElement)) return;
     event.preventDefault(); const data=new FormData(form); const value=name=>String(data.get(name)||'').trim();
     if(form.dataset.form==='login') { try { await api.login(value('email'),value('password')); await load(); } catch(error){renderLogin(errorText(error));} return; }
+    if(state.saving||state.loading) return;
     state.saving=true; state.error=''; state.success=''; render();
     try {
       if(form.dataset.form==='plan') await api.createPlatformPlan({key:value('key'),name:value('name'),description:value('description')||undefined});
@@ -96,13 +97,17 @@
         if(!['approve','reject'].includes(decision)) throw new Error('اختر قبول الإيصال أو رفضه.');
         await api.reviewPlatformSubscriptionTransfer(form.dataset.id,decision,Number(value('expectedVersion')),value('reason'));
       }
-      state.success='تم حفظ التغيير.'; state.saving=false; await load();
-    } catch(error){state.saving=false; state.error=errorText(error); render();}
+      await load();
+      if(!state.error) state.success='تم حفظ التغيير.';
+    } catch(error){state.error=errorText(error);}
+    finally {state.saving=false; render();}
   }
   async function onClick(event) {
     const button=event.target.closest('[data-action]'); if(!button) return;
     if(button.dataset.action==='logout'){await api.logout();return renderLogin();}
+    if(state.saving||state.loading) return;
     if(button.dataset.action==='refresh'||button.dataset.action==='retry') return load();
+    state.saving=true; state.error=''; state.success=''; render();
     try {
       if(button.dataset.action==='plan-status') await api.changePlatformPlanStatus(button.dataset.id,button.dataset.status);
       if(button.dataset.action==='feature-status') await api.changePlatformFeatureStatus(button.dataset.id,button.dataset.status);
@@ -117,7 +122,9 @@
         render();
         return;
       }
-      state.success='تم تحديث الحالة.'; await load();
-    } catch(error){state.error=errorText(error);render();}
+      await load();
+      if(!state.error) state.success='تم تحديث الحالة.';
+    } catch(error){state.error=errorText(error);}
+    finally {state.saving=false; render();}
   }
 })();
