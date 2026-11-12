@@ -3,11 +3,11 @@ name: MongoDB migration activation gate
 description: The safety conditions for testing and activating Mongo persistence candidates in Thanarah.
 ---
 
-Keep every Mongo adapter unregistered until its individual behavior and dependent transaction parity are proven. Use disposable synthetic fixtures for Mongo testing; do not access production, transfer data, or switch active persistence as part of parity work.
+The user now requires MongoDB for the entire platform, superseding the earlier hybrid target. Keep incomplete Mongo adapters unregistered until their individual behavior and dependent transaction guarantees are proven. Use disposable synthetic fixtures for testing; the architectural decision alone does not authorize production access or production data transfer.
 
-**Why:** the user authorized the migration work while requiring the existing Prisma/MySQL path to remain active until behavior and transaction guarantees are evidenced.
+**Why:** replacing the storage target must not weaken authorization, transaction consistency, or recovery guarantees. Earlier instructions to retain MySQL describe the historical safety baseline, not the current product target.
 
-**How to apply:** treat replica-set tests as candidate evidence only. Require port-specific contract tests, source-database differential evidence, and dependent transaction/race/failover tests before considering registration or cutover.
+**How to apply:** require port-specific contract and dependent transaction/race/failover tests before activation, preserving established behavior. Existing MySQL behavior and disposable differential tests may inform contracts, but do not request a persistent MySQL connection as a product prerequisite. Production cutover still needs separate authorization.
 
 Refresh rotation needs a concurrent same-token test in addition to sequential rotation/replay coverage; the competing requests must demonstrate the intended reuse/compromise result rather than only successful commit behavior.
 

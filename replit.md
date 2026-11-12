@@ -2,6 +2,23 @@
 
 Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Prisma), targeting Saudi Arabia and the wider region.
 
+## Authoritative database direction
+
+The user explicitly requires **MongoDB (NoSQL) for the entire platform**,
+including central accounts, sessions, authorization, tenants, subscriptions,
+configuration, and tenant healthcare data. This supersedes the earlier hybrid
+architecture. Do not request a MySQL connection as a prerequisite for completing
+the product.
+
+The MySQL/Prisma descriptions below document the **current implementation and
+historical operating instructions**, not the target architecture. Central Mongo
+adapters are not yet active; do not claim the conversion is complete merely
+because candidates or a Mongo URI exist. Convert and test all central workflows,
+readiness, bootstrap, and operational tools before accepting the Mongo-only
+runtime. Keep tenant isolation and transaction/recovery guarantees intact.
+Do not delete or migrate production data or publish without separate approval.
+Phase 02 and Geidea remain deferred until Phase 01 is accepted on the new target.
+
 ## Stack
 
 | Layer | Technology |
@@ -15,7 +32,7 @@ Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Pris
 | API Docs | Swagger / OpenAPI at `/docs` |
 | Testing | Vitest |
 
-## Architecture — two persistence systems (never mixed)
+## Current implementation — two persistence systems pending MongoDB-only conversion
 
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
