@@ -130,6 +130,24 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
     { key: { membershipId: 1, tenantRoleId: 1 }, name: 'ux_tenant_membership_role', unique: true },
     { key: { tenantId: 1, tenantRoleId: 1 }, name: 'ix_tenant_role_memberships' },
   ],
+  tenant_staff_roles: [
+    { key: { staffId: 1, tenantRoleId: 1 }, name: 'ux_tenant_staff_role', unique: true },
+    { key: { tenantId: 1, staffId: 1, assignedAt: 1 }, name: 'ix_tenant_staff_roles' },
+  ],
+  facility_scheduling_policies: [
+    { key: { tenantId: 1, facilityId: 1 }, name: 'ux_facility_scheduling_policy', unique: true },
+    {
+      key: { tenantId: 1, status: 1, facilityId: 1 },
+      name: 'ix_facility_scheduling_policy_active',
+    },
+  ],
+  facility_scheduling_policy_revisions: [
+    { key: { policyId: 1, version: 1 }, name: 'ux_scheduling_policy_revision', unique: true },
+    {
+      key: { tenantId: 1, facilityId: 1, version: -1, _id: -1 },
+      name: 'ix_scheduling_policy_revision_history',
+    },
+  ],
   platform_audit_logs: [
     { key: { eventType: 1, occurredAt: 1 }, name: 'ix_audit_event_time' },
     { key: { actorUserId: 1, occurredAt: 1 }, name: 'ix_audit_actor_time' },

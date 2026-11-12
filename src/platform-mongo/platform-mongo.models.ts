@@ -20,6 +20,7 @@ const common = {
   createdAt: timestamp,
   updatedAt: timestamp,
   schemaVersion: z.literal(1),
+  referenceVersion: z.number().int().nonnegative().optional(),
 };
 const identity = {
   _id: uuid,
@@ -145,6 +146,15 @@ export const tenantMembershipRoleSchema = z
     _id: z.string().min(1),
     tenantId: uuid,
     membershipId: uuid,
+    tenantRoleId: uuid,
+    assignedAt: timestamp,
+  })
+  .strict();
+export const tenantStaffRoleSchema = z
+  .object({
+    _id: z.string().min(1),
+    tenantId: uuid,
+    staffId: uuid,
     tenantRoleId: uuid,
     assignedAt: timestamp,
   })
@@ -327,6 +337,7 @@ export type TenantPermissionDocument = z.infer<typeof tenantPermissionSchema>;
 export type TenantRoleDocument = z.infer<typeof tenantRoleSchema>;
 export type TenantRolePermissionDocument = z.infer<typeof tenantRolePermissionSchema>;
 export type TenantMembershipRoleDocument = z.infer<typeof tenantMembershipRoleSchema>;
+export type TenantStaffRoleDocument = z.infer<typeof tenantStaffRoleSchema>;
 export type BranchDocument = z.infer<typeof branchSchema>;
 export type PlatformAuditLogDocument = z.infer<typeof platformAuditLogSchema>;
 export type PlatformSecurityEventDocument = z.infer<typeof platformSecurityEventSchema>;

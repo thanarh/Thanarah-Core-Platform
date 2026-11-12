@@ -46,7 +46,6 @@ import {
   TenantOwnerBootstrapConflictError,
   TenantPermissionCatalogUnavailableError,
 } from '../src/tenant/tenant-authorization.errors';
-import { PlatformDocumentConflictError } from '../src/platform-mongo/platform-mongo.errors';
 
 const mongoUri = process.env.PHASE65_PLATFORM_MONGO_URI;
 const databaseName = process.env.PHASE65_PLATFORM_MONGO_DATABASE;

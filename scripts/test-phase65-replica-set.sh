@@ -69,6 +69,13 @@ test_pid=$!
 wait "$test_pid"
 test_pid=""
 
+PHASE65_PLATFORM_MONGO_URI="$uri" \
+PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
+  npx vitest run test/mongo-tenant-role-assignments.integration.spec.ts --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
+
 PHASE64_MONGO_URI="$uri" \
   npx vitest run test/phase64-mongodb-application.integration.spec.ts --reporter=verbose &
 test_pid=$!
