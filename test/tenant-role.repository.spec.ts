@@ -1,5 +1,5 @@
 import { TenantStatus } from '@prisma/client';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { PrismaService } from '../src/database/prisma.service';
 import {
@@ -224,28 +224,11 @@ describe('TenantRoleRepository', () => {
   });
 
   it('seeds the central tenant permission catalog and constrains assignments to one tenant', () => {
-    const migration = [
-      'prisma/migrations/20261005153000_tenant_roles_permissions_foundation/migration.sql',
-      'prisma/migrations/20261006100000_facility_foundation/migration.sql',
-      'prisma/migrations/20261006110000_branch_foundation/migration.sql',
-      'prisma/migrations/20261006160000_tenant_staff_foundation/migration.sql',
-      'prisma/migrations/20261007100000_staff_role_assignment_foundation/migration.sql',
-      'prisma/migrations/20261007110000_staff_facility_branch_scope_foundation/migration.sql',
-      'prisma/migrations/20261007120000_department_specialty_foundation/migration.sql',
-      'prisma/migrations/20261007130000_doctor_foundation/migration.sql',
-      'prisma/migrations/20261007150000_tenant_service_catalog_foundation/migration.sql',
-      'prisma/migrations/20261008100000_tenant_patient_foundation/migration.sql',
-      'prisma/migrations/20261015120000_tenant_appointment_scheduling/migration.sql',
-      'prisma/migrations/20261015130000_facility_scheduling_policy/migration.sql',
-      'prisma/migrations/20261017100000_tenant_medical_encounters/migration.sql',
-      'prisma/migrations/20261017110000_phase42_structured_encounters/migration.sql',
-      'prisma/migrations/20261023100000_phase46b_encounter_operation_ledger/migration.sql',
-      'prisma/migrations/20261023110000_phase46c_encounter_prewrite_markers/migration.sql',
-      'prisma/migrations/20261109110000_clinic_finance_foundation/migration.sql',
-      'prisma/migrations/20261109150000_ai_platform_permissions/migration.sql',
-      'prisma/migrations/20261109160000_safe_communications_foundation/migration.sql',
-    ]
-      .map((path) => readFileSync(path, 'utf8'))
+    const migration = readdirSync('prisma/migrations', { withFileTypes: true })
+      .filter((entry) => entry.isDirectory())
+      .map((entry) => entry.name)
+      .sort()
+      .map((name) => readFileSync(`prisma/migrations/${name}/migration.sql`, 'utf8'))
       .join('\n');
 
     for (const { code } of TENANT_PERMISSION_DEFINITIONS) {

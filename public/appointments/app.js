@@ -3,6 +3,9 @@
 
   const api = window.ThanarahApi;
   const timezone = window.ThanarahTimezone;
+  const serviceAvailability = window.ThanarahAppointmentServiceAvailability;
+  const serviceAvailabilityRequests =
+    serviceAvailability && serviceAvailability.createRequestGuard();
   const app = document.getElementById('app');
   const modalRoot = document.getElementById('modal-root');
   const toastRegion = document.getElementById('toast-region');
@@ -73,6 +76,8 @@
     detailRequestId: 0,
     filterBranchRequestId: 0,
     createBranchRequestId: 0,
+    createServiceAvailableIds: [],
+    createServiceScope: null,
     patientSearchRequestId: 0,
     patientSearchTimer: null,
   };
@@ -247,6 +252,9 @@
     state.facilities = [];
     state.branches = [];
     state.services = [];
+    if (serviceAvailabilityRequests) serviceAvailabilityRequests.invalidate();
+    state.createServiceAvailableIds = [];
+    state.createServiceScope = null;
     state.resourceErrors = {};
     state.listError = null;
     state.policy = null;
@@ -933,6 +941,9 @@
   }
   function closeModal() {
     stopPatientSearch();
+    if (serviceAvailabilityRequests) serviceAvailabilityRequests.invalidate();
+    state.createServiceAvailableIds = [];
+    state.createServiceScope = null;
     modalRoot.innerHTML = '';
     document.removeEventListener('keydown', onModalKey);
   }
@@ -985,6 +996,88 @@
       </select>
       <small class="form-note" id="patient-search-help" aria-live="polite">تظهر النتائج من دليل المرضى المسموح لحسابك بقراءته.</small>
     </div>`;
+  }
+
+  function servicePickerMarkup() {
+    return `<div class="field">
+      <label for="serviceId">الخدمة (اختياري)</label>
+      <select class="control" id="serviceId" name="serviceId" disabled>
+        <option value="">اختر الطبيب والمنشأة أولًا</option>
+      </select>
+      <small class="form-note" id="service-availability-note" aria-live="polite">اختر الطبيب والمنشأة لعرض الخدمات المتاحة.</small>
+      <button class="btn btn-quiet btn-small" type="button" data-action="reload-create-services" hidden>إعادة تحميل الخدمات</button>
+    </div>`;
+  }
+
+  function createServiceScope(form) {
+    return {
+      doctorId: String(form.querySelector('[name="doctorId"]')?.value || ''),
+      facilityId: String(form.querySelector('[name="facilityId"]')?.value || ''),
+      branchId: String(form.querySelector('[name="branchId"]')?.value || ''),
+    };
+  }
+
+  function applyCreateServiceView(form, scope, view) {
+    const select = form.querySelector('[name="serviceId"]');
+    const status = form.querySelector('#service-availability-note');
+    const retry = form.querySelector('[data-action="reload-create-services"]');
+    if (!select || !status || !serviceAvailability) return;
+    serviceAvailability.apply(select, status, retry, view, escapeHtml);
+    state.createServiceAvailableIds = view.services.map((service) => String(service.id));
+    state.createServiceScope =
+      view.status === 'ready' || view.status === 'empty' ? { ...scope } : null;
+  }
+
+  async function refreshCreateServiceAvailability(form) {
+    if (!form || form.dataset.kind !== 'create' || !serviceAvailability) return;
+    const requestId = serviceAvailabilityRequests.next();
+    const epoch = state.workspaceEpoch;
+    const scope = createServiceScope(form);
+    const authorized = [
+      PERMISSIONS.doctorsRead,
+      PERMISSIONS.servicesRead,
+      PERMISSIONS.facilitiesRead,
+      PERMISSIONS.branchesRead,
+    ].every(permission);
+    const input = { ...scope, authorized };
+    const initialView = serviceAvailability.view(input);
+    if (!authorized || !scope.doctorId || !scope.facilityId) {
+      applyCreateServiceView(form, scope, initialView);
+      return;
+    }
+
+    applyCreateServiceView(form, scope, serviceAvailability.view({ ...input, loading: true }));
+    const isCurrent = () =>
+      serviceAvailabilityRequests.isCurrent(requestId) &&
+      epoch === state.workspaceEpoch &&
+      form.isConnected &&
+      modalRoot.querySelector('#appointment-form') === form &&
+      JSON.stringify(createServiceScope(form)) === JSON.stringify(scope);
+
+    try {
+      const response = await api.listDoctorServices(state.workspace.tenantId, scope.doctorId);
+      if (!isCurrent()) return;
+      applyCreateServiceView(
+        form,
+        scope,
+        serviceAvailability.view({ ...input, assignments: itemList(response) }),
+      );
+    } catch (error) {
+      if (!isCurrent()) return;
+      if (error.status === 401) {
+        expireSession();
+        return;
+      }
+      applyCreateServiceView(
+        form,
+        scope,
+        serviceAvailability.view({
+          ...input,
+          forbidden: error.status === 403,
+          errorMessage: apiMessage(error),
+        }),
+      );
+    }
   }
 
   function rememberPatients(patients) {
@@ -1097,7 +1190,7 @@
         ${resourceSelect('doctorId', 'الممارس', state.doctors, true, permission(PERMISSIONS.doctorsRead), state.resourceErrors.doctors)}
         ${resourceSelect('facilityId', 'المنشأة', state.facilities, true, permission(PERMISSIONS.facilitiesRead), state.resourceErrors.facilities)}
         ${resourceSelect('branchId', 'الفرع', [], false, permission(PERMISSIONS.branchesRead), null)}
-        ${resourceSelect('serviceId', 'الخدمة', state.services, false, permission(PERMISSIONS.servicesRead), state.resourceErrors.services)}
+        ${servicePickerMarkup()}
         <div class="field"><label for="startsAt">بداية الموعد</label><input class="control" id="startsAt" name="startsAt" type="datetime-local" required></div>
         <div class="field"><label for="endsAt">نهاية الموعد</label><input class="control" id="endsAt" name="endsAt" type="datetime-local" required></div>
         <div class="notice span-all" id="appointment-timezone-note">${escapeHtml(browserZone ? `اختر المنشأة لتحميل منطقتها الزمنية. عند غياب سياسة نشطة، سيُستخدم توقيت الجهاز ${browserZone} ويظهر ذلك بوضوح.` : 'لا تتوفر منطقة زمنية من سياسة المنشأة أو الجهاز.')}</div>
@@ -1260,7 +1353,20 @@
           reason: String(data.get('reason') || '').trim() || null,
         };
         if (data.get('branchId')) input.branchId = String(data.get('branchId'));
-        if (data.get('serviceId')) input.serviceId = String(data.get('serviceId'));
+        const serviceId = String(data.get('serviceId') || '');
+        if (serviceId) {
+          const currentScope = createServiceScope(form);
+          if (
+            !state.createServiceScope ||
+            JSON.stringify(state.createServiceScope) !== JSON.stringify(currentScope) ||
+            !state.createServiceAvailableIds.includes(serviceId)
+          ) {
+            throw new Error(
+              'الخدمة المختارة غير معينة للطبيب في المنشأة والفرع المحددين. اخترها مجددًا.',
+            );
+          }
+          input.serviceId = serviceId;
+        }
         if (!input.startsAt || !input.endsAt) throw new Error('أدخل وقت بداية ونهاية صالحين.');
         if (new Date(input.endsAt).getTime() <= new Date(input.startsAt).getTime()) {
           throw new Error('يجب أن يكون وقت النهاية بعد وقت البداية.');
@@ -1527,6 +1633,9 @@
       showModal(appointmentFormMarkup('create'), '#patientId');
       const form = modalRoot.querySelector('#appointment-form');
       form.dataset.idempotency = randomIdempotencyKey();
+      state.createServiceAvailableIds = [];
+      state.createServiceScope = null;
+      void refreshCreateServiceAvailability(form);
     } else if (action === 'reload-create-references') {
       if (!permission(PERMISSIONS.create)) return;
       const epoch = state.workspaceEpoch;
@@ -1537,6 +1646,10 @@
       showModal(appointmentFormMarkup('create'), '#patientId');
       const form = modalRoot.querySelector('#appointment-form');
       form.dataset.idempotency = randomIdempotencyKey();
+      void refreshCreateServiceAvailability(form);
+    } else if (action === 'reload-create-services') {
+      const form = modalRoot.querySelector('#appointment-form');
+      if (form) await refreshCreateServiceAvailability(form);
     } else if (action === 'open-appointment') await openAppointment(button.dataset.id);
     else if (action === 'retry-detail') await openAppointment(button.dataset.id);
     else if (action === 'close-modal') closeModal();
@@ -1610,6 +1723,22 @@
 
   const handleChange = async (event) => {
     const target = event.target;
+    const createForm = target.closest && target.closest('#appointment-form');
+    if (
+      createForm &&
+      ['doctorId', 'facilityId', 'branchId'].includes(String(target.name || ''))
+    ) {
+      if (target.name === 'facilityId') {
+        const branch = createForm.querySelector('[name="branchId"]');
+        state.createBranchRequestId += 1;
+        if (branch) {
+          branch.value = '';
+          branch.innerHTML = '<option value="">بدون تحديد</option>';
+          branch.disabled = false;
+        }
+      }
+      void refreshCreateServiceAvailability(createForm);
+    }
     if (target.id === 'policy-facility' && target.value) await loadPolicy(target.value);
     if (target.id === 'filter-facility') {
       const facilityId = target.value;

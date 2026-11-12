@@ -4,6 +4,22 @@
   root.ThanarahTranslations['/appointments/'] = {
     ...(root.ThanarahTranslations['/appointments/'] || {}),
     'قنوات التواصل': 'Communications',
+    'اختر الطبيب والمنشأة لعرض الخدمات المتاحة.':
+      'Select a doctor and facility to see available services.',
+    'جارٍ تحميل الخدمات المعينة لهذا الطبيب والموقع…':
+      'Loading services assigned to this doctor and location…',
+    'لا توجد خدمات معينة لهذا الطبيب في هذا الموقع. يمكنك إنشاء الموعد دون خدمة.':
+      'No services are assigned to this doctor at this location. You can book without a service.',
+    'اختر خدمة أو اترك الحقل دون تحديد.':
+      'Choose a service or leave the field blank.',
+    'لا تملك صلاحية قراءة تعيينات خدمات الطبيب والموقع.':
+      'You do not have permission to read this doctor’s service assignments.',
+    'تعذّر تحميل خدمات الطبيب. أعد المحاولة.':
+      'Could not load the doctor’s services. Try again.',
+    'الخدمات غير متاحة حاليًا': 'Services are temporarily unavailable',
+    'إعادة تحميل الخدمات': 'Reload services',
+    'الخدمة المختارة غير معينة للطبيب في المنشأة والفرع المحددين. اخترها مجددًا.':
+      'The selected service is not assigned to this doctor at the selected location. Choose it again.',
   };
   root.ThanarahTranslations['/communications/'] = {
     'قنوات التواصل الآمن': 'Safe Communications',

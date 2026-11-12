@@ -760,11 +760,11 @@ model DoctorServiceAssignment {
   scopeType  DoctorServiceAssignmentScope
   scopeId    String                       @db.Char(36)
   createdAt  DateTime                     @default(now())
-  tenant     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  doctor     Doctor                       @relation(fields: [doctorId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  service    Service                      @relation(fields: [serviceId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  facility   Facility                     @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  branch     Branch?                      @relation(fields: [branchId, facilityId], references: [id, facilityId], onDelete: Restrict)
+  tenant     Tenant                       @relation(fields: [tenantId], references: [id], onDelete: Restrict, map: "DoctorServiceAssignment_tenant_fkey")
+  doctor     Doctor                       @relation(fields: [doctorId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "DoctorServiceAssignment_doctor_tenant_fkey")
+  service    Service                      @relation(fields: [serviceId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "DoctorServiceAssignment_service_tenant_fkey")
+  facility   Facility                     @relation(fields: [facilityId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "DoctorServiceAssignment_facility_tenant_fkey")
+  branch     Branch?                      @relation(fields: [branchId, facilityId], references: [id, facilityId], onDelete: Restrict, map: "DoctorServiceAssignment_branch_facility_fkey")
 
   @@id([tenantId, doctorId, serviceId, scopeType, scopeId])
   @@index([tenantId, doctorId, facilityId, branchId], map: "DoctorServiceAssignment_tenant_doctor_location_idx")
@@ -866,7 +866,7 @@ model SubscriptionTransfer {
   history              Json
   idempotencyKeyHash   String?                   @db.Char(64)
   tenant               Tenant                    @relation(fields: [tenantId], references: [id], onDelete: Restrict)
-  subscription         Subscription              @relation(fields: [subscriptionId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  subscription         Subscription              @relation(fields: [subscriptionId, tenantId], references: [id, tenantId], onDelete: Restrict, map: "SubscriptionTransfer_subscription_tenant_fkey")
 
   @@unique([tenantId, idempotencyKeyHash], map: "SubscriptionTransfer_tenant_idempotency_key")
   @@index([tenantId, status, submittedAt, id], map: "SubscriptionTransfer_tenant_status_submitted_idx")
@@ -916,8 +916,8 @@ model EncounterOperation {
   createdAt                 DateTime                 @default(now())
   updatedAt                 DateTime                 @updatedAt
 
-  @@index([tenantId, auditDeliveryStatus, createdAt])
-  @@index([auditDeliveryStatus, createdAt])
+  @@index([tenantId, auditDeliveryStatus, createdAt], map: "EncounterOperation_tenantId_status_createdAt_idx")
+  @@index([auditDeliveryStatus, createdAt], map: "EncounterOperation_status_createdAt_idx")
 }
 
 model PlatformSecurityEvent {

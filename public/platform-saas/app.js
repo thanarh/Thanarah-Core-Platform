@@ -31,7 +31,7 @@
       state.plans=plans.items||[]; state.features=features.items||[]; state.subscriptions=subscriptions.items||[]; state.tenants=tenants.items||[];
       state.paymentSettings=paymentSettings; state.transfers=transfers.items||[];
     } catch(error) {
-      state.error=errorText(error); state.screen=error?.status===401?'signin':error?.status===403?'denied':'workspace';
+      state.error=error?.status===403?'لا تملك صلاحية قراءة خطط واشتراكات المنصة.':errorText(error); state.screen=error?.status===401?'signin':error?.status===403?'denied':'workspace';
     } finally { state.loading=false; render(); }
   }
   function render() {

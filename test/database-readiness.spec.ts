@@ -43,18 +43,65 @@ describe('application dependency readiness', () => {
     );
   });
 
+  it('requires the central database in staging too', () => {
+    expect(() => validateEnv({ NODE_ENV: 'staging' })).toThrow(
+      'DATABASE_URL is required in staging',
+    );
+  });
+
+  it.each(['staging', 'production'])(
+    'rejects invalid central database URLs in %s without exposing connection details',
+    (environment) => {
+      for (const url of [
+        'postgresql://private-user:private-password@db.example.test/private_database',
+        'not-a-url',
+        'mysql:///thanarah',
+        'mysql://db.example.test/',
+        'mysql://db.example.test/%',
+      ]) {
+        let error: unknown;
+        try {
+          validateEnv({ ...productionEnvironment, NODE_ENV: environment, DATABASE_URL: url });
+        } catch (caught) {
+          error = caught;
+        }
+        expect(error).toBeInstanceOf(Error);
+        expect((error as Error).message).toContain(
+          'DATABASE_URL must be a valid MySQL URL with a database name',
+        );
+        expect((error as Error).message).not.toContain(url);
+        expect((error as Error).message).not.toContain('private-password');
+      }
+    },
+  );
+
+  it('keeps development managed PostgreSQL separate from MySQL validation', () => {
+    expect(
+      validateEnv({
+        NODE_ENV: 'development',
+        DATABASE_URL: 'postgresql://managed-host/managed_database',
+      }).DATABASE_URL,
+    ).toBe('postgresql://managed-host/managed_database');
+    expect(
+      validateEnv({
+        NODE_ENV: 'staging',
+        DATABASE_URL: 'mysql://db.example.test/thanarah_staging',
+      }).DATABASE_URL,
+    ).toBe('mysql://db.example.test/thanarah_staging');
+  });
+
   it('rejects disabled or in-memory tenant storage in production', () => {
     expect(() =>
       validateEnv({
         ...productionEnvironment,
-        DATABASE_URL: 'mysql://configured-non-production-database',
+        DATABASE_URL: 'mysql://db.example.test/thanarah_test',
         TENANT_STORAGE_PROVIDER: 'disabled',
       }),
     ).toThrow('Persistent tenant storage is required in production');
     expect(() =>
       validateEnv({
         ...productionEnvironment,
-        DATABASE_URL: 'mysql://configured-non-production-database',
+        DATABASE_URL: 'mysql://db.example.test/thanarah_test',
         TENANT_STORAGE_PROVIDER: 'memory',
       }),
     ).toThrow('Persistent tenant storage is required in production');
@@ -64,7 +111,7 @@ describe('application dependency readiness', () => {
     expect(() =>
       validateEnv({
         ...productionEnvironment,
-        DATABASE_URL: 'mysql://configured-non-production-database',
+        DATABASE_URL: 'mysql://db.example.test/thanarah_test',
         TENANT_STORAGE_PROVIDER: 'mongodb',
       }),
     ).toThrow('TENANT_STORAGE_MONGO_URI is required in production');
@@ -73,7 +120,7 @@ describe('application dependency readiness', () => {
   it('requires validated TLS for production MongoDB storage', () => {
     const productionMongo = {
       ...productionEnvironment,
-      DATABASE_URL: 'mysql://configured-non-production-database',
+      DATABASE_URL: 'mysql://db.example.test/thanarah_test',
       TENANT_STORAGE_PROVIDER: 'mongodb',
     };
 

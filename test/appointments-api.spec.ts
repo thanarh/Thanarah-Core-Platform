@@ -122,6 +122,7 @@ interface ThanarahApi {
     tenantId: string,
     options: Record<string, string | number | undefined>,
   ): Promise<unknown>;
+  listDoctorServices(tenantId: string, doctorId: string): Promise<{ items: unknown[] }>;
   createDoctor(tenantId: string, input: Record<string, unknown>): Promise<unknown>;
   updateDoctor(
     tenantId: string,
@@ -608,5 +609,33 @@ describe('Thanarah browser API client', () => {
     expect(() => api.changeDoctorStatus('tenant-id', 'doctor-id', 'reset')).toThrow(
       'A valid doctor lifecycle action is required.',
     );
+  });
+
+  it('loads service assignments through the selected tenant and doctor', async () => {
+    fetchMock
+      .mockResolvedValueOnce(jsonResponse({ accessToken: 'memory-token' }))
+      .mockResolvedValueOnce(
+        jsonResponse({
+          items: [
+            {
+              doctorId: 'doctor-id',
+              serviceId: 'service-id',
+              facilityId: 'facility-id',
+              branchId: 'branch-id',
+              serviceStatus: 'ACTIVE',
+            },
+          ],
+        }),
+      );
+
+    await api.login('staff@example.test', 'not-a-real-password');
+    const result = await api.listDoctorServices('tenant-id', 'doctor/id');
+
+    expect(result.items).toHaveLength(1);
+    const [url, options] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(url).toBe('/api/v1/tenants/tenant-id/doctors/doctor%2Fid/services');
+    expect(options.method).toBeUndefined();
+    expect(options.credentials).toBe('include');
+    expect(new Headers(options.headers).get('authorization')).toBe('Bearer memory-token');
   });
 });

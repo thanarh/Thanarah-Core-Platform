@@ -97,12 +97,32 @@ export const envSchema = z
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
   })
   .superRefine((config, context) => {
-    if (config.NODE_ENV === 'production' && !config.DATABASE_URL) {
-      context.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ['DATABASE_URL'],
-        message: 'DATABASE_URL is required in production',
-      });
+    if (config.NODE_ENV !== 'development') {
+      if (!config.DATABASE_URL.trim()) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['DATABASE_URL'],
+          message: `DATABASE_URL is required in ${config.NODE_ENV}`,
+        });
+      } else {
+        let validMysqlUrl = false;
+        try {
+          const url = new URL(config.DATABASE_URL);
+          validMysqlUrl =
+            url.protocol === 'mysql:' &&
+            Boolean(url.hostname) &&
+            Boolean(decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim());
+        } catch {
+          // Report only the configuration field, never connection details.
+        }
+        if (!validMysqlUrl) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['DATABASE_URL'],
+            message: 'DATABASE_URL must be a valid MySQL URL with a database name',
+          });
+        }
+      }
     }
     if (
       config.NODE_ENV === 'production' &&

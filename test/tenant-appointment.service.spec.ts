@@ -342,6 +342,23 @@ describe('AppointmentService', () => {
     expect(harness.lockedStorage.create).not.toHaveBeenCalled();
   });
 
+  it('checks a facility-wide service assignment when no branch is selected', async () => {
+    const harness = makeService();
+    harness.doctors.hasServiceAssignment.mockResolvedValueOnce(false);
+
+    await expect(
+      harness.service.create(context, createInput({ branchId: undefined }) as never, actor),
+    ).rejects.toBeInstanceOf(AppointmentReferenceInvalidError);
+    expect(harness.doctors.hasServiceAssignment).toHaveBeenCalledWith(
+      context,
+      doctorId,
+      serviceId,
+      facilityId,
+      null,
+    );
+    expect(harness.lockedStorage.create).not.toHaveBeenCalled();
+  });
+
   it('checks a changed service but preserves unchanged legacy service references', async () => {
     const harness = makeService();
     harness.doctors.hasServiceAssignment.mockResolvedValueOnce(false);

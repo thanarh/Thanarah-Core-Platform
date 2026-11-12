@@ -556,6 +556,27 @@ describe('Tenant Doctor HTTP authorization and routing', () => {
     tenantAuthorization.authorize.mockResolvedValue(undefined);
   });
 
+  it.each([
+    'tenant.doctors.read',
+    'tenant.services.read',
+    'tenant.facilities.read',
+    'tenant.branches.read',
+  ])('denies listing service assignments without %s', async (missingPermission) => {
+    tenantAuthorization.authorize.mockImplementation(async (_context, permission) => {
+      if (permission === missingPermission) throw new ForbiddenException();
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `${root}/${doctorId}/services`,
+      headers,
+    });
+
+    expect(response.statusCode).toBe(403);
+    expect(doctorService.listServiceAssignments).not.toHaveBeenCalled();
+    tenantAuthorization.authorize.mockResolvedValue(undefined);
+  });
+
   it('rejects cross-tenant context and client permission injection', async () => {
     const routeTenantMismatch = await app.inject({
       method: 'GET',
