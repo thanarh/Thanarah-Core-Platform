@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlatformAuditEventType, Prisma } from '@prisma/client';
+import { PlatformAuditEventType } from '../common/domain-enums';
+import { isLegacyUniqueConstraintError } from '../common/legacy-unique-constraint';
 import { z } from 'zod';
 import { AuthorizationForbiddenError } from '../auth/errors/authorization.errors';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
@@ -370,7 +371,7 @@ export class TenantRoleService {
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+    return isLegacyUniqueConstraintError(error);
   }
 }
 

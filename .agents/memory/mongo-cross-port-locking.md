@@ -21,3 +21,16 @@ driver retried the transaction and the now-inactive parent was rejected.
 would invalidate the command, and retain snapshot reads for authorization.
 This is a technique for coordinating specific writers, not proof that all
 remaining candidates or cross-cluster workflows are safe.
+
+Keep the actual tenant reference write as the common serialization point for
+central tenant-scoped mutations, and touch additional eligibility references
+such as users, memberships, facilities and plans in the same transaction.
+
+**Why:** A lock owned only by the membership or subscription adapter cannot
+conflict with independent tenant lifecycle writers. A tenant-document write
+coordinates those writers without coupling them to private lock collections.
+
+**How to apply:** Preserve this intentional coarse per-tenant coordination
+when optimizing or refactoring. More granular locking needs equivalent race
+evidence; snapshot reads alone are insufficient. This does not create atomic
+transactions between the central store and a separate clinical cluster.

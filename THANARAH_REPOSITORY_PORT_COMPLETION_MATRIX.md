@@ -1,9 +1,54 @@
 # Thanarah Repository-Port Completion Matrix
 
 **Updated:** 2026-11-13
-**Decision:** MongoDB-only conversion is the approved product target and is in progress. Live adapter activation is still gated on complete workflow evidence.
+**Decision:** All 22 central persistence ports are now registered with MongoDB implementations in the application. Production activation and production data migration are not approved by this document.
 
-The project defines 22 central persistence ports. Twenty now have isolated MongoDB candidate implementations. None is registered in the application. Prisma/MySQL remains the current central runtime path, not the desired architecture. A passing Mongo integration test proves the tested behavior against the disposable replica set only; it does not by itself prove application-wide conversion or production readiness.
+## Current source registrations
+
+| Port | Registered implementation |
+| --- | --- |
+| TenantPersistencePort | MongoTenantRepository |
+| TenantMembershipPersistencePort | MongoTenantMembershipRepository |
+| TenantRolePersistencePort | MongoTenantRoleRepository |
+| TenantMembershipRolePersistencePort | MongoTenantMembershipRoleRepository |
+| FacilityPersistencePort | MongoFacilityRepository |
+| BranchPersistencePort | MongoBranchRepository |
+| TenantEntitlementPersistencePort | MongoTenantEntitlementRepository |
+| TenantQuotaPersistencePort | MongoTenantEntitlementRepository |
+| SubscriptionPersistencePort | MongoSubscriptionRepository |
+| TenantStaffPersistencePort | MongoTenantStaffRepository |
+| TenantStaffRolePersistencePort | MongoTenantStaffRoleRepository |
+| TenantStaffScopePersistencePort | MongoTenantStaffScopeRepository |
+| FacilitySchedulingPolicyPersistencePort | MongoFacilitySchedulingPolicyRepository |
+| DoctorPersistencePort | MongoDoctorRepository |
+| PlatformUserPersistencePort | MongoPlatformUserRepository |
+| PlatformSessionPersistencePort | MongoPlatformSessionRepository |
+| PlatformAuthorizationPersistencePort | MongoPlatformAuthorizationRepository |
+| FeaturePersistencePort | MongoPlatformFeatureRepository |
+| PlanPersistencePort | MongoPlatformPlanRepository |
+| PlatformAuditPersistencePort | MongoPlatformAuditRepository |
+| HealthcareCatalogPersistencePort | MongoHealthcareCatalogRepository |
+| ServiceCatalogPersistencePort | MongoServiceCatalogRepository |
+
+Direct runtime paths also use MongoDB: subscription transfer/settings handling,
+the encounter operation ledger, storage-target registry and target activation.
+Domain enum values and registry contracts no longer load the generated SQL
+client. Historical SQL files and migrations remain available, but are not
+application providers.
+
+The disposable replica-set adapter suites passed **77 tests**: 27 platform,
+20 role/policy, 12 staff-scope/doctor, 12 control-plane, and 6 tenant-storage
+tests. This is not production approval or a claim of exhaustive equivalence
+with every historical MySQL test. The compiled full-app/browser verification
+and development initialization outcome are recorded in
+`THANARAH_MONGODB_CONVERSION_PROGRESS.md`.
+
+## Historical pre-activation matrix
+
+The table and totals below preserve the earlier candidate audit. Their
+“unregistered”, “missing”, and “not ready” classifications describe that earlier
+increment, not current source registrations. Remaining production-level
+acceptance requirements must still be evaluated separately.
 
 | Persistence port | Prisma/MySQL implementation | Mongo candidate | Candidate classification | Disposable replica-set evidence | MySQL parity / activation |
 |---|---|---|---|---|

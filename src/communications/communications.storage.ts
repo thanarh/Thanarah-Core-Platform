@@ -16,7 +16,7 @@ import {
   TENANT_STORAGE_TARGET_RESOLVER,
   type TenantStorageTargetRecord,
   type TenantStorageTargetResolver,
-} from '../tenant/tenant-storage.registry';
+} from '../tenant/tenant-storage.registry.contract';
 import type {
   CommunicationConsent,
   CommunicationEvent,

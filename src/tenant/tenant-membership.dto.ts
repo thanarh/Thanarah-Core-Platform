@@ -1,4 +1,4 @@
-import { TenantMembershipStatus } from '@prisma/client';
+import { TenantMembershipStatus } from '../common/domain-enums';
 import { z } from 'zod';
 
 export const tenantMembershipIdSchema = z.string().uuid();

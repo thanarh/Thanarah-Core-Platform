@@ -24,7 +24,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { TenantStatus } from '@prisma/client';
+import { TenantStatus } from '../common/domain-enums';
 import type { FastifyRequest } from 'fastify';
 import { APP_CONSTANTS } from '../common/constants/app.constants';
 import { ZodValidationPipe } from '../common/pipes/zod-validation.pipe';

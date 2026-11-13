@@ -25,7 +25,7 @@ import { PlatformAuthGuard } from '../auth/guards/platform-auth.guard';
 import { readReceiptMultipartForm } from '../common/receipt-upload';
 import { APP_CONSTANTS } from '../common/constants/app.constants';
 import { SubscriptionPaymentInputError } from '../subscriptions/subscription-payment.errors';
-import { SubscriptionPaymentService } from '../subscriptions/subscription-payment.service';
+import { MongoSubscriptionPaymentService as SubscriptionPaymentService } from '../platform-mongo/mongo-subscription-payment.service';
 import { CurrentTenantContext } from './tenant-current-context.decorator';
 import type { TrustedTenantContext } from './tenant-context.contract';
 import { TenantAuthorizationGuard } from './tenant-authorization.guard';

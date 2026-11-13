@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Collection } from 'mongodb';
+import type { Collection, ClientSession, Db } from 'mongodb';
+import { MongoTenantAuthorizationContext as Context } from './mongo-tenant-authorization.context';
 import type {
   HealthcareCatalogKindValue,
   HealthcareCatalogListFilter,
@@ -11,6 +12,7 @@ import type {
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
 import {
   PlatformDocumentValidationError,
+  PlatformDocumentConflictError,
   PlatformMongoUnavailableError,
 } from './platform-mongo.errors';
 import {
@@ -36,10 +38,10 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
     tenantId: string,
     input: { name: string; description?: string | null },
   ): Promise<HealthcareCatalogMutationResult> {
-    return this.write(kind, async (collection, db) => {
+    return this.write(kind, tenantId, async (collection, db, session) => {
       const tenant = await db
         .collection<TenantDocument>('tenants')
-        .findOne({ _id: tenantId }, { projection: { status: 1 } });
+        .findOne({ _id: tenantId }, { session, projection: { status: 1 } });
       if (tenant?.status !== 'ACTIVE') return { kind: 'tenant-inactive' };
       const now = new Date();
       const document = this.parse(kind, {
@@ -55,9 +57,9 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
         deactivatedAt: null,
       });
       try {
-        await collection.insertOne(document);
+        await collection.insertOne(document, { session });
       } catch (error) {
-        if (this.isDuplicateKey(error)) return { kind: 'name-conflict' };
+        if (this.isDuplicateKey(error)) throw new PlatformDocumentConflictError();
         throw error;
       }
       return { kind: 'changed', record: this.toRecord(kind, document) };
@@ -97,10 +99,10 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
     id: string,
     input: { name?: string; description?: string | null },
   ): Promise<HealthcareCatalogMutationResult> {
-    return this.write(kind, async (collection, db) => {
+    return this.write(kind, tenantId, async (collection, db, session) => {
       const tenant = await db
         .collection<TenantDocument>('tenants')
-        .findOne({ _id: tenantId }, { projection: { status: 1 } });
+        .findOne({ _id: tenantId }, { session, projection: { status: 1 } });
       if (tenant?.status !== 'ACTIVE') return { kind: 'tenant-inactive' };
       try {
         const $set: Partial<HealthcareDocument> = { updatedAt: new Date() };
@@ -109,13 +111,13 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
         const document = await collection.findOneAndUpdate(
           { _id: id, tenantId },
           { $set },
-          { returnDocument: 'after' },
+          { session, returnDocument: 'after' },
         );
         return document
           ? { kind: 'changed', record: this.toRecord(kind, document) }
           : { kind: 'not-found' };
       } catch (error) {
-        if (this.isDuplicateKey(error)) return { kind: 'name-conflict' };
+        if (this.isDuplicateKey(error)) throw new PlatformDocumentConflictError();
         throw error;
       }
     });
@@ -129,10 +131,10 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
     nextStatus: TenantCatalogStatusValue,
     changedAt: Date,
   ): Promise<HealthcareCatalogMutationResult> {
-    return this.write(kind, async (collection, db) => {
+    return this.write(kind, tenantId, async (collection, db, session) => {
       const tenant = await db
         .collection<TenantDocument>('tenants')
-        .findOne({ _id: tenantId }, { projection: { status: 1 } });
+        .findOne({ _id: tenantId }, { session, projection: { status: 1 } });
       if (tenant?.status !== 'ACTIVE') return { kind: 'tenant-inactive' };
       const $set: Partial<HealthcareDocument> = {
         status: nextStatus,
@@ -144,7 +146,7 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
       const document = await collection.findOneAndUpdate(
         { _id: id, tenantId, status: expectedStatus },
         { $set },
-        { returnDocument: 'after' },
+        { session, returnDocument: 'after' },
       );
       return document
         ? { kind: 'changed', record: this.toRecord(kind, document) }
@@ -189,14 +191,29 @@ export class MongoHealthcareCatalogRepository implements HealthcareCatalogPersis
     return this.run(kind, operation);
   }
 
-  private async write<T>(
+  private async write(
     kind: HealthcareCatalogKindValue,
+    tenantId: string,
     operation: (
       collection: Collection<HealthcareDocument>,
-      db: Awaited<ReturnType<PlatformMongoClientManager['getDatabase']>>,
-    ) => Promise<T>,
-  ): Promise<T> {
-    return this.run(kind, async (collection, db) => operation(collection, db));
+      db: Db,
+      session: ClientSession,
+    ) => Promise<HealthcareCatalogMutationResult>,
+  ): Promise<HealthcareCatalogMutationResult> {
+    try {
+      return await Context.run(this.manager, async (tx) => {
+        await tx.touch('tenants', tenantId);
+        return operation(
+          tx.db.collection<HealthcareDocument>(this.collectionName(kind)),
+          tx.db,
+          tx.session,
+        );
+      });
+    } catch (error) {
+      if (error instanceof PlatformDocumentConflictError) return { kind: 'name-conflict' };
+      if (error instanceof PlatformDocumentValidationError) throw error;
+      throw new PlatformMongoUnavailableError();
+    }
   }
 
   private async run<T>(

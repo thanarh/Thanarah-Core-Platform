@@ -134,6 +134,78 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
     { key: { staffId: 1, tenantRoleId: 1 }, name: 'ux_tenant_staff_role', unique: true },
     { key: { tenantId: 1, staffId: 1, assignedAt: 1 }, name: 'ix_tenant_staff_roles' },
   ],
+  tenant_staff_scope_assignments: [
+    {
+      key: { tenantId: 1, staffId: 1, scopeType: 1, scopeId: 1 },
+      name: 'ux_staff_scope_assignment',
+      unique: true,
+    },
+    {
+      key: { tenantId: 1, staffId: 1, assignedAt: 1, scopeId: 1 },
+      name: 'ix_staff_scope_assignment_list',
+    },
+  ],
+  doctors: [
+    { key: { tenantId: 1, staffId: 1 }, name: 'ux_doctor_staff', unique: true },
+    {
+      key: { tenantId: 1, professionalCode: 1 },
+      name: 'ux_doctor_professional_code',
+      unique: true,
+      partialFilterExpression: { professionalCode: { $type: 'string' } },
+      collation: { locale: 'en', strength: 1 },
+    },
+    { key: { tenantId: 1, status: 1, createdAt: -1, _id: -1 }, name: 'ix_doctor_list' },
+  ],
+  tenant_storage_targets: [
+    {
+      key: { tenantId: 1 },
+      name: 'ux_active_primary_tenant_target',
+      unique: true,
+      partialFilterExpression: { provider: 'MONGODB', status: 'ACTIVE', isPrimary: true },
+    },
+    {
+      key: { tenantId: 1, provider: 1, status: 1, isPrimary: 1, createdAt: 1 },
+      name: 'ix_tenant_target_routing',
+    },
+    { key: { connectionReference: 1, databaseName: 1 }, name: 'ux_target_database', unique: true },
+  ],
+  encounter_operations: [
+    { key: { historyEventId: 1 }, name: 'ux_encounter_operation_history', unique: true },
+    {
+      key: { tenantId: 1, auditDeliveryStatus: 1, createdAt: 1 },
+      name: 'ix_encounter_operation_reconcile',
+    },
+    { key: { auditDeliveryStatus: 1, createdAt: 1 }, name: 'ix_encounter_operation_pending' },
+  ],
+  subscription_transfers: [
+    {
+      key: { tenantId: 1, idempotencyKeyHash: 1 },
+      name: 'ux_subscription_transfer_idempotency',
+      unique: true,
+      partialFilterExpression: { idempotencyKeyHash: { $type: 'string' } },
+    },
+    {
+      key: { tenantId: 1, subscriptionId: 1 },
+      name: 'ux_subscription_transfer_open',
+      unique: true,
+      partialFilterExpression: { status: { $in: ['PENDING_REVIEW', 'APPROVED'] } },
+    },
+    {
+      key: { tenantId: 1, status: 1, submittedAt: -1, _id: -1 },
+      name: 'ix_subscription_transfer_tenant',
+    },
+  ],
+  doctor_service_assignments: [
+    {
+      key: { tenantId: 1, doctorId: 1, serviceId: 1, scopeType: 1, scopeId: 1 },
+      name: 'ux_doctor_service_scope',
+      unique: true,
+    },
+    {
+      key: { tenantId: 1, doctorId: 1, createdAt: 1, scopeType: 1, scopeId: 1 },
+      name: 'ix_doctor_service_list',
+    },
+  ],
   facility_scheduling_policies: [
     { key: { tenantId: 1, facilityId: 1 }, name: 'ux_facility_scheduling_policy', unique: true },
     {

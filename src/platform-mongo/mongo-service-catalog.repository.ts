@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Collection } from 'mongodb';
+import type { Collection, ClientSession, Db } from 'mongodb';
+import { MongoTenantAuthorizationContext as Context } from './mongo-tenant-authorization.context';
 import type {
   ServiceCatalogMutationResult,
   ServiceCatalogPersistencePort,
@@ -10,10 +11,17 @@ import type {
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
 import {
   PlatformDocumentValidationError,
+  PlatformDocumentConflictError,
   PlatformMongoUnavailableError,
 } from './platform-mongo.errors';
 import { documentTimestamps, newStableId, serviceCatalogSchema } from './platform-mongo.models';
 import type { ServiceCatalogDocument, TenantDocument } from './platform-mongo.models';
+
+class ServiceWriteConflict extends PlatformDocumentConflictError {
+  constructor(readonly kind: 'name-conflict' | 'code-conflict' | 'conflict') {
+    super();
+  }
+}
 
 @Injectable()
 export class MongoServiceCatalogRepository implements ServiceCatalogPersistencePort {
@@ -23,8 +31,8 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
     tenantId: string,
     input: { name: string; code?: string; description?: string | null },
   ): Promise<ServiceCatalogMutationResult> {
-    return this.run(async (collection, db) => {
-      if (!(await this.isTenantActive(db, tenantId))) return { kind: 'tenant-inactive' };
+    return this.mutate(tenantId, async (collection, db, session) => {
+      if (!(await this.isTenantActive(db, tenantId, session))) return { kind: 'tenant-inactive' };
       const now = new Date();
       const document = this.parse({
         _id: newStableId(),
@@ -40,10 +48,10 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
         deactivatedAt: null,
       });
       try {
-        await collection.insertOne(document);
+        await collection.insertOne(document, { session });
       } catch (error) {
         const conflict = this.uniqueConflict(error);
-        if (conflict) return { kind: conflict };
+        if (conflict) throw new ServiceWriteConflict(conflict);
         throw error;
       }
       return { kind: 'changed', record: this.toRecord(document) };
@@ -81,8 +89,8 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
     id: string,
     input: { name?: string; code?: string | null; description?: string | null },
   ): Promise<ServiceCatalogMutationResult> {
-    return this.run(async (collection, db) => {
-      if (!(await this.isTenantActive(db, tenantId))) return { kind: 'tenant-inactive' };
+    return this.mutate(tenantId, async (collection, db, session) => {
+      if (!(await this.isTenantActive(db, tenantId, session))) return { kind: 'tenant-inactive' };
       const $set: Partial<ServiceCatalogDocument> = { updatedAt: new Date() };
       if (input.name !== undefined) $set.name = input.name;
       if (input.code !== undefined) $set.code = input.code;
@@ -91,14 +99,14 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
         const document = await collection.findOneAndUpdate(
           { _id: id, tenantId },
           { $set },
-          { returnDocument: 'after' },
+          { session, returnDocument: 'after' },
         );
         return document
           ? { kind: 'changed', record: this.toRecord(document) }
           : { kind: 'not-found' };
       } catch (error) {
         const conflict = this.uniqueConflict(error);
-        if (conflict) return { kind: conflict };
+        if (conflict) throw new ServiceWriteConflict(conflict);
         throw error;
       }
     });
@@ -111,8 +119,8 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
     nextStatus: TenantCatalogStatusValue,
     changedAt: Date,
   ): Promise<ServiceCatalogMutationResult> {
-    return this.run(async (collection, db) => {
-      if (!(await this.isTenantActive(db, tenantId))) return { kind: 'tenant-inactive' };
+    return this.mutate(tenantId, async (collection, db, session) => {
+      if (!(await this.isTenantActive(db, tenantId, session))) return { kind: 'tenant-inactive' };
       const $set: Partial<ServiceCatalogDocument> = {
         status: nextStatus,
         statusChangedAt: changedAt,
@@ -123,7 +131,7 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
       const document = await collection.findOneAndUpdate(
         { _id: id, tenantId, status: expectedStatus },
         { $set },
-        { returnDocument: 'after' },
+        { session, returnDocument: 'after' },
       );
       return document
         ? { kind: 'changed', record: this.toRecord(document) }
@@ -134,11 +142,32 @@ export class MongoServiceCatalogRepository implements ServiceCatalogPersistenceP
   private async isTenantActive(
     db: Awaited<ReturnType<PlatformMongoClientManager['getDatabase']>>,
     tenantId: string,
+    session?: ClientSession,
   ): Promise<boolean> {
     const tenant = await db
       .collection<TenantDocument>('tenants')
-      .findOne({ _id: tenantId }, { projection: { status: 1 } });
+      .findOne({ _id: tenantId }, { session, projection: { status: 1 } });
     return tenant?.status === 'ACTIVE';
+  }
+
+  private async mutate(
+    tenantId: string,
+    operation: (
+      collection: Collection<ServiceCatalogDocument>,
+      db: Db,
+      session: ClientSession,
+    ) => Promise<ServiceCatalogMutationResult>,
+  ): Promise<ServiceCatalogMutationResult> {
+    try {
+      return await Context.run(this.manager, async (tx) => {
+        await tx.touch('tenants', tenantId);
+        return operation(tx.db.collection<ServiceCatalogDocument>('services'), tx.db, tx.session);
+      });
+    } catch (error) {
+      if (error instanceof ServiceWriteConflict) return { kind: error.kind };
+      if (error instanceof PlatformDocumentValidationError) throw error;
+      throw new PlatformMongoUnavailableError();
+    }
   }
 
   private async run<T>(

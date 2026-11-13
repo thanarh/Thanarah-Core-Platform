@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { AppController } from '../src/app.controller';
-import { PrismaService } from '../src/database/prisma.service';
+import { MongoCentralReadinessService } from '../src/platform-mongo/mongo-central-readiness.service';
 import { TenantStorageReadinessService } from '../src/tenant/tenant-storage-readiness.service';
 
 describe('AppController — health', () => {
@@ -14,7 +14,7 @@ describe('AppController — health', () => {
     module = await Test.createTestingModule({
       controllers: [AppController],
       providers: [
-        { provide: PrismaService, useValue: prisma },
+        { provide: MongoCentralReadinessService, useValue: prisma },
         { provide: TenantStorageReadinessService, useValue: tenantStorage },
       ],
     }).compile();

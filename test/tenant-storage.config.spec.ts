@@ -3,17 +3,17 @@ import { validateEnv } from '../src/config/env.schema';
 import { effectiveTenantStorageProvider } from '../src/tenant/tenant-storage.mode';
 
 describe('tenant storage configuration', () => {
-  it('defaults to disabled instead of silently selecting volatile storage', () => {
+  it('defaults to persistent MongoDB instead of silently selecting volatile storage', () => {
     const config = validateEnv({});
 
-    expect(config.TENANT_STORAGE_PROVIDER).toBe('disabled');
+    expect(config.TENANT_STORAGE_PROVIDER).toBe('mongodb');
     expect(config.TENANT_STORAGE_MONGO_URI).toBe('');
     expect(
       effectiveTenantStorageProvider(
         config.TENANT_STORAGE_PROVIDER,
         config.NODE_ENV === 'development',
       ),
-    ).toBe('disabled');
+    ).toBe('mongodb');
   });
 
   it('selects process-local memory only when explicitly enabled in development', () => {

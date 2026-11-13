@@ -4,16 +4,16 @@ import {
   HEALTHCARE_CATALOG_PERSISTENCE,
   SERVICE_CATALOG_PERSISTENCE,
 } from '../persistence/platform-persistence.ports';
-import { HealthcareCatalogRepository } from './healthcare-catalog.repository';
-import { ServiceCatalogRepository } from './service-catalog.repository';
+import { MongoHealthcareCatalogRepository } from '../platform-mongo/mongo-healthcare-catalog.repository';
+import { MongoServiceCatalogRepository } from '../platform-mongo/mongo-service-catalog.repository';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    HealthcareCatalogRepository,
-    ServiceCatalogRepository,
-    { provide: HEALTHCARE_CATALOG_PERSISTENCE, useExisting: HealthcareCatalogRepository },
-    { provide: SERVICE_CATALOG_PERSISTENCE, useExisting: ServiceCatalogRepository },
+    MongoHealthcareCatalogRepository,
+    MongoServiceCatalogRepository,
+    { provide: HEALTHCARE_CATALOG_PERSISTENCE, useExisting: MongoHealthcareCatalogRepository },
+    { provide: SERVICE_CATALOG_PERSISTENCE, useExisting: MongoServiceCatalogRepository },
   ],
   exports: [HEALTHCARE_CATALOG_PERSISTENCE, SERVICE_CATALOG_PERSISTENCE],
 })

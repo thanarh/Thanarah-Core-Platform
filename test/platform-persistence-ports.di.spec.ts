@@ -1,6 +1,7 @@
-import { Test, type TestingModule } from '@nestjs/testing';
+import { Test as NestTest, type TestingModule } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { PrismaService } from '../src/database/prisma.service';
+import { PlatformMongoClientManager } from '../src/platform-mongo/platform-mongo.client.manager';
 import { PlatformAuthGuard } from '../src/auth/guards/platform-auth.guard';
 import { AccessTokenService } from '../src/auth/services/access-token.service';
 import {
@@ -27,36 +28,44 @@ import {
 } from '../src/persistence/platform-persistence.ports';
 import { AuthPersistenceModule } from '../src/auth/auth-persistence.module';
 import { PlatformAuthorizationModule } from '../src/auth/platform-authorization.module';
-import { PlatformAuthorizationRepository } from '../src/auth/repositories/platform-authorization.repository';
-import { PlatformSessionRepository } from '../src/auth/repositories/platform-session.repository';
-import { PlatformUserRepository } from '../src/auth/repositories/platform-user.repository';
-import { FeatureRepository } from '../src/platform-catalog/feature.repository';
+import { MongoPlatformAuthorizationRepository as PlatformAuthorizationRepository } from '../src/platform-mongo/mongo-platform-authorization.repository';
+import { MongoPlatformSessionRepository as PlatformSessionRepository } from '../src/platform-mongo/mongo-platform-session.repository';
+import { MongoPlatformUserRepository as PlatformUserRepository } from '../src/platform-mongo/mongo-platform-user.repository';
+import { MongoPlatformFeatureRepository as FeatureRepository } from '../src/platform-mongo/mongo-platform-feature.repository';
 import { PlatformCatalogModule } from '../src/platform-catalog/platform-catalog.module';
-import { PlanRepository } from '../src/platform-catalog/plan.repository';
-import { PlatformAuditRepository } from '../src/platform-security/platform-audit.repository';
-import { TenantMembershipRepository } from '../src/tenant/tenant-membership.repository';
+import { MongoPlatformPlanRepository as PlanRepository } from '../src/platform-mongo/mongo-platform-plan.repository';
+import { MongoPlatformAuditRepository as PlatformAuditRepository } from '../src/platform-mongo/mongo-platform-audit.repository';
+import { MongoTenantMembershipRepository as TenantMembershipRepository } from '../src/platform-mongo/mongo-tenant-membership.repository';
 import { TenantPersistenceModule } from '../src/tenant/tenant-persistence.module';
-import { TenantMembershipRoleRepository } from '../src/tenant/tenant-membership-role.repository';
+import { MongoTenantMembershipRoleRepository as TenantMembershipRoleRepository } from '../src/platform-mongo/mongo-tenant-membership-role.repository';
 import { TenantRolePersistenceModule } from '../src/tenant/tenant-role-persistence.module';
-import { TenantRoleRepository } from '../src/tenant/tenant-role.repository';
+import { MongoTenantRoleRepository as TenantRoleRepository } from '../src/platform-mongo/mongo-tenant-role.repository';
 import { TenantFacilityBranchPersistenceModule } from '../src/tenant/tenant-facility-branch-persistence.module';
-import { FacilityRepository } from '../src/tenant/facility.repository';
-import { BranchRepository } from '../src/tenant/branch.repository';
+import { MongoFacilityRepository as FacilityRepository } from '../src/platform-mongo/mongo-facility.repository';
+import { MongoBranchRepository as BranchRepository } from '../src/platform-mongo/mongo-branch.repository';
 import { SubscriptionPersistenceModule } from '../src/subscriptions/subscription-persistence.module';
-import { SubscriptionRepository } from '../src/subscriptions/subscription.repository';
+import { MongoSubscriptionRepository as SubscriptionRepository } from '../src/platform-mongo/mongo-subscription.repository';
 import { TenantCatalogPersistenceModule } from '../src/tenant/tenant-catalog-persistence.module';
-import { HealthcareCatalogRepository } from '../src/tenant/healthcare-catalog.repository';
-import { ServiceCatalogRepository } from '../src/tenant/service-catalog.repository';
+import { MongoHealthcareCatalogRepository as HealthcareCatalogRepository } from '../src/platform-mongo/mongo-healthcare-catalog.repository';
+import { MongoServiceCatalogRepository as ServiceCatalogRepository } from '../src/platform-mongo/mongo-service-catalog.repository';
 import { TenantStaffPersistenceModule } from '../src/tenant/tenant-staff-persistence.module';
-import { TenantStaffRepository } from '../src/tenant/tenant-staff.repository';
+import { MongoTenantStaffRepository as TenantStaffRepository } from '../src/platform-mongo/mongo-tenant-staff.repository';
 import { TenantStaffAuthorizationPersistenceModule } from '../src/tenant/tenant-staff-authorization-persistence.module';
-import { TenantStaffRoleRepository } from '../src/tenant/tenant-staff-role.repository';
-import { TenantStaffScopeRepository } from '../src/tenant/tenant-staff-scope.repository';
+import { MongoTenantStaffRoleRepository as TenantStaffRoleRepository } from '../src/platform-mongo/mongo-tenant-staff-role.repository';
+import { MongoTenantStaffScopeRepository as TenantStaffScopeRepository } from '../src/platform-mongo/mongo-tenant-staff-scope.repository';
 import { FacilitySchedulingPolicyPersistenceModule } from '../src/tenant/facility-scheduling-policy-persistence.module';
-import { FacilitySchedulingPolicyRepository } from '../src/tenant/appointment-scheduling-policy.repository';
-import { TenantRepository } from '../src/tenant/tenant.repository';
+import { MongoFacilitySchedulingPolicyRepository as FacilitySchedulingPolicyRepository } from '../src/platform-mongo/mongo-facility-scheduling-policy.repository';
+import { MongoTenantRepository as TenantRepository } from '../src/platform-mongo/mongo-tenant.repository';
 import { DoctorPersistenceModule } from '../src/tenant/doctor-persistence.module';
-import { DoctorRepository } from '../src/tenant/doctor.repository';
+import { MongoDoctorRepository as DoctorRepository } from '../src/platform-mongo/mongo-doctor.repository';
+
+// Binding tests do not open sockets. Compiled full-app tests exercise real DI.
+const Test = {
+  createTestingModule: (...args: Parameters<typeof NestTest.createTestingModule>) =>
+    NestTest.createTestingModule(...args)
+      .overrideProvider(PlatformMongoClientManager)
+      .useValue({}),
+};
 
 describe('central persistence port providers', () => {
   let moduleRef: TestingModule;
@@ -78,7 +87,8 @@ describe('central persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds catalog and audit ports to their Prisma repositories', () => {
+  it('binds catalog and audit ports to MongoDB without a Prisma provider', () => {
+    expect(() => moduleRef.get(PrismaService, { strict: false })).toThrow();
     expect(moduleRef.get(FEATURE_PERSISTENCE)).toBeInstanceOf(FeatureRepository);
     expect(moduleRef.get(PLAN_PERSISTENCE)).toBeInstanceOf(PlanRepository);
     expect(moduleRef.get(PLATFORM_AUDIT_PERSISTENCE)).toBeInstanceOf(PlatformAuditRepository);
@@ -101,7 +111,7 @@ describe('platform authentication persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds identity, session/history, and authorization ports to Prisma repositories', () => {
+  it('binds identity, session/history, and authorization ports to MongoDB', () => {
     expect(moduleRef.get(PLATFORM_USER_PERSISTENCE, { strict: false })).toBeInstanceOf(
       PlatformUserRepository,
     );
@@ -130,7 +140,7 @@ describe('tenant persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds tenant and membership ports to their Prisma repositories', () => {
+  it('binds tenant and membership ports to MongoDB', () => {
     expect(moduleRef.get(TENANT_PERSISTENCE, { strict: false })).toBeInstanceOf(TenantRepository);
     expect(moduleRef.get(TENANT_MEMBERSHIP_PERSISTENCE, { strict: false })).toBeInstanceOf(
       TenantMembershipRepository,
@@ -154,7 +164,7 @@ describe('tenant role persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds role and assignment ports to their Prisma repositories', () => {
+  it('binds role and assignment ports to MongoDB', () => {
     expect(moduleRef.get(TENANT_ROLE_PERSISTENCE, { strict: false })).toBeInstanceOf(
       TenantRoleRepository,
     );
@@ -180,7 +190,7 @@ describe('tenant facility and branch persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds facility and branch ports to their Prisma repositories', () => {
+  it('binds facility and branch ports to MongoDB', () => {
     expect(moduleRef.get(FACILITY_PERSISTENCE, { strict: false })).toBeInstanceOf(
       FacilityRepository,
     );
@@ -204,7 +214,7 @@ describe('subscription persistence port provider', () => {
     await moduleRef?.close();
   });
 
-  it('binds the subscription port to its Prisma repository', () => {
+  it('binds the subscription port to MongoDB', () => {
     expect(moduleRef.get(SUBSCRIPTION_PERSISTENCE, { strict: false })).toBeInstanceOf(
       SubscriptionRepository,
     );
@@ -227,7 +237,7 @@ describe('tenant catalog persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds healthcare and service catalog ports to their Prisma repositories', () => {
+  it('binds healthcare and service catalog ports to MongoDB', () => {
     expect(moduleRef.get(HEALTHCARE_CATALOG_PERSISTENCE, { strict: false })).toBeInstanceOf(
       HealthcareCatalogRepository,
     );
@@ -253,7 +263,7 @@ describe('tenant staff persistence port provider', () => {
     await moduleRef?.close();
   });
 
-  it('binds the tenant staff port to its Prisma repository', () => {
+  it('binds the tenant staff port to MongoDB', () => {
     expect(moduleRef.get(TENANT_STAFF_PERSISTENCE, { strict: false })).toBeInstanceOf(
       TenantStaffRepository,
     );
@@ -276,7 +286,7 @@ describe('tenant staff authorization persistence port providers', () => {
     await moduleRef?.close();
   });
 
-  it('binds staff role and scope ports to their Prisma repositories', () => {
+  it('binds staff role and scope ports to MongoDB', () => {
     expect(moduleRef.get(TENANT_STAFF_ROLE_PERSISTENCE, { strict: false })).toBeInstanceOf(
       TenantStaffRoleRepository,
     );
@@ -302,7 +312,7 @@ describe('facility scheduling policy persistence port provider', () => {
     await moduleRef?.close();
   });
 
-  it('binds the scheduling policy port to its Prisma repository', () => {
+  it('binds the scheduling policy port to MongoDB', () => {
     expect(moduleRef.get(FACILITY_SCHEDULING_POLICY_PERSISTENCE, { strict: false })).toBeInstanceOf(
       FacilitySchedulingPolicyRepository,
     );
@@ -325,7 +335,7 @@ describe('doctor persistence port provider', () => {
     await moduleRef?.close();
   });
 
-  it('binds the doctor port to its Prisma repository', () => {
+  it('binds the doctor port to MongoDB', () => {
     expect(moduleRef.get(DOCTOR_PERSISTENCE, { strict: false })).toBeInstanceOf(DoctorRepository);
   });
 });

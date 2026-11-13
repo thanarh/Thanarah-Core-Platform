@@ -13,7 +13,7 @@ import { ConfigService } from './config/config.service';
 import { corsPolicyFor } from './config/cors.policy';
 import { APP_CONSTANTS } from './common/constants/app.constants';
 
-async function bootstrap(): Promise<void> {
+export async function createApplication(): Promise<NestFastifyApplication> {
   const trustedProxies = (process.env.AUTH_TRUSTED_PROXIES ?? '127.0.0.1,::1')
     .split(',')
     .map((value) => value.trim())
@@ -67,14 +67,21 @@ async function bootstrap(): Promise<void> {
   SwaggerModule.setup(APP_CONSTANTS.swagger.path, app, document);
 
   app.enableShutdownHooks();
+  return app;
+}
 
+async function bootstrap(): Promise<void> {
+  const app = await createApplication();
+  const config = app.get(ConfigService);
+  const logger = app.get(Logger);
   const port = config.port;
   await app.listen(port, '0.0.0.0');
 
   logger.log(`Application running on port ${port} [${config.nodeEnv}]`);
 }
 
-bootstrap().catch((error: unknown) => {
-  console.error('Fatal: application failed to start', error);
-  process.exit(1);
-});
+if (require.main === module)
+  bootstrap().catch((error: unknown) => {
+    console.error('Fatal: application failed to start', error);
+    process.exit(1);
+  });

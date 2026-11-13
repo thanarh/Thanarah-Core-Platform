@@ -12,7 +12,7 @@ import type { PlatformAuthorizationService } from '../src/auth/services/platform
 import { APP_CONSTANTS } from '../src/common/constants/app.constants';
 import { SubscriptionController } from '../src/subscriptions/subscription.controller';
 import { SubscriptionService } from '../src/subscriptions/subscription.service';
-import { SubscriptionPaymentService } from '../src/subscriptions/subscription-payment.service';
+import { MongoSubscriptionPaymentService as SubscriptionPaymentService } from '../src/platform-mongo/mongo-subscription-payment.service';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const planId = '22222222-2222-4222-8222-222222222222';

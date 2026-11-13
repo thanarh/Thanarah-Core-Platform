@@ -2,14 +2,14 @@ import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { TENANT_QUOTA_PERSISTENCE } from '../persistence/platform-persistence.ports';
 import { TenantEntitlementModule } from './tenant-entitlement.module';
-import { TenantQuotaRepository } from './tenant-quota.repository';
 import { TenantQuotaService } from './tenant-quota.service';
+import { MongoTenantEntitlementRepository } from '../platform-mongo/mongo-tenant-entitlement.repository';
 
 @Module({
   imports: [DatabaseModule, TenantEntitlementModule],
   providers: [
-    TenantQuotaRepository,
-    { provide: TENANT_QUOTA_PERSISTENCE, useExisting: TenantQuotaRepository },
+    MongoTenantEntitlementRepository,
+    { provide: TENANT_QUOTA_PERSISTENCE, useExisting: MongoTenantEntitlementRepository },
     TenantQuotaService,
   ],
   exports: [TenantQuotaService],

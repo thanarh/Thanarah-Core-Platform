@@ -1,5 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" != "" && "${1:-}" != "--runtime-only" ]]; then
+  echo "Usage: $0 [--runtime-only]" >&2
+  exit 1
+fi
 
 ports=(45271 45272 45273)
 run_id="$(date +%s)_$$"
@@ -62,6 +66,15 @@ for index in "${!ports[@]}"; do
   fi
 done
 
+if [[ "${1:-}" == "--runtime-only" ]]; then
+PHASE65_PLATFORM_MONGO_URI="$uri" \
+PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
+  npx vitest run test/phase65-platform-mongodb.integration.spec.ts \
+    -t 'provisions and verifies exact index keys/options including identity collation' --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
+else
 PHASE65_PLATFORM_MONGO_URI="$uri" \
 PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
   npx vitest run test/phase65-platform-mongodb.integration.spec.ts --reporter=verbose &
@@ -76,8 +89,31 @@ test_pid=$!
 wait "$test_pid"
 test_pid=""
 
+PHASE65_PLATFORM_MONGO_URI="$uri" \
+PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
+  npx vitest run test/mongo-doctor-staff-scope.integration.spec.ts --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
+
+PHASE65_PLATFORM_MONGO_URI="$uri" \
+PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
+  npx vitest run test/mongo-control-plane.integration.spec.ts --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
+
 PHASE64_MONGO_URI="$uri" \
   npx vitest run test/phase64-mongodb-application.integration.spec.ts --reporter=verbose &
+test_pid=$!
+wait "$test_pid"
+test_pid=""
+fi
+
+npm run build
+PHASE65_PLATFORM_MONGO_URI="$uri" \
+PHASE65_PLATFORM_MONGO_DATABASE="$database_name" \
+  npx vitest run test/mongo-only-runtime.integration.spec.ts --reporter=verbose &
 test_pid=$!
 wait "$test_pid"
 test_pid=""

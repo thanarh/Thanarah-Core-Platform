@@ -5,24 +5,27 @@ import {
   PLATFORM_SESSION_PERSISTENCE,
   PLATFORM_USER_PERSISTENCE,
 } from '../persistence/platform-persistence.ports';
-import { PlatformAuthorizationRepository } from './repositories/platform-authorization.repository';
-import { PlatformSessionRepository } from './repositories/platform-session.repository';
-import { PlatformUserRepository } from './repositories/platform-user.repository';
+import { MongoPlatformAuthorizationRepository } from '../platform-mongo/mongo-platform-authorization.repository';
+import { MongoPlatformSessionRepository } from '../platform-mongo/mongo-platform-session.repository';
+import { MongoPlatformUserRepository } from '../platform-mongo/mongo-platform-user.repository';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    PlatformAuthorizationRepository,
-    PlatformSessionRepository,
-    PlatformUserRepository,
-    { provide: PLATFORM_AUTHORIZATION_PERSISTENCE, useExisting: PlatformAuthorizationRepository },
-    { provide: PLATFORM_SESSION_PERSISTENCE, useExisting: PlatformSessionRepository },
-    { provide: PLATFORM_USER_PERSISTENCE, useExisting: PlatformUserRepository },
+    MongoPlatformAuthorizationRepository,
+    MongoPlatformSessionRepository,
+    MongoPlatformUserRepository,
+    {
+      provide: PLATFORM_AUTHORIZATION_PERSISTENCE,
+      useExisting: MongoPlatformAuthorizationRepository,
+    },
+    { provide: PLATFORM_SESSION_PERSISTENCE, useExisting: MongoPlatformSessionRepository },
+    { provide: PLATFORM_USER_PERSISTENCE, useExisting: MongoPlatformUserRepository },
   ],
   exports: [
-    PlatformAuthorizationRepository,
-    PlatformSessionRepository,
-    PlatformUserRepository,
+    MongoPlatformAuthorizationRepository,
+    MongoPlatformSessionRepository,
+    MongoPlatformUserRepository,
     PLATFORM_AUTHORIZATION_PERSISTENCE,
     PLATFORM_SESSION_PERSISTENCE,
     PLATFORM_USER_PERSISTENCE,

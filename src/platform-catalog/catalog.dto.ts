@@ -1,4 +1,4 @@
-import { FeatureStatus, PlanStatus } from '@prisma/client';
+import { FeatureStatus, PlanStatus } from '../common/domain-enums';
 import { z } from 'zod';
 import { planFeatureQuotaLimitsSchema } from './plan-feature-quota';
 

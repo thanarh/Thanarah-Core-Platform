@@ -1,11 +1,32 @@
 # Phase 66 — Transaction Compatibility Report
 
 **Date:** 2026-11-01
-**Status:** Source audit only for this phase. Disposable transaction/failover/uncertain-ack tests were not run in Phase 66. No compatibility is claimed.
+**Status:** The original source audit below is historical. The MongoDB-only development runtime now registers all central Mongo implementations; see the current conversion report and completion matrix for verification results. This does not approve production migration.
+
+## MongoDB-only update
+
+- Authorization reads use one snapshot/session. Multi-record role, staff,
+  scope, doctor, policy, subscription, registry and transfer commands use
+  transactions and conditional/versioned writes.
+- Eligibility-dependent writers modify actual referenced documents inside the
+  transaction. Tenant, user, membership, facility, branch, staff, plan and role
+  lifecycle changes therefore conflict with the relevant guarded operations;
+  private lock collections alone are not treated as proof of safety.
+- The encounter ledger preserves uncertain mutation state and audit recovery
+  independently from the clinical mutation. No cross-cluster transaction is
+  claimed.
+- Index DDL preflight runs outside metadata activation transactions. Target
+  eligibility is rechecked before committing the registry/primary switch.
+- Disposable adapter suites passed 77 tests, including independent parent
+  changes, concurrent grants/updates, rollback, stepdown/recovery and existing
+  tenant storage tests. These tests are not exhaustive fault coverage for all
+  production topologies.
+
+## Historical source-only audit
 
 ## Reconciled scope
 
-Current source search finds transaction-bearing operations in 13 files, matching the earlier Phase 64 inventory. Multiple transactions occur in several files. This is a file/call-site inventory, not 13 independently implemented Mongo repositories. Every listed workflow remains on Prisma/MySQL. Phase 65's central Mongo document repositories are not wired to these workflows.
+The original source search found transaction-bearing operations in 13 files, matching the earlier Phase 64 inventory. Multiple transactions occur in several files. This was a file/call-site inventory, not 13 independently implemented Mongo repositories. At that time the listed workflows remained on Prisma/MySQL and central Mongo repositories were not wired; those registration statements are superseded by the update above.
 
 | Source / operation | Affected records | Existing SQL atomicity and invariant | MongoDB requirement / current status |
 |---|---|---|---|

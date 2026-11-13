@@ -1,4 +1,4 @@
-import { FacilityStatus } from '@prisma/client';
+import { FacilityStatus } from '../common/domain-enums';
 import { z } from 'zod';
 
 export function normalizeFacilityName(value: string): string {

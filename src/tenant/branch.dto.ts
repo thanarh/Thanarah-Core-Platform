@@ -1,4 +1,4 @@
-import { BranchStatus } from '@prisma/client';
+import { BranchStatus } from '../common/domain-enums';
 import { z } from 'zod';
 import { normalizeFacilityName } from './facility.dto';
 

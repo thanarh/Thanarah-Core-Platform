@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { randomUUID } from 'node:crypto';
-import { PlatformAuditEventType, PlatformSecurityEventType } from '@prisma/client';
+import { PlatformAuditEventType, PlatformSecurityEventType } from '../common/domain-enums';
 
 const uuid = z.string().uuid();
 const timestamp = z.date();

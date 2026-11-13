@@ -6,8 +6,8 @@ if [[ "${NODE_ENV:-}" != "development" ]]; then
   exit 1
 fi
 
-if [[ -z "${MYSQL_DATABASE_URL:-}" ]]; then
-  echo "Blocked: MYSQL_DATABASE_URL is not configured." >&2
+if [[ -z "${PLATFORM_MONGO_URI:-}" || -z "${PLATFORM_MONGO_DATABASE:-}" ]]; then
+  echo "Blocked: platform MongoDB is not configured." >&2
   exit 1
 fi
 

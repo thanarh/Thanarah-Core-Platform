@@ -9,6 +9,7 @@ import type {
   TenantWorkspaceMembershipRecord,
 } from '../persistence/platform-persistence.ports';
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
+import { MongoTenantAuthorizationContext } from './mongo-tenant-authorization.context';
 import {
   PlatformDocumentConflictError,
   PlatformDocumentValidationError,
@@ -30,7 +31,7 @@ const TRANSACTION_OPTIONS: TransactionOptions = {
 };
 
 /**
- * Unregistered Mongo candidate for the central tenant-membership port.
+ * Mongo implementation of the central tenant-membership port.
  * Membership mutations share a per-tenant write lock with role assignment
  * workflows so owner protection can be made race-safe across adapters.
  */
@@ -40,6 +41,9 @@ export class MongoTenantMembershipRepository implements TenantMembershipPersiste
 
   create(input: { tenantId: string; platformUserId: string }): Promise<TenantMembershipRecord> {
     return this.transaction(async (db, session) => {
+      const references = new MongoTenantAuthorizationContext(db, session);
+      await references.touch('tenants', input.tenantId);
+      await references.touch('platform_users', input.platformUserId);
       const tenant = await db
         .collection<TenantDocument>('tenants')
         .findOne({ _id: input.tenantId }, { session, projection: { _id: 1 } });
@@ -195,36 +199,25 @@ export class MongoTenantMembershipRepository implements TenantMembershipPersiste
     changedAt: Date,
   ): Promise<TenantMembershipStatusChangeResult> {
     return this.transaction(async (db, session) => {
-      // This shared write serializes owner checks with cooperating membership-role mutations.
-      await db
-        .collection<{ _id: string; version: number; schemaVersion: number }>(
-          'tenant_membership_locks',
-        )
-        .updateOne(
-          { _id: tenantId },
-          { $inc: { version: 1 }, $setOnInsert: { schemaVersion: 1 } },
-          { session, upsert: true },
-        );
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
       const membership = await db
         .collection<TenantMembershipDocument>('tenant_memberships')
         .findOne({ _id: id, tenantId, status: expectedStatus }, { session });
       if (!membership) return { kind: 'stale' };
       if (nextStatus !== 'ACTIVE') {
-        const owner = await db
-          .collection<TenantMembershipRoleDocument>('tenant_membership_roles')
-          .findOne(
-            { membershipId: id, tenantId },
-            { session, projection: { _id: 1, tenantRoleId: 1 } },
-          );
-        if (owner) {
-          const role = await db
-            .collection<TenantRoleDocument>('tenant_roles')
+        const role = await db
+          .collection<TenantRoleDocument>('tenant_roles')
+          .findOne({ tenantId, code: 'OWNER' }, { session, projection: { _id: 1 } });
+        if (
+          role &&
+          (await db
+            .collection<TenantMembershipRoleDocument>('tenant_membership_roles')
             .findOne(
-              { _id: owner.tenantRoleId, tenantId, code: 'OWNER' },
+              { membershipId: id, tenantId, tenantRoleId: role._id },
               { session, projection: { _id: 1 } },
-            );
-          if (role) return { kind: 'owner-protected' };
-        }
+            ))
+        )
+          return { kind: 'owner-protected' };
       }
 
       const set: Partial<TenantMembershipDocument> = {

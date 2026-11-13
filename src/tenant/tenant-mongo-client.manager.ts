@@ -7,7 +7,7 @@ import {
   TenantStorageNotConfiguredError,
   TenantStorageUnavailableError,
 } from './tenant-storage.errors';
-import type { TenantStorageTargetRecord } from './tenant-storage.registry';
+import type { TenantStorageTargetRecord } from './tenant-storage.registry.contract';
 
 export const TENANT_MONGO_CLIENT_FACTORY = Symbol('TENANT_MONGO_CLIENT_FACTORY');
 export const MAX_TENANT_MONGO_CLIENTS = 4;

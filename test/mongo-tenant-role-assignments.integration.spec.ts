@@ -16,6 +16,7 @@ import {
 } from '../src/platform-mongo/platform-mongo.models';
 import { MongoTenantMembershipRoleRepository } from '../src/platform-mongo/mongo-tenant-membership-role.repository';
 import { MongoTenantStaffRoleRepository } from '../src/platform-mongo/mongo-tenant-staff-role.repository';
+import { MongoTenantMembershipRepository } from '../src/platform-mongo/mongo-tenant-membership.repository';
 import { MongoTenantAuthorizationContext } from '../src/platform-mongo/mongo-tenant-authorization.context';
 import { PlatformMongoUnavailableError } from '../src/platform-mongo/platform-mongo.errors';
 import { MongoFacilitySchedulingPolicyRepository } from '../src/platform-mongo/mongo-facility-scheduling-policy.repository';
@@ -373,6 +374,28 @@ integration('Mongo tenant role assignment contracts on a disposable replica set'
     expect(await staffRoles.remove({ ...assignStaff(), roleId: ids.owner })).toEqual({
       kind: 'owner-protected',
     });
+  });
+
+  it('protects OWNER membership lifecycle even when an ordinary grant was inserted first', async () => {
+    await memberships.assign(assignMembership());
+    await db.collection<{ _id: string }>('tenant_membership_roles').insertOne(
+      tenantMembershipRoleSchema.parse({
+        _id: stableAssignmentId(ids.targetMembership, ids.owner),
+        tenantId: ids.tenant,
+        membershipId: ids.targetMembership,
+        tenantRoleId: ids.owner,
+        assignedAt: new Date(),
+      }),
+    );
+    expect(
+      await new MongoTenantMembershipRepository(manager).changeStatusIfCurrent(
+        ids.targetMembership,
+        ids.tenant,
+        'ACTIVE',
+        'SUSPENDED',
+        new Date(),
+      ),
+    ).toEqual({ kind: 'owner-protected' });
   });
 
   it('accepts an independently held active staff OWNER grant', async () => {

@@ -1,11 +1,14 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { DOCTOR_PERSISTENCE } from '../persistence/platform-persistence.ports';
-import { DoctorRepository } from './doctor.repository';
+import { MongoDoctorRepository } from '../platform-mongo/mongo-doctor.repository';
 
 @Module({
   imports: [DatabaseModule],
-  providers: [DoctorRepository, { provide: DOCTOR_PERSISTENCE, useExisting: DoctorRepository }],
+  providers: [
+    MongoDoctorRepository,
+    { provide: DOCTOR_PERSISTENCE, useExisting: MongoDoctorRepository },
+  ],
   exports: [DOCTOR_PERSISTENCE],
 })
 export class DoctorPersistenceModule {}

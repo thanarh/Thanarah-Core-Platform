@@ -1,4 +1,4 @@
-import { SubscriptionStatus } from '@prisma/client';
+import { SubscriptionStatus } from '../common/domain-enums';
 import { z } from 'zod';
 
 export const subscriptionIdSchema = z.string().uuid();

@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { FeatureStatus, PlatformAuditEventType, Prisma } from '@prisma/client';
+import { FeatureStatus, PlatformAuditEventType } from '../common/domain-enums';
+import { isLegacyUniqueConstraintError } from '../common/legacy-unique-constraint';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import {
@@ -175,6 +176,6 @@ export class FeatureService {
   }
 
   private isUniqueConflict(error: unknown): boolean {
-    return error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002';
+    return isLegacyUniqueConstraintError(error);
   }
 }

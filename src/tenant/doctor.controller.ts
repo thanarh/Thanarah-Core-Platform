@@ -28,7 +28,7 @@ import {
   ApiTags,
   ApiUnauthorizedResponse,
 } from '@nestjs/swagger';
-import { StaffStatus } from '@prisma/client';
+import { StaffStatus } from '../common/domain-enums';
 import type { FastifyRequest } from 'fastify';
 import { CurrentPlatformUser } from '../auth/decorators/current-platform-user.decorator';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';

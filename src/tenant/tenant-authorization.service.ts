@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlatformAuditEventType } from '@prisma/client';
+import { PlatformAuditEventType } from '../common/domain-enums';
 import type { TenantAuthorizationService as TenantAuthorizationContract } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
 import { TENANT_PERMISSION_CODES } from './tenant-authorization.constants';

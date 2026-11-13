@@ -6,14 +6,19 @@ The user explicitly requires MongoDB for the entire platform, superseding the
 earlier hybrid target. The user also confirmed that the saved Mongo connection
 is for development/testing. No production database was accessed or changed.
 
-This increment implements three previously missing persistence candidates:
+All 22 central persistence ports now use their MongoDB implementations.
+StaffScope and Doctor adapters are implemented and registered. Subscription
+payment settings/transfers, the encounter operation ledger, and storage-target
+registration/activation use MongoDB as well.
 
-- Membership role assignment/removal, role lookup, and permission resolution.
-- Staff role assignment/removal and scoped listing.
-- Facility scheduling policies and atomic policy revision history.
+The application does not register PrismaService. Domain enum values and registry
+contracts are storage-independent. The compiled application test explicitly
+rejects loading generated Prisma classes or the SQL client, both before and
+after restarting the application.
 
-The candidates remain unregistered. The application still uses its existing
-central Prisma providers, and the Mongo-only conversion is **not complete**.
+Historical SQL source, migrations and legacy tests were retained; existing
+SQL data was not copied, changed or deleted. This is a development-runtime
+conversion, not a production data cutover or production acceptance.
 
 ## Guarantees exercised
 
@@ -27,45 +32,75 @@ central Prisma providers, and the Mongo-only conversion is **not complete**.
 - Scheduling version checks, concurrent updates, status transitions and revision
   ordering. A revision-insertion conflict rolls back the matching policy write.
 - Explicit indexes for staff roles, policy uniqueness and revision history.
+- Staff facility/branch scope validation, doctor/catalog/service references,
+  assignment eligibility, tenant isolation and transactional rollback.
+- OWNER membership lifecycle protection even when an ordinary role was granted
+  before OWNER.
+- Versioned transfer/settings updates, receipt persistence, idempotency and
+  review without automatic subscription activation.
+- Registry activation preflight, primary-target switching and operation-ledger
+  recovery/CAS without SQL.
+- Real authenticated API journey: separate platform administrator and clinic
+  owner; tenant/membership/bootstrap, plan/subscription, facility/staff/scope,
+  doctor/service, scheduling policy, patient/appointment/encounter.
+- Real Chromium sign-in and appointment-workspace catalog loading against that
+  disposable application, with authentication and authorization left enabled.
+- Missing invariant index makes readiness fail while liveness stays healthy;
+  explicit index repair restores readiness.
+- Injected refresh dependency failure returns 503 without clearing the cookie;
+  refresh recovery, restart persistence, refresh reuse detection and logout-all
+  revocation are verified through HTTP.
 
-The shared reference-write helper is not a claim that every existing candidate
-already participates in a complete cross-port concurrency protocol.
+These tests establish the exercised contracts, not exhaustive proof for every
+writer interleaving, production topology or failure. No atomic transaction
+between separate central and clinical clusters is claimed.
 
 ## Verification
 
 | Check | Result |
 | --- | --- |
-| New role/policy replica-set contracts | 19 passed, 0 failed, 0 skipped |
+| Role/policy replica-set contracts | 20 passed, 0 failed, 0 skipped |
+| Staff scope / doctor replica-set contracts | 12 passed, 0 failed, 0 skipped |
+| Transfer / registry / ledger replica-set contracts | 12 passed, 0 failed, 0 skipped |
 | Existing platform Mongo replica-set suite | 27 passed, 0 failed, 0 skipped |
 | Existing tenant Mongo integration suite | 6 passed, 0 failed, 0 skipped |
-| General suite | 1046 passed, 58 skipped, 0 failed |
+| Compiled Mongo-only API/browser/restart/outage journey | 1 passed |
+| General suite | 1046 passed, 84 skipped, 0 failed |
 | Type checks and tenant-contract type checks | Passed |
-| ESLint on new/changed candidate code and the new tests | 0 errors, 0 warnings |
+| Full ESLint | Passed with 0 errors and 91 warnings |
 | Build, formatting, whitespace checks | Passed |
-| Restarted app and preview | Login screen rendered; authenticated application UI was not verified in the development preview |
-| Current app endpoints after restart | `/health` 200; `/ready` 503 because central runtime wiring still uses Prisma |
+| Restarted development preview | Login screen rendered; authenticated workspace tested separately on the disposable Mongo application |
+| Current development endpoints after restart | `/health` 200; `/ready` 200, central Mongo and tenant provider available |
+| Approved development Mongo initialization | Central indexes and authorization reference catalogs initialized; accounts not created or changed |
 
-The 58 tests skipped by the general command are the 52 Mongo tests above plus
+The 84 tests skipped by the general command are the 78 Mongo tests above plus
 6 historical MySQL portal tests. Mongo tests were run explicitly with
 `DOCKER_HOST=unix:///var/run/docker.sock bash scripts/test-phase65-replica-set.sh`.
+After the adapter suites passed, the compiled journey was rerun with
+`--runtime-only` while correcting fixture authentication and HTTP expectations.
+Production credentials are never used by those tests. Their URI and database
+names are restricted to the disposable loopback replica set; only their own
+synthetic databases are removed during cleanup.
 The historical SQL tests are not evidence of a Mongo-only runtime.
 
-The read-only check of the user-designated development Mongo connection succeeded:
-ping, logical sessions and replica-set/sharded transaction capability were
-available. No application records or indexes were written to that connection,
-and no credentials or connection details were printed. This connectivity result
-does not make the still-Prisma-backed application readiness endpoint Mongo-ready.
+`npm run mongo:initialize:dev` succeeded on the user-designated development
+connection. It initializes central indexes and idempotent role/permission
+reference data without creating or changing accounts. It is blocked outside
+development or without an explicit dev/test database name. No credential values
+or connection details were printed.
 
-## Remaining before acceptance
+## Acceptance boundary and remaining operational work
 
-1. Implement and verify StaffScope and Doctor candidates.
-2. Complete existing candidate contracts and shared race/recovery guarantees.
-3. Replace direct Prisma usage in subscription payment handling, encounter
-   operation recovery, tenant storage registry and target activation.
-4. Move runtime wiring, initialization/reference data, readiness and operational
-   commands to MongoDB; remove the SQL runtime dependency without deleting history.
-5. Pass the complete authenticated browser/API journey and restart/outage recovery
-   using MongoDB only.
+- Existing business data has not been migrated. Any production or existing-data
+  cutover needs a source/target inventory, backup/restore proof, reconciliation,
+  security review and separate approval.
+- No administrator account or default password was created on the saved
+  connection. The development-only administrator command securely prompts for
+  a password and refuses to reset an existing account.
+- The historical SQL test suites are retained, not treated as current runtime
+  requirements or a request for a MySQL connection.
+- Broad production readiness, all possible failures and full historical
+  MySQL/Mongo semantic equivalence are not claimed.
 
 Phase 01 remains unaccepted. Phase 02, Geidea, production data transfer and
 publishing remain deferred.

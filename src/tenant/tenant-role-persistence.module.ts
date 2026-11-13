@@ -4,18 +4,18 @@ import {
   TENANT_MEMBERSHIP_ROLE_PERSISTENCE,
   TENANT_ROLE_PERSISTENCE,
 } from '../persistence/platform-persistence.ports';
-import { TenantMembershipRoleRepository } from './tenant-membership-role.repository';
-import { TenantRoleRepository } from './tenant-role.repository';
+import { MongoTenantRoleRepository } from '../platform-mongo/mongo-tenant-role.repository';
+import { MongoTenantMembershipRoleRepository } from '../platform-mongo/mongo-tenant-membership-role.repository';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    TenantRoleRepository,
-    TenantMembershipRoleRepository,
-    { provide: TENANT_ROLE_PERSISTENCE, useExisting: TenantRoleRepository },
+    MongoTenantRoleRepository,
+    MongoTenantMembershipRoleRepository,
+    { provide: TENANT_ROLE_PERSISTENCE, useExisting: MongoTenantRoleRepository },
     {
       provide: TENANT_MEMBERSHIP_ROLE_PERSISTENCE,
-      useExisting: TenantMembershipRoleRepository,
+      useExisting: MongoTenantMembershipRoleRepository,
     },
   ],
   exports: [TENANT_ROLE_PERSISTENCE, TENANT_MEMBERSHIP_ROLE_PERSISTENCE],

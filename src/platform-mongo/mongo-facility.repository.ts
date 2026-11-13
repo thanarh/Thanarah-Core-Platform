@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
-import type { Collection } from 'mongodb';
+import type { Collection, ClientSession } from 'mongodb';
+import { MongoTenantAuthorizationContext as Context } from './mongo-tenant-authorization.context';
 import type {
   FacilityListFilter,
   FacilityPersistencePort,
@@ -31,17 +32,17 @@ export class MongoFacilityRepository implements FacilityPersistencePort {
       suspendedAt: null,
       deactivatedAt: null,
     };
-    return this.write(async (collection) => {
+    return this.write(tenantId, async (collection, session) => {
       const db = await this.manager.getDatabase();
       if (
         !(await db
           .collection<TenantDocument>('tenants')
-          .findOne({ _id: tenantId }, { projection: { _id: 1 } }))
+          .findOne({ _id: tenantId }, { session, projection: { _id: 1 } }))
       ) {
         throw new PlatformDocumentConflictError();
       }
       const parsed = this.parse(document);
-      await collection.insertOne(parsed);
+      await collection.insertOne(parsed, { session });
       return this.toRecord(parsed);
     });
   }
@@ -66,11 +67,11 @@ export class MongoFacilityRepository implements FacilityPersistencePort {
   }
 
   updateName(tenantId: string, id: string, name: string): Promise<FacilityRecord | null> {
-    return this.write(async (collection) => {
+    return this.write(tenantId, async (collection, session) => {
       const updated = await collection.findOneAndUpdate(
         { _id: id, tenantId },
         { $set: { name, updatedAt: new Date() } },
-        { returnDocument: 'after' },
+        { session, returnDocument: 'after' },
       );
       return updated ? this.toRecord(updated) : null;
     });
@@ -83,7 +84,7 @@ export class MongoFacilityRepository implements FacilityPersistencePort {
     nextStatus: FacilityRecord['status'],
     changedAt: Date,
   ): Promise<FacilityRecord | null> {
-    return this.write(async (collection) => {
+    return this.write(tenantId, async (collection, session) => {
       const set: Partial<FacilityDocument> = {
         status: nextStatus,
         statusChangedAt: changedAt,
@@ -94,7 +95,7 @@ export class MongoFacilityRepository implements FacilityPersistencePort {
       const updated = await collection.findOneAndUpdate(
         { _id: id, tenantId, status: expectedStatus },
         { $set: set },
-        { returnDocument: 'after' },
+        { session, returnDocument: 'after' },
       );
       return updated ? this.toRecord(updated) : null;
     });
@@ -111,10 +112,14 @@ export class MongoFacilityRepository implements FacilityPersistencePort {
   }
 
   private async write<T>(
-    operation: (collection: Collection<FacilityDocument>) => Promise<T>,
+    tenantId: string,
+    operation: (collection: Collection<FacilityDocument>, session: ClientSession) => Promise<T>,
   ): Promise<T> {
     try {
-      return await operation((await this.manager.getDatabase()).collection('facilities'));
+      return await Context.run(this.manager, async (tx) => {
+        await tx.touch('tenants', tenantId);
+        return operation(tx.db.collection<FacilityDocument>('facilities'), tx.session);
+      });
     } catch (error) {
       this.rethrow(error);
     }

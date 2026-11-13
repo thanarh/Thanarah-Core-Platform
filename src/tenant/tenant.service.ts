@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlatformAuditEventType, Prisma, TenantStatus } from '@prisma/client';
+import { PlatformAuditEventType, TenantStatus } from '../common/domain-enums';
+import { isLegacyUniqueConstraintError } from '../common/legacy-unique-constraint';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import {
   changeTenantStatusSchema,
@@ -159,7 +160,7 @@ export class TenantService {
   }
 
   private isSlugConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    if (!isLegacyUniqueConstraintError(error)) {
       return false;
     }
 

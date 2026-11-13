@@ -8,6 +8,7 @@ import type {
   TenantStaffRecord,
 } from '../persistence/platform-persistence.ports';
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
+import { MongoTenantAuthorizationContext } from './mongo-tenant-authorization.context';
 import {
   PlatformDocumentConflictError,
   PlatformDocumentValidationError,
@@ -37,15 +38,9 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
     input: { displayName?: string; jobTitle?: string },
   ): Promise<CreateTenantStaffResult> {
     return this.transaction<CreateTenantStaffResult>(async (db, session) => {
-      await db
-        .collection<{ _id: string; version: number; schemaVersion: number }>(
-          'tenant_membership_locks',
-        )
-        .updateOne(
-          { _id: tenantId },
-          { $inc: { version: 1 }, $setOnInsert: { schemaVersion: 1 } },
-          { session, upsert: true },
-        );
+      const references = new MongoTenantAuthorizationContext(db, session);
+      await references.touch('tenants', tenantId);
+      await references.touch('tenant_memberships', membershipId, { tenantId });
       const tenant = await db
         .collection<TenantDocument>('tenants')
         .findOne({ _id: tenantId, status: 'ACTIVE' }, { session, projection: { _id: 1 } });
@@ -58,6 +53,7 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
           { session, projection: { _id: 1, platformUserId: 1 } },
         );
       if (!membership) return { kind: 'membership-ineligible' };
+      await references.touch('platform_users', membership.platformUserId);
       const user = await db
         .collection<PlatformUserDocument>('platform_users')
         .findOne(
@@ -130,17 +126,18 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
     id: string,
     input: { displayName?: string; jobTitle?: string | null },
   ): Promise<TenantStaffRecord | null> {
-    return this.write(async (db) => {
+    return this.transaction(async (db, session) => {
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
       const tenant = await db
         .collection<TenantDocument>('tenants')
-        .findOne({ _id: tenantId, status: 'ACTIVE' }, { projection: { _id: 1 } });
+        .findOne({ _id: tenantId, status: 'ACTIVE' }, { session, projection: { _id: 1 } });
       if (!tenant) return null;
       const updated = await db
         .collection<TenantStaffDocument>('tenant_staff')
         .findOneAndUpdate(
           { _id: id, tenantId },
           { $set: { ...input, updatedAt: new Date() } },
-          { returnDocument: 'after' },
+          { session, returnDocument: 'after' },
         );
       return updated ? this.toRecord(updated) : null;
     });
@@ -153,10 +150,11 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
     nextStatus: StaffStatusValue,
     changedAt: Date,
   ): Promise<TenantStaffRecord | null> {
-    return this.write(async (db) => {
+    return this.transaction(async (db, session) => {
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
       const tenant = await db
         .collection<TenantDocument>('tenants')
-        .findOne({ _id: tenantId, status: 'ACTIVE' }, { projection: { _id: 1 } });
+        .findOne({ _id: tenantId, status: 'ACTIVE' }, { session, projection: { _id: 1 } });
       if (!tenant) return null;
       const $set: Partial<TenantStaffDocument> = {
         status: nextStatus,
@@ -170,7 +168,7 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
         .findOneAndUpdate(
           { _id: id, tenantId, status: expectedStatus },
           { $set },
-          { returnDocument: 'after' },
+          { session, returnDocument: 'after' },
         );
       return updated ? this.toRecord(updated) : null;
     });
@@ -183,10 +181,6 @@ export class MongoTenantStaffRepository implements TenantStaffPersistencePort {
       if (error instanceof PlatformDocumentValidationError) throw error;
       throw new PlatformMongoUnavailableError();
     }
-  }
-
-  private async write<T>(operation: (db: Db) => Promise<T>): Promise<T> {
-    return this.read(operation);
   }
 
   private async transaction<T>(

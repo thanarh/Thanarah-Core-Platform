@@ -23,11 +23,11 @@ import {
 } from './tenant-storage.errors';
 import { AppointmentScheduleLockConflictError } from './appointment.errors';
 import { TenantMongoClientManager } from './tenant-mongo-client.manager';
-import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry';
+import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry.contract';
 import type {
   TenantStorageTargetRecord,
   TenantStorageTargetResolver,
-} from './tenant-storage.registry';
+} from './tenant-storage.registry.contract';
 
 const APPOINTMENT_COLLECTION_NAME = 'appointments';
 const PATIENT_COLLECTION_NAME = 'patients';

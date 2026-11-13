@@ -5,12 +5,12 @@ import { PlatformSecurityModule } from '../platform-security/platform-security.m
 import { SubscriptionController } from './subscription.controller';
 import { SubscriptionPersistenceModule } from './subscription-persistence.module';
 import { SubscriptionService } from './subscription.service';
-import { SubscriptionPaymentService } from './subscription-payment.service';
+import { MongoSubscriptionPaymentService } from '../platform-mongo/mongo-subscription-payment.service';
 
 @Module({
   imports: [AuthModule, DatabaseModule, PlatformSecurityModule, SubscriptionPersistenceModule],
   controllers: [SubscriptionController],
-  providers: [SubscriptionService, SubscriptionPaymentService],
-  exports: [SubscriptionService, SubscriptionPaymentService],
+  providers: [SubscriptionService, MongoSubscriptionPaymentService],
+  exports: [SubscriptionService, MongoSubscriptionPaymentService],
 })
 export class SubscriptionsModule {}

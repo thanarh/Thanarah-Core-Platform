@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { ConfigModule } from '../config/config.module';
 import { ConfigService } from '../config/config.service';
 import { DatabaseModule } from '../database/database.module';
+import { MongoTenantStorageRegistryService } from '../platform-mongo/mongo-tenant-storage-registry.service';
+import { MongoTenantStorageActivationService } from '../platform-mongo/mongo-tenant-storage-activation.service';
 import { TenantStorageConfigurationNotice } from './tenant-storage.configuration-notice';
 import {
   OfficialTenantMongoClientFactory,
@@ -12,7 +14,6 @@ import { MongoTenantPatientStorage } from './mongo-tenant-patient.storage';
 import { MongoTenantAppointmentStorage } from './mongo-tenant-appointment.storage';
 import { MongoTenantEncounterStorage } from './mongo-tenant-encounter.storage';
 import { MongoTenantClinicFinanceStorage } from './mongo-tenant-clinic-finance.storage';
-import { TenantStorageActivationService } from './tenant-storage.activation.service';
 import { PATIENT_REPOSITORY, TenantStoragePatientRepository } from './patient.repository';
 import { TenantAppointmentRepository } from './appointment.repository';
 import { APPOINTMENT_REPOSITORY } from './tenant-appointment.storage';
@@ -33,10 +34,7 @@ import { APPOINTMENT_STORAGE, type AppointmentStorage } from './tenant-appointme
 import { InMemoryTenantAppointmentStorage } from './in-memory-tenant-appointment.storage';
 import { UnconfiguredTenantAppointmentStorage } from './unconfigured-tenant-appointment.storage';
 import type { TenantDatabaseRegistry } from './tenant-storage.contract';
-import {
-  TenantStorageRegistryService,
-  TENANT_STORAGE_TARGET_RESOLVER,
-} from './tenant-storage.registry';
+import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry.contract';
 import { effectiveTenantStorageProvider } from './tenant-storage.mode';
 import {
   DevelopmentMemoryTenantStorageHealthProvider,
@@ -60,14 +58,14 @@ import type { ClinicFinanceStorage } from './tenant-clinic-finance.storage';
 @Module({
   imports: [ConfigModule, DatabaseModule],
   providers: [
-    TenantStorageRegistryService,
-    TenantStorageActivationService,
+    MongoTenantStorageRegistryService,
+    MongoTenantStorageActivationService,
     {
       provide: TENANT_DATABASE_REGISTRY,
-      inject: [ConfigService, TenantStorageRegistryService],
+      inject: [ConfigService, MongoTenantStorageRegistryService],
       useFactory: (
         config: ConfigService,
-        registry: TenantStorageRegistryService,
+        registry: MongoTenantStorageRegistryService,
       ): TenantDatabaseRegistry => {
         const provider = effectiveTenantStorageProvider(
           config.tenantStorageProvider,
@@ -82,7 +80,7 @@ import type { ClinicFinanceStorage } from './tenant-clinic-finance.storage';
     },
     {
       provide: TENANT_STORAGE_TARGET_RESOLVER,
-      useExisting: TenantStorageRegistryService,
+      useExisting: MongoTenantStorageRegistryService,
     },
     TenantStorageResolverService,
     {
@@ -247,8 +245,8 @@ import type { ClinicFinanceStorage } from './tenant-clinic-finance.storage';
     APPOINTMENT_REPOSITORY,
     ENCOUNTER_REPOSITORY,
     TENANT_STORAGE_RESOLVER,
-    TenantStorageRegistryService,
-    TenantStorageActivationService,
+    MongoTenantStorageRegistryService,
+    MongoTenantStorageActivationService,
     TenantStorageReadinessService,
     TENANT_STORAGE_TARGET_RESOLVER,
     TenantMongoClientManager,

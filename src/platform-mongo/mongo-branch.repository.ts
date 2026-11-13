@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { BranchStatus, FacilityStatus, TenantStatus } from '@prisma/client';
+import { BranchStatus, FacilityStatus, TenantStatus } from '../common/domain-enums';
 import type { ClientSession, Db, TransactionOptions } from 'mongodb';
 import type {
   BranchFacilityScope,
@@ -9,6 +9,7 @@ import type {
   BranchStatusValue,
 } from '../persistence/platform-persistence.ports';
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
+import { MongoTenantAuthorizationContext } from './mongo-tenant-authorization.context';
 import {
   PlatformDocumentValidationError,
   PlatformMongoUnavailableError,
@@ -153,6 +154,17 @@ export class MongoBranchRepository implements BranchPersistencePort {
     tenantId: string,
     facilityId: string,
   ): Promise<boolean> {
+    if (session) {
+      const references = new MongoTenantAuthorizationContext(db, session);
+      if (
+        !(await references.activeTenant(tenantId, true)) ||
+        !(await references.touch('facilities', facilityId, {
+          tenantId,
+          status: FacilityStatus.ACTIVE,
+        }))
+      )
+        return false;
+    }
     const options = session
       ? { session, projection: { status: 1 } }
       : { projection: { status: 1 } };

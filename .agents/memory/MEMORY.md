@@ -20,6 +20,7 @@
 - [Mongo authorization read consistency](mongo-authorization-read-consistency.md) — cross-collection role and permission reads require one snapshot transaction and one shared session.
 - [MongoDB migration activation gate](mongodb-migration-activation-gate.md) — keep candidates unregistered until port behavior and dependent transaction parity are proven.
 - [Mongo cross-port locks](mongo-cross-port-locking.md) — a candidate lock document only serializes writers that share that lock; it does not reproduce MySQL parent-row locking across adapters.
+- [Mongo runtime boundary](mongodb-runtime-boundary.md) — absence of a Prisma provider does not prove SQL independence; legacy DI tokens and enum imports can still load the SQL client.
 - [Mongo transaction operation order](mongo-transaction-operation-order.md) — execute operations serially within a driver transaction; parallel collection calls can fail and be hidden by sanitized transaction errors.
 - [Thanarah MongoDB-only direction](thanarah-mongodb-direction.md) — the user requires MongoDB for the entire platform, including identity and subscriptions; this supersedes the hybrid decision.
 - [Tenant payment settings access](tenant-payment-settings-access.md) — keep bank details behind payment-specific permissions and endpoints, separate from invoice settings.

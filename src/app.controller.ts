@@ -5,7 +5,7 @@ import {
   ApiServiceUnavailableResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { PrismaService } from './database/prisma.service';
+import { MongoCentralReadinessService } from './platform-mongo/mongo-central-readiness.service';
 import { TenantStorageReadinessService } from './tenant/tenant-storage-readiness.service';
 import { PlatformMongoClientManager } from './platform-mongo/platform-mongo.client.manager';
 
@@ -24,7 +24,7 @@ interface ReadinessResponse extends HealthResponse {
 @Controller()
 export class AppController {
   constructor(
-    @Inject(PrismaService) private readonly prisma: PrismaService,
+    @Inject(MongoCentralReadinessService) private readonly database: MongoCentralReadinessService,
     @Inject(TenantStorageReadinessService)
     private readonly tenantStorage: TenantStorageReadinessService,
     @Optional()
@@ -47,7 +47,7 @@ export class AppController {
   @ApiOkResponse({ description: 'The application and required storage are ready' })
   @ApiServiceUnavailableResponse({ description: 'A required storage dependency is unavailable' })
   async ready(): Promise<ReadinessResponse> {
-    if (!(await this.prisma.isReady())) {
+    if (!(await this.database.isReady())) {
       throw new ServiceUnavailableException({
         code: 'DATABASE_UNAVAILABLE',
         message: 'Central database is unavailable',

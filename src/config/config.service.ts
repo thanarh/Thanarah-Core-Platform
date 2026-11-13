@@ -57,7 +57,9 @@ export class ConfigService {
   }
 
   get tenantStorageMongoUri(): string {
-    return this.config.get('TENANT_STORAGE_MONGO_URI', { infer: true });
+    return (
+      this.config.get('TENANT_STORAGE_MONGO_URI', { infer: true }).trim() || this.platformMongoUri
+    );
   }
 
   get platformMongoUri(): string {

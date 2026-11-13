@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { TenantMembershipStatus } from '@prisma/client';
+import { TenantMembershipStatus } from '../common/domain-enums';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import {
   TENANT_MEMBERSHIP_PERSISTENCE,

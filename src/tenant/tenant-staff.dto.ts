@@ -1,4 +1,4 @@
-import { StaffStatus } from '@prisma/client';
+import { StaffStatus } from '../common/domain-enums';
 import { z } from 'zod';
 
 const staffDisplayNameSchema = z

@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { StaffStatus } from '@prisma/client';
+import { StaffStatus } from '../common/domain-enums';
 
 export class TenantStaffResponseDto {
   @ApiProperty({ format: 'uuid' })

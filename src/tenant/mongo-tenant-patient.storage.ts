@@ -28,11 +28,11 @@ import {
 } from './tenant-storage.errors';
 import type { TenantPatientList, TenantPatientStorage } from './tenant-patient.storage';
 import { TenantMongoClientManager } from './tenant-mongo-client.manager';
-import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry';
+import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry.contract';
 import type {
   TenantStorageTargetRecord,
   TenantStorageTargetResolver,
-} from './tenant-storage.registry';
+} from './tenant-storage.registry.contract';
 
 const PATIENT_COLLECTION_NAME = 'patients';
 const PATIENT_NUMBER_INDEX_NAME = 'tenant_patient_number_unique';

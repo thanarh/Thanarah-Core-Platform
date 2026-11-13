@@ -35,11 +35,11 @@ import {
   TenantStorageUnavailableError,
 } from './tenant-storage.errors';
 import { TenantMongoClientManager } from './tenant-mongo-client.manager';
-import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry';
+import { TENANT_STORAGE_TARGET_RESOLVER } from './tenant-storage.registry.contract';
 import type {
   TenantStorageTargetRecord,
   TenantStorageTargetResolver,
-} from './tenant-storage.registry';
+} from './tenant-storage.registry.contract';
 import { formatClinicInvoiceNumber } from './clinic-finance.calculation';
 import {
   createClinicInvoiceAuditEvent,

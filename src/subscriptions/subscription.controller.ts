@@ -54,7 +54,7 @@ import {
   subscriptionResponseSchema,
 } from './subscription.openapi';
 import { SubscriptionService } from './subscription.service';
-import { SubscriptionPaymentService } from './subscription-payment.service';
+import { MongoSubscriptionPaymentService as SubscriptionPaymentService } from '../platform-mongo/mongo-subscription-payment.service';
 import { SubscriptionPaymentInputError } from './subscription-payment.errors';
 import {
   reviewSubscriptionTransferSchema,

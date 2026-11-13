@@ -1,15 +1,15 @@
 import { Module } from '@nestjs/common';
 import { DatabaseModule } from '../database/database.module';
 import { FACILITY_SCHEDULING_POLICY_PERSISTENCE } from '../persistence/platform-persistence.ports';
-import { FacilitySchedulingPolicyRepository } from './appointment-scheduling-policy.repository';
+import { MongoFacilitySchedulingPolicyRepository } from '../platform-mongo/mongo-facility-scheduling-policy.repository';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    FacilitySchedulingPolicyRepository,
+    MongoFacilitySchedulingPolicyRepository,
     {
       provide: FACILITY_SCHEDULING_POLICY_PERSISTENCE,
-      useExisting: FacilitySchedulingPolicyRepository,
+      useExisting: MongoFacilitySchedulingPolicyRepository,
     },
   ],
   exports: [FACILITY_SCHEDULING_POLICY_PERSISTENCE],

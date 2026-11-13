@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { SubscriptionStatus } from '@prisma/client';
+import { SubscriptionStatus } from '../common/domain-enums';
 import { SubscriptionService } from '../subscriptions/subscription.service';
 import {
   TenantContextInvalidError,

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { TenantMembershipStatus, TenantStatus } from '@prisma/client';
+import { TenantMembershipStatus, TenantStatus } from '../common/domain-enums';
 import type { ClientSession, Db, TransactionOptions } from 'mongodb';
 import type {
   TenantRoleBootstrapResult,
@@ -16,6 +16,7 @@ import {
   TenantPermissionCatalogUnavailableError,
 } from '../tenant/tenant-authorization.errors';
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
+import { MongoTenantAuthorizationContext } from './mongo-tenant-authorization.context';
 import {
   PlatformDocumentConflictError,
   PlatformDocumentValidationError,
@@ -64,6 +65,7 @@ export class MongoTenantRoleRepository implements TenantRolePersistencePort {
     description?: string | null;
   }): Promise<TenantRoleRecord> {
     return this.transaction(async (db, session) => {
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', input.tenantId);
       const tenant = await db
         .collection<TenantDocument>('tenants')
         .findOne({ _id: input.tenantId }, { session, projection: { _id: 1 } });
@@ -115,6 +117,7 @@ export class MongoTenantRoleRepository implements TenantRolePersistencePort {
     input: { name?: string; description?: string | null },
   ): Promise<TenantRoleRecord | null> {
     return this.transaction(async (db, session) => {
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
       const $set: Partial<TenantRoleDocument> = { updatedAt: new Date() };
       if (input.name !== undefined) $set.name = input.name;
       if (input.description !== undefined) $set.description = input.description;
@@ -135,6 +138,9 @@ export class MongoTenantRoleRepository implements TenantRolePersistencePort {
     permissionCodes: readonly TenantPermissionCode[],
   ): Promise<TenantRoleRecord | null> {
     return this.transaction(async (db, session) => {
+      const references = new MongoTenantAuthorizationContext(db, session);
+      await references.touch('tenants', tenantId);
+      await references.touch('tenant_roles', roleId, { tenantId });
       const role = await db
         .collection<TenantRoleDocument>('tenant_roles')
         .findOne({ _id: roleId, tenantId, isSystemRole: false }, { session });
@@ -320,15 +326,7 @@ export class MongoTenantRoleRepository implements TenantRolePersistencePort {
     session: ClientSession,
     tenantId: string,
   ): Promise<void> {
-    await db
-      .collection<{ _id: string; version: number; schemaVersion: number }>(
-        'tenant_membership_locks',
-      )
-      .updateOne(
-        { _id: tenantId },
-        { $inc: { version: 1 }, $setOnInsert: { schemaVersion: 1 } },
-        { session, upsert: true },
-      );
+    await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
     try {
       await db
         .collection<{ _id: string; version: number; schemaVersion: number }>(

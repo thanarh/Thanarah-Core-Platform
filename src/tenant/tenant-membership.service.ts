@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlatformAuditEventType, Prisma, TenantMembershipStatus } from '@prisma/client';
+import { PlatformAuditEventType, TenantMembershipStatus } from '../common/domain-enums';
+import { isLegacyUniqueConstraintError } from '../common/legacy-unique-constraint';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import {
@@ -311,7 +312,7 @@ export class TenantMembershipService implements TenantMembershipAccessLookup {
   }
 
   private isMembershipUniqueConflict(error: unknown): boolean {
-    if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+    if (!isLegacyUniqueConstraintError(error)) {
       return false;
     }
 

@@ -1,4 +1,4 @@
-import { SubscriptionStatus, TenantStatus } from '@prisma/client';
+import { SubscriptionStatus, TenantStatus } from '../common/domain-enums';
 
 export type EffectiveSubscriptionStatus =
   'ACTIVE' | 'SCHEDULED' | 'SUSPENDED' | 'CANCELLED' | 'EXPIRED';

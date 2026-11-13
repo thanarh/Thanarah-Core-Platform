@@ -1,5 +1,9 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { DoctorServiceAssignmentScope, StaffStatus, TenantCatalogStatus } from '@prisma/client';
+import {
+  DoctorServiceAssignmentScope,
+  StaffStatus,
+  TenantCatalogStatus,
+} from '../common/domain-enums';
 
 export class CreateDoctorRequestDto {
   @ApiProperty({ type: String, format: 'uuid' })

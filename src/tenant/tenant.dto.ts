@@ -1,4 +1,4 @@
-import { TenantStatus } from '@prisma/client';
+import { TenantStatus } from '../common/domain-enums';
 import { z } from 'zod';
 
 export function normalizeTenantSlug(value: string): string {

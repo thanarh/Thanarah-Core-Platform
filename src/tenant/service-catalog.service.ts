@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { PlatformAuditEventType, TenantCatalogStatus } from '@prisma/client';
+import { PlatformAuditEventType, TenantCatalogStatus } from '../common/domain-enums';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';

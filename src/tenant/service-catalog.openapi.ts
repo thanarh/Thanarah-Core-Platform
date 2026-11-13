@@ -1,5 +1,5 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { TenantCatalogStatus } from '@prisma/client';
+import { TenantCatalogStatus } from '../common/domain-enums';
 
 export class CreateServiceRequestDto {
   @ApiProperty({ type: String, minLength: 1, maxLength: 191 })

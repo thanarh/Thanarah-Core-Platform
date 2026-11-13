@@ -4,16 +4,16 @@ import {
   BRANCH_PERSISTENCE,
   FACILITY_PERSISTENCE,
 } from '../persistence/platform-persistence.ports';
-import { BranchRepository } from './branch.repository';
-import { FacilityRepository } from './facility.repository';
+import { MongoFacilityRepository } from '../platform-mongo/mongo-facility.repository';
+import { MongoBranchRepository } from '../platform-mongo/mongo-branch.repository';
 
 @Module({
   imports: [DatabaseModule],
   providers: [
-    FacilityRepository,
-    BranchRepository,
-    { provide: FACILITY_PERSISTENCE, useExisting: FacilityRepository },
-    { provide: BRANCH_PERSISTENCE, useExisting: BranchRepository },
+    MongoFacilityRepository,
+    MongoBranchRepository,
+    { provide: FACILITY_PERSISTENCE, useExisting: MongoFacilityRepository },
+    { provide: BRANCH_PERSISTENCE, useExisting: MongoBranchRepository },
   ],
   exports: [FACILITY_PERSISTENCE, BRANCH_PERSISTENCE],
 })

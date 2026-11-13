@@ -7,6 +7,7 @@ import { GlobalExceptionFilter } from '../src/common/filters/global-exception.fi
 import type { ConfigService } from '../src/config/config.service';
 import { validateEnv } from '../src/config/env.schema';
 import { PrismaService } from '../src/database/prisma.service';
+import { MongoCentralReadinessService } from '../src/platform-mongo/mongo-central-readiness.service';
 import { TenantStorageReadinessService } from '../src/tenant/tenant-storage-readiness.service';
 
 const productionEnvironment = {
@@ -37,20 +38,20 @@ describe('application dependency readiness', () => {
     expect(validateEnv({ NODE_ENV: 'development', DATABASE_URL: '' }).DATABASE_URL).toBe('');
   });
 
-  it('rejects production configuration without DATABASE_URL', () => {
+  it('rejects production configuration without platform MongoDB', () => {
     expect(() => validateEnv(productionEnvironment)).toThrow(
-      'DATABASE_URL is required in production',
+      'Platform MongoDB is required outside development',
     );
   });
 
   it('requires the central database in staging too', () => {
     expect(() => validateEnv({ NODE_ENV: 'staging' })).toThrow(
-      'DATABASE_URL is required in staging',
+      'Platform MongoDB is required outside development',
     );
   });
 
   it.each(['staging', 'production'])(
-    'rejects invalid central database URLs in %s without exposing connection details',
+    'rejects invalid MongoDB URIs in %s without exposing connection details',
     (environment) => {
       for (const url of [
         'postgresql://private-user:private-password@db.example.test/private_database',
@@ -61,13 +62,18 @@ describe('application dependency readiness', () => {
       ]) {
         let error: unknown;
         try {
-          validateEnv({ ...productionEnvironment, NODE_ENV: environment, DATABASE_URL: url });
+          validateEnv({
+            ...productionEnvironment,
+            NODE_ENV: environment,
+            PLATFORM_MONGO_URI: url,
+            PLATFORM_MONGO_DATABASE: 'thanarah_test',
+          });
         } catch (caught) {
           error = caught;
         }
         expect(error).toBeInstanceOf(Error);
         expect((error as Error).message).toContain(
-          'DATABASE_URL must be a valid MySQL URL with a database name',
+          'Platform storage requires a valid MongoDB connection URI',
         );
         expect((error as Error).message).not.toContain(url);
         expect((error as Error).message).not.toContain('private-password');
@@ -75,7 +81,7 @@ describe('application dependency readiness', () => {
     },
   );
 
-  it('keeps development managed PostgreSQL separate from MySQL validation', () => {
+  it('ignores legacy SQL configuration when platform MongoDB is configured', () => {
     expect(
       validateEnv({
         NODE_ENV: 'development',
@@ -85,6 +91,8 @@ describe('application dependency readiness', () => {
     expect(
       validateEnv({
         NODE_ENV: 'staging',
+        PLATFORM_MONGO_URI: 'mongodb://configured.test?tls=true',
+        PLATFORM_MONGO_DATABASE: 'thanarah_staging',
         DATABASE_URL: 'mysql://db.example.test/thanarah_staging',
       }).DATABASE_URL,
     ).toBe('mysql://db.example.test/thanarah_staging');
@@ -114,12 +122,14 @@ describe('application dependency readiness', () => {
         DATABASE_URL: 'mysql://db.example.test/thanarah_test',
         TENANT_STORAGE_PROVIDER: 'mongodb',
       }),
-    ).toThrow('TENANT_STORAGE_MONGO_URI is required in production');
+    ).toThrow('A MongoDB connection for tenant storage is required in production');
   });
 
   it('requires validated TLS for production MongoDB storage', () => {
     const productionMongo = {
       ...productionEnvironment,
+      PLATFORM_MONGO_URI: 'mongodb://configured-platform.test?tls=true',
+      PLATFORM_MONGO_DATABASE: 'thanarah_test',
       DATABASE_URL: 'mysql://db.example.test/thanarah_test',
       TENANT_STORAGE_PROVIDER: 'mongodb',
     };
@@ -220,7 +230,7 @@ describe('application dependency readiness', () => {
     const module = await Test.createTestingModule({
       controllers: [AppController],
       providers: [
-        { provide: PrismaService, useValue: prisma },
+        { provide: MongoCentralReadinessService, useValue: prisma },
         {
           provide: TenantStorageReadinessService,
           useValue: { checkReadiness: vi.fn().mockResolvedValue(true) },
@@ -266,7 +276,7 @@ describe('application dependency readiness', () => {
     const module = await Test.createTestingModule({
       controllers: [AppController],
       providers: [
-        { provide: PrismaService, useValue: prisma },
+        { provide: MongoCentralReadinessService, useValue: prisma },
         { provide: TenantStorageReadinessService, useValue: tenantStorage },
       ],
     }).compile();
@@ -300,7 +310,7 @@ describe('application dependency readiness', () => {
     const controller = new AppController(
       {
         isReady: vi.fn().mockResolvedValue(false),
-      } as unknown as PrismaService,
+      } as unknown as MongoCentralReadinessService,
       {
         checkReadiness: vi.fn().mockResolvedValue(false),
       } as unknown as TenantStorageReadinessService,

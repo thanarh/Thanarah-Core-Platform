@@ -310,7 +310,8 @@ describe('authentication configuration', () => {
     expect(
       validateEnv({
         NODE_ENV: 'production',
-        DATABASE_URL: 'mysql://user:password@127.0.0.1:3306/thanarah',
+        PLATFORM_MONGO_URI: 'mongodb://configured-platform.test?tls=true',
+        PLATFORM_MONGO_DATABASE: 'thanarah_test',
         TENANT_STORAGE_PROVIDER: 'mongodb',
         TENANT_STORAGE_MONGO_URI: 'mongodb://configured-non-production-storage?tls=true',
         JWT_ACCESS_SECRET: 'a'.repeat(48),

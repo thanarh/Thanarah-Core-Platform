@@ -4,20 +4,20 @@ import { DatabaseModule } from '../database/database.module';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { FEATURE_PERSISTENCE, PLAN_PERSISTENCE } from '../persistence/platform-persistence.ports';
 import { FeatureController } from './feature.controller';
-import { FeatureRepository } from './feature.repository';
 import { FeatureService } from './feature.service';
 import { PlanController } from './plan.controller';
-import { PlanRepository } from './plan.repository';
 import { PlanService } from './plan.service';
+import { MongoPlatformFeatureRepository } from '../platform-mongo/mongo-platform-feature.repository';
+import { MongoPlatformPlanRepository } from '../platform-mongo/mongo-platform-plan.repository';
 
 @Module({
   imports: [AuthModule, DatabaseModule, PlatformSecurityModule],
   controllers: [PlanController, FeatureController],
   providers: [
-    FeatureRepository,
-    { provide: FEATURE_PERSISTENCE, useExisting: FeatureRepository },
-    PlanRepository,
-    { provide: PLAN_PERSISTENCE, useExisting: PlanRepository },
+    MongoPlatformFeatureRepository,
+    { provide: FEATURE_PERSISTENCE, useExisting: MongoPlatformFeatureRepository },
+    MongoPlatformPlanRepository,
+    { provide: PLAN_PERSISTENCE, useExisting: MongoPlatformPlanRepository },
     PlanService,
     FeatureService,
   ],

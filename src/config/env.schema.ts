@@ -59,14 +59,10 @@ export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'staging', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(3000),
-    /**
-     * MySQL / MariaDB connection string for staging and production.
-     * Replit manages DATABASE_URL for its PostgreSQL database, so development
-     * MySQL connections use MYSQL_DATABASE_URL instead.
-     */
+    /** Legacy tooling only; application persistence is MongoDB. */
     DATABASE_URL: z.string().default(''),
     MYSQL_DATABASE_URL: z.string().default(''),
-    TENANT_STORAGE_PROVIDER: z.enum(['disabled', 'memory', 'mongodb']).default('disabled'),
+    TENANT_STORAGE_PROVIDER: z.enum(['disabled', 'memory', 'mongodb']).default('mongodb'),
     TENANT_STORAGE_MONGO_URI: z.string().default(''),
     PLATFORM_MONGO_URI: z.string().default(''),
     PLATFORM_MONGO_DATABASE: z.string().default(''),
@@ -97,31 +93,34 @@ export const envSchema = z
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
   })
   .superRefine((config, context) => {
+    if (
+      config.PLATFORM_MONGO_URI.trim() &&
+      !/^mongodb(?:\+srv)?:\/\/[^/\s?#]+(?:\/|\?|$)/u.test(config.PLATFORM_MONGO_URI.trim())
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLATFORM_MONGO_URI'],
+        message: 'Platform storage requires a valid MongoDB connection URI',
+      });
+    }
+    if (
+      config.PLATFORM_MONGO_DATABASE.trim() &&
+      (!/^[A-Za-z0-9_-]{1,63}$/u.test(config.PLATFORM_MONGO_DATABASE) ||
+        ['admin', 'config', 'local'].includes(config.PLATFORM_MONGO_DATABASE.toLowerCase()))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['PLATFORM_MONGO_DATABASE'],
+        message: 'Platform storage requires a non-reserved MongoDB database name',
+      });
+    }
     if (config.NODE_ENV !== 'development') {
-      if (!config.DATABASE_URL.trim()) {
+      if (!config.PLATFORM_MONGO_URI.trim()) {
         context.addIssue({
           code: z.ZodIssueCode.custom,
-          path: ['DATABASE_URL'],
-          message: `DATABASE_URL is required in ${config.NODE_ENV}`,
+          path: ['PLATFORM_MONGO_URI'],
+          message: 'Platform MongoDB is required outside development',
         });
-      } else {
-        let validMysqlUrl = false;
-        try {
-          const url = new URL(config.DATABASE_URL);
-          validMysqlUrl =
-            url.protocol === 'mysql:' &&
-            Boolean(url.hostname) &&
-            Boolean(decodeURIComponent(url.pathname.replace(/^\/+/, '')).trim());
-        } catch {
-          // Report only the configuration field, never connection details.
-        }
-        if (!validMysqlUrl) {
-          context.addIssue({
-            code: z.ZodIssueCode.custom,
-            path: ['DATABASE_URL'],
-            message: 'DATABASE_URL must be a valid MySQL URL with a database name',
-          });
-        }
       }
     }
     if (
@@ -158,12 +157,13 @@ export const envSchema = z
     if (
       config.NODE_ENV === 'production' &&
       config.TENANT_STORAGE_PROVIDER === 'mongodb' &&
-      !config.TENANT_STORAGE_MONGO_URI.trim()
+      !config.TENANT_STORAGE_MONGO_URI.trim() &&
+      !config.PLATFORM_MONGO_URI.trim()
     ) {
       context.addIssue({
         code: z.ZodIssueCode.custom,
         path: ['TENANT_STORAGE_MONGO_URI'],
-        message: 'TENANT_STORAGE_MONGO_URI is required in production',
+        message: 'A MongoDB connection for tenant storage is required in production',
       });
     }
     if (

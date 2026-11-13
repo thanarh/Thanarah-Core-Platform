@@ -2,7 +2,7 @@ import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import {
   FacilitySchedulingPolicyRevisionAction,
   FacilitySchedulingPolicyStatus,
-} from '@prisma/client';
+} from '../common/domain-enums';
 
 export class SchedulingPolicyInputDto {
   @ApiProperty({

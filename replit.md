@@ -1,6 +1,6 @@
 # Thanarah Core Platform
 
-Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MySQL/MariaDB (Prisma), targeting Saudi Arabia and the wider region.
+Enterprise healthcare SaaS backend — NestJS 11 + Fastify + MongoDB, targeting Saudi Arabia and the wider region.
 
 ## Authoritative database direction
 
@@ -10,12 +10,17 @@ configuration, and tenant healthcare data. This supersedes the earlier hybrid
 architecture. Do not request a MySQL connection as a prerequisite for completing
 the product.
 
-The MySQL/Prisma descriptions below document the **current implementation and
-historical operating instructions**, not the target architecture. Central Mongo
-adapters are not yet active; do not claim the conversion is complete merely
-because candidates or a Mongo URI exist. Convert and test all central workflows,
-readiness, bootstrap, and operational tools before accepting the Mongo-only
-runtime. Keep tenant isolation and transaction/recovery guarantees intact.
+All 22 central persistence ports now resolve to MongoDB implementations.
+Subscription transfers/settings, the encounter operation ledger, and tenant
+storage registration/activation also use MongoDB. The application does not
+register PrismaService or load generated Prisma classes/SQL clients during its
+compiled runtime test. Historical SQL repositories/migrations remain in the
+repository for reference and legacy tests; do not use their operating
+instructions for the current application.
+
+See `THANARAH_MONGODB_CONVERSION_PROGRESS.md` for current verification results
+and limitations. Source registration alone is not production acceptance.
+Keep tenant isolation and transaction/recovery guarantees intact.
 Do not delete or migrate production data or publish without separate approval.
 Phase 02 and Geidea remain deferred until Phase 01 is accepted on the new target.
 
@@ -25,18 +30,18 @@ Phase 02 and Geidea remain deferred until Phase 01 is accepted on the new target
 |-------|-----------|
 | Runtime | Node.js 22+ |
 | Framework | NestJS 11 + Fastify 5 |
-| Central persistence | MySQL / MariaDB on cPanel — via Prisma 6 |
+| Central persistence | MongoDB official driver; snapshot/majority transactions require a replica set or supported sharded deployment |
 | Tenant persistence | MongoDB Patient, Appointment, and Encounter adapters with a central registry; target provisioning/configuration remains explicit |
 | Language | TypeScript 5 (strict) |
 | Validation | Zod |
 | API Docs | Swagger / OpenAPI at `/docs` |
 | Testing | Vitest |
 
-## Current implementation — two persistence systems pending MongoDB-only conversion
+## Current implementation — MongoDB-only persistence
 
 | System | ORM | Database | Scope |
 |--------|-----|----------|-------|
-| **Thanarah Central Platform** | Prisma 6 | MySQL / MariaDB on cPanel | Global identities, authentication, sessions, roles, permissions, tenant identity and memberships, and other platform metadata |
+| **Thanarah Central Platform** | Official MongoDB driver | Configured central MongoDB database | Global identities, authentication, sessions, roles, permissions, tenant identity and memberships, subscriptions, configuration and audit metadata |
 | **Tenant Healthcare and Operations** | Official MongoDB driver | Isolated MongoDB database per registered target | Tenant-owned healthcare and operational data |
 
 Phase 14A adds a central-platform Tenant/Organization identity; Phase 14B adds
@@ -62,14 +67,15 @@ registry rows store only a connection-reference alias and a database name;
 MongoDB URIs remain runtime secrets. Registry operations are internal and have
 no public CRUD endpoints. No automatic database provisioning or production
 migration is performed. `/health` is liveness-only and `/ready` checks only
-central Prisma/MySQL readiness, never every tenant database.
+central MongoDB transaction/index readiness, never every tenant database.
 
 The current secret mapping accepts only the `primary` connection reference and
-resolves it from `TENANT_STORAGE_MONGO_URI`; unknown aliases fail closed. The
+resolves it from `TENANT_STORAGE_MONGO_URI`, or the central Mongo URI when the
+separate tenant connection is not configured; unknown aliases fail closed. The
 manager caches at most four clients by connection reference and configures each
 driver pool with a maximum of 20 connections and bounded connection timeouts.
 For an existing, manually provisioned tenant database, operators register the
-target inactive. When an operator uses `TenantStorageActivationService` to set
+target inactive. When an operator uses `MongoTenantStorageActivationService` to set
 the target `ACTIVE` or assign an already ACTIVE target as primary, the service
 invokes `MongoTenantPatientStorage.ensureIndexesForTarget` before the registry
 change. This is not run at startup or during ordinary Patient requests; relevant
@@ -443,7 +449,26 @@ consistency limits, and test instructions are documented in
 this phase; no amendment/reopen workflow or standardized diagnosis-code system
 is included.
 
-## Prisma workflow
+## MongoDB development initialization
+
+- Configure `PLATFORM_MONGO_URI` securely and set `PLATFORM_MONGO_DATABASE` to
+  the explicitly approved development database. A separate
+  `TENANT_STORAGE_MONGO_URI` is optional; registered target names remain
+  server-controlled. Do not request a MySQL URL.
+- `npm run mongo:initialize:dev` creates/verifies central indexes and
+  authorization reference catalogs without creating accounts. It requires
+  `NODE_ENV=development` and a dev/test database name, and is idempotent.
+- `npm run bootstrap:platform-admin:dev` securely prompts for the initial
+  development administrator password. It does not reset an existing account
+  or create a default password.
+- `DOCKER_HOST=unix:///var/run/docker.sock bash scripts/test-phase65-replica-set.sh`
+  verifies all Mongo suites and the compiled application/browser journey
+  against disposable loopback-only test databases. `--runtime-only` reruns the
+  application journey after isolated replica-set setup.
+- Production initialization/migration requires separate approval, a source/target
+  inventory, backup and recovery plan, and security/operational acceptance.
+
+## Historical Prisma workflow — not current runtime instructions
 
 ```bash
 npx prisma format                         # format the schema
@@ -457,7 +482,7 @@ data is embedded in versioned migrations. Never point Replit at the production
 cPanel database; production migration execution and `DATABASE_URL`
 configuration belong to the cPanel environment.
 
-## cPanel deployment notes
+## Historical cPanel/SQL deployment notes — not current MongoDB instructions
 
 - Set `DATABASE_URL`, `JWT_ACCESS_SECRET`, `AUTH_TRUSTED_PROXIES`, and `NODE_ENV=production` in the cPanel Node.js application environment.
 - Configure `TENANT_STORAGE_PROVIDER=mongodb` and supply `TENANT_STORAGE_MONGO_URI` through the hosting secret manager before enabling any active tenant target. Never put the URI in registry rows or source control.

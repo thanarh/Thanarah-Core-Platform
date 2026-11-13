@@ -3,7 +3,7 @@ import {
   FacilitySchedulingPolicyRevisionAction,
   FacilitySchedulingPolicyStatus,
   PlatformAuditEventType,
-} from '@prisma/client';
+} from '../common/domain-enums';
 import { z } from 'zod';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';

@@ -1,104 +1,70 @@
-const { PrismaClient } = require('@prisma/client');
-const argon2 = require('argon2');
-const {
-  getSafeDatabaseUrlDiagnostics,
-  resolveCentralDatabaseUrl,
-} = require('../dist/config/database-url-policy');
-
-const EMAIL = 'admin@thanarah.com';
-const FULL_NAME = 'Platform Administrator';
-const ROLE_CODE = 'SUPER_ADMIN';
+const { MongoClient } = require('mongodb');
+const { randomUUID } = require('node:crypto');
+const { provisionPlatformMongoIndexes } = require('../dist/platform-mongo/platform-mongo.indexes');
+const { initializeMongoReferenceData } = require('../dist/platform-mongo/platform-mongo.initialize');
+const { platformUserSchema, platformUserRoleSchema, stableAssignmentId, documentTimestamps } = require('../dist/platform-mongo/platform-mongo.models');
+const { PasswordHasherService } = require('../dist/auth/security/password-hasher.service');
+const { PasswordPolicyService } = require('../dist/auth/security/password-policy.service');
 
 async function main() {
+  const configured = Boolean(process.env.PLATFORM_MONGO_URI && process.env.PLATFORM_MONGO_DATABASE);
+  const safeDatabase = /(?:^|[_-])(?:dev|test)(?:[_-]|$)/iu.test(process.env.PLATFORM_MONGO_DATABASE || '') &&
+    /^[A-Za-z0-9_-]{1,63}$/u.test(process.env.PLATFORM_MONGO_DATABASE || '');
   if (process.argv.includes('--check-config')) {
-    const diagnostics = getSafeDatabaseUrlDiagnostics(
-      process.env.MYSQL_DATABASE_URL,
-      'MYSQL_DATABASE_URL',
-      Object.prototype.hasOwnProperty.call(process.env, 'MYSQL_DATABASE_URL'),
-    );
-    const database = resolveCentralDatabaseUrl({
-      nodeEnv: process.env.NODE_ENV || '',
-      databaseUrl: process.env.DATABASE_URL || '',
-      developmentMysqlUrl: process.env.MYSQL_DATABASE_URL || '',
-    });
-    console.log(JSON.stringify({ ...diagnostics, resolutionStatus: database.status }));
+    console.log(JSON.stringify({ provider: 'mongodb', configured, developmentDatabaseNameSafe: safeDatabase }));
     return;
   }
-
-  if (process.env.NODE_ENV !== 'development') {
-    throw new Error('Blocked: NODE_ENV must be exactly development.');
+  if (process.env.NODE_ENV !== 'development' || !configured || !safeDatabase) {
+    throw new Error('Blocked: explicit development MongoDB configuration and a dev/test database name are required.');
   }
-  if (!process.env.MYSQL_DATABASE_URL) {
-    throw new Error('Blocked: MYSQL_DATABASE_URL is not configured.');
+  const referencesOnly = process.argv.includes('--references-only');
+  let passwordHash;
+  if (!referencesOnly) {
+    if (!process.env.BOOTSTRAP_PASSWORD || process.env.BOOTSTRAP_PASSWORD.length < 14) {
+      throw new Error('Blocked: a password of at least 14 characters is required.');
+    }
+    new PasswordPolicyService().validate(process.env.BOOTSTRAP_PASSWORD);
+    passwordHash = await new PasswordHasherService().hash(process.env.BOOTSTRAP_PASSWORD);
+    process.env.BOOTSTRAP_PASSWORD = '';
   }
-  if (!process.env.BOOTSTRAP_PASSWORD || process.env.BOOTSTRAP_PASSWORD.length < 14) {
-    throw new Error('Blocked: a password of at least 14 characters is required.');
-  }
-
-  const database = resolveCentralDatabaseUrl({
-    nodeEnv: process.env.NODE_ENV,
-    databaseUrl: process.env.DATABASE_URL || '',
-    developmentMysqlUrl: process.env.MYSQL_DATABASE_URL,
-  });
-  if (database.status !== 'ready') {
-    throw new Error(`Blocked: development database configuration is ${database.status}.`);
-  }
-
-  const prisma = new PrismaClient({
-    datasources: { db: { url: database.url } },
+  const client = new MongoClient(process.env.PLATFORM_MONGO_URI, {
+    serverSelectionTimeoutMS: 5000, connectTimeoutMS: 5000, monitorCommands: false,
   });
   try {
+    await client.connect();
+    const db = client.db(process.env.PLATFORM_MONGO_DATABASE);
+    await provisionPlatformMongoIndexes(db);
+    const session = client.startSession();
     try {
-      await prisma.$connect();
-    } catch {
-      throw new Error(
-        'Could not connect to the configured development database. Check its configuration and migrations.',
-      );
-    }
-    const [existingUser, role, permissionCount] = await Promise.all([
-      prisma.user.findUnique({ where: { email: EMAIL }, select: { id: true } }),
-      prisma.platformRole.findUnique({
-        where: { code: ROLE_CODE },
-        select: { id: true, permissions: { select: { permissionId: true } } },
-      }),
-      prisma.platformPermission.count(),
-    ]);
-
-    if (existingUser) {
-      throw new Error('Blocked: the configured platform administrator already exists; no account changes were made.');
-    }
-    if (!role || permissionCount === 0 || role.permissions.length !== permissionCount) {
-      throw new Error(
-        `Blocked: ${ROLE_CODE} does not have every platform permission. Apply the existing development migrations first; this command does not run migrations.`,
-      );
-    }
-
-    const passwordHash = await argon2.hash(process.env.BOOTSTRAP_PASSWORD, {
-      type: argon2.argon2id,
-      memoryCost: 65536,
-      timeCost: 3,
-      parallelism: 1,
-      hashLength: 32,
-    });
-
-    await prisma.user.create({
-      data: {
-        email: EMAIL,
-        fullName: FULL_NAME,
-        passwordHash,
-        platformRoles: { create: { role: { connect: { id: role.id } } } },
-      },
-    });
-
-    console.log(`Created the configured platform administrator with ${ROLE_CODE} on the verified development database.`);
+      await session.withTransaction(async () => {
+        await initializeMongoReferenceData(db, session);
+        if (referencesOnly) return;
+        const existing = await db.collection('platform_users').findOne(
+          { email: 'admin@thanarah.com' }, { session, collation: { locale: 'en', strength: 1 } },
+        );
+        if (existing) throw new Error('The development administrator already exists; no account changes were made.');
+        const role = await db.collection('platform_roles').findOne({ code: 'SUPER_ADMIN' }, { session });
+        if (!role) throw new Error('The platform role catalog is incomplete.');
+        const user = platformUserSchema.parse({
+          _id: randomUUID(), ...documentTimestamps(), schemaVersion: 1,
+          email: 'admin@thanarah.com', fullName: 'Platform Administrator', passwordHash,
+          status: 'ACTIVE', tokenVersion: 0, failedLoginAttempts: 0, lockedUntil: null,
+        });
+        await db.collection('platform_users').insertOne(user, { session });
+        await db.collection('platform_user_roles').insertOne(platformUserRoleSchema.parse({
+          _id: stableAssignmentId(user._id, role._id), userId: user._id, roleId: role._id,
+        }), { session });
+      }, { readConcern: { level: 'snapshot' }, writeConcern: { w: 'majority' } });
+    } finally { await session.endSession(); }
+    console.log(referencesOnly ? 'Initialized MongoDB development indexes and reference catalogs without creating or changing accounts.'
+      : 'Created the development platform administrator with SUPER_ADMIN in MongoDB.');
   } finally {
     process.env.BOOTSTRAP_PASSWORD = '';
-    await prisma.$disconnect();
+    await client.close();
   }
 }
-
-main().catch((error) => {
+main().catch(() => {
   process.env.BOOTSTRAP_PASSWORD = '';
-  console.error(error instanceof Error ? error.message : 'Development bootstrap failed.');
+  console.error('Development MongoDB initialization failed or was blocked; no credentials were printed. Check configuration, prerequisites, and whether the administrator already exists.');
   process.exitCode = 1;
 });

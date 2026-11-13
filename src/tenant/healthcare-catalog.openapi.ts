@@ -1,4 +1,4 @@
-import { TenantCatalogStatus } from '@prisma/client';
+import { TenantCatalogStatus } from '../common/domain-enums';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export class CreateHealthcareCatalogRequestDto {

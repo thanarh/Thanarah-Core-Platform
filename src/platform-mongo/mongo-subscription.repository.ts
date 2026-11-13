@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { PlanStatus, SubscriptionStatus, TenantStatus } from '@prisma/client';
+import { PlanStatus, SubscriptionStatus, TenantStatus } from '../common/domain-enums';
 import type { ClientSession, Collection, Db, TransactionOptions } from 'mongodb';
 import type {
   CreateSubscriptionRecordInput,
@@ -13,6 +13,7 @@ import type {
 } from '../persistence/platform-persistence.ports';
 import { decideSubscriptionTransition } from '../subscriptions/subscription.rules';
 import { PlatformMongoClientManager } from './platform-mongo.client.manager';
+import { MongoTenantAuthorizationContext } from './mongo-tenant-authorization.context';
 import {
   PlatformDocumentConflictError,
   PlatformDocumentValidationError,
@@ -88,6 +89,7 @@ export class MongoSubscriptionRepository implements SubscriptionPersistencePort 
       if (!tenant) return { kind: 'tenant-not-found' };
       if (tenant.status !== TenantStatus.ACTIVE) return { kind: 'tenant-unavailable' };
 
+      await new MongoTenantAuthorizationContext(db, session).touch('platform_plans', input.planId);
       const plan = await db
         .collection<PlatformPlanDocument>('platform_plans')
         .findOne({ _id: input.planId }, { session, projection: { status: 1 } });
@@ -185,13 +187,7 @@ export class MongoSubscriptionRepository implements SubscriptionPersistencePort 
 
   private async lockTenant(db: Db, session: ClientSession, tenantId: string): Promise<void> {
     try {
-      await db
-        .collection<{ _id: string; version: number; schemaVersion: number }>('subscription_locks')
-        .updateOne(
-          { _id: tenantId },
-          { $inc: { version: 1 }, $setOnInsert: { schemaVersion: 1 } },
-          { session, upsert: true },
-        );
+      await new MongoTenantAuthorizationContext(db, session).touch('tenants', tenantId);
     } catch (error) {
       if (this.isDuplicateKey(error)) throw new PlatformDocumentConflictError();
       throw error;

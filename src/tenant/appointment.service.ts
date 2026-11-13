@@ -1,5 +1,5 @@
 import { Inject, Injectable, NotFoundException } from '@nestjs/common';
-import { PlatformAuditEventType } from '@prisma/client';
+import { PlatformAuditEventType } from '../common/domain-enums';
 import { createHash, randomUUID } from 'node:crypto';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';

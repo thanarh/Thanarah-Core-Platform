@@ -1,10 +1,11 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '../config/config.module';
-import { PrismaService } from './prisma.service';
+import { PlatformMongoModule } from '../platform-mongo/platform-mongo.module';
+import { MongoCentralReadinessService } from '../platform-mongo/mongo-central-readiness.service';
+import { MongoEncounterOperationStore } from '../platform-mongo/mongo-encounter-operation.store';
 
 @Module({
-  imports: [ConfigModule],
-  providers: [PrismaService],
-  exports: [PrismaService],
+  imports: [PlatformMongoModule],
+  providers: [MongoCentralReadinessService, MongoEncounterOperationStore],
+  exports: [PlatformMongoModule, MongoCentralReadinessService, MongoEncounterOperationStore],
 })
 export class DatabaseModule {}

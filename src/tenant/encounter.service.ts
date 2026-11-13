@@ -7,7 +7,7 @@ import {
   ServiceUnavailableException,
 } from '@nestjs/common';
 import { createHash, randomUUID } from 'node:crypto';
-import { PlatformAuditEventType } from '@prisma/client';
+import { PlatformAuditEventType } from '../common/domain-enums';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import { PlatformAuditService } from '../platform-security/platform-audit.service';
 import { AppointmentService } from './appointment.service';
@@ -86,8 +86,8 @@ import { TenantStaffScopeService } from './tenant-staff-scope.service';
 import { FacilitySchedulingPolicyService } from './appointment-scheduling-policy.service';
 import { localDateRangeToUtc } from './appointment-timezone';
 import type { CreatePlatformAuditInput } from '../platform-security/platform-security.types';
-import { Prisma } from '@prisma/client';
-import { PrismaService } from '../database/prisma.service';
+import type { Prisma } from '@prisma/client';
+import { MongoEncounterOperationStore } from '../platform-mongo/mongo-encounter-operation.store';
 
 const MAX_ENCOUNTER_HISTORY_EVENTS = 5_000;
 
@@ -127,7 +127,9 @@ export class EncounterService {
     private readonly schedulingPolicies: FacilitySchedulingPolicyService,
     private readonly authorization: TenantAuthorizationService,
     private readonly audit: PlatformAuditService,
-    @Optional() private readonly prisma?: PrismaService,
+    @Optional()
+    @Inject(MongoEncounterOperationStore)
+    private readonly operations?: MongoEncounterOperationStore,
   ) {}
 
   async createFromAppointment(
@@ -1107,7 +1109,7 @@ export class EncounterService {
     if (!idempotency) throw new EncounterInputValidationError();
     let operation;
     try {
-      operation = await this.prisma!.encounterOperation.findUnique({
+      operation = await this.operations!.encounterOperation.findUnique({
         where: { id: idempotency.operationId },
       });
     } catch {
@@ -1144,13 +1146,14 @@ export class EncounterService {
       typeof requestedLimit === 'number' && Number.isInteger(requestedLimit)
         ? Math.min(25, Math.max(1, requestedLimit))
         : 10;
-    if (!this.prisma) return { items: [{ operationId: '', outcome: 'DEPENDENCY_UNAVAILABLE' }] };
+    if (!this.operations)
+      return { items: [{ operationId: '', outcome: 'DEPENDENCY_UNAVAILABLE' }] };
 
     const claimTime = new Date();
     const staleClaimBefore = new Date(claimTime.getTime() - 60_000);
     let operations;
     try {
-      operations = await this.prisma.encounterOperation.findMany({
+      operations = await this.operations.encounterOperation.findMany({
         where: {
           tenantId: context.tenantId,
           auditDeliveryStatus: { in: ['PENDING', 'FAILED'] },
@@ -1165,7 +1168,7 @@ export class EncounterService {
     }
     const items: Array<{ operationId: string; outcome: string }> = [];
     for (const operation of operations) {
-      const claim = await this.prisma.encounterOperation.updateMany({
+      const claim = await this.operations.encounterOperation.updateMany({
         where: {
           id: operation.id,
           tenantId: context.tenantId,
@@ -1226,7 +1229,7 @@ export class EncounterService {
           subjectTenantId: operation.tenantId,
           metadata: operation.auditMetadata as Prisma.InputJsonObject,
         });
-        const confirmed = await this.prisma.encounterOperation.updateMany({
+        const confirmed = await this.operations.encounterOperation.updateMany({
           where: {
             id: operation.id,
             tenantId: context.tenantId,
@@ -1239,7 +1242,7 @@ export class EncounterService {
           continue;
         }
         if (!delivered) {
-          const dependencyReady = await this.prisma.isReady().catch(() => false);
+          const dependencyReady = await this.operations.isReady().catch(() => false);
           const failure = dependencyReady ? 'AUDIT_DELIVERY_FAILED' : 'DEPENDENCY_UNAVAILABLE';
           await this.finishReconciliation(operation.id, claimedAttempt, failure);
           items.push({
@@ -1250,7 +1253,7 @@ export class EncounterService {
           });
           continue;
         }
-        const finalized = await this.prisma.encounterOperation.updateMany({
+        const finalized = await this.operations.encounterOperation.updateMany({
           where: {
             id: operation.id,
             tenantId: context.tenantId,
@@ -1284,7 +1287,7 @@ export class EncounterService {
     failure: string,
   ): Promise<void> {
     try {
-      await this.prisma?.encounterOperation.updateMany({
+      await this.operations?.encounterOperation.updateMany({
         where: { id, attemptCount },
         data: {
           auditDeliveryStatus:
@@ -1304,7 +1307,7 @@ export class EncounterService {
     reason: string,
   ): Promise<void> {
     try {
-      await this.prisma?.encounterOperation.updateMany({
+      await this.operations?.encounterOperation.updateMany({
         where: { id, attemptCount, mutationState: 'PREPARED' },
         data: {
           mutationState: 'AMBIGUOUS',
@@ -1735,7 +1738,7 @@ export class EncounterService {
     payload?: unknown,
   ): EncounterCreateIdempotencyDescriptor | null {
     if (key === undefined) return null;
-    if (!this.prisma) {
+    if (!this.operations) {
       throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
     }
     if (key.length < 1 || key.length > 128 || !/^[\x21-\x7e]+$/u.test(key)) {
@@ -1767,9 +1770,11 @@ export class EncounterService {
     ) {
       throw new EncounterIdempotencyConflictError();
     }
-    let operation: Awaited<ReturnType<PrismaService['encounterOperation']['findUnique']>>;
+    let operation: Awaited<
+      ReturnType<MongoEncounterOperationStore['encounterOperation']['findUnique']>
+    >;
     try {
-      operation = await this.prisma!.encounterOperation.findUnique({
+      operation = await this.operations!.encounterOperation.findUnique({
         where: { id: idempotency.operationId },
       });
     } catch {
@@ -1823,7 +1828,7 @@ export class EncounterService {
     idempotency?: EncounterIdempotencyDescriptor,
   ): Promise<void> {
     const event = record.history.at(-1);
-    if (!event || !this.prisma) return;
+    if (!event || !this.operations) return;
     if (idempotency) event.id = idempotency.operationId;
     const auditMetadata = {
       resourceType: 'encounter',
@@ -1840,7 +1845,7 @@ export class EncounterService {
         : {}),
     };
     try {
-      await this.prisma.encounterOperation.create({
+      await this.operations.encounterOperation.create({
         data: {
           id: event.id,
           historyEventId: event.id,
@@ -1858,7 +1863,7 @@ export class EncounterService {
     } catch {
       if (idempotency) {
         try {
-          const existing = await this.prisma.encounterOperation.findUnique({
+          const existing = await this.operations.encounterOperation.findUnique({
             where: { id: idempotency.operationId },
           });
           if (existing) {
@@ -1870,7 +1875,7 @@ export class EncounterService {
               existing.mutationState === 'NOT_APPLIED' &&
               existing.expectedVersion === event.fromVersion
             ) {
-              const rearmed = await this.prisma.encounterOperation.updateMany({
+              const rearmed = await this.operations.encounterOperation.updateMany({
                 where: {
                   id: existing.id,
                   tenantId: context.tenantId,
@@ -1915,7 +1920,7 @@ export class EncounterService {
     payload: unknown,
   ): EncounterIdempotencyDescriptor | undefined {
     if (key === undefined) return undefined;
-    if (!this.prisma) {
+    if (!this.operations) {
       throw new ServiceUnavailableException('Encounter operation tracking is unavailable');
     }
     if (key.length < 1 || key.length > 128 || !/^[\x21-\x7e]+$/u.test(key)) {
@@ -1938,7 +1943,7 @@ export class EncounterService {
     return `${id.slice(0, 8)}-${id.slice(8, 12)}-${id.slice(12, 16)}-${id.slice(16, 20)}-${id.slice(20)}`;
   }
 
-  private idempotencyMetadata(value: Prisma.JsonValue): Record<string, unknown> | null {
+  private idempotencyMetadata(value: unknown): Record<string, unknown> | null {
     return value && typeof value === 'object' && !Array.isArray(value)
       ? (value as Record<string, unknown>)
       : null;
@@ -1953,9 +1958,11 @@ export class EncounterService {
     eventType: PlatformAuditEventType,
   ): Promise<EncounterResponse | null> {
     if (!idempotency) return null;
-    let operation: Awaited<ReturnType<PrismaService['encounterOperation']['findUnique']>>;
+    let operation: Awaited<
+      ReturnType<MongoEncounterOperationStore['encounterOperation']['findUnique']>
+    >;
     try {
-      operation = await this.prisma!.encounterOperation.findUnique({
+      operation = await this.operations!.encounterOperation.findUnique({
         where: { id: idempotency.operationId },
       });
     } catch {
@@ -2001,7 +2008,7 @@ export class EncounterService {
 
   private async markOperationNotApplied(id: string, tenantId: string): Promise<void> {
     try {
-      await this.prisma?.encounterOperation.updateMany({
+      await this.operations?.encounterOperation.updateMany({
         where: { id, tenantId, mutationState: 'PREPARED' },
         data: {
           mutationState: 'NOT_APPLIED',
@@ -2048,9 +2055,9 @@ export class EncounterService {
           : {}),
       },
     };
-    if (event && this.prisma) {
+    if (event && this.operations) {
       try {
-        await this.prisma.encounterOperation.updateMany({
+        await this.operations.encounterOperation.updateMany({
           where: {
             id: event.id,
             tenantId: context.tenantId,
@@ -2068,9 +2075,9 @@ export class EncounterService {
       }
     }
     const delivered = await this.audit.recordAudit(auditInput);
-    if (event && this.prisma) {
+    if (event && this.operations) {
       try {
-        await this.prisma.encounterOperation.updateMany({
+        await this.operations.encounterOperation.updateMany({
           where: { id: event.id, tenantId: context.tenantId, auditDeliveryStatus: 'PENDING' },
           data: {
             auditDeliveryStatus: delivered ? 'DELIVERED' : 'FAILED',

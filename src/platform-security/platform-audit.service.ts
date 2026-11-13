@@ -3,7 +3,7 @@ import {
   PlatformAuditEventType,
   PlatformSecurityEventStatus,
   PlatformSecurityEventType,
-} from '@prisma/client';
+} from '../common/domain-enums';
 import { AuthorizationForbiddenError } from '../auth/errors/authorization.errors';
 import type { AuthenticatedPlatformUser } from '../auth/auth.types';
 import type { PlatformPermissionCode } from '../auth/platform-authorization.constants';
