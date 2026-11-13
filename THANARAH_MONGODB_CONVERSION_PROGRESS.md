@@ -106,5 +106,7 @@ or connection details were printed.
 - Broad production readiness, all possible failures and full historical
   MySQL/Mongo semantic equivalence are not claimed.
 
-Phase 01 remains unaccepted. Phase 02, Geidea, production data transfer and
-publishing remain deferred.
+Phase 01 remains unaccepted. The user subsequently explicitly authorized
+Phase 02 internal-company development with configurable, independently approved
+policies; see `docs/PHASE_02_INTERNAL_OPERATIONS.md`. This does not retroactively
+accept Phase 01. Geidea, production data transfer and publishing remain deferred.

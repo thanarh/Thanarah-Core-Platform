@@ -94,6 +94,8 @@ const transferSchema = z
   .strict();
 type Settings = z.infer<typeof settingsSchema>;
 type Transfer = z.infer<typeof transferSchema>;
+/** Read-only evidence contract for linking issued SaaS invoices to reviewed transfers. */
+export const mongoSubscriptionTransferSchema = transferSchema;
 type ReceiptRecord = Awaited<ReturnType<SubscriptionPaymentService['getTransferReceipt']>>;
 
 @Injectable()

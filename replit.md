@@ -22,7 +22,20 @@ See `THANARAH_MONGODB_CONVERSION_PROGRESS.md` for current verification results
 and limitations. Source registration alone is not production acceptance.
 Keep tenant isolation and transaction/recovery guarantees intact.
 Do not delete or migrate production data or publish without separate approval.
-Phase 02 and Geidea remain deferred until Phase 01 is accepted on the new target.
+The user subsequently explicitly requested Phase 02 (internal company operations)
+and approved configurable policies with independent approval before payroll,
+commission or profit posting. Phase 02 development is now authorized; this does
+not retroactively mark Phase 01 as accepted or authorize production rollout.
+Geidea and publishing remain deferred.
+
+The user then explicitly requested Phase 03 (customer journey and packages),
+with closure requiring the real journey from registration through account receipt,
+and asked to continue without connecting WhatsApp. Phase 03 development is
+authorized, but WhatsApp must remain honestly unconfigured and activation/handoff
+must not bypass verification. See `docs/PHASE_03_CUSTOMER_JOURNEY.md`; no earlier
+phase or production rollout is implicitly accepted. Configure and independently
+publish real package terms, document requirements, and seller information instead
+of inventing prices, legal policies, or tax rates.
 
 ## Stack
 

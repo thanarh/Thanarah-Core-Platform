@@ -20,7 +20,7 @@ import { AppLoggerService } from './logger.service';
             : undefined,
           customProps: (): Record<string, string> => ({ service: 'thanarah' }),
           redact: {
-            paths: ['req.headers.authorization', 'req.headers.cookie'],
+            paths: ['req.headers.authorization', 'req.headers.cookie', 'res.headers["set-cookie"]'],
             remove: true,
           },
         },

@@ -29,3 +29,10 @@
 - [Vitest package alignment](vitest-package-alignment.md) — keep Vitest and its coverage provider on the same exact release when npm peer resolution fails.
 - [Browser focus during page loads](browser-focus-during-load.md) — let asynchronous workspace rendering settle before testing focus; root replacement can drop focus.
 - [Mongo tenant event expiry](mongo-tenant-event-expiry.md) — TTL indexes require BSON dates; filter reads on the same expiry field because TTL cleanup is asynchronous.
+- [تشغيل ثنارة داخليًا](thanarah-internal-operations.md) — نطاق المرحلة الثانية؛ الإغلاق يتطلب صلاحيات دقيقة وتدقيقًا ومطابقة مالية.
+- [Strict shared-document fences](strict-document-fences.md) — reference locks must preserve owning schemas; sparse fixtures can miss a later authentication failure.
+- [رحلة العميل والباقات](thanarah-customer-journey.md) — نطاق المرحلة الثالثة؛ الإغلاق يتطلب رحلة مثبتة من التسجيل حتى استلام الحساب.
+- [نطاق Smart Clinic](thanarah-smart-clinic-scope.md) — المرحلة الرابعة؛ القبول بسيناريو عيادة اصطناعي من الحجز حتى إغلاق الزيارة واختبار واجهات الأدوار.
+- [نطاق Website Builder](thanarah-website-builder-scope.md) — المرحلة الخامسة؛ الإغلاق يتطلب موقع عيادة منشورًا على نطاق تجريبي، لا معاينة فقط.
+- [نطاق المشاريع وGitHub](thanarah-projects-github-scope.md) — المرحلة السادسة؛ الإغلاق بدورة تعديل تجريبي من الطلب إلى الاختبار والنشر والتوثيق.
+- [نطاق Thanarah AI](thanarah-ai-scope.md) — المرحلة السابعة؛ معرفة مستقلة لكل عيادة وقبول المعرفة والصلاحيات لكل نوع مساعد وقياس الجودة والسرعة والتكلفة.
