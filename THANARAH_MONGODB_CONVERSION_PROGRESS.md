@@ -72,6 +72,7 @@ between separate central and clinical clusters is claimed.
 | Restarted development preview | Login screen rendered; authenticated workspace tested separately on the disposable Mongo application |
 | Current development endpoints after restart | `/health` 200; `/ready` 200, central Mongo and tenant provider available |
 | Approved development Mongo initialization | Central indexes and authorization reference catalogs initialized; accounts not created or changed |
+| Subsequent approved development administrator setup | Active SUPER_ADMIN created using a securely supplied password; HTTP login returned 200 and verification-session logout returned 204 |
 
 The 84 tests skipped by the general command are the 78 Mongo tests above plus
 6 historical MySQL portal tests. Mongo tests were run explicitly with
@@ -94,9 +95,12 @@ or connection details were printed.
 - Existing business data has not been migrated. Any production or existing-data
   cutover needs a source/target inventory, backup/restore proof, reconciliation,
   security review and separate approval.
-- No administrator account or default password was created on the saved
-  connection. The development-only administrator command securely prompts for
-  a password and refuses to reset an existing account.
+- After separate user approval and secure password entry, the initial development
+  administrator was created on the saved development connection. Active status
+  and SUPER_ADMIN assignment were verified. After configuring the missing
+  JWT signing secret and restarting, HTTP login returned 200 and logout of the
+  verification session returned 204. No default password was used and no existing
+  account was reset. This does not establish production authentication readiness.
 - The historical SQL test suites are retained, not treated as current runtime
   requirements or a request for a MySQL connection.
 - Broad production readiness, all possible failures and full historical
