@@ -42,3 +42,169 @@ body.thanarah-needs-auth .thanarah-auth-gate { display: block; min-height: 40dvh
   .thanarah-auth { padding: 20px; max-height: calc(100dvh - 24px); }
   .thanarah-auth h2 { font-size: 25px; }
 }
+
+/* A quieter, more deliberate account panel: one clear title, light-touch
+   segmented controls, and generous form rhythm in the existing dialog. */
+.thanarah-auth {
+  width: min(456px, calc(100% - 28px));
+  max-height: calc(100dvh - 28px);
+  padding: clamp(22px, 5vw, 34px);
+  border: 1px solid #c9c7b9;
+  border-radius: 3px;
+  background: #f5f0e9;
+  color: #292c25;
+  font-family: 'Tajawal', 'Manrope', sans-serif;
+  line-height: 1.65;
+}
+.thanarah-auth::backdrop { background: rgb(18 28 26 / 72%); }
+.thanarah-auth .ta-head {
+  min-height: 42px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #d8d0c7;
+}
+.thanarah-auth .ta-brand {
+  gap: 9px;
+  color: #183c2b;
+  font-size: 18px;
+  font-weight: 800;
+}
+.thanarah-auth .ta-brand img { width: 34px; height: 34px; object-fit: contain; }
+.thanarah-auth .ta-close {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #d8d0c7;
+  border-radius: 50%;
+  color: #292c25;
+  font-size: 23px;
+  line-height: 1;
+}
+.thanarah-auth .ta-close:hover { background: #e8e2d9; }
+.thanarah-auth h2 {
+  margin: 22px 0 4px;
+  color: #183c2b;
+  font-size: clamp(25px, 6vw, 31px);
+  font-weight: 800;
+  line-height: 1.35;
+}
+.thanarah-auth p { margin: 7px 0 13px; }
+.thanarah-auth .ta-description,
+.thanarah-auth .ta-help { color: #66675f; font-size: 14px; line-height: 1.7; }
+.thanarah-auth .ta-tabs {
+  display: flex;
+  gap: 0;
+  margin: 18px 0;
+  border-bottom: 1px solid #c9c7b9;
+}
+.thanarah-auth button,
+.thanarah-auth input {
+  box-sizing: border-box;
+  min-height: 46px;
+  border: 1px solid #c9c7b9;
+  border-radius: 2px;
+  color: #292c25;
+  font: inherit;
+}
+.thanarah-auth button { padding: 9px 13px; background: #eee9e1; cursor: pointer; }
+.thanarah-auth .ta-tabs button {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 43px;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: 0;
+  color: #66675f;
+  background: transparent;
+  font-size: 14px;
+  font-weight: 700;
+}
+.thanarah-auth .ta-tabs button[aria-pressed="true"] {
+  color: #183c2b;
+  background: #e9e9df;
+}
+.thanarah-auth .ta-tabs button[aria-pressed="true"]::after {
+  position: absolute;
+  right: 12px;
+  bottom: -1px;
+  left: 12px;
+  height: 2px;
+  background: #183c2b;
+  content: '';
+}
+.thanarah-auth form,
+.thanarah-auth .ta-phone { display: grid; gap: 8px; }
+.thanarah-auth label { color: #45574b; font-size: 13px; font-weight: 700; }
+.thanarah-auth input {
+  width: 100%;
+  min-height: 48px;
+  padding: 10px 12px;
+  background: #fbf9f4;
+}
+.thanarah-auth input:focus-visible,
+.thanarah-auth button:focus-visible {
+  outline: 2px solid #183c2b;
+  outline-offset: 2px;
+}
+.thanarah-auth .ta-submit {
+  width: 100%;
+  min-height: 49px;
+  margin-top: 10px;
+  border-color: #183c2b;
+  color: #f5f0e9;
+  background: #183c2b;
+  font-weight: 800;
+}
+.thanarah-auth .ta-submit:hover:not(:disabled) { background: #294631; }
+.thanarah-auth button:disabled { cursor: not-allowed; opacity: .62; }
+.thanarah-auth input[readonly] { background: #e8e2d9; }
+.thanarah-auth .ta-phone [role="status"] {
+  margin: 4px 0;
+  padding: 11px 13px;
+  border-inline-start: 2px solid #8a7656;
+  color: #4e574d;
+  background: #e9e8df;
+  font-size: 13px;
+  line-height: 1.65;
+}
+.thanarah-auth .ta-phone button:disabled {
+  width: 100%;
+  border-color: #c9c7b9;
+  color: #66675f;
+  background: #e8e2d9;
+  font-size: 13px;
+}
+.thanarah-auth .ta-message { color: #853f32; font-size: 14px; overflow-wrap: anywhere; }
+.thanarah-auth .ta-message[role="status"] { color: #365c45; }
+.thanarah-auth [hidden] { display: none !important; }
+.thanarah-auth input { font-size: 16px; }
+
+@media (max-width: 520px) {
+  .thanarah-auth {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 20px);
+    padding: 20px 18px;
+  }
+  .thanarah-auth h2 { margin-top: 18px; }
+  .thanarah-auth .ta-tabs { margin: 14px 0; }
+}
+
+.thanarah-auth { border-radius: 12px; }
+.thanarah-auth .ta-brand { font-size: 21px; }
+.thanarah-auth .ta-brand img { width: 40px; height: 40px; }
+.thanarah-auth .ta-close { flex: 0 0 44px; border-radius: 8px; }
+.thanarah-auth .ta-account-tabs { margin-bottom: 18px; }
+.thanarah-auth .ta-account-tabs button[aria-pressed="true"] { background: transparent; }
+.thanarah-auth .ta-method-tabs {
+  margin-block: 14px 18px;
+  padding: 4px;
+  gap: 4px;
+  border: 1px solid #d8d0c7;
+  border-radius: 9px;
+  background: #e9e8df;
+}
+.thanarah-auth .ta-method-tabs button { min-height: 40px; border: 1px solid transparent; border-radius: 6px; }
+.thanarah-auth .ta-method-tabs button[aria-pressed="true"] { border-color: #c9c7b9; background: #fffdf7; }
+.thanarah-auth .ta-method-tabs button[aria-pressed="true"]::after { display: none; }
+.thanarah-auth input, .thanarah-auth .ta-submit { border-radius: 7px; }
+.thanarah-auth .ta-description { font-size: 13px; }
+.thanarah-auth .ta-message:empty, .thanarah-auth [data-auth-reference]:empty { display: none; }

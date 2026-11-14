@@ -204,10 +204,10 @@ describe('Shared sign-in and customer registration dialog', () => {
     expect(source).toContain('dialog.showModal()');
     expect(source).toContain('opener.focus({ preventScroll: true })');
   });
-  it('keeps the shared dialog trigger visible while scrolling and reflows mobile actions', () => {
+  it('keeps the shared dialog trigger visible and mobile actions on one row', () => {
     const css = readFileSync('public/assets/thanarah-shell.css', 'utf8');
     expect(css).toMatch(/\.thanarah-shell-header\s*\{[^}]*position: sticky;[^}]*top: 0;/u);
-    expect(css).toMatch(/\.thanarah-shell-auth-actions\s*\{[^}]*grid-column: 1 \/ -1;/u);
+    expect(css).toMatch(/\.thanarah-shell-auth-actions\s*\{[^}]*grid-column: 2;[^}]*grid-row: 1;/u);
     expect(readFileSync('public/assets/thanarah-auth.css', 'utf8')).not.toContain(
       'body:has(.thanarah-auth[open])',
     );

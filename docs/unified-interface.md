@@ -22,9 +22,13 @@ shell stylesheet and the authentication and shell scripts once, in that order.
 | Clinical and operational | `/appointments/`, `/patients/`, `/encounters/`, `/finance/`, `/communications/` |
 
 The homepage identity, local fonts, connected Arabic lettering, restrained
-palette and absence of decorative motion are preserved. Mobile uses the same
-identity and content hierarchy with responsive reflow. Its header actions occupy
-their own row rather than overflowing the screen or shrinking into tiny targets.
+palette and absence of decorative motion are preserved. The owner's corrected
+mobile requirement preserves the laptop composition: images stay alongside text
+in the same order, benefit/solution rows retain four columns, packages retain
+three, and service cards retain two. Spacing and typography adjust instead of
+stacking those compositions. The sticky shared header keeps brand, account
+actions, language and menu in one row down to 320 px, with 44 px account/menu
+targets. At the narrowest width, the logo remains and its redundant name hides.
 Complex operational tables keep their existing contained scrolling.
 
 ## Supplied images
@@ -37,6 +41,19 @@ Complex operational tables keep their existing contained scrolling.
 The two optimized files total about 224 KiB. The conceptual-image notices remain;
 these images are not evidence of an actual office or a released mobile app.
 The previously removed facade image is not restored.
+
+The supplied symbol, `attached_assets/dummy_1794687995384.png`, is the only
+brand mark. `node scripts/build-brand-assets.cjs` reproduces transparent image
+aliases, a self-contained SVG wrapper, browser ICO and 16/32/180/192/512 px
+icons. Cropping excludes faint peripheral alpha noise without redrawing the
+symbol. Verify transparency in the encoded PNG, not just the conversion buffer.
+Legacy inversion filters and the launcher's canvas recoloring are disabled or
+removed, so the original greens remain unchanged.
+
+The shared header/nav no longer has a separate “Team access” entry. Existing
+staff routes still show generic sign-in and retain their authorization checks.
+Browser and Apple icons are set on every shared-shell route, with versioned
+icon URLs to avoid a stale browser favicon.
 
 ## Authentication behavior
 
@@ -63,6 +80,15 @@ The previously removed facade image is not restored.
   It sends no messages, accepts no test OTP, and creates no phone session.
 
 ## Verification
+
+Latest presentation revision: 152 targeted tests passed across the public-site,
+plain-interface, shared-auth, customer-state and brand/compact-layout suites.
+TypeScript, ESLint for the changed tests, JavaScript syntax and diff whitespace
+checks passed. Screenshots covered home at 390 px, services at 320/390/768 px,
+and the real registration dialog at 390 px. This presentation revision did not
+repeat account creation or staff-role browser journeys; those behaviors were
+not changed. Unauthenticated customer initialization returns an expected 401
+before displaying sign-in. Icon and image HTTP endpoints returned 200.
 
 - 124 targeted tests passed across the public renderers, lightweight presentation,
   customer mutation state, shared entrypoint integration, modal submission,

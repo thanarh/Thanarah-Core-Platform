@@ -38,3 +38,4 @@
 - [نطاق Thanarah AI](thanarah-ai-scope.md) — المرحلة السابعة؛ معرفة مستقلة لكل عيادة وقبول المعرفة والصلاحيات لكل نوع مساعد وقياس الجودة والسرعة والتكلفة.
 - [شخصية موقع ثنارة](thanarah-public-brand.md) — منظومة تقنية صحية ذات شخصية؛ لا قوالب SaaS مكررة أو صور مختلقة أو حركة زخرفية.
 - [Modal scroll preservation](modal-scroll-preservation.md) — off-screen triggers can scroll into view before the click handler captures the page offset.
+- [Brand image transparency](brand-image-transparency.md) — verify encoded PNG transparency; palette conversion can drop alpha despite a transparent intermediate buffer.

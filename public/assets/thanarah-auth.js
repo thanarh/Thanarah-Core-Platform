@@ -60,10 +60,10 @@
     dialog.lang = ar() ? 'ar' : 'en';
     dialog.dir = ar() ? 'rtl' : 'ltr';
     dialog.innerHTML = `<div class="ta-head"><a href="/" class="ta-brand"><img src="/assets/logo-mark.svg" width="34" height="34" alt=""><span>${text('ثنارة', 'Thanarah')}</span></a><button type="button" class="ta-close" data-auth-close aria-label="${text('إغلاق', 'Close')}">×</button></div>
-      <h2 id="thanarah-auth-title">${register ? text('إنشاء حساب', 'Create an account') : audience === 'staff' ? text('دخول الفريق', 'Team sign-in') : text('تسجيل الدخول', 'Sign in')}</h2>
+      <h2 id="thanarah-auth-title">${register ? text('إنشاء حساب', 'Create an account') : text('تسجيل الدخول', 'Sign in')}</h2>
       <p class="ta-description">${audience === 'staff' ? text('لحسابات الفريق المخوّلة. تحدد صلاحيات حسابك مساحات العمل المتاحة.', 'For authorized team accounts. Your permissions determine available workspaces.') : text('حساب العميل لمتابعة طلباتك. إنشاء الحساب لا يفعّل عيادة أو يمنح صلاحيات موظف.', 'Your customer account follows your requests. Creating an account does not activate a clinic or grant staff permissions.')}</p>
-      ${audience === 'customer' ? `<div class="ta-tabs" aria-label="${text('نوع العملية', 'Account action')}"><button type="button" data-auth-mode="login" aria-pressed="${!register}">${text('تسجيل الدخول', 'Sign in')}</button><button type="button" data-auth-mode="register" aria-pressed="${register}">${text('إنشاء حساب', 'Create account')}</button></div>` : ''}
-      <div class="ta-tabs" aria-label="${text('طريقة الدخول', 'Sign-in method')}"><button type="button" data-auth-method="email" aria-pressed="${method === 'email'}">${text('البريد الإلكتروني', 'Email')}</button><button type="button" data-auth-method="phone" aria-pressed="${method === 'phone'}">${text('رقم الجوال', 'Mobile number')}</button></div>
+      ${audience === 'customer' ? `<div class="ta-tabs ta-account-tabs" role="group" aria-label="${text('نوع العملية', 'Account action')}"><button type="button" data-auth-mode="login" aria-pressed="${!register}">${text('تسجيل الدخول', 'Sign in')}</button><button type="button" data-auth-mode="register" aria-pressed="${register}">${text('إنشاء حساب', 'Create account')}</button></div>` : ''}
+      <div class="ta-tabs ta-method-tabs" role="group" aria-label="${text('طريقة الدخول', 'Sign-in method')}"><button type="button" data-auth-method="email" aria-pressed="${method === 'email'}">${text('البريد الإلكتروني', 'Email')}</button><button type="button" data-auth-method="phone" aria-pressed="${method === 'phone'}">${text('رقم الجوال', 'Mobile number')}</button></div>
       ${method === 'phone' ? `<div class="ta-phone"><label for="ta-phone">${text('رقم الجوال الدولي', 'International mobile number')}</label><input id="ta-phone" type="tel" dir="ltr" autocomplete="tel" placeholder="+9665…" value="${escape(draft.phone)}"><p role="status">${text('التحقق برقم الجوال عبر واتساب غير مفعّل بعد. ينتظر ربط الخدمة؛ لم تُرسل أي رسالة. يمكنك استخدام البريد الإلكتروني الآن.', 'WhatsApp mobile verification is not enabled yet. It awaits a provider connection; no message has been sent. You can use email now.')}</p><button type="button" disabled>${text('إرسال رمز عبر واتساب غير متاح حاليًا', 'WhatsApp verification is not available yet')}</button></div>` : `
       <form id="thanarah-auth-form">
       ${register ? `<label for="ta-name">${text('الاسم الكامل', 'Full name')}</label><input id="ta-name" name="fullName" autocomplete="name" maxlength="191" required value="${escape(draft.fullName)}">` : ''}
@@ -76,7 +76,8 @@
       lockRegistration();
       message(text('نتيجة إنشاء الحساب لم تُحسم. أعد المحاولة بالبيانات نفسها والمرجع نفسه.', 'Registration outcome is uncertain. Retry with the same details and operation reference.'));
     }
-    dialog.querySelector('input, button[data-auth-mode], .ta-close')?.focus();
+    const initialFocus = dialog.querySelector('input') || dialog.querySelector('button[data-auth-mode]') || dialog.querySelector('.ta-close');
+    initialFocus?.focus({ preventScroll: true });
   }
   function lockRegistration() {
     dialog.querySelectorAll('input').forEach(input => { input.readOnly = true; });

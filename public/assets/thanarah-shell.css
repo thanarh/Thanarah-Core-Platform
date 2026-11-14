@@ -501,3 +501,88 @@ html:lang(ar) body,
 html:lang(ar) body * {
   letter-spacing: normal !important;
 }
+
+/* Keep the shared masthead in one compact, sticky row before the desktop
+   navigation runs out of room. The menu remains the navigation affordance. */
+@media (max-width: 900px) {
+  .thanarah-shell-inner {
+    width: calc(100% - 28px);
+    min-height: 64px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto auto;
+    align-items: center;
+    gap: 5px;
+    padding-block: 6px;
+  }
+  .thanarah-shell-brand { grid-column: 1; grid-row: 1; min-width: 0; }
+  .thanarah-shell-brand img { width: 34px; height: 34px; }
+  .thanarah-shell-brand span { font-size: 16px; }
+  .thanarah-shell-nav {
+    display: none;
+    position: absolute;
+    inset: 100% 0 auto;
+    z-index: 103;
+    padding: 8px 20px 15px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    background: #2d2f27;
+  }
+  .thanarah-shell-nav.is-open { display: flex; }
+  .thanarah-shell-auth-actions {
+    grid-column: 2;
+    grid-row: 1;
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    gap: 4px;
+  }
+  .thanarah-shell-auth-actions > * { flex: 0 0 auto; }
+  .thanarah-shell-actions { display: contents; }
+  .thanarah-shell-language { grid-column: 3; grid-row: 1; min-height: 40px; padding-inline: 6px; }
+  .thanarah-shell-menu { grid-column: 4; grid-row: 1; display: grid; min-width: 40px; min-height: 40px; }
+  .thanarah-shell-action {
+    min-height: 38px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+  .thanarah-shell-nav-staff { display: none; }
+}
+
+@media (max-width: 390px) {
+  .thanarah-shell-inner { width: calc(100% - 20px); gap: 3px; }
+  .thanarah-shell-brand { gap: 4px; }
+  .thanarah-shell-brand img { width: 31px; height: 31px; }
+  .thanarah-shell-brand span { font-size: 14px; }
+  .thanarah-shell-auth-actions { gap: 3px; }
+  .thanarah-shell-action { min-height: 36px; padding-inline: 6px; font-size: 11px; }
+  .thanarah-shell-language { min-width: 34px; padding-inline: 4px; font-size: 10px; }
+  .thanarah-shell-menu { min-width: 36px; min-height: 36px; }
+}
+
+@media (max-width: 340px) {
+  .thanarah-shell-inner { width: calc(100% - 14px); gap: 2px; }
+  .thanarah-shell-brand img { width: 28px; height: 28px; }
+  .thanarah-shell-brand span { font-size: 13px; }
+  .thanarah-shell-auth-actions { gap: 2px; }
+  .thanarah-shell-action { min-height: 34px; padding-inline: 5px; font-size: 10px; }
+  .thanarah-shell-language { min-width: 31px; padding-inline: 2px; }
+  .thanarah-shell-menu { min-width: 34px; min-height: 34px; }
+}
+
+/* The owner's symbol retains its original greens, including on legacy
+   sidebars that previously inverted the old mark to white. */
+img[src*="/assets/logo-"] { object-fit: contain; filter: none !important; }
+.thanarah-shell-brand img {
+  padding: 2px;
+  border-radius: 7px;
+  background: #f5f0e9;
+}
+@media (max-width: 900px) {
+  .thanarah-shell-action { min-height: 44px; font-size: 12px; padding-inline: 8px; }
+  .thanarah-shell-language { min-height: 44px; font-size: 12px; padding-inline: 5px; }
+  .thanarah-shell-menu { min-width: 44px; min-height: 44px; }
+}
+@media (max-width: 340px) {
+  .thanarah-shell-brand span { display: none; }
+}

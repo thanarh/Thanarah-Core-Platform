@@ -42,7 +42,7 @@
       animation: mark-drift 50s ease-in-out infinite alternate;
       will-change: transform;
     }
-    .bg-mark svg { width: 100%; height: auto; display: block; }
+    .bg-mark img { width: 100%; height: auto; display: block; }
     @keyframes mark-drift {
       from { transform: translate(0,0)     scale(1.00); }
       to   { transform: translate(-2%,-2%) scale(1.03); }
@@ -249,17 +249,12 @@
 
   <!-- Ghosted background mark -->
   <div class="bg-mark" aria-hidden="true">
-    <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <rect x="37" y="50" width="26" height="38" rx="13" fill="#1C5C3C"/>
-      <rect x="50" y="37" width="38" height="26" rx="13" fill="#1C5C3C"/>
-      <rect x="37" y="12" width="26" height="38" rx="13" fill="#1C5C3C"/>
-      <rect x="12" y="37" width="38" height="26" rx="13" fill="#1C5C3C"/>
-    </svg>
+    <img src="/assets/logo-mark.svg" width="512" height="512" alt="">
   </div>
 
   <main class="page">
 
-    <!-- Official logo: PNG with JS background removal -->
+    <!-- Supplied symbol with its transparent background already preserved. -->
     <div class="logo-wrap" id="logoWrap" role="img" aria-label="شعار ثناره | Thanarah logo">
       <img
         id="logoImg"
@@ -304,59 +299,6 @@
 
   <script>
   'use strict';
-
-  /* ── 1. Logo: remove gray background via Canvas API ──────── */
-  (function removeLogo() {
-    var img = document.getElementById('logoImg');
-
-    function process() {
-      try {
-        var canvas = document.createElement('canvas');
-        canvas.width  = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        var ctx = canvas.getContext('2d');
-        ctx.drawImage(img, 0, 0);
-
-        var imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-        var d = imageData.data;
-
-        // Sample corners to detect background color
-        var corners = [
-          [d[0], d[1], d[2]],
-          [d[(canvas.width - 2) * 4], d[(canvas.width - 2) * 4 + 1], d[(canvas.width - 2) * 4 + 2]],
-          [d[(canvas.height - 2) * canvas.width * 4], d[(canvas.height - 2) * canvas.width * 4 + 1], d[(canvas.height - 2) * canvas.width * 4 + 2]]
-        ];
-        var bgR = Math.round(corners.reduce(function(s,c){return s+c[0];},0)/3);
-        var bgG = Math.round(corners.reduce(function(s,c){return s+c[1];},0)/3);
-        var bgB = Math.round(corners.reduce(function(s,c){return s+c[2];},0)/3);
-
-        var hard = 32, soft = 64;
-
-        for (var i = 0; i < d.length; i += 4) {
-          var dist = Math.abs(d[i]-bgR) + Math.abs(d[i+1]-bgG) + Math.abs(d[i+2]-bgB);
-          if (dist < hard) {
-            d[i+3] = 0;
-          } else if (dist < soft) {
-            d[i+3] = Math.round(255 * (dist - hard) / (soft - hard));
-          }
-        }
-
-        ctx.putImageData(imageData, 0, 0);
-        img.src = canvas.toDataURL('image/png');
-        img.classList.add('ready');
-      } catch(e) {
-        // Fallback: show image as-is if canvas fails
-        img.classList.add('ready');
-      }
-    }
-
-    if (img.complete && img.naturalWidth > 0) {
-      process();
-    } else {
-      img.addEventListener('load', process);
-      img.addEventListener('error', function() { img.classList.add('ready'); });
-    }
-  })();
 
   /* ── 2. Breathing class after entrance ──────────────────── */
   setTimeout(function () {

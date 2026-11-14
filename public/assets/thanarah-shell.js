@@ -3,6 +3,25 @@
 
   if (!document || document.querySelector('[data-thanarah-shell]')) return;
 
+  // Browser and touch icons use the same supplied symbol as every in-page logo.
+  // A versioned URL also refreshes favicons browsers may cache independently.
+  var brandVersion = '?v=owner-symbol';
+  document.querySelectorAll('link[rel~="icon"]').forEach(function (link) {
+    link.href = '/assets/thanarah-icon-32.png' + brandVersion;
+    link.type = 'image/png';
+    link.sizes = '32x32';
+  });
+  [
+    ['icon', '/assets/thanarah-icon-16.png', '16x16'],
+    ['icon', '/assets/thanarah-icon-192.png', '192x192'],
+    ['apple-touch-icon', '/assets/thanarah-icon-180.png', '180x180']
+  ].forEach(function (item) {
+    var link = document.createElement('link');
+    link.rel = item[0]; link.href = item[1] + brandVersion; link.sizes = item[2];
+    if (item[0] === 'icon') link.type = 'image/png';
+    document.head.appendChild(link);
+  });
+
   var publicLocaleKey = 'thanarah.public-locale';
   var workspaceLocaleKey = 'thanarah.ui-language';
   var path = (root.location.pathname.replace(/\/+$/, '') || '/');
@@ -61,15 +80,13 @@
       return '<a href="' + item[0] + '"' + (activeNav(item) ? ' aria-current="page"' : '') +
         '>' + item[1] + '</a>';
     }).join('');
-    links += '<button class="thanarah-shell-nav-staff" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
-      (ar ? 'دخول الفريق' : 'Team access') + '</button>';
     var languageText = ar ? 'English' : 'العربية';
     var languageLabel = ar ? 'Switch to English' : 'التبديل إلى العربية';
     var authControls = mainAudience === 'staff'
       ? '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
-        (ar ? 'دخول الفريق' : 'Team sign in') + '</button>'
-      : '<button class="thanarah-shell-action" type="button" data-thanarah-auth="login" data-auth-audience="customer">' +
-        (ar ? 'تسجيل الدخول' : 'Sign in') + '</button>' +
+        (ar ? 'دخول' : 'Sign in') + '</button>'
+      : '<button class="thanarah-shell-action" type="button" aria-label="' + (ar ? 'تسجيل الدخول' : 'Sign in') + '" data-thanarah-auth="login" data-auth-audience="customer">' +
+        (ar ? 'دخول' : 'Sign in') + '</button>' +
         '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="register" data-auth-audience="customer">' +
         (ar ? 'إنشاء حساب' : 'Create account') + '</button>';
     return '<header class="thanarah-shell thanarah-shell-header" data-thanarah-shell>' +
@@ -102,8 +119,7 @@
       '</a><a href="/why-thanarah/">' + (ar ? 'لماذا ثنارة' : 'Why Thanarah') + '</a></div>' +
       '<div class="thanarah-shell-footer-col"><h2>' + (ar ? 'المنظومة' : 'Platform') + '</h2>' +
       '<a href="/#clinic">' + (ar ? 'ثنارة كلينك' : 'Thanarah Clinic') + '</a><a href="/customer/">' +
-      (ar ? 'مساحة العملاء' : 'Customer workspace') + '</a><a href="/platform/">' +
-      (ar ? 'مساحات الفريق' : 'Team workspaces') + '</a></div><div class="thanarah-shell-footer-col">' +
+      (ar ? 'مساحة العملاء' : 'Customer workspace') + '</a></div><div class="thanarah-shell-footer-col">' +
       '<h2>' + (ar ? 'تواصل' : 'Connect') + '</h2><a href="/contact/">' +
       (ar ? 'تواصل معنا' : 'Contact us') + '</a><a href="/contact/?topic=technical">' +
       (ar ? 'الدعم الفني' : 'Technical support') + '</a></div></div>' +
@@ -126,8 +142,7 @@
       nav.innerHTML = navItems(ar).map(function (item) {
         return '<a href="' + item[0] + '"' + (activeNav(item) ? ' aria-current="page"' : '') +
           '>' + item[1] + '</a>';
-      }).join('') + '<button class="thanarah-shell-nav-staff" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
-        (ar ? 'دخول الفريق' : 'Team access') + '</button>';
+      }).join('');
     }
     if (menu) menu.setAttribute('aria-label', ar ? 'فتح القائمة' : 'Open menu');
     if (actions) {
@@ -141,10 +156,10 @@
             : (ar ? 'مساحة العملاء' : 'Customer workspace')) + '</a>';
       } else if (isStaffRoute) {
         actions.innerHTML = '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
-          (ar ? 'دخول الفريق' : 'Team sign in') + '</button>';
+          (ar ? 'دخول' : 'Sign in') + '</button>';
       } else {
-        actions.innerHTML = '<button class="thanarah-shell-action" type="button" data-thanarah-auth="login" data-auth-audience="customer">' +
-          (ar ? 'تسجيل الدخول' : 'Sign in') + '</button><button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="register" data-auth-audience="customer">' +
+        actions.innerHTML = '<button class="thanarah-shell-action" type="button" aria-label="' + (ar ? 'تسجيل الدخول' : 'Sign in') + '" data-thanarah-auth="login" data-auth-audience="customer">' +
+          (ar ? 'دخول' : 'Sign in') + '</button><button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="register" data-auth-audience="customer">' +
           (ar ? 'إنشاء حساب' : 'Create account') + '</button>';
       }
     }
@@ -218,7 +233,6 @@
       return;
     }
     if (target.closest('.thanarah-shell-nav a')) closeMenu();
-    if (target.closest('.thanarah-shell-nav-staff')) closeMenu();
 
     var localeButton = target.closest('.thanarah-shell-language');
     if (localeButton) {
