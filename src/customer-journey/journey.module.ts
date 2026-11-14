@@ -10,6 +10,11 @@ import { JourneyDocuments } from './journey.documents';
 import { JourneyAdmin } from './journey.admin';
 import { JourneyBilling } from './journey.billing';
 import { JourneyAccess } from './journey.access';
+import { JourneyInquiries } from './journey.inquiries';
+import {
+  JourneyAdminInquiryController,
+  JourneyPublicInquiryController,
+} from './journey.inquiry.controller';
 import {
   JourneyAdminController,
   JourneyCustomerController,
@@ -25,7 +30,14 @@ import {
     JourneyAdmin,
     JourneyBilling,
     JourneyAccess,
+    JourneyInquiries,
   ],
-  controllers: [JourneyPublicController, JourneyCustomerController, JourneyAdminController],
+  controllers: [
+    JourneyPublicController,
+    JourneyCustomerController,
+    JourneyAdminController,
+    JourneyPublicInquiryController,
+    JourneyAdminInquiryController,
+  ],
 })
 export class CustomerJourneyModule {}
