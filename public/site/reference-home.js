@@ -39,7 +39,7 @@
     function header() {
       return '<a class="skip-link" href="#main">' + esc(t.skip) +
         '</a><header class="reference-home-header"><div class="rh-header-inner">' +
-        '<a class="rh-brand" href="/" aria-label="' + esc(t.brand) + ' — ' + esc(t.navHome) +
+        '<a class="rh-brand" href="/" aria-label="' + esc(t.brand) + ' | ' + esc(t.navHome) +
         '"><img src="/assets/logo-mark.svg" width="40" height="40" alt=""><span>' +
         (ar ? 'ثنارة' : 'Thanarah') + '<small>Thanarah · ثنارة</small></span></a>' +
         '<nav class="main-nav rh-nav" id="main-navigation" aria-label="' +
@@ -146,7 +146,7 @@
           'Conceptual reference scene; not a live product interface.') + '</small></div></section>' +
         '<section class="rh-solutions"><header class="rh-section-heading"><span class="rh-eyebrow">' +
         (ar ? 'حلول ثنارة' : 'THANARAH SOLUTIONS') + '</span><h2>' +
-        (ar ? 'أكثر من إدارة عيادة .. منظومة متكاملة للنمو' : 'More than clinic operations — a connected ecosystem for growth') +
+        (ar ? 'أكثر من إدارة عيادة، منظومة متكاملة للنمو' : 'More than clinic operations, a connected ecosystem for growth') +
         '</h2></header><div class="rh-solution-grid">' + solutions.map(function (solution) {
           return '<a class="rh-solution-card" href="/contact/?topic=' + encodeURIComponent(solution[4]) +
             '"><span class="rh-solution-icon">' + icon(solution[0]) + '</span><span class="rh-solution-title">' +
@@ -161,8 +161,7 @@
         (ar ? 'باقات مرنة تناسب احتياجات العيادات والمراكز الطبية.' :
           'Flexible packages for the needs of clinics and medical centres.') + '</p><div class="rh-package-grid" id="home-packages" aria-live="polite"><div class="rh-package-loading"></div><div class="rh-package-loading"></div><div class="rh-package-loading"></div></div><small>' + (ar ? 'النطاق والتسعير عبر عرض سعر بعد مناقشة الاحتياج.' :
           'Scope and pricing are quote-based after discussing your needs.') + '</small></div></section>' +
-        '<section class="rh-why"><div class="rh-facade"><small>' + (ar ? 'مشهد تصوري من المرجع التصميمي، وليس صورة مقر فعلي.' :
-          'Conceptual reference scene, not a photograph of an actual office.') + '</small></div><div class="rh-why-content"><span class="rh-eyebrow">' +
+        '<section class="rh-why"><div class="rh-why-content"><span class="rh-eyebrow">' +
         (ar ? 'لماذا ثنارة؟' : 'WHY THANARAH') + '</span><h2>' +
         (ar ? 'قيمة حقيقية لقطاع صحي أكثر تطورًا' : 'Meaningful value for a more connected healthcare sector') +
         '</h2><div class="rh-principles">' + principles.map(function (text, index) {

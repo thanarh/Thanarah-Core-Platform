@@ -18,7 +18,6 @@
     reference: '',
     status: '',
   };
-  var motionCleanup = [];
   var path = location.pathname.replace(/\/+$/, '') || '/';
   var route =
     path === '/' || path === '/welcome' || path === '/site'
@@ -41,7 +40,7 @@
     };
     return names[route]
       ? route === 'home'
-        ? t.brand + ' — ' + names[route]
+        ? t.brand + ' | ' + names[route]
         : names[route] + ' | ' + t.brand
       : originalTitle;
   }
@@ -91,7 +90,7 @@
       t.skip +
       '</a><header class="topbar"><div class="wrap header-inner"><a class="brand" href="/" aria-label="' +
       esc(t.brand) +
-      ' — ' +
+      ' | ' +
       esc(t.navHome) +
       '"><img src="/assets/logo-mark.svg" alt=""><span class="brand-name">' +
       t.brand +
@@ -183,11 +182,9 @@
         : 'Conceptual diagram · relationships only, no real data';
     var planned = locale === 'ar' ? 'مسارات مستقبلية · غير متاحة' : 'Future branches · unavailable';
     return (
-      '<figure class="workflow-scene" data-motion-scene><div class="workflow-topline"><span>' +
+      '<figure class="workflow-scene"><div class="workflow-topline"><span>' +
       conceptual +
-      '</span><button type="button" class="motion-toggle" data-motion-toggle aria-pressed="false">' +
-      (locale === 'ar' ? 'إيقاف الحركة' : 'Pause motion') +
-      '</button></div><svg class="workflow-svg' +
+      '</span></div><svg class="workflow-svg' +
       (locale === 'ar' ? ' is-rtl' : '') +
       '" viewBox="0 0 920 300" role="img" aria-labelledby="workflow-title workflow-desc" focusable="false" dir="ltr"><title id="workflow-title">' +
       (locale === 'ar' ? 'العلاقة المفاهيمية بين خطوات العمل السريري' : 'Conceptual relationships in a clinical workflow') +
@@ -243,12 +240,12 @@
       t.heroIndex +
       '</span></div></div><div class="hero-aside" data-parallax><figure class="hero-product"><div class="product-photo"><img src="/assets/clinic-interface.webp" alt="' +
       (locale === 'ar'
-        ? 'لقطة من واجهة تسجيل المرضى الحالية — حقول فارغة، دون بيانات مرضى'
-        : 'Current patient-registration interface — blank fields, no patient data') +
+        ? 'لقطة من واجهة تسجيل المرضى الحالية، حقول فارغة، دون بيانات مرضى'
+        : 'Current patient-registration interface, blank fields, no patient data') +
       '" width="1280" height="960" fetchpriority="high" decoding="async"><span class="photo-index">SMART CLINIC / 01</span></div><figcaption>' +
       (locale === 'ar'
-        ? 'لقطة من واجهة تسجيل المرضى الحالية — حقول فارغة، دون بيانات مرضى'
-        : 'Current patient-registration interface — blank fields, no patient data') +
+        ? 'لقطة من واجهة تسجيل المرضى الحالية، حقول فارغة، دون بيانات مرضى'
+        : 'Current patient-registration interface, blank fields, no patient data') +
       '</figcaption></figure><div class="ecosystem-index" aria-label="' +
       (locale === 'ar' ? 'حالة منتجات ثنارة' : 'Thanarah product status') +
       '" role="group"><div class="ecosystem-current"><span class="system-number">01</span><div><strong>Smart Clinic</strong><span>' +
@@ -283,8 +280,8 @@
       (locale === 'ar' ? 'من سجلّ المريض إلى الزيارة.' : 'From patient record to encounter.') +
       '</h2><p>' +
       (locale === 'ar'
-        ? 'شرح بصري للعلاقات بين وظائف موجودة اليوم — وليس عرضًا لبيانات أو نشاط حي.'
-        : 'A visual explanation of capabilities that exist today—not a display of real data or live activity.') +
+        ? 'شرح بصري للعلاقات بين وظائف موجودة اليوم، وليس عرضًا لبيانات أو نشاط حي.'
+        : 'A visual explanation of capabilities that exist today, not a display of real data or live activity.') +
       '</p></div></div>' +
       workflowScene() +
       '</div></section><section class="section"><div class="wrap"><div class="section-header"><div><span class="eyebrow">' +
@@ -721,10 +718,6 @@
     );
   }
   function render() {
-    motionCleanup.forEach(function (cleanup) {
-      cleanup();
-    });
-    motionCleanup = [];
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
     t = lang[locale];
@@ -834,170 +827,6 @@
     };
     document.querySelectorAll('[data-retry-catalog]').forEach(function (button) {
       button.addEventListener('click', retryCatalog);
-    });
-    bindMotion();
-  }
-  function bindMotion() {
-    var scenes = document.querySelectorAll('[data-motion-scene]');
-    var parallax = document.querySelector('[data-parallax]');
-    var revealTargets = document.querySelectorAll(
-      'main .section-header, main .statement, main .benefit, main .service-card, main .founder-profile, main .package-card, main .package-detail, main .contact-form, main .ecosystem-index',
-    );
-    var preference = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
-    var connection = navigator.connection || null;
-    var reduced = Boolean(preference && preference.matches);
-    var saveData = Boolean(connection && connection.saveData);
-    var observer = null;
-    var frame = 0;
-    var parallaxVisible = false;
-    var sceneStates = [];
-    var hasObserver = typeof window.IntersectionObserver === 'function';
-
-    function allowed() {
-      return !reduced && !saveData && !document.hidden;
-    }
-    function updateScenes() {
-      sceneStates.forEach(function (state) {
-        var active = allowed() && state.inView && !state.userPaused;
-        state.scene.classList.toggle('motion-active', active);
-        state.toggle.setAttribute('aria-pressed', String(state.userPaused || reduced || saveData));
-        state.toggle.disabled = reduced || saveData;
-        // A toggle keeps a stable name; aria-pressed describes its paused state.
-        state.toggle.textContent = locale === 'ar' ? 'إيقاف الحركة' : 'Pause motion';
-        state.toggle.title = reduced || saveData
-          ? locale === 'ar' ? 'الحركة متوقفة حسب تفضيلات الجهاز' : 'Paused by device preferences'
-          : state.userPaused
-            ? locale === 'ar' ? 'الحركة متوقفة؛ اضغط للاستئناف' : 'Paused; press to resume'
-            : locale === 'ar' ? 'اضغط لإيقاف حركة المخطط' : 'Press to pause the diagram';
-      });
-    }
-    function revealAll() {
-      document.documentElement.classList.remove('reveal-ready');
-      revealTargets.forEach(function (target) {
-        target.classList.add('is-visible');
-        target.setAttribute('data-revealed', 'true');
-      });
-    }
-    function scheduleParallax() {
-      if (frame || !parallax || !parallaxVisible || !allowed()) return;
-      frame = window.requestAnimationFrame(function () {
-        frame = 0;
-        if (!parallaxVisible || !allowed()) return;
-        var bounds = parallax.getBoundingClientRect();
-        var offset = Math.max(-14, Math.min(14, (bounds.top + bounds.height / 2 - window.innerHeight / 2) * -0.022));
-        parallax.style.transform = 'translate3d(0,' + offset.toFixed(1) + 'px,0)';
-      });
-    }
-    function cancelParallax() {
-      if (frame) window.cancelAnimationFrame(frame);
-      frame = 0;
-      if (parallax) parallax.style.transform = '';
-    }
-    function syncMotionPreference() {
-      reduced = Boolean(preference && preference.matches);
-      saveData = Boolean(connection && connection.saveData);
-      document.documentElement.classList.toggle('motion-limited', reduced || saveData);
-      if (reduced || saveData) revealAll();
-      else if (observer && revealTargets.length) document.documentElement.classList.add('reveal-ready');
-      updateScenes();
-      if (allowed() && parallaxVisible) scheduleParallax();
-      else cancelParallax();
-    }
-    function visibilityChanged() {
-      updateScenes();
-      if (!document.hidden && parallaxVisible && allowed()) scheduleParallax();
-      else cancelParallax();
-    }
-    function scrollChanged() {
-      if (parallaxVisible && allowed()) scheduleParallax();
-    }
-    function onPreferenceChange() {
-      syncMotionPreference();
-    }
-    scenes.forEach(function (scene) {
-      var toggle = scene.querySelector('[data-motion-toggle]');
-      if (!toggle) return;
-      var state = { scene: scene, toggle: toggle, inView: false, userPaused: false };
-      sceneStates.push(state);
-      toggle.addEventListener('click', function () {
-        if (reduced || saveData) return;
-        state.userPaused = !state.userPaused;
-        updateScenes();
-      });
-    });
-    document.documentElement.classList.toggle('motion-limited', reduced || saveData);
-
-    if (hasObserver) {
-      try {
-        observer = new window.IntersectionObserver(function (entries) {
-          entries.forEach(function (entry) {
-            var target = entry.target;
-            if (target.hasAttribute('data-motion-scene')) {
-              var state = sceneStates.find(function (item) {
-                return item.scene === target;
-              });
-              if (state) state.inView = entry.isIntersecting;
-              updateScenes();
-            }
-            if (target === parallax) {
-              parallaxVisible = entry.isIntersecting;
-              if (parallaxVisible && allowed()) scheduleParallax();
-              else cancelParallax();
-            }
-            if (target.classList.contains('reveal-target') && entry.isIntersecting) {
-              target.classList.add('is-visible');
-              target.setAttribute('data-revealed', 'true');
-              observer.unobserve(target);
-            }
-          });
-        }, { threshold: 0.12, rootMargin: '0px 0px -4% 0px' });
-        scenes.forEach(function (scene) {
-          observer.observe(scene);
-        });
-        if (parallax) observer.observe(parallax);
-        if (allowed()) {
-          revealTargets.forEach(function (target) {
-            target.classList.add('reveal-target');
-            if (target.getAttribute('data-revealed') !== 'true') target.classList.remove('is-visible');
-            observer.observe(target);
-          });
-          if (revealTargets.length) document.documentElement.classList.add('reveal-ready');
-        } else revealAll();
-      } catch (_) {
-        if (observer) observer.disconnect();
-        observer = null;
-        revealAll();
-      }
-    } else revealAll();
-
-    if (preference) {
-      if (preference.addEventListener) preference.addEventListener('change', onPreferenceChange);
-      else if (preference.addListener) preference.addListener(onPreferenceChange);
-    }
-    if (connection && connection.addEventListener)
-      connection.addEventListener('change', onPreferenceChange);
-    document.addEventListener('visibilitychange', visibilityChanged);
-    if (parallax) {
-      window.addEventListener('scroll', scrollChanged, { passive: true });
-      window.addEventListener('resize', scrollChanged, { passive: true });
-    }
-    updateScenes();
-    motionCleanup.push(function () {
-      if (observer) observer.disconnect();
-      if (preference) {
-        if (preference.removeEventListener) preference.removeEventListener('change', onPreferenceChange);
-        else if (preference.removeListener) preference.removeListener(onPreferenceChange);
-      }
-      if (connection && connection.removeEventListener)
-        connection.removeEventListener('change', onPreferenceChange);
-      document.removeEventListener('visibilitychange', visibilityChanged);
-      if (parallax) {
-        window.removeEventListener('scroll', scrollChanged);
-        window.removeEventListener('resize', scrollChanged);
-      }
-      cancelParallax();
-      document.documentElement.classList.remove('reveal-ready');
-      document.documentElement.classList.remove('motion-limited');
     });
   }
   function renderServiceResult(data) {

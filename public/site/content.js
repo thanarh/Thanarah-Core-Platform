@@ -15,11 +15,11 @@
       navCta: 'ابدأ محادثة',
       homeTitle: 'بنية رقمية للرعاية الصحية،<br><em>بهدوءٍ يليق بها.</em>',
       homeIntro:
-        'نساند مقدمي الرعاية الصحية في بناء أساس رقمي أوضح — يبدأ من العمليات السريرية اليومية، ويتوسع وفق احتياج المنشأة.',
+        'نساند مقدمي الرعاية الصحية في بناء أساس رقمي أوضح، يبدأ من العمليات السريرية اليومية، ويتوسع وفق احتياج المنشأة.',
       homePrimary: 'تعرّف على ما نقدمه',
       homeSecondary: 'تواصل مع فريقنا',
       seal: 'الرعاية أولًا · التقنية في مكانها',
-      heroIndex: '01 — رؤية ثنارة',
+      heroIndex: 'رؤية ثنارة',
       positionLabel: 'فكرتنا',
       positionTitle: 'التقنية الجيدة لا تطلب الانتباه. إنها تمنح الفريق مساحة أكبر للرعاية.',
       positionBody:
@@ -70,7 +70,7 @@
         'استكشف الباقات، ثم ناقش معنا النطاق والتسعير. تعرض كل باقة تفاصيلها المنشورة، وما يحتاج إلى تقييم نحدده معك قبل الالتزام.',
       packagesLink: 'عرض الباقات',
       quote: 'اطلب مناقشة نطاق الباقة',
-      unconfirmed: 'التفاصيل غير مؤكدة حاليًا — اسألنا عن النطاق.',
+      unconfirmed: 'التفاصيل غير مؤكدة حاليًا. اسألنا عن النطاق.',
       askQuote: 'استفسر عن هذه الباقة',
       quoteBased: 'السعر ونطاق العمل عبر عرض سعر بعد التقييم.',
       noFeatures: 'لا توجد خصائص منشورة لهذه الباقة حاليًا.',
@@ -118,7 +118,7 @@
       partnerLabel: 'الشركاء',
       partnerRole: 'شريك',
       ctoLabel: 'القيادة التقنية',
-      ctoRole: 'الرئيس التنفيذي للتقنية — CTO',
+      ctoRole: 'الرئيس التنفيذي للتقنية، CTO',
       ctoImageAlt: 'Youssef Darwish، الرئيس التنفيذي للتقنية في ثنارة',
       partnerImageAlt: 'Ziad alkhathlan، شريك في ثنارة',
       founderImageAlt: 'فيصل العنيزي، المؤسس والرئيس التنفيذي لثنارة',
@@ -151,7 +151,7 @@
       futureIntro:
         'يمكن مناقشة هذه الاحتياجات لتقييم ملاءمتها، لكنها ليست خدمات مباشرة متاحة للشراء الآن.',
       futureWebsite: 'منشئ مواقع العيادات',
-      futureWebsiteState: 'مخطط — غير متاح حاليًا',
+      futureWebsiteState: 'مخطط، غير متاح حاليًا',
       futureDelivery: 'التسليم الآلي عبر GitHub',
       futureDeliveryState: 'ليس مسار تسليم مباشرًا متاحًا حاليًا',
       futureAI: 'الذكاء الاصطناعي وواتساب والصوت',
@@ -175,8 +175,8 @@
       serviceTechnicalDescription:
         'التسليم الآلي عبر GitHub ليس مسارًا متاحًا حاليًا؛ يمكن تقييم متطلبات التسليم التقني.',
       statusAvailable: 'أساس قائم',
-      statusUpcoming: 'مخطط — غير متاح حاليًا',
-      statusAssessment: 'يتطلب تقييمًا — ليس خدمة مباشرة مؤكدة',
+      statusUpcoming: 'مخطط، غير متاح حاليًا',
+      statusAssessment: 'يتطلب تقييمًا، ليس خدمة مباشرة مؤكدة',
       whyTitle: 'لأن رحلة الرعاية تحتاج إلى أنظمة تعمل معًا.',
       whyIntro:
         'اختيار البنية الرقمية الصحية قرار تشغيلي طويل الأثر. نؤمن أن الثقة تُبنى بالوضوح، لا باللغة الكبيرة.',
@@ -279,11 +279,11 @@
       navCta: 'Start a conversation',
       homeTitle: 'Digital infrastructure for care,<br><em>with a quieter kind of confidence.</em>',
       homeIntro:
-        'We support healthcare providers in building a clearer digital foundation—starting with everyday clinical operations and growing around the needs of each practice.',
+        'We support healthcare providers in building a clearer digital foundation, starting with everyday clinical operations and growing around the needs of each practice.',
       homePrimary: 'Explore what we do',
       homeSecondary: 'Talk with our team',
       seal: 'Care first · technology in its place',
-      heroIndex: '01 — The Thanarah view',
+      heroIndex: 'The Thanarah view',
       positionLabel: 'Our perspective',
       positionTitle:
         'Good technology does not ask for attention. It gives teams more room to care.',
@@ -305,7 +305,7 @@
       howEyebrow: 'How we work',
       howTitle: 'Small steps. A clear picture.',
       howDesc:
-        'We start by understanding your context—not by assuming every clinic works the same way.',
+        'We start by understanding your context, not by assuming every clinic works the same way.',
       step1: 'Listen',
       step1Body: 'Understand your practice and what gets in the way of daily work.',
       step2: 'Define',
@@ -338,7 +338,7 @@
         'Explore the packages, then discuss scope and pricing with us. Each package shows its published details; anything requiring assessment is clarified before you commit.',
       packagesLink: 'View packages',
       quote: 'Discuss package scope',
-      unconfirmed: 'Details are not confirmed — ask us about scope.',
+      unconfirmed: 'Details are not confirmed. Ask us about scope.',
       askQuote: 'Ask about this package',
       quoteBased: 'Pricing and scope are discussed after assessment.',
       noFeatures: 'No package features are currently published.',
@@ -368,7 +368,7 @@
       aboutMission: 'Mission',
       aboutMissionTitle: 'Bring technology closer to the needs of care.',
       aboutMissionBody:
-        'We aim to support healthcare practices with a clear digital foundation—helping teams organise daily work and giving them something they can build on.',
+        'We aim to support healthcare practices with a clear digital foundation, helping teams organise daily work and giving them something they can build on.',
       aboutVision: 'Vision',
       aboutVisionTitle: 'More connected care, without needless complexity.',
       aboutVisionBody:
@@ -388,7 +388,7 @@
       partnerLabel: 'Partners',
       partnerRole: 'Partner',
       ctoLabel: 'Technology leadership',
-      ctoRole: 'Chief Technology Officer — CTO',
+      ctoRole: 'Chief Technology Officer, CTO',
       ctoImageAlt: 'Youssef Darwish, Thanarah Chief Technology Officer',
       partnerImageAlt: 'Ziad alkhathlan, Thanarah Partner',
       founderImageAlt: 'Faisal alenizi, Thanarah Founder & CEO',
@@ -424,7 +424,7 @@
       futureIntro:
         'We can discuss these needs to assess fit, but they are not direct services available for purchase today.',
       futureWebsite: 'Clinic website builder',
-      futureWebsiteState: 'Planned — not currently available',
+      futureWebsiteState: 'Planned, not currently available',
       futureDelivery: 'Automated GitHub delivery',
       futureDeliveryState: 'Not currently an available direct delivery path',
       futureAI: 'AI, WhatsApp & voice',
@@ -448,8 +448,8 @@
       serviceTechnicalDescription:
         'Automated GitHub delivery is not currently available; technical delivery requirements can be assessed.',
       statusAvailable: 'Existing foundation',
-      statusUpcoming: 'Planned — not currently available',
-      statusAssessment: 'Assessment required — not a confirmed direct service',
+      statusUpcoming: 'Planned, not currently available',
+      statusAssessment: 'Assessment required, not a confirmed direct service',
       whyTitle: 'Because care needs systems that work together.',
       whyIntro:
         'Choosing digital healthcare infrastructure is a decision with lasting operational impact. We believe trust is built through clarity, not grand language.',
@@ -458,7 +458,7 @@
         'We distinguish existing functions from future ambitions, and do not describe unavailable features as ready.',
       whyFit: 'Fit before expansion',
       whyFitBody:
-        'We begin with the practice’s size, workflow and team priorities—not a long feature list.',
+        'We begin with the practice’s size, workflow and team priorities, not a long feature list.',
       whyPace: 'A pace your team can absorb',
       whyPaceBody:
         'Digital change is not a race. We sequence steps around their importance and your team’s ability to adopt them.',

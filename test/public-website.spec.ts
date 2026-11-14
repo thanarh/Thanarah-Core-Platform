@@ -129,7 +129,7 @@ describe('Public website route and reusable component regressions', () => {
       expect(html).toContain('Youssef Darwish');
       expect(html).toContain('/assets/youssef-darwish.jpg');
       expect(html).toContain(
-        language === 'ar' ? 'الرئيس التنفيذي للتقنية — CTO' : 'Chief Technology Officer — CTO',
+        language === 'ar' ? 'الرئيس التنفيذي للتقنية، CTO' : 'Chief Technology Officer, CTO',
       );
       expect(html).toContain('id="cto"');
       expect(html).toContain('Faisal alenizi');
@@ -184,9 +184,8 @@ describe('Public website route and reusable component regressions', () => {
       for (const html of [site.services()]) {
         expect(html).toContain('Thanarah AI');
         expect(html).toContain('Thanarah Calling');
-        expect(html).toContain('data-motion-scene');
-        expect(html).toContain('data-motion-toggle');
-        expect(html).toContain('aria-pressed=');
+        expect(html).not.toContain('data-motion-scene');
+        expect(html).not.toContain('data-motion-toggle');
         expect(html).toContain('<figcaption>');
         expect(html).toContain(language === 'ar' ? 'غير متاحة' : 'unavailable');
         expect(html).toContain(language === 'ar' ? 'مفاهيمي' : 'Conceptual');

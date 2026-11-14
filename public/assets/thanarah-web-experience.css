@@ -15,7 +15,7 @@
 }
 
 html {
-  scroll-behavior: smooth;
+  scroll-behavior: auto;
   scrollbar-color: #b8c6b5 #f3f3ec;
 }
 
@@ -366,5 +366,180 @@ html[dir="ltr"] .locale-switch {
     transition-duration: .01ms !important;
     animation-duration: .01ms !important;
     animation-iteration-count: 1 !important;
+  }
+}
+
+/* Local fonts keep Arabic readable without render-blocking third-party CSS. */
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+
+/* Arabic tracking must never separate connected letters, including mixed labels. */
+html:lang(ar),
+html:lang(ar) body,
+html:lang(ar) body * {
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  font-variant-ligatures: normal;
+}
+
+/* Keep feedback and keyboard focus, not decorative shadows or motion. */
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid #466b4e !important;
+  outline-offset: 3px;
+}
+
+.rh-pill:hover:not(.rh-cta-button),
+.rh-solution-card:hover,
+.package-card:hover,
+.service-card:hover,
+.product-photo,
+.rh-package-pro,
+.btn:hover,
+.button:hover,
+.text-link:hover svg,
+.text-link:hover span,
+.btn:hover svg {
+  transform: none !important;
+}
+
+.topbar,
+.ai-bottom-mobile {
+  background: var(--surface, #f5f2ec);
+}
+
+.rh-clinic,
+.rh-why,
+.rh-solutions,
+.section-tone,
+.page-intro {
+  background: #f5f2ec !important;
+}
+
+.rh-why {
+  grid-template-columns: 1fr;
+  padding-inline: max(6.2vw, 20px);
+}
+
+.page-intro,
+.page-intro h1,
+.about-page .prose-grid:first-child,
+.about-page .prose-grid:first-child h2 {
+  color: #292c25 !important;
+}
+
+.page-intro p,
+.about-page .prose-grid:first-child p {
+  color: #555e52 !important;
+}
+
+.about-page .prose-grid:first-child {
+  background: transparent;
+  padding: 0 0 24px;
+  border-bottom: 1px solid #d8d0c7;
+}
+
+.prose-grid,
+.statement {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.rh-packages {
+  color: #292c25;
+  background: #f5f2ec;
+}
+
+.rh-packages .rh-eyebrow,
+.rh-packages-inner > p,
+.rh-packages-inner > small {
+  color: #555e52;
+}
+
+.rh-package-curve {
+  background: #f5f2ec;
+}
+
+.page-intro::after,
+.capability-feature::after,
+.rh-footer-marks,
+.rh-brand small,
+.brand-note,
+.workflow-traveler,
+.motion-toggle,
+.hero-index,
+.photo-index,
+.drawing-index,
+.eyebrow,
+.rh-eyebrow,
+.ai-eyebrow,
+.prose-label,
+.statement-num {
+  display: none !important;
+}
+
+/* No geometry changes on hover for the vertically centered desktop CTA. */
+.rh-cta-button:hover {
+  transform: translateY(-50%) !important;
+}
+
+@media (max-width: 720px) {
+  .rh-cta-button:hover {
+    transform: none !important;
+  }
+
+  html:lang(ar) :where(h1, h2, h3) {
+    line-height: 1.5;
   }
 }
