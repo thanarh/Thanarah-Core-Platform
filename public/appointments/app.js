@@ -2,6 +2,9 @@
   'use strict';
 
   const api = window.ThanarahApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void boot();
+  });
   const timezone = window.ThanarahTimezone;
   const serviceAvailability = window.ThanarahAppointmentServiceAvailability;
   const serviceAvailabilityRequests =

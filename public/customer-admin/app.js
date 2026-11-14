@@ -1,5 +1,6 @@
 (function(){
  'use strict';
+ window.addEventListener('thanarah:authenticated',event=>{if(event.detail.audience==='staff')void init()});
  const app=document.getElementById('app'),A=window.JourneyApi;
  const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
  const op=()=>crypto.randomUUID(),labels={DRAFT:'مسودة',SUBMITTED:'قيد المراجعة',CHANGES_REQUESTED:'استكمال مطلوب',REJECTED:'مرفوض',APPROVED:'مقبول',ACTIVE:'مفعّل',DELIVERED:'تم التسليم',CANCELLED:'ملغي'};

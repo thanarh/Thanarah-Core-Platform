@@ -1,6 +1,9 @@
 (function startTeamSetup() {
   'use strict';
   const api = window.ThanarahApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void bootstrap();
+  });
   const app = document.getElementById('app');
   const PAGE_SIZE = 50;
   const P = {

@@ -4,6 +4,9 @@
   const app = document.getElementById('encounter-app');
   const toast = document.getElementById('encounter-toast');
   const api = window.ThanarahApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void bootstrap();
+  });
   const PERMISSIONS = Object.freeze({
     encounterCreate: 'tenant.encounters.create',
     directCreate: 'tenant.encounters.create.direct',

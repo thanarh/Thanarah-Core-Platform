@@ -1,6 +1,9 @@
 (function () {
   'use strict';
   const api = window.CompanyApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void load();
+  });
   const root = document.getElementById('inbox');
   const escape = (value) =>
     String(value ?? '').replace(

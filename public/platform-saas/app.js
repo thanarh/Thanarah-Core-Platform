@@ -1,6 +1,9 @@
 (function startPlatformSaaS() {
   'use strict';
   const api = window.ThanarahApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void bootstrap();
+  });
   const app = document.getElementById('app');
   const state = { screen:'boot', plans:[], features:[], subscriptions:[], tenants:[], transfers:[], paymentSettings:null, loading:false, saving:false, error:'', success:'' };
   const esc = value => String(value ?? '').replace(/[&<>"']/gu, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));

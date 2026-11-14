@@ -1,6 +1,9 @@
 (function () {
   'use strict';
   const api = window.CompanyApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void loadSession();
+  });
   const app = document.getElementById('app');
   const toastRegion = document.getElementById('toast-region');
   const PERMS = [

@@ -58,7 +58,7 @@ async function harness(): Promise<{
         listeners.set(event, listener);
       },
     },
-    window: { ThanarahApi: api, confirm: () => true },
+    window: { ThanarahApi: api, confirm: () => true, addEventListener: (): void => {} },
     HTMLFormElement: Form,
     FormData,
   });

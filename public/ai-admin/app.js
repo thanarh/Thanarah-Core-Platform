@@ -2,6 +2,9 @@
   'use strict';
 
   const api = window.ThanarahApi;
+  window.addEventListener('thanarah:authenticated', event => {
+    if (event.detail.audience === 'staff') void bootstrap();
+  });
   const app = document.getElementById('app');
   const P = {
     read: 'tenant.ai.read',

@@ -23,6 +23,7 @@ function renderers(language: 'ar' | 'en', blockedStorage = false): SiteRenderers
     throw new Error('Public website bootstrap changed; update renderer harness.');
   const context = {
     window: {
+      addEventListener: (): void => {},
       localStorage: {
         getItem: (): string => {
           if (blockedStorage) throw new Error('Storage disabled');
@@ -200,10 +201,10 @@ describe('Public website route and reusable component regressions', () => {
     'uses the supplied design scenes without claiming an actual office or live interface in %s',
     (language) => {
       const html = renderers(language).home();
-      expect(html).toContain('/assets/home-reception.webp');
-      expect(html).toContain('/assets/home-clinic-scene.webp');
+      expect(html).toContain('/assets/thanarah-reception.webp');
+      expect(html).toContain('/assets/thanarah-devices.webp');
       expect(html).toContain('fetchpriority="high"');
-      expect(html).toContain('width="656" height="418"');
+      expect(html).toContain('width="1400" height="946"');
       expect(html).toContain('decoding="async"');
       expect(html).toContain(
         language === 'ar' ? 'ليس صورة مقر فعلي' : 'not a photograph of an actual office',
@@ -211,8 +212,8 @@ describe('Public website route and reusable component regressions', () => {
       expect(html).toContain(
         language === 'ar' ? 'لا يعرض واجهة تشغيل فعلية' : 'not a live product interface',
       );
-      expect(existsSync('public/assets/home-reception.webp')).toBe(true);
-      expect(existsSync('public/assets/home-clinic-scene.webp')).toBe(true);
+      expect(existsSync('public/assets/thanarah-reception.webp')).toBe(true);
+      expect(existsSync('public/assets/thanarah-devices.webp')).toBe(true);
     },
   );
   it('retains the original bilingual positioning, safeguards, workflow and FAQs after redesign', () => {

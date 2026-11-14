@@ -37,3 +37,4 @@
 - [نطاق المشاريع وGitHub](thanarah-projects-github-scope.md) — المرحلة السادسة؛ الإغلاق بدورة تعديل تجريبي من الطلب إلى الاختبار والنشر والتوثيق.
 - [نطاق Thanarah AI](thanarah-ai-scope.md) — المرحلة السابعة؛ معرفة مستقلة لكل عيادة وقبول المعرفة والصلاحيات لكل نوع مساعد وقياس الجودة والسرعة والتكلفة.
 - [شخصية موقع ثنارة](thanarah-public-brand.md) — منظومة تقنية صحية ذات شخصية؛ لا قوالب SaaS مكررة أو صور مختلقة أو حركة زخرفية.
+- [Modal scroll preservation](modal-scroll-preservation.md) — off-screen triggers can scroll into view before the click handler captures the page offset.

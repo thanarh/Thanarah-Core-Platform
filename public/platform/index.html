@@ -8,6 +8,7 @@
   <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg" />
 
   <link rel="stylesheet" href="/assets/thanarah-web-experience.css" />
+  <link rel="stylesheet" href="/assets/thanarah-shell.css" />
 
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -225,6 +226,24 @@
       .appointments-link { transition: none; }
     }
   </style>
+  <style>
+    html, body {
+      height: auto !important;
+      min-height: 100%;
+      overflow-x: hidden !important;
+      overflow-y: auto !important;
+    }
+    .page {
+      height: auto;
+      min-height: calc(100dvh - 250px);
+    }
+    @media (max-width: 760px) {
+      .page {
+        min-height: calc(100dvh - 245px);
+        padding: 20px 18px 35px;
+      }
+    }
+  </style>
 </head>
 <body>
 
@@ -282,11 +301,6 @@
     </a>
 
   </main>
-
-  <footer>
-    <p>© 2026 Thanarah Team</p>
-    <p>All Rights Reserved.</p>
-  </footer>
 
   <script>
   'use strict';
@@ -409,6 +423,8 @@
     }, 1800);
   })();
   </script>
+  <script defer src="/assets/thanarah-auth.js"></script>
+  <script defer src="/assets/thanarah-shell.js"></script>
 
 </body>
 </html>

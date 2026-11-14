@@ -38,6 +38,7 @@ function createUiHarness(file: string, api: Record<string, unknown>): UiHarness 
     getElementById: (id: string): unknown => (id === 'toast-region' ? toastRegion : app),
   };
   const window = {
+    addEventListener: (): void => {},
     ThanarahApi: api,
     confirm: (): boolean => true,
     setTimeout: (): number => 0,

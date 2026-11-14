@@ -113,7 +113,7 @@
       var principles = ar ? ['سهل في التشغيل والتنفيذ', 'أمان وخصوصية', 'منظومة موحدة', 'دعم مستمر', 'قابلية التوسع'] :
         ['Simple to operate', 'Privacy & security', 'One connected system', 'Ongoing support', 'Room to grow'];
       return '<main id="main" class="reference-home-root' + (ar ? ' is-ar' : ' is-en') + '">' +
-        '<section class="rh-hero"><div class="rh-hero-photo"><img src="/assets/home-reception.webp" width="656" height="418" fetchpriority="high" decoding="async" alt="' +
+        '<section class="rh-hero"><div class="rh-hero-photo"><img src="/assets/thanarah-reception.webp" width="1400" height="946" fetchpriority="high" decoding="async" alt="' +
         (ar ? 'مشهد تصوري لاستقبال ثنارة بتصميم خشبي ونباتات ومكتب استقبال' : 'Conceptual Thanarah reception scene with warm timber, plants and a reception desk') +
         '"><small>' + (ar ? 'مشهد تصوري من المرجع التصميمي، وليس صورة مقر فعلي.' : 'Conceptual reference scene, not a photograph of an actual office.') +
         '</small></div><div class="rh-hero-copy"><span class="rh-eyebrow">' +
@@ -130,7 +130,7 @@
         [[icon('bolt'), ar ? 'تشغيل يومي سلس' : 'Smooth daily operations'], [icon('layers'), ar ? 'حلول متكاملة' : 'Connected solutions'],
           [icon('chart'), ar ? 'دعم النمو والتوسع' : 'Support growth'], [icon('shield'), ar ? 'أمان وخصوصية' : 'Privacy and security']]
           .map(function (x) { return '<div class="rh-benefit-item"><span>' + x[0] + '</span><strong>' + x[1] + '</strong></div>'; }).join('') +
-        '</section><section class="rh-clinic" id="clinic"><div class="rh-clinic-image"><img src="/assets/home-clinic-scene.webp" width="390" height="180" loading="lazy" decoding="async" alt="' +
+        '</section><section class="rh-clinic" id="clinic"><div class="rh-clinic-image"><img src="/assets/thanarah-devices.webp" width="1400" height="933" loading="lazy" decoding="async" alt="' +
         (ar ? 'مشهد تصوري لحاسوب وهاتف يعرضان واجهة عيادة مفاهيمية، وليست لقطة من نظام فعلي' :
           'Conceptual laptop and phone clinic interface scene, not a screenshot of a live system') + '"></div><div class="rh-clinic-copy">' +
         '<span class="rh-eyebrow">' + (ar ? 'المنظومة الأساسية' : 'THE CLINICAL FOUNDATION') + '</span><h2>' +
@@ -174,7 +174,16 @@
           'Talk with Thanarah about a connected foundation for your practice.') + '</p></div><a class="rh-pill rh-cta-button" href="/contact/">' +
         (ar ? 'ابدأ الآن' : 'Get started') + '<span aria-hidden="true">←</span></a><div class="rh-chair">' +
         '<img src="/assets/home-chair.webp" width="266" height="196" loading="lazy" decoding="async" alt="' +
-        (ar ? 'مشهد تصوري لكرسي عيادة ضمن مساحة رعاية صحية' : 'Conceptual clinical chair in a healthcare space') + '"></div></section></main>';
+        (ar ? 'مشهد تصوري لكرسي عيادة ضمن مساحة رعاية صحية' : 'Conceptual clinical chair in a healthcare space') +
+        '"></div></section><section class="rh-home-faq" aria-labelledby="home-faq-heading"><h2 id="home-faq-heading">' +
+        (ar ? 'الأسئلة الشائعة' : 'Frequently asked questions') + '</h2>' +
+        [[t.faq1, t.faq1Body], [t.faq2, t.faq2Body], [t.faq3, t.faq3Body], [t.faq4, t.faq4Body], [t.faq5, t.faq5Body],
+          [t.securityTitle, t.securityBody + ' ' + t.securityNote],
+          [ar ? 'ما الذي يشمله الأساس السريري؟' : 'What is included in the clinical foundation?',
+            t.capabilityBody + ' ' + t.capOne + ': ' + t.capOneBody + ' ' + t.capTwo + ': ' + t.capTwoBody +
+            ' ' + t.capThree + ': ' + t.capThreeBody + ' ' + t.capFour + ': ' + t.capFourBody + ' ' + t.clinicalNote]]
+          .map(function (faq) { return '<details><summary>' + esc(faq[0]) + '</summary><p>' + esc(faq[1]) + '</p></details>'; }).join('') +
+        '</section></main>';
     }
     function packageCard(pack, catalog) {
       var code = pack[0];

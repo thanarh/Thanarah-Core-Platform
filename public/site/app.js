@@ -23,7 +23,7 @@
     path === '/' || path === '/welcome' || path === '/site'
       ? 'home'
       : path.split('/').filter(Boolean).pop();
-  var isReferenceHomePath = path === '/' || path === '/welcome';
+  var isReferenceHomePath = path === '/' || path === '/welcome' || path === '/site';
   var app = document.getElementById('app');
   var catalogCache = null;
   var queryPackage = new URLSearchParams(location.search).get('package');
@@ -723,7 +723,7 @@
     t = lang[locale];
     if (serviceKey) {
       updateMetadata(t.detailService + ' | ' + t.brand, t.catalogIntro, '/services/');
-      app.innerHTML = header() + serviceDetail() + footer();
+      app.innerHTML = serviceDetail();
       bindCommon();
       loadCatalog().then(renderServiceResult).catch(showServiceError);
       return;
@@ -740,13 +740,11 @@
       ? window.ThanarahReferenceHome(locale, t, { escape: esc })
       : null;
     app.innerHTML =
-      (referenceHome ? referenceHome.header() : header()) +
       (pages[route]
         ? referenceHome
           ? referenceHome.home()
           : pages[route]()
-        : pageIntro(t.navHome, t.notFound, '') + '<main id="main"></main>') +
-      (referenceHome ? referenceHome.footer() : footer());
+        : pageIntro(t.navHome, t.notFound, '') + '<main id="main"></main>');
     var description =
       route === 'home'
         ? t.positionBody
@@ -829,6 +827,18 @@
       button.addEventListener('click', retryCatalog);
     });
   }
+  window.addEventListener('thanarah:locale-changed', function (event) {
+    if (!event.detail || (event.detail.locale !== 'ar' && event.detail.locale !== 'en')) return;
+    if (contactState.busy) return;
+    captureContactDraft();
+    locale = event.detail.locale;
+    try {
+      window.localStorage.setItem(localeKey, locale);
+    } catch (_) {
+      // Keep the current page in the requested locale without persistent storage.
+    }
+    render();
+  });
   function renderServiceResult(data) {
     var found =
       data.services &&
