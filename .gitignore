@@ -30,3 +30,6 @@ coverage/
 
 # Husky
 .husky/_/
+
+# Disposable visual captures and verification output
+/generated-artifacts/

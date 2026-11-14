@@ -81,3 +81,98 @@ references and uncertain-write retry have focused tests. Default skipped tests
 are not presented as passes. There was no production deployment, architecture
 change, payment, WhatsApp, voice or external AI activation. This website
 delivery does not certify the rest of the platform for production.
+
+## Public-site redesign — 2026-11-14
+
+The six existing routes were redesigned in place. This is not a new application,
+authentication system, data model, integration, or production deployment.
+
+### Direction and real product evidence
+
+- A healthcare-technology identity, with warm off-white, botanical green and
+  graphite, Arabic IBM Plex Sans Arabic, Manrope and editorial Newsreader.
+- The first view names Smart Clinic and distinguishes its existing clinical
+  foundation from planned, inactive Thanarah AI and Thanarah Calling.
+- A custom SVG scene explains patient → appointment → encounter relationships.
+  Dashed, static future branches are explicitly unavailable. It is a conceptual
+  explanation, not live telemetry, a recording of patient work, or an activated
+  integration.
+- The clinical image is the **actual unchanged patient-registration renderer**,
+  rendered offline with blank fields and a neutral preview workspace. No account
+  was authenticated, no API or database was accessed to create the image, and no
+  patient or employee data was included. It is labelled as an interface preview,
+  not proof of a complete clinical journey. `scripts/capture-public-product.cjs`
+  reproduces the source capture; generated captures and browser profiles are
+  excluded from Git and deployment. The shipped WebP is about 23 KB, with explicit
+  dimensions, asynchronous decoding and high priority as the main hero image.
+- About retains all three supplied leadership names, roles, portraits and
+  anchors. Services separates current and future scope; packages retains the
+  published-only catalog and quote-based pricing; rationale and contact have
+  their own visual treatments. Original bilingual positioning, clinical limits,
+  workflow text, benefits, security copy and FAQs remain.
+
+### Motion and accessibility
+
+IntersectionObserver activates the workflow only in view and reveals content on
+scroll. A passive scroll listener schedules a single animation frame for the
+hero's bounded ±14px parallax; it does not continuously poll the layout.
+Reduced-motion changes, Save-Data and hidden tabs stop motion. A keyboard-usable
+control pauses/resumes the repeating diagram. Observers, preference/connection,
+visibility and scroll listeners, and pending animation frames are removed before
+a language rerender. Content is visible by default; reveal hiding is enabled
+only after successful observer setup and is disabled for reduced motion.
+
+The diagram has an accessible title, description and text caption. Its visual
+sequence is mirrored for RTL. Navigation, focus styles, mobile Escape behavior,
+skip link, field labels, consent and the hidden honeypot remain. Primary text
+tokens exceed 4.5:1 against the paper background; this is not a full WCAG audit.
+
+### Verification for this redesign
+
+| Check | Observed result |
+| --- | --- |
+| Build and workflow startup | Passed: existing `npx nest build && node dist/main`; clean application startup |
+| Full `npm test` | 1,096 passed; 125 skipped; 124 files passed, 10 skipped |
+| `npm run type-check` | Passed |
+| `npm run type-check:tenant-contracts` | Passed |
+| JavaScript syntax | Passed for public app, content and offline capture script |
+| Changed TypeScript ESLint | Passed for the website regression suite |
+| Repository `npm run lint` | **Failed**: 193 errors, 265 warnings, matching the previously recorded baseline |
+| Diff whitespace | Passed |
+| Final focused website suite after accessibility adjustments | 21 passed |
+| Browser navigation | All six routes, correct active links and single H1; all footer destinations returned 200 |
+| Browser responsive sweep | 24 route/viewport cases: six pages each at Arabic 320/768/1440 and English 390; no horizontal overflow or broken images |
+| Browser inquiry UI | Draft and Pro selection survived both language directions; required fields/consent blocked invalid sends; one intercepted 201 showed and retained a simulated receipt |
+| Browser motion | Workflow ran in view, paused/resumed from keyboard, stopped offscreen; scroll reveals worked and parallax stayed within ±14px |
+| Browser reduced-motion preference | Initial load and runtime change handler passed using a matchMedia shim; native OS emulation was not available |
+| Existing application entry points | `/platform/`, `/appointments/` and `/customer/` responded successfully; no signed-in session was tested |
+
+The five new regression cases cover bilingual future-capability boundaries,
+truthful product-image captions/loading and preservation of the original home
+content. Skipped integration tests are not described as passes.
+
+The browser form check for this redesign uses an intercepted response rather
+than creating an inquiry in the development database. Existing backend inquiry
+contracts were not changed; this does not re-prove MongoDB persistence.
+
+The browser interception wrapped fetch/XHR and blocked other mutation requests;
+one mocked submission was counted, with no inquiry resource request leaving the
+page. This is UI acceptance, not a new persistence test. No runtime errors were
+captured after the browser error listener was installed.
+
+Two small accessibility observations from the browser pass were addressed:
+the skip link now focuses a programmatically focusable main region, and the
+motion toggle keeps a constant name with its paused state exposed through
+`aria-pressed` and a visible pressed style. The subsequent JavaScript syntax
+check and 21-case website regression suite passed; these two adjustments were
+not sent through a second full browser pass.
+
+Remaining verification limits: the 320px hamburger was not manually opened
+(the 390px open/Escape/focus flow passed); honeypot tab order was checked through
+its attributes rather than sequential tabbing; native OS reduced-motion and
+Save-Data emulation, a full desktop-English visual pass, screen-reader testing,
+authenticated clinic journeys and the staff inquiry inbox were not tested.
+Intermittent stale-reference errors in the browser harness were resolved using
+CSS/coordinate clicks and were not application failures. No production publish,
+database/schema modification, payment, WhatsApp, calling or external AI
+activation was performed.

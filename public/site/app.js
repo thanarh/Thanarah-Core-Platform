@@ -18,6 +18,7 @@
     reference: '',
     status: '',
   };
+  var motionCleanup = [];
   var path = location.pathname.replace(/\/+$/, '') || '/';
   var route =
     path === '/' || path === '/welcome' || path === '/site'
@@ -119,7 +120,7 @@
       t.navCta +
       '</a><button class="menu-button" type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="' +
       esc(locale === 'ar' ? 'فتح القائمة' : 'Open menu') +
-      '"><span aria-hidden="true">☰</span></button></div></div></header>'
+       '"><span class="menu-glyph" aria-hidden="true"><i></i><i></i></span></button></div></div></header>'
     );
   }
   function footer() {
@@ -157,9 +158,11 @@
       '</span></div></div></footer>'
     );
   }
-  function pageIntro(eyebrow, title, desc) {
+  function pageIntro(eyebrow, title, desc, variant) {
     return (
-      '<section class="page-intro"><div class="wrap page-intro-inner"><span class="eyebrow">' +
+      '<section class="page-intro' +
+      (variant ? ' ' + variant : '') +
+      '"><div class="wrap page-intro-inner"><span class="eyebrow">' +
       eyebrow +
       '</span><h1>' +
       title +
@@ -168,32 +171,122 @@
       '</p></div></section>'
     );
   }
+  function workflowScene() {
+    var labels =
+      locale === 'ar'
+        ? ['المريض', 'الموعد', 'الزيارة السريرية']
+        : ['Patient', 'Appointment', 'Clinical encounter'];
+    var conceptual =
+      locale === 'ar'
+        ? 'مخطط مفاهيمي · يشرح العلاقة ولا يعرض بيانات حقيقية'
+        : 'Conceptual diagram · relationships only, no real data';
+    var planned = locale === 'ar' ? 'مسارات مستقبلية · غير متاحة' : 'Future branches · unavailable';
+    return (
+      '<figure class="workflow-scene" data-motion-scene><div class="workflow-topline"><span>' +
+      conceptual +
+      '</span><button type="button" class="motion-toggle" data-motion-toggle aria-pressed="false">' +
+      (locale === 'ar' ? 'إيقاف الحركة' : 'Pause motion') +
+      '</button></div><svg class="workflow-svg' +
+      (locale === 'ar' ? ' is-rtl' : '') +
+      '" viewBox="0 0 920 300" role="img" aria-labelledby="workflow-title workflow-desc" focusable="false" dir="ltr"><title id="workflow-title">' +
+      (locale === 'ar' ? 'العلاقة المفاهيمية بين خطوات العمل السريري' : 'Conceptual relationships in a clinical workflow') +
+      '</title><desc id="workflow-desc">' +
+      (locale === 'ar'
+        ? 'يرتبط المريض بالموعد ثم بالزيارة السريرية ضمن الأساس القائم. يتفرع الذكاء الاصطناعي والاتصال كمسارات مستقبلية متقطعة وغير متاحة.'
+        : 'A patient connects to an appointment and then a clinical encounter within the existing foundation. AI and calling appear only as dashed, unavailable future branches.') +
+      '</desc><path class="workflow-line" d="M156 152H764"/><path class="workflow-future-line" d="M460 152V67H726"/><path class="workflow-future-line" d="M460 152V238H726"/><g class="workflow-node"><circle cx="156" cy="152" r="42"/><path d="M140 155h32m-16-16v32"/></g><g class="workflow-node"><circle cx="460" cy="152" r="42"/><rect x="443" y="135" width="34" height="34" rx="3"/><path d="M450 129v12m20-12v12m-20 19h20"/></g><g class="workflow-node"><circle cx="764" cy="152" r="42"/><path d="M747 151h34m-29-9h24m-24 18h20"/></g><circle class="workflow-traveler" cx="156" cy="152" r="8"/><g class="workflow-future"><circle cx="806" cy="67" r="10"/><circle cx="806" cy="238" r="10"/></g></svg><div class="workflow-labels" dir="' +
+      (locale === 'ar' ? 'rtl' : 'ltr') +
+      '"><div><span>01</span><strong>' +
+      labels[0] +
+      '</strong></div><div><span>02</span><strong>' +
+      labels[1] +
+      '</strong></div><div><span>03</span><strong>' +
+      labels[2] +
+      '</strong></div></div><div class="workflow-branches"><span class="branch-label">' +
+      planned +
+      '</span><div class="planned-node"><strong>Thanarah AI</strong><span>' +
+      (locale === 'ar' ? 'مخطط · غير مفعّل' : 'Planned · not activated') +
+      '</span></div><div class="planned-node"><strong>Thanarah Calling</strong><span>' +
+      (locale === 'ar' ? 'مخطط · غير مفعّل' : 'Planned · not activated') +
+      '</span></div></div><figcaption>' +
+      (locale === 'ar'
+        ? 'المريض ← الموعد ← الزيارة السريرية: أساس تشغيلي قائم. الفروع المتقطعة ليست خدمات أو اتصالات حية.'
+        : 'Patient → appointment → encounter: an existing operational foundation. Dashed branches are not live services or connections.') +
+      '</figcaption></figure>'
+    );
+  }
   function home() {
     return (
       '<main id="main"><section class="hero"><div class="wrap hero-grid"><div class="hero-copy load-in"><span class="eyebrow">' +
       (locale === 'ar'
-        ? 'ثنارة · شريك البنية الرقمية'
-        : 'THANARAH · DIGITAL INFRASTRUCTURE PARTNER') +
+        ? 'ثنارة · شركة تقنية للرعاية الصحية'
+        : 'THANARAH · HEALTHCARE TECHNOLOGY COMPANY') +
       '</span><h1>' +
-      t.homeTitle +
+      (locale === 'ar'
+        ? 'منظومة واحدة،<br><em>لعمل الرعاية.</em>'
+        : 'Healthcare work,<br><em>held together.</em>') +
       '</h1><p>' +
       t.homeIntro +
+      '</p><p class="hero-position">' +
+      (locale === 'ar'
+        ? 'نبني منظومة تشغيل للعيادات: تبدأ اليوم بـ Smart Clinic، وتتسع مستقبلًا فقط عندما تصبح القدرات جاهزة.'
+        : 'We build an operating ecosystem for clinics: grounded today in Smart Clinic, with future capabilities named only as future work.') +
       '</p><div class="hero-actions"><a class="button" href="/services/">' +
       t.homePrimary +
       iconArrow() +
       '</a><a class="button ghost" href="/contact/">' +
       t.homeSecondary +
-      '</a></div></div><div class="hero-aside"><div class="seal"><img class="seal-mark" src="/assets/logo-mark.svg" alt=""><span class="seal-caption">' +
-      t.seal +
-      '</span></div><span class="seal-side-note">THANARAH · HEALTHCARE</span><span class="hero-index">' +
+      '</a></div><div class="hero-proof"><span class="proof-mark" aria-hidden="true">T/</span><span>' +
+      (locale === 'ar' ? 'مرتكز على عمل العيادة، لا على وعود الأتمتة.' : 'Built around clinic work, not automation promises.') +
+      '</span><span class="hero-index-label">' +
       t.heroIndex +
-      '</span></div></div></section><section class="section compact"><div class="wrap"><div class="statement"><div class="statement-num">' +
+      '</span></div></div><div class="hero-aside" data-parallax><figure class="hero-product"><div class="product-photo"><img src="/assets/clinic-interface.webp" alt="' +
+      (locale === 'ar'
+        ? 'لقطة من واجهة تسجيل المرضى الحالية — حقول فارغة، دون بيانات مرضى'
+        : 'Current patient-registration interface — blank fields, no patient data') +
+      '" width="1280" height="960" fetchpriority="high" decoding="async"><span class="photo-index">SMART CLINIC / 01</span></div><figcaption>' +
+      (locale === 'ar'
+        ? 'لقطة من واجهة تسجيل المرضى الحالية — حقول فارغة، دون بيانات مرضى'
+        : 'Current patient-registration interface — blank fields, no patient data') +
+      '</figcaption></figure><div class="ecosystem-index" aria-label="' +
+      (locale === 'ar' ? 'حالة منتجات ثنارة' : 'Thanarah product status') +
+      '" role="group"><div class="ecosystem-current"><span class="system-number">01</span><div><strong>Smart Clinic</strong><span>' +
+      (locale === 'ar' ? 'أساس تشغيلي قائم' : 'Existing clinic foundation') +
+      '</span></div><b>' +
+      (locale === 'ar' ? 'قائم' : 'EXISTS') +
+      '</b></div><div class="ecosystem-planned"><span class="system-number">02</span><div><strong>Thanarah AI</strong><span>' +
+      (locale === 'ar' ? 'طموح مستقبلي' : 'Future ambition') +
+      '</span></div><b>' +
+      (locale === 'ar' ? 'مخطط · غير مفعّل' : 'PLANNED · NOT ACTIVE') +
+      '</b></div><div class="ecosystem-planned"><span class="system-number">03</span><div><strong>Thanarah Calling</strong><span>' +
+      (locale === 'ar' ? 'طموح مستقبلي' : 'Future ambition') +
+      '</span></div><b>' +
+      (locale === 'ar' ? 'مخطط · غير مفعّل' : 'PLANNED · NOT ACTIVE') +
+      '</b></div><p>' +
+      (locale === 'ar' ? 'لقطة واجهة فقط؛ ليست لوحة حيّة أو إثباتًا لمسار مكتمل.' : 'Interface view only; not a live dashboard or proof of an end-to-end journey.') +
+      '</p></div></div></div></section><section class="section compact"><div class="wrap"><div class="statement"><div class="statement-num">' +
       t.positionLabel +
       ' / 01</div><div><h2>' +
-      t.positionTitle +
+      t.homeTitle +
       '</h2><p>' +
+      t.homeIntro +
+      '</p><p class="statement-seal">' +
+      t.seal +
+      '</p><h3 class="statement-secondary">' +
+      t.positionTitle +
+      '</h3><p>' +
       t.positionBody +
-      '</p></div></div></div></section><section class="section"><div class="wrap"><div class="section-header"><div><span class="eyebrow">' +
+      '</p></div></div></div></section><section class="section workflow-section"><div class="wrap"><div class="section-header"><div><span class="eyebrow">' +
+      (locale === 'ar' ? 'منظومة العيادة الذكية' : 'SMART CLINIC · THE OPERATING SYSTEM') +
+      '</span><h2>' +
+      (locale === 'ar' ? 'من سجلّ المريض إلى الزيارة.' : 'From patient record to encounter.') +
+      '</h2><p>' +
+      (locale === 'ar'
+        ? 'شرح بصري للعلاقات بين وظائف موجودة اليوم — وليس عرضًا لبيانات أو نشاط حي.'
+        : 'A visual explanation of capabilities that exist today—not a display of real data or live activity.') +
+      '</p></div></div>' +
+      workflowScene() +
+      '</div></section><section class="section"><div class="wrap"><div class="section-header"><div><span class="eyebrow">' +
       (locale === 'ar' ? 'ما هو قائم اليوم' : 'WHAT EXISTS TODAY') +
       '</span><h2>' +
       t.capabilityTitle +
@@ -320,8 +413,8 @@
   function about() {
     return (
       '<main id="main">' +
-      pageIntro(t.navAbout, t.aboutTitle, t.aboutIntro) +
-      '<section class="page-body"><div class="wrap"><article class="prose-grid"><div class="prose-label">' +
+      pageIntro(t.navAbout, t.aboutTitle, t.aboutIntro, 'intro-about') +
+      '<section class="page-body about-page"><div class="wrap"><article class="prose-grid"><div class="prose-label">' +
       t.aboutMission +
       ' / 01</div><div><h2>' +
       t.aboutMissionTitle +
@@ -375,8 +468,8 @@
   function packagesPage() {
     return (
       '<main id="main">' +
-      pageIntro(t.navPackages, t.packagesTitlePage, t.packagesIntro) +
-      '<section class="page-body"><div class="wrap"><div id="package-list" class="package-grid" aria-live="polite"><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div></div><p class="quote-note">' +
+      pageIntro(t.navPackages, t.packagesTitlePage, t.packagesIntro, 'intro-packages') +
+      '<section class="page-body packages-page"><div class="wrap"><div class="package-index" aria-hidden="true"><span>01 / LITE</span><span>02 / PRO</span><span>03 / CUSTOMIZE</span></div><div id="package-list" class="package-grid" aria-live="polite"><div class="skeleton-row"></div><div class="skeleton-row"></div><div class="skeleton-row"></div></div><p class="quote-note">' +
       t.packageContext +
       ' ' +
       t.packagePrivacy +
@@ -386,7 +479,7 @@
   function services() {
     return (
       '<main id="main">' +
-      pageIntro(t.navServices, t.servicesTitle, t.servicesIntro) +
+      pageIntro(t.navServices, t.servicesTitle, t.servicesIntro, 'intro-services') +
       '<section class="page-body"><div class="wrap"><div class="section-header"><div><span class="eyebrow">' +
       (locale === 'ar' ? 'قدرات حالية' : 'CURRENT CAPABILITIES') +
       '</span><h2>' +
@@ -404,7 +497,7 @@
       '</p></article><article class="service-card"><h3>' +
       t.capabilityEncounters +
       '</h3><p>' +
-      t.capTwoBody +
+      t.serviceSmartDescription +
       '</p></article><article class="service-card"><h3>' +
       t.capabilityRoles +
       '</h3><p>' +
@@ -440,7 +533,35 @@
           );
         })
         .join('') +
-      '</div><div class="section-header" style="margin-top:68px"><div><span class="eyebrow">' +
+      '</div><section class="service-workflow"><div class="section-header"><div><span class="eyebrow">' +
+      (locale === 'ar' ? 'كيف تتصل الوظائف' : 'HOW THE PIECES CONNECT') +
+      '</span><h2>' +
+      (locale === 'ar' ? 'سياق عمل واحد، وخطوات مفهومة.' : 'One operating context. Understandable steps.') +
+      '</h2><p>' +
+      (locale === 'ar'
+        ? 'المخطط مفاهيمي ولا يعرض بيانات فعلية. ميزات الذكاء الاصطناعي والاتصال المباشر مستقبلية وغير مفعّلة.'
+        : 'Conceptual only; no real data is shown. AI and direct communications are future branches and are not activated.') +
+      '</p></div></div>' +
+      workflowScene() +
+      '</section><section class="future-panel"><div class="future-intro"><span class="eyebrow">' +
+      t.futureTitle +
+      '</span><h2>' +
+      t.futureTitle +
+      '</h2><p>' +
+      t.futureIntro +
+      '</p></div><div class="future-lines"><div><strong>' +
+      t.futureWebsite +
+      '</strong><span>' +
+      t.futureWebsiteState +
+      '</span></div><div><strong>' +
+      t.futureDelivery +
+      '</strong><span>' +
+      t.futureDeliveryState +
+      '</span></div><div><strong>' +
+      t.futureAI +
+      '</strong><span>' +
+      t.futureAIState +
+      '</span></div></div></section><div class="section-header future-heading"><div><span class="eyebrow">' +
       t.registeredOnly +
       '</span><h2>' +
       t.catalogTitle +
@@ -454,8 +575,14 @@
   function why() {
     return (
       '<main id="main">' +
-      pageIntro(t.navWhy, t.whyTitle, t.whyIntro) +
-      '<section class="page-body"><div class="wrap"><div class="benefits">' +
+      pageIntro(t.navWhy, t.whyTitle, t.whyIntro, 'intro-why') +
+      '<section class="page-body"><div class="wrap"><div class="why-opening"><span class="eyebrow">' +
+      (locale === 'ar' ? 'مبدأ العمل' : 'THE OPERATING PRINCIPLE') +
+      '</span><h2>' +
+      t.whyClarity +
+      '</h2><p>' +
+      t.whyClarityBody +
+      '</p></div><div class="benefits">' +
       [
         [t.whyUnified, t.whyUnifiedBody],
         [t.whyJourney, t.whyJourneyBody],
@@ -476,22 +603,52 @@
           );
         })
         .join('') +
-      '</div><article class="prose-grid" style="margin-top:68px"><div class="prose-label">' +
+      '</div><div class="why-notes"><article><span>01 / ' +
+      t.whyFit +
+      '</span><h3>' +
+      t.whyFit +
+      '</h3><p>' +
+      t.whyFitBody +
+      '</p></article><article><span>02 / ' +
+      t.whyPace +
+      '</span><h3>' +
+      t.whyPace +
+      '</h3><p>' +
+      t.whyPaceBody +
+      '</p></article><article><span>03 / ' +
+      t.whyTrust +
+      '</span><h3>' +
+      t.whyTrust +
+      '</h3><p>' +
+      t.whyTrustBody +
+      '</p></article></div><article class="prose-grid reality-block"><div class="prose-label">' +
       (locale === 'ar' ? 'المتاح اليوم' : 'AVAILABLE TODAY') +
       ' / 01</div><div><h2>' +
       t.whyReality +
       '</h2><p>' +
       t.whyRealityBody +
+      '</p><h3>' +
+      t.whyFuture +
+      '</h3><p>' +
+      t.whyFutureBody +
       '</p><div class="hero-actions"><a class="button" href="/contact/">' +
       t.navContact +
       iconArrow() +
-      '</a></div></div></article></div></section></main>'
+      '</a></div></div></article><aside class="trust-boundary"><span class="eyebrow">' +
+      t.securityEyebrow +
+      '</span><h2>' +
+      t.securityTitle +
+      '</h2><p>' +
+      t.securityBody +
+      '</p><p class="small-note">' +
+      t.securityNote +
+      '</p></aside></div></section></main>'
     );
   }
   function contact() {
     return (
       '<main id="main">' +
-      pageIntro(t.navContact, t.contactTitle, t.contactIntro) +
+      pageIntro(t.navContact, t.contactTitle, t.contactIntro, 'intro-contact') +
       '<section class="page-body"><div class="wrap contact-grid"><aside class="contact-aside"><h2>' +
       t.contactAsideTitle +
       '</h2><p>' +
@@ -563,6 +720,10 @@
     );
   }
   function render() {
+    motionCleanup.forEach(function (cleanup) {
+      cleanup();
+    });
+    motionCleanup = [];
     document.documentElement.lang = locale;
     document.documentElement.dir = locale === 'ar' ? 'rtl' : 'ltr';
     t = lang[locale];
@@ -615,6 +776,13 @@
     if (route === 'contact') initForm();
   }
   function bindCommon() {
+    var main = document.getElementById('main');
+    var skip = document.querySelector('.skip-link');
+    if (main) main.setAttribute('tabindex', '-1');
+    if (skip && main)
+      skip.addEventListener('click', function () {
+        main.focus({ preventScroll: true });
+      });
     var langBtn = document.querySelector('[data-language]');
     if (langBtn)
       langBtn.addEventListener('click', function () {
@@ -660,6 +828,170 @@
     };
     document.querySelectorAll('[data-retry-catalog]').forEach(function (button) {
       button.addEventListener('click', retryCatalog);
+    });
+    bindMotion();
+  }
+  function bindMotion() {
+    var scenes = document.querySelectorAll('[data-motion-scene]');
+    var parallax = document.querySelector('[data-parallax]');
+    var revealTargets = document.querySelectorAll(
+      'main .section-header, main .statement, main .benefit, main .service-card, main .founder-profile, main .package-card, main .package-detail, main .contact-form, main .ecosystem-index',
+    );
+    var preference = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+    var connection = navigator.connection || null;
+    var reduced = Boolean(preference && preference.matches);
+    var saveData = Boolean(connection && connection.saveData);
+    var observer = null;
+    var frame = 0;
+    var parallaxVisible = false;
+    var sceneStates = [];
+    var hasObserver = typeof window.IntersectionObserver === 'function';
+
+    function allowed() {
+      return !reduced && !saveData && !document.hidden;
+    }
+    function updateScenes() {
+      sceneStates.forEach(function (state) {
+        var active = allowed() && state.inView && !state.userPaused;
+        state.scene.classList.toggle('motion-active', active);
+        state.toggle.setAttribute('aria-pressed', String(state.userPaused || reduced || saveData));
+        state.toggle.disabled = reduced || saveData;
+        // A toggle keeps a stable name; aria-pressed describes its paused state.
+        state.toggle.textContent = locale === 'ar' ? 'إيقاف الحركة' : 'Pause motion';
+        state.toggle.title = reduced || saveData
+          ? locale === 'ar' ? 'الحركة متوقفة حسب تفضيلات الجهاز' : 'Paused by device preferences'
+          : state.userPaused
+            ? locale === 'ar' ? 'الحركة متوقفة؛ اضغط للاستئناف' : 'Paused; press to resume'
+            : locale === 'ar' ? 'اضغط لإيقاف حركة المخطط' : 'Press to pause the diagram';
+      });
+    }
+    function revealAll() {
+      document.documentElement.classList.remove('reveal-ready');
+      revealTargets.forEach(function (target) {
+        target.classList.add('is-visible');
+        target.setAttribute('data-revealed', 'true');
+      });
+    }
+    function scheduleParallax() {
+      if (frame || !parallax || !parallaxVisible || !allowed()) return;
+      frame = window.requestAnimationFrame(function () {
+        frame = 0;
+        if (!parallaxVisible || !allowed()) return;
+        var bounds = parallax.getBoundingClientRect();
+        var offset = Math.max(-14, Math.min(14, (bounds.top + bounds.height / 2 - window.innerHeight / 2) * -0.022));
+        parallax.style.transform = 'translate3d(0,' + offset.toFixed(1) + 'px,0)';
+      });
+    }
+    function cancelParallax() {
+      if (frame) window.cancelAnimationFrame(frame);
+      frame = 0;
+      if (parallax) parallax.style.transform = '';
+    }
+    function syncMotionPreference() {
+      reduced = Boolean(preference && preference.matches);
+      saveData = Boolean(connection && connection.saveData);
+      document.documentElement.classList.toggle('motion-limited', reduced || saveData);
+      if (reduced || saveData) revealAll();
+      else if (observer && revealTargets.length) document.documentElement.classList.add('reveal-ready');
+      updateScenes();
+      if (allowed() && parallaxVisible) scheduleParallax();
+      else cancelParallax();
+    }
+    function visibilityChanged() {
+      updateScenes();
+      if (!document.hidden && parallaxVisible && allowed()) scheduleParallax();
+      else cancelParallax();
+    }
+    function scrollChanged() {
+      if (parallaxVisible && allowed()) scheduleParallax();
+    }
+    function onPreferenceChange() {
+      syncMotionPreference();
+    }
+    scenes.forEach(function (scene) {
+      var toggle = scene.querySelector('[data-motion-toggle]');
+      if (!toggle) return;
+      var state = { scene: scene, toggle: toggle, inView: false, userPaused: false };
+      sceneStates.push(state);
+      toggle.addEventListener('click', function () {
+        if (reduced || saveData) return;
+        state.userPaused = !state.userPaused;
+        updateScenes();
+      });
+    });
+    document.documentElement.classList.toggle('motion-limited', reduced || saveData);
+
+    if (hasObserver) {
+      try {
+        observer = new window.IntersectionObserver(function (entries) {
+          entries.forEach(function (entry) {
+            var target = entry.target;
+            if (target.hasAttribute('data-motion-scene')) {
+              var state = sceneStates.find(function (item) {
+                return item.scene === target;
+              });
+              if (state) state.inView = entry.isIntersecting;
+              updateScenes();
+            }
+            if (target === parallax) {
+              parallaxVisible = entry.isIntersecting;
+              if (parallaxVisible && allowed()) scheduleParallax();
+              else cancelParallax();
+            }
+            if (target.classList.contains('reveal-target') && entry.isIntersecting) {
+              target.classList.add('is-visible');
+              target.setAttribute('data-revealed', 'true');
+              observer.unobserve(target);
+            }
+          });
+        }, { threshold: 0.12, rootMargin: '0px 0px -4% 0px' });
+        scenes.forEach(function (scene) {
+          observer.observe(scene);
+        });
+        if (parallax) observer.observe(parallax);
+        if (allowed()) {
+          revealTargets.forEach(function (target) {
+            target.classList.add('reveal-target');
+            if (target.getAttribute('data-revealed') !== 'true') target.classList.remove('is-visible');
+            observer.observe(target);
+          });
+          if (revealTargets.length) document.documentElement.classList.add('reveal-ready');
+        } else revealAll();
+      } catch (_) {
+        if (observer) observer.disconnect();
+        observer = null;
+        revealAll();
+      }
+    } else revealAll();
+
+    if (preference) {
+      if (preference.addEventListener) preference.addEventListener('change', onPreferenceChange);
+      else if (preference.addListener) preference.addListener(onPreferenceChange);
+    }
+    if (connection && connection.addEventListener)
+      connection.addEventListener('change', onPreferenceChange);
+    document.addEventListener('visibilitychange', visibilityChanged);
+    if (parallax) {
+      window.addEventListener('scroll', scrollChanged, { passive: true });
+      window.addEventListener('resize', scrollChanged, { passive: true });
+    }
+    updateScenes();
+    motionCleanup.push(function () {
+      if (observer) observer.disconnect();
+      if (preference) {
+        if (preference.removeEventListener) preference.removeEventListener('change', onPreferenceChange);
+        else if (preference.removeListener) preference.removeListener(onPreferenceChange);
+      }
+      if (connection && connection.removeEventListener)
+        connection.removeEventListener('change', onPreferenceChange);
+      document.removeEventListener('visibilitychange', visibilityChanged);
+      if (parallax) {
+        window.removeEventListener('scroll', scrollChanged);
+        window.removeEventListener('resize', scrollChanged);
+      }
+      cancelParallax();
+      document.documentElement.classList.remove('reveal-ready');
+      document.documentElement.classList.remove('motion-limited');
     });
   }
   function renderServiceResult(data) {

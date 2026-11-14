@@ -166,6 +166,72 @@ describe('Public website route and reusable component regressions', () => {
   it('keeps a usable Arabic default when browser storage is unavailable', () => {
     expect(renderers('en', true).header()).toContain('الرئيسية');
   });
+  it.each(['ar', 'en'] as const)(
+    'explains the real clinical foundation without presenting future connections as live in %s',
+    (language) => {
+      const site = renderers(language);
+      for (const html of [site.home(), site.services()]) {
+        expect(html).toContain('Thanarah AI');
+        expect(html).toContain('Thanarah Calling');
+        expect(html).toContain('data-motion-scene');
+        expect(html).toContain('data-motion-toggle');
+        expect(html).toContain('aria-pressed=');
+        expect(html).toContain('<figcaption>');
+        expect(html).toContain(language === 'ar' ? 'غير متاحة' : 'unavailable');
+        expect(html).toContain(language === 'ar' ? 'مفاهيمي' : 'Conceptual');
+      }
+      expect(site.home()).toContain('Smart Clinic');
+      expect(site.home()).not.toContain('aria-live="assertive"');
+    },
+  );
+  it.each(['ar', 'en'] as const)(
+    'shows a genuine blank product interface with an accurate caption and prioritised hero image in %s',
+    (language) => {
+      const html = renderers(language).home();
+      expect(html).toContain('/assets/clinic-interface.webp');
+      expect(html).toContain('fetchpriority="high"');
+      expect(html).toContain('width="1280" height="960"');
+      expect(html).toContain('decoding="async"');
+      expect(html).toContain(language === 'ar' ? 'دون بيانات مرضى' : 'no patient data');
+      expect(existsSync('public/assets/clinic-interface.webp')).toBe(true);
+    },
+  );
+  it('retains the original bilingual positioning, safeguards, workflow and FAQs after redesign', () => {
+    const translations = {
+      window: {
+        ThanarahSiteContent: {} as Record<'ar' | 'en', Record<string, string>>,
+      },
+    };
+    runInNewContext(readFileSync('public/site/content.js', 'utf8'), translations);
+    for (const language of ['ar', 'en'] as const) {
+      const home = renderers(language).home();
+      const copy = translations.window.ThanarahSiteContent[language];
+      for (const key of [
+        'homeTitle',
+        'homeIntro',
+        'positionTitle',
+        'positionBody',
+        'clinicalNote',
+        'step1Body',
+        'step2Body',
+        'step3Body',
+        'step4Body',
+        'benefit1Body',
+        'benefit2Body',
+        'benefit3Body',
+        'benefit4Body',
+        'securityBody',
+        'securityNote',
+        'faq1Body',
+        'faq2Body',
+        'faq3Body',
+        'faq4Body',
+        'faq5Body',
+      ]) {
+        expect(home, `${language}: preserved ${key}`).toContain(copy[key]);
+      }
+    }
+  });
   it('retains the original platform workspaces alongside the new public entry', () => {
     for (const path of [
       'platform',
