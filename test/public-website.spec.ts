@@ -14,6 +14,7 @@ interface SiteRenderers {
   header: Renderer;
   footer: Renderer;
   packageCard: (code: string, catalog: unknown, compact: boolean) => string;
+  referencePackages: (catalog: unknown) => string;
 }
 function renderers(language: 'ar' | 'en', blockedStorage = false): SiteRenderers {
   const source = readFileSync('public/site/app.js', 'utf8');
@@ -39,11 +40,16 @@ function renderers(language: 'ar' | 'en', blockedStorage = false): SiteRenderers
     siteRenderers: undefined as unknown as SiteRenderers,
   };
   runInNewContext(readFileSync('public/site/content.js', 'utf8'), context);
+  runInNewContext(readFileSync('public/site/reference-home.js', 'utf8'), context);
   runInNewContext(
     source.replace(
       boot,
       `
-    globalThis.siteRenderers={home,about,packagesPage,services,why,contact,header,footer,packageCard};
+    var reference = window.ThanarahReferenceHome(locale,t,{escape:esc});
+    globalThis.siteRenderers={
+      home:reference.home,header:reference.header,footer:reference.footer,
+      referencePackages:reference.packages,about,packagesPage,services,why,contact,packageCard
+    };
   })();`,
     ),
     context,
@@ -69,7 +75,12 @@ describe('Public website route and reusable component regressions', () => {
     'renders complete navigation and page headings in %s',
     (language) => {
       const site = renderers(language);
-      for (const route of routes) expect(site.header()).toContain(`href="${route}"`);
+      for (const route of routes)
+        expect(route === '/why-thanarah/' ? site.footer() : site.header()).toContain(
+          `href="${route}"`,
+        );
+      expect(site.header()).toContain('href="/#clinic"');
+      expect(site.header()).toContain('href="/customer/"');
       for (const page of [
         site.home,
         site.about,
@@ -80,7 +91,7 @@ describe('Public website route and reusable component regressions', () => {
       ]) {
         const html = page();
         expect(html.match(/<h1(?:\s|>)/gu)).toHaveLength(1);
-        expect(html).toContain('<main id="main">');
+        expect(html).toMatch(/<main id="main"(?:\s[^>]*)?>/u);
         expect(html).not.toContain('undefined');
         expect(html).not.toContain('mailto:');
       }
@@ -170,7 +181,7 @@ describe('Public website route and reusable component regressions', () => {
     'explains the real clinical foundation without presenting future connections as live in %s',
     (language) => {
       const site = renderers(language);
-      for (const html of [site.home(), site.services()]) {
+      for (const html of [site.services()]) {
         expect(html).toContain('Thanarah AI');
         expect(html).toContain('Thanarah Calling');
         expect(html).toContain('data-motion-scene');
@@ -180,20 +191,29 @@ describe('Public website route and reusable component regressions', () => {
         expect(html).toContain(language === 'ar' ? 'غير متاحة' : 'unavailable');
         expect(html).toContain(language === 'ar' ? 'مفاهيمي' : 'Conceptual');
       }
-      expect(site.home()).toContain('Smart Clinic');
+      expect(site.home()).toContain(language === 'ar' ? 'ثنارة كلينك' : 'Thanarah Clinic');
+      expect(site.home()).toContain(language === 'ar' ? 'قيد التطوير' : 'In development');
+      expect(site.home()).toContain(language === 'ar' ? 'غير متاح حاليًا' : 'Not available yet');
       expect(site.home()).not.toContain('aria-live="assertive"');
     },
   );
   it.each(['ar', 'en'] as const)(
-    'shows a genuine blank product interface with an accurate caption and prioritised hero image in %s',
+    'uses the supplied design scenes without claiming an actual office or live interface in %s',
     (language) => {
       const html = renderers(language).home();
-      expect(html).toContain('/assets/clinic-interface.webp');
+      expect(html).toContain('/assets/home-reception.webp');
+      expect(html).toContain('/assets/home-clinic-scene.webp');
       expect(html).toContain('fetchpriority="high"');
-      expect(html).toContain('width="1280" height="960"');
+      expect(html).toContain('width="656" height="418"');
       expect(html).toContain('decoding="async"');
-      expect(html).toContain(language === 'ar' ? 'دون بيانات مرضى' : 'no patient data');
-      expect(existsSync('public/assets/clinic-interface.webp')).toBe(true);
+      expect(html).toContain(
+        language === 'ar' ? 'ليس صورة مقر فعلي' : 'not a photograph of an actual office',
+      );
+      expect(html).toContain(
+        language === 'ar' ? 'لا يعرض واجهة تشغيل فعلية' : 'not a live product interface',
+      );
+      expect(existsSync('public/assets/home-reception.webp')).toBe(true);
+      expect(existsSync('public/assets/home-clinic-scene.webp')).toBe(true);
     },
   );
   it('retains the original bilingual positioning, safeguards, workflow and FAQs after redesign', () => {
@@ -204,7 +224,8 @@ describe('Public website route and reusable component regressions', () => {
     };
     runInNewContext(readFileSync('public/site/content.js', 'utf8'), translations);
     for (const language of ['ar', 'en'] as const) {
-      const home = renderers(language).home();
+      const site = renderers(language);
+      const home = (site.home() + site.footer()).replace(/<[^>]*>/gu, '').replace(/&amp;/gu, '&');
       const copy = translations.window.ThanarahSiteContent[language];
       for (const key of [
         'homeTitle',
@@ -228,8 +249,65 @@ describe('Public website route and reusable component regressions', () => {
         'faq4Body',
         'faq5Body',
       ]) {
-        expect(home, `${language}: preserved ${key}`).toContain(copy[key]);
+        expect(home, `${language}: preserved ${key}`).toContain(copy[key].replace(/<[^>]*>/gu, ''));
       }
+    }
+  });
+  it('loads the reference renderer only for the homepage and its welcome alias, in dependency order', () => {
+    for (const path of ['public/index.html', 'public/welcome/index.html']) {
+      const html = readFileSync(path, 'utf8');
+      expect(html.indexOf('/site/content.js')).toBeLessThan(
+        html.indexOf('/site/reference-home.js'),
+      );
+      expect(html.indexOf('/site/reference-home.js')).toBeLessThan(html.indexOf('/site/app.js'));
+      expect(html).toContain('/site/reference-home.css');
+    }
+    for (const route of routes.slice(1)) {
+      expect(readFileSync(`public${route}index.html`, 'utf8')).not.toContain(
+        '/site/reference-home.',
+      );
+    }
+  });
+  it('keeps a single package update target inside the reference grid, outside the section heading', () => {
+    const html = renderers('ar').home();
+    expect(html.match(/id="home-packages"/gu)).toHaveLength(1);
+    expect(html).toContain('class="rh-package-grid" id="home-packages"');
+    expect(html.indexOf('rh-packages-inner')).toBeLessThan(html.indexOf('id="home-packages"'));
+    const sections = [
+      'rh-hero',
+      'rh-benefit-bar',
+      'rh-clinic',
+      'rh-solutions',
+      'rh-packages',
+      'rh-why',
+      'rh-cta',
+    ];
+    for (let i = 1; i < sections.length; i += 1) {
+      expect(html.indexOf(`class="${sections[i - 1]}`)).toBeLessThan(
+        html.indexOf(`class="${sections[i]}`),
+      );
+    }
+  });
+  it('uses only published package details in the new reference cards and escapes catalog text', () => {
+    const html = renderers('en').referencePackages({
+      packages: [
+        {
+          code: 'Lite',
+          published: true,
+          description: '<img onerror=alert(1)>',
+          features: ['<script>bad</script>'],
+        },
+        { code: 'Pro', published: false, description: 'UNPUBLISHED_SCOPE', priceMinor: '999900' },
+      ],
+    });
+    expect(html).toContain('&lt;img');
+    expect(html).toContain('&lt;script&gt;');
+    expect(html).not.toContain('<img');
+    expect(html).not.toContain('UNPUBLISHED_SCOPE');
+    expect(html).not.toContain('999900');
+    expect(html).not.toContain('SAR');
+    for (const code of ['Lite', 'Pro', 'Customize']) {
+      expect(html).toContain(`/contact/?package=${code}`);
     }
   });
   it('retains the original platform workspaces alongside the new public entry', () => {

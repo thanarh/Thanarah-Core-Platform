@@ -176,3 +176,37 @@ Intermittent stale-reference errors in the browser harness were resolved using
 CSS/coordinate clicks and were not application failures. No production publish,
 database/schema modification, payment, WhatsApp, calling or external AI
 activation was performed.
+
+## Homepage reference recreation — 2026-11-14
+
+The owner's supplied screenshots supersede the previous homepage art direction,
+not the other five pages. `/` and `/welcome/` alone load the isolated
+`reference-home.js` and `reference-home.css`. The compact dark header,
+reception hero, benefit strip, clinic/devices image, four solution cards,
+three-package green panel, facade/principles, chair CTA and dark footer
+follow the supplied composition. All are real HTML controls and text, not
+a flattened screenshot. The reception, clinic scene, facade and chair are
+optimized copies/crops of the owner's assets, about 65 KiB combined.
+
+Product navigation points to the real clinic section; customer/sign-in controls
+use `/customer/`; inquiry buttons use the existing contact page and package
+query parameters. The video-looking explanation action links to the clinic
+section, not a nonexistent video. The rationale page remains linked in the footer.
+Legacy FAQs, clinical limits, approach and security content remain available
+through an expandable footer disclosure without adding large unrelated sections.
+
+Visual scenes are labelled conceptual, not an actual office or live interface.
+Future AI, website and communications capabilities remain unavailable; package
+content still comes only from published catalog entries, with an explicit
+unconfirmed state on missing details. No fabricated popularity, customers,
+percentage metrics or external social-account links were introduced.
+
+Verification: 24 website regression cases passed, including the actual new
+renderer, both languages, source order/isolation, exactly one package update
+target, published-only escaping and preserved disclosures. TypeScript passed.
+The existing build-and-start workflow restarted successfully; screenshots
+confirmed desktop and mobile layouts, and the homepage, welcome, about, contact,
+platform and new assets returned HTTP 200. Changed-test ESLint formatting issues
+were corrected. There was no new full browser journey, form submission or
+repository-wide test/lint run for this frontend-only follow-up. Backend,
+authentication, databases and providers were unchanged; nothing was published.

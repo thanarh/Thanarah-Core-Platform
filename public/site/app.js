@@ -24,6 +24,7 @@
     path === '/' || path === '/welcome' || path === '/site'
       ? 'home'
       : path.split('/').filter(Boolean).pop();
+  var isReferenceHomePath = path === '/' || path === '/welcome';
   var app = document.getElementById('app');
   var catalogCache = null;
   var queryPackage = new URLSearchParams(location.search).get('package');
@@ -742,12 +743,17 @@
       'why-thanarah': why,
       contact: contact,
     };
+    var referenceHome = isReferenceHomePath && route === 'home' && window.ThanarahReferenceHome
+      ? window.ThanarahReferenceHome(locale, t, { escape: esc })
+      : null;
     app.innerHTML =
-      header() +
+      (referenceHome ? referenceHome.header() : header()) +
       (pages[route]
-        ? pages[route]()
+        ? referenceHome
+          ? referenceHome.home()
+          : pages[route]()
         : pageIntro(t.navHome, t.notFound, '') + '<main id="main"></main>') +
-      footer();
+      (referenceHome ? referenceHome.footer() : footer());
     var description =
       route === 'home'
         ? t.positionBody
@@ -1102,7 +1108,9 @@
   }
   function renderHomePackages(data) {
     var el = document.getElementById('home-packages');
-    if (el)
+    if (el && window.ThanarahReferenceHome) {
+      el.innerHTML = window.ThanarahReferenceHome(locale, t, { escape: esc }).packages(data);
+    } else if (el)
       el.innerHTML = ['Lite', 'Pro', 'Customize']
         .map(function (c) {
           return packageCard(c, data, true);
@@ -1161,7 +1169,10 @@
         esc(t.retry) +
         '</button></div>';
       if (id === 'home-packages')
-        el.innerHTML =
+        el.innerHTML = window.ThanarahReferenceHome
+          ? '<div class="rh-catalog-error">' + errorNotice + '</div>' +
+            window.ThanarahReferenceHome(locale, t, { escape: esc }).packageFallback()
+          :
           errorNotice +
           ['Lite', 'Pro', 'Customize']
             .map(function (c) {
