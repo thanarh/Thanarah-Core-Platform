@@ -161,9 +161,7 @@
         (ar ? 'باقات مرنة تناسب احتياجات العيادات والمراكز الطبية.' :
           'Flexible packages for the needs of clinics and medical centres.') + '</p><div class="rh-package-grid" id="home-packages" aria-live="polite"><div class="rh-package-loading"></div><div class="rh-package-loading"></div><div class="rh-package-loading"></div></div><small>' + (ar ? 'النطاق والتسعير عبر عرض سعر بعد مناقشة الاحتياج.' :
           'Scope and pricing are quote-based after discussing your needs.') + '</small></div></section>' +
-        '<section class="rh-why"><div class="rh-facade"><img src="/assets/home-facade.webp" width="280" height="282" loading="lazy" decoding="async" alt="' +
-        (ar ? 'مشهد تصوري لواجهة مبنى صحي تحمل علامة ثنارة' : 'Conceptual healthcare building facade with Thanarah mark') +
-        '"><small>' + (ar ? 'مشهد تصوري من المرجع التصميمي، وليس صورة مقر فعلي.' :
+        '<section class="rh-why"><div class="rh-facade"><small>' + (ar ? 'مشهد تصوري من المرجع التصميمي، وليس صورة مقر فعلي.' :
           'Conceptual reference scene, not a photograph of an actual office.') + '</small></div><div class="rh-why-content"><span class="rh-eyebrow">' +
         (ar ? 'لماذا ثنارة؟' : 'WHY THANARAH') + '</span><h2>' +
         (ar ? 'قيمة حقيقية لقطاع صحي أكثر تطورًا' : 'Meaningful value for a more connected healthcare sector') +
