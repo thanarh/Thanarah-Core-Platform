@@ -115,8 +115,7 @@
       return '<main id="main" class="reference-home-root' + (ar ? ' is-ar' : ' is-en') + '">' +
         '<section class="rh-hero"><div class="rh-hero-photo"><img src="/assets/thanarah-reception.webp" width="1400" height="946" fetchpriority="high" decoding="async" alt="' +
         (ar ? 'مشهد تصوري لاستقبال ثنارة بتصميم خشبي ونباتات ومكتب استقبال' : 'Conceptual Thanarah reception scene with warm timber, plants and a reception desk') +
-        '"><small>' + (ar ? 'مشهد تصوري من المرجع التصميمي، وليس صورة مقر فعلي.' : 'Conceptual reference scene, not a photograph of an actual office.') +
-        '</small></div><div class="rh-hero-copy"><span class="rh-eyebrow">' +
+        '"></div><div class="rh-hero-copy"><span class="rh-eyebrow">' +
         (ar ? 'منظومة تقنية متكاملة للرعاية الصحية' : 'An integrated technology ecosystem for healthcare') +
         '</span><h1>' + (ar ? 'ثنارة' : 'Thanarah') + '</h1><h2>' +
         (ar ? 'تشغّل، تنظّم، وتنمّي<br>أعمالك الصحية.' : 'Operate, organise and grow<br>your healthcare practice.') +
