@@ -112,6 +112,20 @@ describe('Public website route and reusable component regressions', () => {
     }
     expect(existsSync('public/assets/ziad-alkhathlan.jpg')).toBe(true);
   });
+  it('shows the supplied CTO and portrait while retaining the founder and partner', () => {
+    for (const language of ['ar', 'en'] as const) {
+      const html = renderers(language).about();
+      expect(html).toContain('Youssef Darwish');
+      expect(html).toContain('/assets/youssef-darwish.jpg');
+      expect(html).toContain(
+        language === 'ar' ? 'الرئيس التنفيذي للتقنية — CTO' : 'Chief Technology Officer — CTO',
+      );
+      expect(html).toContain('id="cto"');
+      expect(html).toContain('Faisal alenizi');
+      expect(html).toContain('Ziad alkhathlan');
+    }
+    expect(existsSync('public/assets/youssef-darwish.jpg')).toBe(true);
+  });
   it('renders quote-based packages without inventing unpublished features or currency', () => {
     const site = renderers('ar');
     const html = site.packageCard(

@@ -363,6 +363,12 @@
       t.partnerLabel +
       '</div><h2 id="partner-name" dir="ltr">Ziad alkhathlan</h2><p class="founder-role">' +
       t.partnerRole +
+      '</p></div></section><section class="founder-profile" id="cto" aria-labelledby="cto-name"><div class="founder-photo-wrap"><img class="founder-photo" src="/assets/youssef-darwish.jpg" alt="' +
+      t.ctoImageAlt +
+      '" width="871" height="1000" style="aspect-ratio:871/1000" loading="lazy" decoding="async"></div><div class="founder-copy"><div class="prose-label">' +
+      t.ctoLabel +
+      '</div><h2 id="cto-name" dir="ltr">Youssef Darwish</h2><p class="founder-role">' +
+      t.ctoRole +
       '</p></div></section></div></section></main>'
     );
   }
