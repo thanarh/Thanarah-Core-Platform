@@ -1,20 +1,23 @@
 # Thanarah Master Product Completion Roadmap
 
-**Updated:** 2026-11-11
-**Overall release status:** NOT READY — product, security, and operational acceptance remain open.
+**Version:** 1.1
+**Updated:** 2026-11-15
+**Overall release status:** NOT READY — product completion, current validation, and production operations remain open.
 **Production status:** No production database, configuration, migration, deployment, or payment was accessed or changed.
 
 This is the single current status and acceptance register for Thanarah completion. It replaces the former MongoDB-migration-only checklist as the live roadmap; detailed phase reports remain historical evidence. Update this file after each accepted stage rather than creating competing master checklists.
 
 ## 1. Product and safety decisions
 
-- **Keep the hybrid architecture.** Central identity, authentication, authorization, tenant and membership metadata, SaaS plans/subscriptions, registry metadata, and platform audit remain MySQL/Prisma. Tenant clinical and operational data use the existing MongoDB storage boundary. A wholesale MySQL-to-MongoDB migration is not a product-completion goal and is not authorized.
+- **Use MongoDB for the whole platform.** The owner confirmed MongoDB for central identity, sessions, authorization, tenants, subscriptions, configuration, audit, and clinic data. The MongoDB-only development runtime is implemented across 22 central persistence ports. This supersedes the hybrid MySQL/Prisma direction in the 2026-11-11 version of this file. Historical SQL schemas, repositories, migrations, and tests remain for reference; they are not the target runtime and do not authorize data deletion or production migration.
 - **Keep tenant boundaries fail-closed.** Never weaken authentication, authorization, trusted tenant context, facility/branch scope, or storage readiness to make a workflow appear complete.
 - **No production operations in this program.** Use synthetic data and approved non-production systems only. Do not read or reveal secret values, use production data, deploy, apply production migrations, or make live payments.
-- **Keep payments last.** Geidea is the selected payment provider. Its separate final stage is gated on the rest of the program and final acceptance; production processing still requires separate explicit approval.
+- **Use Paymob at the final payment stage.** The owner selected Paymob on 2026-11-15, superseding the earlier Geidea choice. Finish manual bank-transfer receipt and review flows for both clinic invoices and SaaS subscriptions first; complete the rest of the roadmap before sandbox integration. Keep live processing disabled pending separate approval. The accepted task #91 still says Geidea and is stale; do not execute it as written.
 - **Do not invent commercial or legal rules.** Clinic invoices and SaaS subscriptions are separate. SAR may be the configurable default requested by the owner; tax rates, legal invoice fields, pricing, refunds, and invoice numbering need approved rules.
 - **Do not create a parallel mobile app without approval.** A deeper scan of the working tree, all available branches/remotes, tracked history, and installed dependencies found no mobile app. An external repository not connected to this workspace cannot be ruled out; request its link or an explicit platform/stack decision before creating anything.
 - **Keep AI separate from clinical business logic.** AI tools may call only authorized Thanarah services; no unrestricted database access, arbitrary queries, or unapproved transfer of patient data to external providers.
+- **Keep external channels disabled until approved.** The user described a per-clinic WhatsApp linked-device direction using Baileys, but the communication adapter remains disabled and no live provider is connected. Provider suitability, consent, account ownership, retention, OTP, and voice requirements must be confirmed before live messaging or calling.
+- **Phase 01 is accepted for development, not production.** On 2026-11-15 the owner accepted the MongoDB foundation and authorized Phase 02 internal-company development with configurable, independently approved policies. This does not accept production readiness, permit data cutover, or authorize publishing or real transactions.
 
 ## 2. Evidence rules
 
@@ -33,84 +36,119 @@ Do not promote a feature to “implemented and tested” based only on a page, A
 
 | Area | Current status | Evidence and limits |
 |---|---|---|
-| Platform identity, login, sessions, roles and authorization | **Implemented and tested; production release gate open** | Auth, session lifecycle, platform permissions, tenant membership checks, and tenant authorization have focused unit/HTTP/integration coverage. This is not an independent penetration test or production deployment certification. |
-| Tenant administration and existing-account membership lifecycle | **Implemented for available APIs and tested browser flows** | Tenant and membership workspaces cover existing platform accounts and lifecycle operations. New platform-user registration and invitation email delivery are not implemented. Owner transfer/removal remains constrained by current policy. |
-| Facilities, branches, team and clinic setup | **Implemented and authenticated-browser verified for synthetic scope** | Facility/branch setup, membership and staff directories, existing role assignments, and staff facility/branch scopes are exercised in the disposable Phase 30 browser journey. New request-epoch regression tests ensure late responses cannot restore another tenant’s data in clinic, team, catalog, or doctor setup. Proposals #73, #74, #80, and #81 remain separate. |
-| Departments, specialties, doctors, services | **Implemented and browser-tested for current CRUD/lifecycle scope** | Authenticated catalog and doctor setup flows cover tested create/edit/status operations and tenant boundaries. |
-| Doctor-to-service assignments | **Implemented in the current repository; scoped tests exist** | API and UI support facility/branch-scoped add/remove operations, and appointment validation can require an assignment. Earlier statements in `THANARAH_PRODUCT_COMPLETION_ROADMAP.md` that this capability is absent are stale. The consolidated review screen is separately proposed in task #81. |
-| Patients | **Core workflow implemented and tested** | Directory, registration/edit, search, lifecycle, tenant storage safeguards, duplicate protection, and authenticated browser evidence exist. Accessibility, broader browser coverage, and rollout acceptance remain. |
-| Appointments and scheduling | **Core staff workflow implemented and tested** | Booking, updates, rescheduling/cancellation, facility policy/timezone and conflict controls exist. Public booking is not present. Filtering eligible services in the booking UI remains in draft task #80. |
-| Encounters and clinical records | **Implemented for documented scope; operational review gaps remain** | Encounter notes, vitals, diagnoses, service records, lifecycle, history, and recovery contracts exist. Prescriptions, orders, referrals, claims, and standardized diagnosis coding are not established as implemented. |
-| SaaS plan/subscription foundations | **Backend, manual admin workflow, and clinic self-service transfer review implemented; commercial billing absent** | Plan, feature, subscription lifecycle, entitlement, and quota-definition foundations exist. `/platform-saas/` provides permission-aware manual subscription assignment and lifecycle controls. `/finance/` now provides an owner/admin-only tenant subscription view and bank-transfer receipt submission for manual review. No price is inferred, and accepting an uploaded receipt does not renew or charge. A patient-facing invoice portal remains blocked until secure patient-account linkage is approved. There is no automated collection, renewal charging, authoritative usage metering, or payment reconciliation. |
-| Clinic invoices and financial operations | **Configurable invoice foundation implemented; legal and payment readiness remain open** | Tenant-scoped settings, drafts, review, issue, idempotency, and audit history exist separately from SaaS subscriptions. No rates, legal fields, numbering reset policy, patient linkage, payment, refund, or accounting ledger is assumed. |
-| Responsive bilingual web product | **Implemented and browser-tested for selected workflows; broader rollout acceptance remains** | The nine existing staff/platform workspaces load a shared Arabic/RTL and English/LTR layer with a browser-local preference. Authenticated Chromium checks include keyboard language switching, a 390px appointment layout without page overflow, and English permission-denied states. Human terminology review, full screen-reader coverage, and a wider browser/device matrix remain. |
-| Mobile application | **Not found after repository, branch, and history review; target decision required** | No Flutter, React Native/Expo, Capacitor/Ionic, Android, or iOS project files, manifests, source directories, or direct dependencies were found in the worktree or available refs/history. The shared API client in `public/appointments/api.js` is browser-oriented, not a mobile application. An external repository is not connected and cannot be ruled out. No mobile project or framework was created. |
-| AI platform and RAG | **Tenant foundation implemented; external activation and live channels remain gated** | `/ai-admin/` manages tenant agents, tools, knowledge sources, budgets, redacted usage, and audit. Inference runs in a separate Node child process without database credentials; local lexical retrieval is tenant-scoped. Hosted/local providers remain disabled by default, and the run path accepts synthetic prompts only. No live voice, WhatsApp, provider webhooks, embeddings, or vector database is enabled. |
-| WhatsApp, voice and workflow automation | **Safe tenant foundation implemented; provider operations remain blocked** | `/communications/` manages channel-level consent, explicit retention settings, synthetic tests, normalized delivery/call/handoff statuses, signed-webhook adapter contracts, and idempotent redacted events. No provider, credential, live send/call path, retry worker, or handoff execution is enabled. Provider approval and operational consent policy remain open. |
-| Security and dependencies | **Critical/high findings cleared; release gate remains open** | Fresh 2026-11-09 scans report 0 critical, 0 high, and 5 moderate dependency findings; SAST and HoundDog reported 0 findings each. Auth, CORS, and tenant-scope unit tests pass. Staging/production CORS remains fail-closed; no approved origin allowlist is configured. This is not penetration testing or production certification. |
-| Storage, database and recovery operations | **Partially implemented; production readiness blocked** | The application uses MySQL/Prisma centrally and MongoDB behind tenant storage. Mongo provider/topology, TLS/network controls, transaction guarantees, backup/restore, residency, ownership, and RPO/RTO remain unapproved or unverified. Phase 61/62 replica-set backup/restore was not run. |
+| Central platform storage and identity | **MongoDB-only development runtime implemented; production gate open** | `THANARAH_MONGODB_CONVERSION_PROGRESS.md` records all 22 central persistence ports on MongoDB, no Prisma provider in the compiled runtime, and 78 isolated Mongo tests. Phase 01 was accepted for development on 2026-11-15. Production topology, cutover, backup/restore, and release acceptance remain open; task #117 still appears pending and needs status reconciliation. |
+| Authentication and authorization | **Core flows implemented; complete account lifecycle and current preview unverified** | Password login, refresh rotation, logout, role and tenant authorization have recorded HTTP and integration coverage. Email verification/reset and unified role-specific account journeys remain in task #116. The customer refresh-cookie fix added during this session has not been verified in the running preview because the application workflow currently fails to start. |
+| Tenant, clinic and catalog setup | **Core development workflows implemented and synthetically tested** | Tenant membership, facility/branch, staff scope, departments, specialties, doctors, services, doctor-service assignment, patients, and staff scheduling have focused evidence. Owner changes, broad accessibility/browser coverage, and draft proposals #73/#74/#80/#81 remain separate. |
+| Internal company operations | **Development workspace implemented; operational setup and stage acceptance remain** | `/company/` covers organization, employee access, HR contracts, lead/CRM stages, requests and independent review, ledger, configurable payroll/commission/profit policies, and executive views. The Phase 02 report records 23 isolated tests and an authenticated finance browser flow. No live staff, salaries, accounting setup, or approved policies were seeded; task #111 remains open. |
+| Customer journey and packages | **Connected development flow, not closed** | `/welcome/`, `/customer/`, and `/customer-admin/` cover service/package catalog, customer profiles, requests, documents, review, account assignment, activation/handover, renewal, invoices and audit. `docs/PHASE_03_CUSTOMER_JOURNEY.md` says closure is blocked because WhatsApp verification is not live; the customer experience must not claim OTP, package publication, payment, or clinic handover beyond what is configured. Task #112 remains open. |
+| Smart Clinic | **Core clinic setup, patient, staff appointment and encounter scope exists; full medical scope remains** | Existing records cover patient, appointment/scheduling policy, encounter notes, vitals, diagnoses, services and clinic finance. The requested integrated workflow still needs prescriptions/medications, lab and imaging orders/results, insurance approvals, public booking and role-specific acceptance. Task #118 remains open. |
+| Clinic invoices and SaaS subscriptions | **Separate foundations exist; full payment paths do not** | Tenant invoice settings/drafts/review/issue and subscription lifecycle are separate. SaaS subscription receipt submission exists for manual review, but the two-flow bank-transfer task #108 still requires the patient-invoice path and both reviewers. No automatic collection, renewal charge, refund, or reconciliation is enabled. |
+| Responsive bilingual web product | **Selected web workflows tested; broader rollout remains** | Shared Arabic RTL/English LTR behavior is recorded for existing workspaces. Human terminology review, screen-reader coverage, and a wider browser/device matrix remain; task #121 continues shared interface/auth work. |
+| Clinic Website Builder | **Not present as a customer editor/publisher** | `/site/` is the Thanarah public website, not a clinic's editable website. Templates, drag/drop, clinic domain, booking linkage, version restore, and test-domain publication remain in task #113. |
+| Customer projects and GitHub | **Not present as an end-to-end customer workflow** | No verified per-customer repository, reviewed change, approved deployment, log, or rollback journey exists; task #114 depends on the customer site work. |
+| AI and assistants | **Tenant-safe synthetic foundation; requested assistants and live activation remain** | `/ai-admin/` provides agent/tool/knowledge/budget/audit foundations and local lexical retrieval. Semantic Arabic retrieval, bounded memory, and role-specific account-manager, support, clinic and patient assistants need acceptance in task #119. Hosted inference, embeddings, voice, and patient data transfer remain disabled. |
+| WhatsApp, voice and workflow automation | **Consent and synthetic channel foundation only** | `/communications/` records consent/retention and simulated delivery/call/handoff events with a disabled provider boundary. The desired Baileys linked-device approach is not an active integration; OTP, live messages, voice, human task execution, provider terms, and consent policies remain open. |
+| Marketing and mobile | **Partial public marketing only; marketing operations and mobile app absent** | The public Thanarah site is not a campaigns/lead-source/Maps system. Campaign analytics and permitted Maps sourcing remain in #115. No Android/iOS app exists in this workspace; target audience and platform decision remain open. |
+| Security, test and release readiness | **Not ready for release** | The latest recorded general run on 2026-11-14 reports 1,055 passed and 121 skipped; build and primary TypeScript checks passed, while ESLint reported 193 errors and 265 warnings. The Nov-09 dependency/SAST scans are not fresh. Approved production CORS origins, independent security review, recovery objectives, production Mongo topology, and backup/restore evidence remain open. |
 
-## 4. Ordered execution and acceptance register
+## 4. Roles, journeys, and remaining work
 
-The task queue enforces this order. Each completed stage must add its evidence and date to Section 7 before work advances.
+### Role and scope matrix
 
-| Stage | Area | Task | Status at update | Acceptance evidence |
-|---|---|---:|---|---|
-| A | Evidence inventory and master register | #82 | **Complete for this documentation stage** | This file reflects current code, historical evidence limits, existing proposals, blockers, and the A–J acceptance order. |
-| B | Security and operational readiness | #83 | **Complete — release readiness remains blocked** | Fresh scans, auth/CORS/tenant-scope tests, dependency fixes, and unresolved operational blockers are recorded in Section 7. No production readiness claim without approvals. |
-| C | Clinic and clinical workflows | #84 | **Complete for synthetic scope; production release remains gated** | Disposable MySQL/MongoDB and authenticated Chromium verification covers clinic setup through patient-to-appointment-to-encounter, permission denial, tenant/facility/branch scope, failure recovery, and persistence. Delayed-response tests verify setup pages discard prior-tenant data after switching. Existing proposals #73, #74, #80, and #81 remain separate. |
-| D | Web experience and responsive behavior | #85 | **Complete for selected authenticated workflows; broader rollout acceptance remains** | Nine existing staff/platform routes share Arabic RTL and English LTR behavior. The authenticated browser journey verifies keyboard language switching, a 390px appointment layout with no page overflow, and English platform permission-denied states. Human terminology review and a wider screen-reader/browser/device matrix remain open. |
-| E | Clinic finance foundation | #86 | **Complete as a no-payment technical foundation; legal/payment acceptance remains gated** | Configurable tenant invoice lifecycle, audit, and UI are tested with explicit synthetic settings; clinic invoices remain distinct from SaaS subscriptions; no payment collection is enabled. Owner/legal decisions remain open in `docs/tenant-clinic-finance.md`. |
-| F | Mobile readiness | #87 | **Complete for repository audit; awaiting owner direction** | Working tree, available branches/remotes, tracked history, directories, and dependencies were checked; no app exists in the connected repository. No new project, framework, signing key, or store release was created. Ask whether an external app exists or which platform to approve before any implementation. |
-| G | Thanarah AI platform | #88 | **Complete for synthetic foundation; activation remains gated** | Isolated AI service/control plane, tenant permissions, provider abstraction, RAG and tool boundaries are tested with synthetic content; business actions remain behind authorized Thanarah services. |
-| H | Channels and automation | #89 | **Complete for safe synthetic foundation; live operations remain blocked** | Channel-level consent/opt-out, raw-body HMAC helper, challenge/adapter boundary, tenant-scoped idempotency, normalized delivery/call/handoff status, retention gates, and synthetic simulations have focused tests. The default provider adapter remains disabled; no real messages, calls, retries, or handoff execution occur. |
-| I | Final product acceptance | #90 | **Complete for synthetic test scope; release remains NOT READY** | `npm test`: 1,013 passed, 33 skipped; Phase 30 disposable MySQL/MongoDB and authenticated Chromium suite: 39/39 passed after fixing an appointments-translation collision. Build, both TypeScript checks, formatting, JavaScript syntax, and diff checks passed; ESLint had 0 errors and 44 warnings. Fresh scans: 0 critical/high, 5 moderate dependencies, 0 SAST and 0 HoundDog findings. `/ready` remains HTTP 503 because the development central database is unavailable. Backup/restore, production topology, approved CORS origins, provider activation, and production release remain unverified or blocked. |
-| J | Geidea payment integration | #91 | **Deferred by owner — final stage only** | Starts only after explicit approval following Stage I. No Geidea, sandbox, payment-provider, or live-charge work was started for the current subscription-portal scope. Production charges remain disabled pending separate approval. |
+This table is the target access model for review. It does not claim that every target role is already provisioned or fully tested.
 
-### Existing separate draft proposals
+| Role or scope | Required visibility and actions | Current boundary |
+|---|---|---|
+| CEO / General Manager | Company-wide operating summaries and approvals explicitly assigned by policy | Company dashboards and policy approval foundations exist; production policies and staff are not configured. |
+| CTO / technical lead | Technical health, incidents, projects, deployments and rollback evidence | A technical dashboard exists; production monitoring and customer deployment workflow are not established. Do not grant payroll or finance by default. |
+| Thanarah Finance | Invoices, ledger, transfer review and reconciliation within assigned permissions | Internal ledger foundation exists; bank transfer for both billing flows and payment reconciliation remain incomplete. |
+| Account Manager | Assigned customer profile, documents, requests, follow-up and handover | Customer-to-employee assignment exists in the development journey; assignment data and complete operational process remain open. |
+| Thanarah employee | Only assigned cases, departments, approvals and records | Platform identity and authorization exist; the full approved company role matrix is not yet accepted. |
+| Clinic owner / administrator | Own clinic, facilities, staff, subscriptions and clinic-site settings | Tenant boundaries and membership foundations exist; Website Builder is not present. |
+| Clinic receptionist | Patient lookup and appointment actions within assigned facility/branch | Core clinic staff workflows exist; public booking and the complete role test matrix remain. |
+| Nurse / clinician | Nurse-scoped vitals; clinician-scoped encounter, diagnosis and prescription actions | Existing patient/appointment/encounter scope exists; prescriptions and finer clinical role boundaries remain. |
+| Lab / imaging / pharmacy / insurance / clinic finance | Only the relevant order/result, dispensing, approval or financial workflow | These end-to-end role workflows are not established as complete; covered by Smart Clinic task #118. |
+| Patient | Own profile, booking, visit information, invoices and channel consent only | No complete patient self-service account and invoice journey is accepted; verified account-to-patient linkage and channel delivery are open. |
 
-These are already in the task list and are not recreated by this roadmap:
+Server-side authorization, tenant/facility/branch isolation, independent approval, and audit evidence are required for every role. UI hiding alone is not access control.
 
-| Task | Draft outcome |
-|---:|---|
-| #73 | Search/select existing platform accounts when inviting a member. |
-| #74 | Hide platform management actions from users without permission while keeping server authorization authoritative. |
-| #80 | Filter booking services by doctor, facility and branch. |
-| #81 | Review doctor/service assignments from a consolidated screen. |
+### Connected user journeys
+
+| Journey | Responsible roles and source of record | Existing evidence | Remaining acceptance |
+|---|---|---|---|
+| Clinic customer: discover → choose package → register → profile/documents → review → account manager → activation → handover → renewal | Customer, account manager, independent reviewer, finance; customer-journey records linked to platform identity and SaaS subscription | `/welcome/`, `/customer/`, `/customer-admin/` and the connected development flow are documented in `docs/PHASE_03_CUSTOMER_JOURNEY.md`. | Live phone verification is absent; business package terms, seller/bank details, manual payment for both flows, and the complete accepted customer-to-handover test remain. |
+| Patient: clinic/service → booking → arrival → visit → clinical orders/results → invoice → follow-up | Patient, reception, nurse, clinician and scoped clinical/finance roles; tenant MongoDB records with a trusted tenant context | Staff appointments and the documented patient-to-appointment-to-encounter path have synthetic integration/browser evidence. | Public booking, prescriptions/medications, lab, imaging, insurance, patient invoice access, and the full role-by-role journey remain. |
+| Company operations: lead/request → assignment → independent review → approved policy/contract → accrual/ledger → executive view | Account manager, employee, independent approver, Finance, CEO/CTO; company CRM and audited ledger | `/company/` development workspace and 23 isolated phase tests are documented in `docs/PHASE_02_INTERNAL_OPERATIONS.md`. | Real organization/staff/policies are not configured; payroll rules, approvals, reconciliation, and the stage’s full acceptance remain open. |
+| Client website and code change: request → site/project → GitHub review → test → approved deployment → logs/rollback | Customer, authorized reviewer, CTO; versioned site/project and GitHub records | The Thanarah public site exists; it is not a customer Website Builder or GitHub deployment system. | Clinic editor/publishing is task #113; customer repository, review, deployment approval and rollback are task #114. |
+| AI and communications: authenticated role → tenant-scoped knowledge → authorized action → consented channel → audit/follow-up | Patient/clinic staff/account manager/support agent; tenant knowledge and authorized Thanarah business services | AI and communications foundations support synthetic content, scoped retrieval, consent, and simulated events. | Role-specific assistants, semantic retrieval, live provider approval, OTP, voice, execution/handoff, quality and cost measurement remain. |
+
+### Now / Next / Later
+
+| Horizon | Work and gates |
+|---|---|
+| **Now** | Complete this master-baseline update (#120); reconcile the MongoDB-only implementation evidence and Phase 01 acceptance with the still-pending #117 task; restore the application workflow and verify customer session restoration before claiming the current preview works; keep the stale Geidea task #91 from being executed after the Paymob decision. |
+| **Next** | Continue identity/shared-auth work (#116, #121, #122); complete company operations (#111) and Smart Clinic (#118); then close the customer journey (#112) and manual bank-transfer workflows (#108) with the exact approvals and policies configured. |
+| **Later** | Build the customer Website Builder (#113) before client GitHub projects (#114); complete role-specific AI acceptance (#119) after the clinic workflows; complete marketing (#115) after its CRM, customer, AI and communications dependencies; choose a mobile target before creating an app. |
+| **Final gates** | Only after the rest of the product and manual transfer paths are accepted: replace the stale Geidea plan with Paymob, use its test environment, and keep production charges disabled until separate authorization. Complete production topology/TLS, approved CORS, backup/restore/RPO/RTO, fresh security checks and release approval separately. |
+
+No overall completion date is reliable yet. Policies, external providers, mobile target, production operations, and several full end-to-end acceptance paths remain unresolved.
+
+### Current project-task inventory (queried 2026-11-15)
+
+The task queue contained **14 accepted open tasks** (13 waiting to start and one marked in progress) and **22 draft proposals**. This inventory records the queue; it does not change, cancel, or reorder accepted tasks.
+
+| Task | Current record | Scope and dependency |
+|---:|---|---|
+| #120 | Tracker showed pending at the inventory query; this document is being updated | Update this single baseline. The tracker state was not changed as part of the documentation review. |
+| #117 | Pending, despite MongoDB-only implementation evidence | Reconcile/close the platform MongoDB work against its acceptance; do not repeat conversion or require MySQL. |
+| #116 / #121 / #122 | Pending | Unified identity/account lifecycle and web entry; phone-country selector depends on identity. Live OTP is still disabled. |
+| #111 | Pending; development operations are implemented and tested | Company operations. The 2026-11-15 Phase 02 report records 23 isolated tests, but real staff, finance setup and approved policies are absent. |
+| #112 | Pending | Complete the customer journey; depends on #111 and remains blocked on live verification and full acceptance. |
+| #118 | Pending | Complete Smart Clinic medical workflows and role tests. |
+| #113 → #114 | Pending | Clinic Website Builder after #112, then customer projects/GitHub after #113. |
+| #119 | Pending | Role-specific Thanarah AI after #118. |
+| #115 | Pending | Marketing; depends on #112, #111, #88 and #89. |
+| #108 | Pending | Manual transfer receipt/review in both patient invoices and SaaS subscriptions before payment-provider integration. |
+| #91 | In progress but stale | Still titled Geidea. Paymob was selected on 2026-11-15; do not execute the old plan. The task record requires later replacement or reconciliation. |
+
+The 22 draft proposals are grouped as follows: membership/permission and appointment/catalog UX (#73, #74, #80, #81); package, web-origin, language and invoice decisions (#92–#97); mobile direction/build (#98, #99); semantic AI, concurrency and provider activation (#100–#102); WhatsApp/provider, human handoff and patient consent (#103–#105); financial/communications and backup/restore acceptance (#106, #107); and subscription/migration guardrails (#109, #110). They are not treated as implemented or as accepted work.
 
 ## 5. Architecture and release gates
 
 ### Persistence boundary
 
-- Central identity, authentication, sessions, permissions, tenant/membership metadata, SaaS catalog/subscriptions, storage registry, and platform audit remain on MySQL/MariaDB with Prisma.
-- Tenant clinical/operational data uses the established MongoDB storage boundary. Do not move central platform records to MongoDB or activate an adapter based on port coverage alone.
+- MongoDB is the owner-approved target for all platform and tenant persistence. The current development runtime routes all 22 central persistence ports through MongoDB; the compiled application does not register Prisma.
+- SQL schemas, migrations and legacy tests remain in the repository as historical material. They are not current runtime requirements and do not authorize deleting SQL sources or migrating existing/production data.
 - Keep clients from selecting physical database names or connection strings. No cross-tenant fallback, dual writes, or weakening of storage readiness.
-- `PHASE_60_MIGRATION_READINESS_DECISIONS.md` records no-go conditions for a broad Mongo migration; `THANARAH_MONGODB_MIGRATION_DECISIONS.md` and `TENANT_MONGODB_DEPLOYMENT_DECISION.md` contain the detailed historical decisions and open questions.
+- The older `PHASE_60_MIGRATION_READINESS_DECISIONS.md`, `THANARAH_MONGODB_MIGRATION_DECISIONS.md`, and `TENANT_MONGODB_DEPLOYMENT_DECISION.md` document prior migration constraints. Read them as historical context; they do not override the later MongoDB-only owner decision or authorize a production cutover.
 
 ### Security and operations
 
-- Fresh 2026-11-09 scans after remediation: dependency audit reports 0 critical, 0 high, and 5 moderate findings; SAST completed with 0 findings; HoundDog reports 0 findings. The two critical `tinypool` findings were removed by upgrading Vitest and coverage to 5.1.0; the `zod` high finding was removed by upgrading to 4.6.7; Prisma 6.19.3 remains in place with a scoped `deepmerge-ts` 8.0.2 override for `@prisma/config`. The five remaining moderate entries were last individually reconciled on 2026-11-08: `deepmerge@4.3.1` under Nest CLI's `fork-ts-checker-webpack-plugin` (no fix reported), `glob@10.5.0` under Testcontainers' `archiver-utils`, `glob@13.0.6` under Nest CLI, and `minimatch@9.0.9` / `10.2.6` under those glob versions. The Fastify static path now uses patched `glob@14`. Do not treat these scans as a penetration test.
+- The latest recorded general run (2026-11-14) reports 1,055 passed and 121 skipped. Build and primary TypeScript checks passed; full ESLint reported 193 errors and 265 warnings. These results were not rerun for this document update. The focused Phase 02 report separately records 23/23 tests, build and TypeScript checks, plus a development `/health` and `/ready` check on 2026-11-15.
+- The most recent recorded dependency/SAST/HoundDog results are from 2026-11-09: 0 critical, 0 high, 5 moderate dependencies; 0 SAST and 0 HoundDog findings. These scans are stale for release decisions and are not a penetration test.
 - Staging/production CORS rejects all origins until an owner-approved allowlist is configured. Do not invent production origins or open cross-origin access to make clients connect.
-- The latest documented development database diagnostic classified the configured URL as non-MySQL without reading or displaying its value. Live MySQL-backed checks remain blocked until safe development configuration is corrected.
-- No approved MongoDB production provider/topology or transaction profile is documented. TLS/certificate validation, network access, shard policy, residency, and operating owner still require evidence.
-- Phase 61 and Phase 62 did not create or restore a backup because an approved isolated replica-set source and separate restore target were unavailable. RPO/RTO and restore timing are therefore not measured.
+- Development MongoDB health/readiness returned 200 in the 2026-11-15 Phase 01/02 evidence. Separately, the current configured “Start application” workflow is failing at `npx nest build` with `npm error could not determine executable to run`; the current preview and the customer session fix have not been verified. Do not treat the earlier endpoint result as proof that the current preview is running.
+- No approved MongoDB production provider/topology or transaction profile is documented. TLS/certificate validation, network access, residency, operations ownership, and failure behavior still require evidence.
+- Backup/restore has not been demonstrated on an approved production-equivalent source and separate restore target. RPO/RTO and restore timing are therefore not measured.
 - A test pass or local `/health` response does not prove production readiness. `/ready` and any database-dependent verification must be reported separately.
 
 ### Commercial, AI, and communications boundaries
 
 - Separate clinic invoices from platform SaaS subscription assignment. Do not infer tax, pricing, legal invoice wording, refund, cancellation, or payment rules.
 - SAR is a configurable default requested by the owner, not a hard-coded legal conclusion.
-- Treat AI providers, embeddings, model hosting, vector storage, external telemetry, WhatsApp, and voice providers as unselected until documented. Use approved secret handling; never print credentials.
+- Paymob is the selected payment provider; its integration is not active. Geidea is superseded and its task is stale. Baileys is the requested WhatsApp linked-device direction, not an active provider integration. AI hosting, embeddings, vector storage, external telemetry, and voice provider remain unselected. Use approved secret handling; never print credentials.
 - Do not put protected health information into external model calls, analytics, or test fixtures without explicit approval and an appropriate privacy/security review.
-- Geidea sandbox work is last; production processing requires another explicit authorization.
+- Paymob sandbox work is last, after task #108 and full product acceptance; production processing requires another explicit authorization.
 
 ## 6. Repository and workflow state
 
-- The active branch remains `main`; no `develop` branch was available. This assigned task was completed on the existing worktree without creating or switching branches. The requested development-branch workflow remains unresolved for future code tasks.
-- Stage B updated dependencies and validation code, removed admin-email logging, and added Zod 4 compatibility updates. No production changes, deployment, production data access, or secret-value access occurred.
-- Stage H adds only tenant-scoped communications foundations and synthetic UI flows. Its permission migration is source-only and has not been applied to a live database.
+- This update changed documentation only. No application source, database, environment setting, secret, project-task state, or deployment was changed.
+- The configured application workflow has failed twice at `npx nest build` with `npm error could not determine executable to run`. No successful restart or current browser preview is available for this update.
+- The accepted Phase 01/02 reports record development-only MongoDB setup and tests. No production data access, production migration, live provider request, deployment, or real payment was performed for this update.
 
 ## 7. Acceptance log
+
+Older rows record the decisions and checks known on their dates. Where they name MySQL or Geidea, they are historical and superseded by the decisions in Section 1.
 
 | Date | Stage | Result and evidence | Limits / next gate |
 |---|---|---|---|
@@ -124,6 +162,7 @@ These are already in the task list and are not recreated by this roadmap:
 | 2026-11-09 | I — Final product acceptance | The first fresh Phase 30 run exposed an English-locale failure (38/39) because the communications translation extension replaced the appointments dictionary. Changed the extension to preserve and merge the existing route dictionary. The focused signed-in Chromium journey then passed; the full disposable Phase 30 run passed 39/39. `npm test`: 1,013 passed, 33 skipped (114 files passed, 2 skipped). Build, both TypeScript checks, format check, JavaScript syntax, and `git diff --check` passed; ESLint had 0 errors and 44 warnings in existing files. Fresh scans: dependency audit 0 critical, 0 high, 5 moderate; SAST 0; HoundDog 0. `/ready` returned HTTP 503 with sanitized `DATABASE_UNAVAILABLE`; the current development central database is not usable. Phase 61/62 restore rehearsal remains NOT RUN. | Core authenticated clinic-to-encounter flows passed with disposable synthetic MySQL/MongoDB and headless Chromium. Signed-in finance/communications production-like journeys, backup/restore, approved MongoDB topology, production CORS origins, and production operations remain unverified or blocked. No production data, secrets, migrations, deployments, or payments were used. Geidea remains Stage J and was not started. |
 | 2026-11-11 | #108 — Clinic subscription self-service | Added tenant-scoped subscription details and bank-transfer receipt submission to the finance workspace, with distinct owner/admin permissions, trusted tenant resolution, an active-subscription check while locking the subscription row, and a response that excludes receipt bytes and internal tenant fields. The receipt is stored for manual review only; no amount is shown or inferred, and no subscription extension or collection occurs. Disposable MySQL 8.0.42 and authenticated Chromium test harness passed 8/8 focused API, permission, database, and browser UI tests. Build, TypeScript, format, JavaScript syntax, and ESLint completed with 0 errors (89 existing/explicit-return-type warnings). | The patient invoice portal remains blocked. The owner selected WhatsApp OTP to the phone on the patient record and an existing platform login account, but no WhatsApp delivery path is available; no account-to-patient link or portal access was implemented without a deliverable verification code. For the isolated MySQL run, a temporary migration copy omitted the pre-existing empty `20261008110000_patient_tenant_storage_boundary` folder because it has no `migration.sql`; the source migration catalog still needs that issue resolved before normal `prisma migrate deploy` can complete. No production database, data, credentials, migration, deployment, Geidea, sandbox, or real payment was used. Task #91 is deferred. |
 | 2026-11-12 | #108 — Patient portal and WhatsApp scope decision | Recorded the owner’s decision to use the existing platform login and WhatsApp OTP to the patient’s stored phone. The desired future channel is a native, tenant-isolated WhatsApp linked-device flow using Baileys: an authorized admin connects manually, the session is encrypted and retained, no automatic connection occurs on restart or update, and outgoing messages are spaced by three seconds. Each clinic may link its own number for its patients. | This multi-clinic WhatsApp subsystem is broader than the current #108 delivery and will not start until the owner reviews this report. No QR, session, credentials, WhatsApp code, or live message was handled. Keep patient invoices inaccessible until ownership is securely verified. |
+| 2026-11-15 | #120 — Master product baseline refresh | Reconciled the roadmap with the MongoDB-only development runtime, the owner’s Phase 01 acceptance and Phase 02 authorization, the Paymob decision, open-task inventory, current evidence limits, role boundaries, and end-to-end user journeys. Distinguished existing development features from incomplete or unaccepted workflows and added Now/Next/Later gates. | Documentation-only review. No general test suite or fresh security scan was run. The current application workflow still fails to start, so the preview and customer session fix are unverified. The accepted-task queue was not edited or reordered. No application code, data, secrets, deployment, or payment was changed. |
 
 ### Next evidence to record
 
@@ -135,8 +174,12 @@ These documents remain detailed evidence, not competing live roadmaps:
 
 - `THANARAH_PRODUCT_COMPLETION_ROADMAP.md`
 - `THANARAH_REMAINING_BLOCKERS.md`
+- `THANARAH_MONGODB_CONVERSION_PROGRESS.md`
 - `THANARAH_MONGODB_MIGRATION_DECISIONS.md`
 - `TENANT_MONGODB_DEPLOYMENT_DECISION.md`
+- `PHASE_01_CORE_FOUNDATION_REPORT.md`
+- `docs/PHASE_02_INTERNAL_OPERATIONS.md`
+- `docs/PHASE_03_CUSTOMER_JOURNEY.md`
 - `PHASE_51_SECURITY_HARDENING_REPORT.md`
 - `PHASE_60_MIGRATION_READINESS_DECISIONS.md`
 - `PHASE_61_BACKUP_RESTORE_TEST_REPORT.md`
