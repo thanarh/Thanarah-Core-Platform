@@ -26,7 +26,7 @@
 - [Thanarah MongoDB-only direction](thanarah-mongodb-direction.md) — the user requires MongoDB for the entire platform, including identity and subscriptions; this supersedes the hybrid decision.
 - [Tenant payment settings access](tenant-payment-settings-access.md) — keep bank details behind payment-specific permissions and endpoints, separate from invoice settings.
 - [Browser completion signals](browser-completion-signals.md) — navigation and mutation waits must distinguish transient documents and pre-existing content from completed operations.
-- [Geidea payment sequencing](geidea-payment-sequencing.md) — use Geidea for payments, and make payment integration the final roadmap stage.
+- [Payment sequencing](geidea-payment-sequencing.md) — Paymob is selected for the final payment stage, after manual bank-transfer flows.
 - [Vitest package alignment](vitest-package-alignment.md) — keep Vitest and its coverage provider on the same exact release when npm peer resolution fails.
 - [Browser focus during page loads](browser-focus-during-load.md) — let asynchronous workspace rendering settle before testing focus; root replacement can drop focus.
 - [Mongo tenant event expiry](mongo-tenant-event-expiry.md) — TTL indexes require BSON dates; filter reads on the same expiry field because TTL cleanup is asynchronous.
