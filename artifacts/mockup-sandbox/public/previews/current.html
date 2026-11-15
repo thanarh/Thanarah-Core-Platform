@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#123f3c" />
+    <title>الحالة الحالية · مساحة العميل</title>
+    <link rel="icon" href="/__mockup/assets/logo-mark.svg" />
+    <link rel="stylesheet" href="/__mockup/brand/journey-ui.css" />
+    <link rel="stylesheet" href="/__mockup/brand/thanarah-web-experience.css" />
+    <link rel="stylesheet" href="/__mockup/brand/thanarah-shell.css" />
+    <style>
+      @font-face {
+        font-family: 'Noto Sans Arabic';
+        font-style: normal;
+        font-weight: 100 500;
+        font-display: swap;
+        src: url('/__mockup/assets/tajawal-regular.ttf') format('truetype');
+      }
+      @font-face {
+        font-family: 'Noto Sans Arabic';
+        font-style: normal;
+        font-weight: 600 900;
+        font-display: swap;
+        src: url('/__mockup/assets/tajawal-bold.ttf') format('truetype');
+      }
+      @font-face {
+        font-family: 'Tajawal';
+        font-style: normal;
+        font-weight: 100 500;
+        font-display: swap;
+        src: url('/__mockup/assets/tajawal-regular.ttf') format('truetype');
+      }
+      @font-face {
+        font-family: 'Tajawal';
+        font-style: normal;
+        font-weight: 600 900;
+        font-display: swap;
+        src: url('/__mockup/assets/tajawal-bold.ttf') format('truetype');
+      }
+    </style>
+  </head>
+  <body>
+    <header class="thanarah-shell thanarah-shell-header" data-thanarah-shell>
+      <a class="thanarah-shell-skip" href="#customer-main">تجاوز إلى المحتوى</a>
+      <div class="thanarah-shell-inner">
+        <a class="thanarah-shell-brand" href="#" aria-label="ثنارة | الرئيسية">
+          <img src="/__mockup/assets/logo-mark.svg" width="39" height="39" alt="" />
+          <span>ثنارة<small>مساحة العميل</small></span>
+        </a>
+        <nav class="thanarah-shell-nav" aria-label="التنقل الرئيسي">
+          <a href="#" aria-current="page">طلباتي</a>
+          <a href="#">الباقات</a>
+          <a href="#">الدعم والتواصل</a>
+          <a href="#">الرئيسية</a>
+        </nav>
+        <div class="thanarah-shell-actions">
+          <button class="thanarah-shell-language" type="button" lang="ar">
+            <span class="thanarah-shell-language-label">العربية</span>
+            <span aria-hidden="true">⌄</span>
+          </button>
+          <span class="thanarah-shell-auth-actions">
+            <button class="thanarah-shell-action" type="button">دخول</button>
+            <button class="thanarah-shell-action thanarah-shell-action-primary" type="button">إنشاء حساب</button>
+          </span>
+          <button class="thanarah-shell-menu" type="button" aria-label="فتح القائمة">
+            <span class="thanarah-shell-menu-glyph" aria-hidden="true"><i></i><i></i></span>
+          </button>
+        </div>
+      </div>
+    </header>
+    <div id="app">
+      <main class="loading wrap"><span class="skeleton"></span></main>
+    </div>
+    <script>
+      window.JourneyApi = {
+        restoreSession: async () => true,
+        me: async () => ({
+          account: {
+            fullName: 'سارة الحربي',
+            version: 3,
+            phoneVerification: { status: 'PENDING' },
+            profile: {
+              legalName: 'عيادات توازن للرعاية',
+              displayName: 'عيادات توازن',
+              registrationNumber: '1010987654',
+              city: 'الرياض',
+              address: 'حي النخيل، طريق الملك عبدالعزيز',
+              contactName: 'سارة الحربي',
+              phoneE164: '+966550000012'
+            }
+          },
+          orders: [{
+            _id: 'preview-order-001',
+            packageCode: 'باقة الانطلاقة',
+            status: 'SUBMITTED',
+            purpose: 'NEW',
+            open: true,
+            managerId: null,
+            createdAt: '2026-11-10T09:00:00.000Z',
+            updatedAt: '2026-11-12T11:30:00.000Z'
+          }]
+        }),
+        catalog: async () => ({ registrationOpen: true, packages: [{ code: 'START' }] }),
+        logout: async () => true,
+        login: async () => true,
+        register: async () => true
+      };
+    </script>
+    <script src="/__mockup/source/customer-app.js"></script>
+  </body>
+</html>

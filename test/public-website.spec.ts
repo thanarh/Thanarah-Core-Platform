@@ -11,6 +11,7 @@ interface SiteRenderers {
   services: Renderer;
   why: Renderer;
   contact: Renderer;
+  servicePromo: Renderer;
   header: Renderer;
   footer: Renderer;
   packageCard: (code: string, catalog: unknown, compact: boolean) => string;
@@ -49,7 +50,8 @@ function renderers(language: 'ar' | 'en', blockedStorage = false): SiteRenderers
     var reference = window.ThanarahReferenceHome(locale,t,{escape:esc});
     globalThis.siteRenderers={
       home:reference.home,header:reference.header,footer:reference.footer,
-      referencePackages:reference.packages,about,packagesPage,services,why,contact,packageCard
+      referencePackages:reference.packages,about,packagesPage,services,why,contact,packageCard,
+      servicePromo:servicePromoMarkup
     };
   })();`,
     ),
@@ -99,6 +101,40 @@ describe('Public website route and reusable component regressions', () => {
       expect(site.contact()).toContain('name="consent"');
       expect(site.contact()).toContain('name="website"');
       expect(site.footer()).toContain('/customer/');
+    },
+  );
+  it.each(['ar', 'en'] as const)(
+    'introduces published customer capabilities and account actions in %s',
+    (language) => {
+      const translations = {
+        window: {
+          ThanarahSiteContent: {} as Record<'ar' | 'en', Record<string, string>>,
+        },
+      };
+      runInNewContext(readFileSync('public/site/content.js', 'utf8'), translations);
+      const copy = translations.window.ThanarahSiteContent[language];
+      const promo = renderers(language).servicePromo();
+      for (const key of [
+        'promoEyebrow',
+        'promoTitle',
+        'promoBody',
+        'promoCapabilities',
+        'promoAvailable',
+        'promoAccountNote',
+        'promoExplore',
+        'promoRegister',
+        'promoLogin',
+      ]) {
+        expect(promo, `${language}: ${key}`).toContain(copy[key]);
+      }
+      for (const key of ['capabilityPatients', 'capabilityAppointments', 'capabilityEncounters']) {
+        expect(promo, `${language}: ${key}`).toContain(copy[key]);
+      }
+      expect(promo).toContain('data-thanarah-auth="register"');
+      expect(promo).toContain('data-thanarah-auth="login"');
+      expect(promo).toContain('href="/services/"');
+      expect(promo).not.toContain('ر.س');
+      expect(promo).not.toContain('SAR');
     },
   );
   it('shows the supplied founder identity and photograph on About in both languages', () => {
@@ -261,7 +297,9 @@ describe('Public website route and reusable component regressions', () => {
       );
       expect(html.indexOf('/site/reference-home.js')).toBeLessThan(html.indexOf('/site/app.js'));
       expect(html).toContain('/site/reference-home.css');
+      expect(html).toContain('/site/service-promo.css');
     }
+    expect(readFileSync('public/site/index.html', 'utf8')).toContain('/site/service-promo.css');
     for (const route of routes.slice(1)) {
       expect(readFileSync(`public${route}index.html`, 'utf8')).not.toContain(
         '/site/reference-home.',

@@ -15,13 +15,26 @@ export class AuthCookieService {
   }
 
   clearRefreshToken(reply: FastifyReply): void {
-    reply.clearCookie(this.config.refreshCookieName, {
-      path: '/',
-      domain: this.config.refreshCookieDomain,
-      secure: this.config.refreshCookieSecure,
-      sameSite: this.config.refreshCookieSameSite,
+    reply.clearCookie(this.config.refreshCookieName, this.cookieScope());
+  }
+
+  private cookieScope(): {
+    httpOnly: true;
+    secure: boolean;
+    sameSite: 'strict' | 'lax' | 'none';
+    domain: string | undefined;
+    path: '/';
+    partitioned?: true;
+  } {
+    const partitionedPreview = Boolean(this.config.isReplitPreview);
+    return {
       httpOnly: true,
-    });
+      secure: partitionedPreview || this.config.refreshCookieSecure,
+      sameSite: partitionedPreview ? 'none' : this.config.refreshCookieSameSite,
+      domain: this.config.refreshCookieDomain,
+      path: '/',
+      ...(partitionedPreview ? { partitioned: true as const } : {}),
+    };
   }
 
   private options(): {
@@ -31,13 +44,10 @@ export class AuthCookieService {
     domain: string | undefined;
     path: '/';
     maxAge: number;
+    partitioned?: true;
   } {
     return {
-      httpOnly: true,
-      secure: this.config.refreshCookieSecure,
-      sameSite: this.config.refreshCookieSameSite,
-      domain: this.config.refreshCookieDomain,
-      path: '/',
+      ...this.cookieScope(),
       maxAge: this.config.refreshTokenTtlDays * 24 * 60 * 60,
     };
   }

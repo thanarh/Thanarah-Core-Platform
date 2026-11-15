@@ -46,6 +46,7 @@ function config(overrides: Partial<Record<string, unknown>> = {}): ConfigService
     refreshCookieDomain: undefined,
     refreshCookieSecure: true,
     refreshCookieSameSite: 'strict',
+    isReplitPreview: false,
     ...overrides,
   } as unknown as ConfigService;
 }
@@ -282,6 +283,41 @@ describe('AuthCookieService', () => {
       sameSite: 'strict',
       secure: true,
     });
+  });
+
+  it('uses a secure partitioned refresh cookie only inside the Replit preview', () => {
+    const service = new AuthCookieService(
+      config({
+        isReplitPreview: true,
+        refreshCookieSecure: false,
+        refreshCookieSameSite: 'strict',
+      }),
+    );
+    const reply = { setCookie: vi.fn(), clearCookie: vi.fn() } as unknown as FastifyReply;
+
+    service.setRefreshToken(reply, 'opaque');
+    expect(reply.setCookie).toHaveBeenCalledWith(
+      'refresh',
+      'opaque',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        partitioned: true,
+      }),
+    );
+
+    service.clearRefreshToken(reply);
+    expect(reply.clearCookie).toHaveBeenCalledWith(
+      'refresh',
+      expect.objectContaining({
+        httpOnly: true,
+        secure: true,
+        sameSite: 'none',
+        partitioned: true,
+        path: '/',
+      }),
+    );
   });
 });
 

@@ -13,6 +13,7 @@ const shell = readFileSync('public/assets/thanarah-shell.js', 'utf8');
 const homeCss = readFileSync('public/site/reference-home.css', 'utf8');
 const siteCss = readFileSync('public/site/site.css', 'utf8');
 const shellCss = readFileSync('public/assets/thanarah-shell.css', 'utf8');
+const i18n = readFileSync('public/assets/thanarah-i18n.js', 'utf8');
 
 describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
   it('uses the same supplied mark for all existing image aliases', () => {
@@ -110,5 +111,14 @@ describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
     expect(auth).toContain("document.querySelector('.thanarah-shell-brand small')");
     expect(auth).toContain('Sign in to ');
     expect(css).toContain('rgb(77 68 54 / 20%)');
+  });
+  it('keeps an accessible language menu at the top of the shared shell', () => {
+    expect(shell).toContain('thanarah-shell-language-wrap');
+    expect(shell).toContain('data-locale-choice="ar"');
+    expect(shell).toContain('data-locale-choice="en"');
+    expect(shell).toContain('aria-expanded="false"');
+    expect(shellCss).toContain('.thanarah-shell-language-menu[hidden]');
+    expect(shellCss).toContain('.thanarah-shell-language-wrap { grid-column: 2; grid-row: 1; }');
+    expect(i18n).toContain("button.classList.contains('thanarah-shell-language')");
   });
 });

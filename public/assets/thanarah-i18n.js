@@ -253,6 +253,7 @@
         host.appendChild(button);
       }
     }
+    if (button.classList.contains('thanarah-shell-language')) return;
     const label = locale === 'ar' ? 'English' : 'العربية';
     const accessibleName = locale === 'ar' ? 'Switch language to English' : 'التبديل إلى العربية';
     if (button.textContent !== label) button.textContent = label;
@@ -282,14 +283,16 @@
   }
 
   document.addEventListener('click', (event) => {
-    if (!event.target.closest('[data-locale-toggle]')) return;
+    const button = event.target.closest('[data-locale-toggle]');
+    if (!button || button.classList.contains('thanarah-shell-language')) return;
     setLocale(locale === 'ar' ? 'en' : 'ar');
   });
 
   document.addEventListener('keydown', (event) => {
     if (!(event.target instanceof Element) || event.repeat) return;
     if (!['Enter', ' ', 'Spacebar'].includes(event.key)) return;
-    if (!event.target.closest('[data-locale-toggle]')) return;
+    const button = event.target.closest('[data-locale-toggle]');
+    if (!button || button.classList.contains('thanarah-shell-language')) return;
     event.preventDefault();
     setLocale(locale === 'ar' ? 'en' : 'ar');
   });

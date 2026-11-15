@@ -1,0 +1,545 @@
+/*
+ * Thanarah shared web experience layer
+ * Load after each route's existing stylesheet. This layer harmonizes shared
+ * interaction and layout patterns without changing content or workflow state.
+ */
+
+:root {
+  --thanarah-focus: #77966c;
+  --thanarah-focus-wash: rgb(119 150 108 / 18%);
+  --thanarah-control-hover: #aebdaf;
+  --thanarah-surface-raised: #fdfdf9;
+  --thanarah-border-strong: #bdcbbd;
+  --thanarah-motion: 160ms;
+  --thanarah-radius-control: 8px;
+}
+
+html {
+  scroll-behavior: auto;
+  scrollbar-color: #b8c6b5 #f3f3ec;
+}
+
+body {
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+/* Shared shell: preserve each route's existing palette and layout. */
+:where(.app-frame, .encounter-app) {
+  min-width: 0;
+  color: var(--ink, #1c3028);
+  font-family: var(--font-ui, 'Tajawal', sans-serif);
+}
+
+:where(.main-area, .page-content, .encounter-shell, .platform-page, .saas-page) {
+  min-width: 0;
+}
+
+:where(.topbar, .page-heading, .platform-head, .saas-top, .encounter-header) {
+  flex-wrap: wrap;
+}
+
+:where(.breadcrumbs, .page-heading p, .form-note, .setup-note, .catalog-help, .doctor-note, .platform-muted, .saas-note) {
+  line-height: 1.75;
+}
+
+/* Keep mixed Arabic / Latin identifiers and numbers stable in RTL layouts. */
+:where([dir="ltr"], .mono, code, .cell-sub, .time-primary, .user-chip, .catalog-code, .policy-json, .platform-member code) {
+  unicode-bidi: isolate;
+}
+
+:where(input, textarea, select, button) {
+  max-width: 100%;
+}
+
+:where(input, textarea, select) {
+  accent-color: var(--green, #24583e);
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, .control) {
+  min-width: 0;
+  border-radius: var(--thanarah-radius-control);
+}
+
+:where(input:not([type="checkbox"]):not([type="radio"]), select, textarea, .control):hover:not(:disabled) {
+  border-color: var(--thanarah-control-hover);
+}
+
+:where(input, select, textarea, button, a, summary, [tabindex]):focus-visible {
+  outline: 3px solid var(--thanarah-focus);
+  outline-offset: 3px;
+}
+
+:where(input, select, textarea, button, a, summary, [tabindex]):focus:not(:focus-visible) {
+  outline: none;
+}
+
+:where(button, .btn, .nav-item, .catalog-tab, .encounter-tab, .icon-button, .row-open, .setup-card, .team-member, .workspace-option, .platform-item-select) {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:where(button, .btn, .catalog-tab, .encounter-tab, .icon-button, .row-open, .setup-card, .team-member, .workspace-option, .platform-signout) {
+  touch-action: manipulation;
+}
+
+:where(.btn, .catalog-tab, .encounter-tab, .icon-button, .platform-signout, .side-actions button, .mobile-session-actions button) {
+  transition:
+    background-color var(--thanarah-motion) ease,
+    border-color var(--thanarah-motion) ease,
+    color var(--thanarah-motion) ease,
+    box-shadow var(--thanarah-motion) ease,
+    transform var(--thanarah-motion) ease;
+}
+
+:where(.btn, .catalog-tab, .encounter-tab, .icon-button, .platform-signout):disabled,
+:where(button, input, select, textarea)[aria-disabled="true"] {
+  cursor: not-allowed;
+}
+
+:where(.btn, .catalog-tab, .encounter-tab, .icon-button, .platform-signout):disabled {
+  opacity: .58;
+}
+
+:where(.btn, .catalog-tab, .encounter-tab, .icon-button, .platform-signout):active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Preserve a comfortable hit area even for compact row actions. */
+:where(.btn-small, .setup-row-actions .btn, .catalog-actions .btn, .platform-actions .btn, .saas-actions .btn, .service-remove) {
+  min-height: 40px;
+}
+
+:where(.icon-button, .doctor-chip button, .team-chip button, .inline-retry) {
+  min-width: 40px;
+  min-height: 40px;
+}
+
+:where(.row-open, .inline-retry) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Card and table surfaces stay in the established sage / ivory identity. */
+:where(.panel, .setup-panel, .catalog-card, .doctor-panel, .team-panel, .platform-card, .saas-card, .encounter-card) {
+  min-width: 0;
+}
+
+:where(.table-wrap, .records, .platform-list, .dialog, .encounter-app) {
+  overscroll-behavior: contain;
+}
+
+:where(.table-wrap, .catalog-list, .setup-list, .branch-list, .doctor-list, .team-list, .platform-list, .saas-list) {
+  scrollbar-width: thin;
+  scrollbar-color: #c4d0c1 transparent;
+}
+
+:where(.appointments-table, .patients-table) {
+  font-variant-numeric: tabular-nums;
+}
+
+:where(.appointments-table th, .patients-table th) {
+  letter-spacing: .01em;
+  position: relative;
+}
+
+:where(.appointments-table td, .patients-table td, .detail-item, .catalog-item, .setup-card, .branch-card, .doctor-row, .team-subcard, .platform-item, .saas-item) {
+  overflow-wrap: anywhere;
+}
+
+:where(.empty-state, .loading-state, .error-state, .setup-empty, .setup-error, .catalog-empty, .catalog-error, .platform-empty, .encounter-empty, .encounter-loading) {
+  text-wrap: pretty;
+}
+
+/* Locale control presentation shared by every workspace. */
+:where(.locale-switch, [data-locale-toggle]) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid var(--line, #d9e0d7);
+  border-radius: 999px;
+  background: var(--paper, #fbfbf7);
+  color: var(--ink-soft, #52635a);
+  font: inherit;
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--thanarah-motion) ease, border-color var(--thanarah-motion) ease, color var(--thanarah-motion) ease;
+}
+
+:where(.locale-switch, [data-locale-toggle]):hover {
+  border-color: var(--thanarah-border-strong);
+  background: var(--paper-deep, #e9eee5);
+  color: var(--ink, #1c3028);
+}
+
+:where(.locale-switch, [data-locale-toggle]) [lang="en"],
+:where(.locale-switch, [data-locale-toggle]) [lang="ar"] {
+  unicode-bidi: isolate;
+}
+
+/* The document direction is switched by the locale control; page shells must
+   follow it instead of forcing the original Arabic direction. */
+html[dir="ltr"] .app-frame,
+html[dir="ltr"] .workspace-screen,
+html[dir="ltr"] .auth-screen,
+html[dir="ltr"] .encounter-app {
+  direction: ltr;
+}
+
+html[dir="ltr"] :where(
+  .nav-item,
+  .workspace-option,
+  .setup-card,
+  .branch-card,
+  .team-member,
+  .platform-item-select,
+  .main-area,
+  .page-content,
+  .platform-page,
+  .saas-page,
+  .encounter-shell,
+  .encounter-card,
+  .breadcrumbs,
+  .page-heading,
+  .field,
+  .catalog-form,
+  .doctor-form,
+  .platform-form,
+  .saas-form,
+  .profile-body,
+  .doctor-detail,
+  .detail-grid
+) {
+  text-align: start;
+}
+
+html[dir="ltr"] .nav-item.active {
+  box-shadow: inset 3px 0 var(--lime, #d9e8a6);
+}
+
+html[dir="ltr"] .scope-dot {
+  margin-right: 7px;
+  margin-left: 0;
+}
+
+html[dir="ltr"] .notice {
+  border-right: 0;
+  border-left: 3px solid #a9c07d;
+  border-radius: 7px 3px 3px 7px;
+}
+
+html[dir="ltr"] :where(.appointments-table, .patients-table) {
+  text-align: left;
+}
+
+html[dir="ltr"] .brand-copy small,
+html[dir="ltr"] .cell-sub,
+html[dir="ltr"] .time-primary,
+html[dir="ltr"] .workspace-option small {
+  text-align: left;
+}
+
+html[dir="ltr"] .locale-switch {
+  direction: ltr;
+}
+
+/* Bring the standalone encounter workspace into the shared clinic palette. */
+.encounter-app {
+  color: var(--ink, #1c3028);
+  background: var(--canvas, #f3f3ec);
+}
+
+:where(.encounter-tabs, .encounter-card, .encounter-screen) {
+  border-color: var(--line, #d9e0d7);
+  border-radius: 11px;
+  background-color: var(--paper, #fbfbf7);
+  box-shadow: none;
+}
+
+:where(.encounter-card h1, .encounter-card h2, .encounter-card h3) {
+  color: var(--ink, #1c3028);
+}
+
+:where(.encounter-card p, .encounter-list-item small, .encounter-history-item small) {
+  color: var(--ink-soft, #52635a);
+}
+
+:where(.encounter-tab[aria-current="page"]) {
+  background: var(--green-pale, #e5eee5);
+  color: var(--green, #24583e);
+}
+
+:where(.encounter-field input, .encounter-field select, .encounter-field textarea) {
+  border-color: var(--line, #d9e0d7);
+  border-radius: var(--thanarah-radius-control);
+  background: var(--surface, #f8f9f4);
+  color: var(--ink, #1c3028);
+}
+
+:where(.encounter-field input:focus-visible, .encounter-field select:focus-visible, .encounter-field textarea:focus-visible) {
+  border-color: var(--thanarah-focus);
+  outline-color: var(--thanarah-focus);
+}
+
+:where(.encounter-list-item, .encounter-record-row) {
+  border-color: var(--line, #d9e0d7);
+  border-radius: 9px;
+  background: var(--surface, #f8f9f4);
+}
+
+:where(.encounter-detail) {
+  background: var(--paper-deep, #e9eee5);
+}
+
+:where(.encounter-detail strong, .encounter-field > label, .encounter-label) {
+  color: var(--ink-soft, #52635a);
+}
+
+:where(.encounter-status[data-status="COMPLETED"]) {
+  background: var(--green-pale, #e5eee5);
+  color: var(--green, #24583e);
+}
+
+:where(.encounter-status[data-status="CANCELLED"]) {
+  background: var(--red-pale, #f5e5e1);
+  color: var(--red, #a34439);
+}
+
+:where(.encounter-toast) {
+  border-color: var(--line, #d9e0d7);
+  background: var(--paper, #fbfbf7);
+  color: var(--ink, #1c3028);
+}
+
+@media (max-width: 760px) {
+  :where(.app-frame, .encounter-app) {
+    min-height: 100dvh;
+  }
+
+  :where(.table-wrap) {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  :where(.pagination, .setup-paging, .platform-member, .encounter-toolbar) {
+    flex-wrap: wrap;
+  }
+
+  :where(.dialog) {
+    max-width: 100%;
+    overscroll-behavior: contain;
+  }
+}
+
+@media (max-width: 480px) {
+  :where(.heading-actions, .detail-actions, .setup-actions, .doctor-actions, .platform-actions, .saas-actions) {
+    max-width: 100%;
+  }
+
+  :where(.heading-actions .btn, .detail-actions .btn, .dialog-footer .btn, .form-footer .btn) {
+    min-height: 44px;
+  }
+
+  :where(.pagination, .setup-paging) {
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  :where(.pagination-controls) {
+    flex-wrap: wrap;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+
+  *,
+  *::before,
+  *::after {
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
+/* Local fonts keep Arabic readable without render-blocking third-party CSS. */
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'IBM Plex Sans Arabic';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/assets/tajawal-regular.ttf') format('truetype');
+}
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/assets/tajawal-bold.ttf') format('truetype');
+}
+
+/* Arabic tracking must never separate connected letters, including mixed labels. */
+html:lang(ar),
+html:lang(ar) body,
+html:lang(ar) body * {
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
+  font-variant-ligatures: normal;
+}
+
+/* Keep feedback and keyboard focus, not decorative shadows or motion. */
+*,
+*::before,
+*::after {
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  animation: none !important;
+  transition: none !important;
+  scroll-behavior: auto !important;
+}
+
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid #466b4e !important;
+  outline-offset: 3px;
+}
+
+.rh-pill:hover:not(.rh-cta-button),
+.rh-solution-card:hover,
+.package-card:hover,
+.service-card:hover,
+.product-photo,
+.rh-package-pro,
+.btn:hover,
+.button:hover,
+.text-link:hover svg,
+.text-link:hover span,
+.btn:hover svg {
+  transform: none !important;
+}
+
+.topbar,
+.ai-bottom-mobile {
+  background: var(--surface, #f5f2ec);
+}
+
+.rh-clinic,
+.rh-why,
+.rh-solutions,
+.section-tone,
+.page-intro {
+  background: #f5f2ec !important;
+}
+
+.rh-why {
+  grid-template-columns: 1fr;
+  padding-inline: max(6.2vw, 20px);
+}
+
+.page-intro,
+.page-intro h1,
+.about-page .prose-grid:first-child,
+.about-page .prose-grid:first-child h2 {
+  color: #292c25 !important;
+}
+
+.page-intro p,
+.about-page .prose-grid:first-child p {
+  color: #555e52 !important;
+}
+
+.about-page .prose-grid:first-child {
+  background: transparent;
+  padding: 0 0 24px;
+  border-bottom: 1px solid #d8d0c7;
+}
+
+.prose-grid,
+.statement {
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0;
+}
+
+.rh-packages {
+  color: #292c25;
+  background: #f5f2ec;
+}
+
+.rh-packages .rh-eyebrow,
+.rh-packages-inner > p,
+.rh-packages-inner > small {
+  color: #555e52;
+}
+
+.rh-package-curve {
+  background: #f5f2ec;
+}
+
+.page-intro::after,
+.capability-feature::after,
+.rh-footer-marks,
+.rh-brand small,
+.brand-note,
+.workflow-traveler,
+.motion-toggle,
+.hero-index,
+.photo-index,
+.drawing-index,
+.eyebrow,
+.rh-eyebrow,
+.ai-eyebrow,
+.prose-label,
+.statement-num {
+  display: none !important;
+}
+
+/* No geometry changes on hover for the vertically centered desktop CTA. */
+.rh-cta-button:hover {
+  transform: translateY(-50%) !important;
+}
+
+@media (max-width: 720px) {
+  .rh-cta-button:hover {
+    transform: none !important;
+  }
+
+  html:lang(ar) :where(h1, h2, h3) {
+    line-height: 1.5;
+  }
+}

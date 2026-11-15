@@ -1,0 +1,315 @@
+.thanarah-service-promo {
+  box-sizing: border-box;
+  width: min(760px, calc(100% - 28px));
+  max-height: calc(100dvh - 28px);
+  margin: auto;
+  padding: 0;
+  overflow: auto;
+  border: 1px solid #cfc7ba;
+  border-radius: 18px;
+  color: #292c25;
+  background: #f5f2ec;
+  font-family: 'Tajawal', 'Manrope', sans-serif;
+  overscroll-behavior: contain;
+}
+
+.thanarah-service-promo::backdrop {
+  background: rgb(24 40 31 / 48%);
+}
+
+.service-promo-shell {
+  position: relative;
+  padding: clamp(22px, 4.5vw, 42px);
+}
+
+.service-promo-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 38px;
+  margin-bottom: clamp(22px, 4vw, 36px);
+  color: #183c2b;
+  font: 700 11px/1.4 'Manrope', 'Tajawal', sans-serif;
+  letter-spacing: .06em;
+}
+
+.service-promo-brand img {
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+}
+
+.service-promo-close {
+  position: absolute;
+  inset-block-start: 28px;
+  inset-inline-end: 28px;
+  display: grid;
+  width: 42px;
+  min-width: 42px;
+  height: 42px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid #d4cbbb;
+  border-radius: 50%;
+  color: #292c25;
+  background: #f9f6f0;
+  font: 400 26px/1 'Tajawal', sans-serif;
+  cursor: pointer;
+}
+
+.service-promo-close:hover {
+  background: #e9e8df;
+}
+
+.service-promo-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(190px, .8fr);
+  align-items: center;
+  gap: clamp(18px, 4vw, 42px);
+}
+
+.service-promo-copy {
+  min-width: 0;
+}
+
+.service-promo-eyebrow {
+  display: inline-block;
+  margin-bottom: 8px;
+  color: #52634f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.service-promo-copy h2 {
+  max-width: 15ch;
+  margin: 0;
+  color: #183c2b;
+  font-size: clamp(25px, 4vw, 36px);
+  font-weight: 800;
+  line-height: 1.4;
+}
+
+.service-promo-copy > p {
+  max-width: 54ch;
+  margin: 12px 0 20px;
+  color: #555e52;
+  font-size: 15px;
+  line-height: 1.8;
+}
+
+.service-promo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 9px;
+}
+
+.service-promo-actions button {
+  min-height: 46px;
+  padding: 9px 14px;
+  border: 1px solid #183c2b;
+  border-radius: 7px;
+  color: #183c2b;
+  background: transparent;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.service-promo-actions .service-promo-register {
+  color: #f5f2ec;
+  background: #183c2b;
+}
+
+.service-promo-actions .service-promo-register:hover {
+  background: #294631;
+}
+
+.service-promo-actions .service-promo-login:hover {
+  background: #e9e8df;
+}
+
+.service-promo-capabilities {
+  min-width: 0;
+  padding: 20px;
+  border-inline-start: 1px solid #cfc7ba;
+  background: #ebe9df;
+}
+
+.service-promo-capabilities h3 {
+  margin: 0 0 14px;
+  color: #183c2b;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.service-promo-capabilities ol {
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.service-promo-capabilities li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  min-width: 0;
+}
+
+.service-promo-step {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  border: 1px solid #b6c1aa;
+  border-radius: 50%;
+  color: #183c2b;
+  font: 700 10px/1 'Manrope', sans-serif;
+}
+
+.service-promo-capabilities li div {
+  display: grid;
+  min-width: 0;
+  gap: 2px;
+}
+
+.service-promo-capabilities li strong {
+  color: #292c25;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.service-promo-capabilities li small {
+  color: #52634f;
+  font-size: 11px;
+}
+
+.service-promo-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin-top: 26px;
+  padding-top: 16px;
+  border-top: 1px solid #d8d0c7;
+}
+
+.service-promo-footer p {
+  max-width: 48ch;
+  margin: 0;
+  color: #5f6259;
+  font-size: 12px;
+  line-height: 1.7;
+}
+
+.service-promo-footer a {
+  flex: 0 0 auto;
+  color: #183c2b;
+  font-size: 13px;
+  font-weight: 800;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 4px;
+}
+
+.thanarah-service-promo :where(button, a):focus-visible {
+  outline: 3px solid #77966c;
+  outline-offset: 3px;
+}
+
+@media (max-width: 540px) {
+  .thanarah-service-promo {
+    width: calc(100% - 24px);
+    max-height: calc(100dvh - 20px);
+    border-radius: 14px;
+  }
+
+  .service-promo-shell {
+    padding: 22px 18px;
+  }
+
+  .service-promo-brand {
+    margin-bottom: 22px;
+  }
+
+  .service-promo-close {
+    inset-block-start: 18px;
+    inset-inline-end: 18px;
+    width: 40px;
+    min-width: 40px;
+    height: 40px;
+  }
+
+  .service-promo-grid {
+    grid-template-columns: minmax(0, 1.15fr) minmax(125px, .85fr);
+    gap: 12px;
+  }
+
+  .service-promo-copy h2 {
+    font-size: clamp(21px, 6vw, 27px);
+  }
+
+  .service-promo-copy > p {
+    margin-block: 8px 14px;
+    font-size: 13px;
+  }
+
+  .service-promo-actions {
+    display: grid;
+  }
+
+  .service-promo-actions button {
+    min-height: 44px;
+    padding-inline: 8px;
+    font-size: 12px;
+  }
+
+  .service-promo-capabilities {
+    padding: 13px 10px;
+  }
+
+  .service-promo-capabilities h3 {
+    font-size: 12px;
+  }
+
+  .service-promo-capabilities li {
+    gap: 6px;
+  }
+
+  .service-promo-step {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  .service-promo-capabilities li strong {
+    font-size: 11px;
+  }
+
+  .service-promo-capabilities li small {
+    font-size: 10px;
+  }
+
+  .service-promo-footer {
+    align-items: flex-start;
+    gap: 10px;
+    margin-top: 18px;
+  }
+
+  .service-promo-footer p {
+    font-size: 11px;
+  }
+}
+
+@media (max-width: 360px) {
+  .service-promo-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .service-promo-capabilities {
+    border-inline-start: 0;
+    border-top: 1px solid #cfc7ba;
+  }
+}

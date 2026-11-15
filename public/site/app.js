@@ -29,6 +29,12 @@
   var queryPackage = new URLSearchParams(location.search).get('package');
   var serviceKey = new URLSearchParams(location.search).get('service');
   var originalTitle = document.title;
+  var servicePromoStorageKey = 'thanarah.service-introduction.seen.v1';
+  var servicePromoTimer = null;
+  var servicePromoScheduled = false;
+  var servicePromoAuthListenerBound = false;
+  var servicePromoDialog = null;
+  var servicePromoOpener = null;
   function routeTitle() {
     var names = {
       home: locale === 'ar' ? 'بنية رقمية للرعاية الصحية' : 'Digital infrastructure for care',
@@ -75,6 +81,117 @@
   }
   function packageContact(code) {
     return '/contact/?package=' + encodeURIComponent(code);
+  }
+  function servicePromoMarkup() {
+    var capabilities = [t.capabilityPatients, t.capabilityAppointments, t.capabilityEncounters];
+    return '<div class="service-promo-shell">' +
+      '<div class="service-promo-brand"><img src="/assets/logo-mark.svg" width="34" height="34" alt="">' +
+      '<span>THANARAH · ' + esc(t.navServices) + '</span></div>' +
+      '<button class="service-promo-close" type="button" data-service-promo-close aria-label="' +
+      esc(t.promoClose) + '"><span aria-hidden="true">×</span></button>' +
+      '<div class="service-promo-grid"><section class="service-promo-copy">' +
+      '<span class="service-promo-eyebrow">' + esc(t.promoEyebrow) + '</span>' +
+      '<h2 id="thanarah-service-promo-title">' + esc(t.promoTitle) + '</h2>' +
+      '<p id="thanarah-service-promo-description">' + esc(t.promoBody) + '</p>' +
+      '<div class="service-promo-actions"><button class="service-promo-register" type="button" ' +
+      'data-thanarah-auth="register" data-auth-audience="customer">' + esc(t.promoRegister) +
+      '</button><button class="service-promo-login" type="button" data-thanarah-auth="login" ' +
+      'data-auth-audience="customer">' + esc(t.promoLogin) + '</button></div></section>' +
+      '<section class="service-promo-capabilities" aria-label="' + esc(t.promoCapabilities) + '">' +
+      '<h3>' + esc(t.promoCapabilities) + '</h3><ol>' +
+      capabilities.map(function (capability, index) {
+        return '<li><span class="service-promo-step" aria-hidden="true">0' + (index + 1) +
+          '</span><div><strong>' + esc(capability) + '</strong><small>' + esc(t.promoAvailable) +
+          '</small></div></li>';
+      }).join('') +
+      '</ol></section></div><div class="service-promo-footer"><p>' +
+      esc(t.promoAccountNote) + '</p><a href="/services/" data-service-promo-link>' +
+      esc(t.promoExplore) + '</a></div></div>';
+  }
+  function hasSeenServicePromo() {
+    try {
+      return window.sessionStorage.getItem(servicePromoStorageKey) === 'seen';
+    } catch (_) {
+      return false;
+    }
+  }
+  function rememberServicePromo() {
+    try {
+      window.sessionStorage.setItem(servicePromoStorageKey, 'seen');
+    } catch (_) {
+      // The current page still suppresses the popup for this session.
+    }
+  }
+  function closeServicePromo(restoreFocus) {
+    if (!servicePromoDialog || !servicePromoDialog.open) return;
+    var returnTo = restoreFocus ? servicePromoOpener : null;
+    servicePromoOpener = null;
+    servicePromoDialog.close();
+    if (returnTo && returnTo.isConnected) returnTo.focus({ preventScroll: true });
+  }
+  function suppressServicePromo() {
+    servicePromoScheduled = true;
+    if (servicePromoTimer !== null) {
+      window.clearTimeout(servicePromoTimer);
+      servicePromoTimer = null;
+    }
+    rememberServicePromo();
+    closeServicePromo(false);
+  }
+  function ensureServicePromoDialog() {
+    if (servicePromoDialog) return servicePromoDialog;
+    servicePromoDialog = document.createElement('dialog');
+    servicePromoDialog.className = 'thanarah-service-promo';
+    servicePromoDialog.setAttribute('aria-labelledby', 'thanarah-service-promo-title');
+    servicePromoDialog.setAttribute('aria-describedby', 'thanarah-service-promo-description');
+    servicePromoDialog.innerHTML = servicePromoMarkup();
+    servicePromoDialog.addEventListener('click', function (event) {
+      var target = event.target instanceof Element ? event.target : null;
+      if (target && target.closest('[data-service-promo-close]')) {
+        rememberServicePromo();
+        closeServicePromo(true);
+      } else if (target && target.closest('[data-service-promo-link]')) {
+        closeServicePromo(false);
+      } else if (target === servicePromoDialog) {
+        rememberServicePromo();
+        closeServicePromo(true);
+      }
+    });
+    servicePromoDialog.addEventListener('cancel', rememberServicePromo);
+    servicePromoDialog.addEventListener('keydown', function (event) {
+      if (event.key !== 'Escape') return;
+      event.preventDefault();
+      rememberServicePromo();
+      closeServicePromo(true);
+    });
+    document.body.append(servicePromoDialog);
+    return servicePromoDialog;
+  }
+  function scheduleServicePromo() {
+    if (!isReferenceHomePath || route !== 'home' || servicePromoScheduled) return;
+    servicePromoScheduled = true;
+    if (hasSeenServicePromo()) return;
+    if (!servicePromoAuthListenerBound) {
+      document.addEventListener('click', function (event) {
+        var target = event.target instanceof Element ? event.target : null;
+        if (target && target.closest('[data-thanarah-auth]')) suppressServicePromo();
+      }, true);
+      servicePromoAuthListenerBound = true;
+    }
+    servicePromoTimer = window.setTimeout(function () {
+      servicePromoTimer = null;
+      if (document.querySelector('.thanarah-auth[open]')) {
+        rememberServicePromo();
+        return;
+      }
+      var dialog = ensureServicePromoDialog();
+      if (typeof dialog.showModal !== 'function') return;
+      servicePromoOpener = document.activeElement;
+      rememberServicePromo();
+      dialog.showModal();
+      var closeButton = dialog.querySelector('[data-service-promo-close]');
+      if (closeButton) closeButton.focus({ preventScroll: true });
+    }, 4200);
   }
   function header() {
     var links = [
@@ -771,6 +888,7 @@
           showCatalogError(route);
         });
     if (route === 'contact') initForm();
+    scheduleServicePromo();
   }
   function bindCommon() {
     var main = document.getElementById('main');

@@ -129,14 +129,28 @@
     return labels ? labels[ar ? 0 : 1] : (ar ? 'ثنارة' : 'Thanarah');
   }
 
+  function languageControl(ar) {
+    return '<div class="thanarah-shell-language-wrap"><button class="thanarah-shell-language" type="button" ' +
+      'data-locale-toggle aria-expanded="false" aria-controls="thanarah-shell-language-menu" lang="' +
+      (ar ? 'ar' : 'en') + '" aria-label="' +
+      (ar ? 'اختيار اللغة، الحالية العربية' : 'Choose language, currently English') + '">' +
+      '<svg aria-hidden="true" viewBox="0 0 20 20" fill="none"><circle cx="10" cy="10" r="7.25"></circle>' +
+      '<path d="M2.9 10h14.2M10 2.75c1.8 1.95 2.7 4.37 2.7 7.25s-.9 5.3-2.7 7.25C8.2 15.3 7.3 12.88 7.3 10s.9-5.3 2.7-7.25Z"></path></svg>' +
+      '<span class="thanarah-shell-language-label" lang="' + (ar ? 'ar' : 'en') + '">' +
+      (ar ? 'العربية' : 'English') + '</span><span class="thanarah-shell-language-chevron" aria-hidden="true">⌄</span></button>' +
+      '<div class="thanarah-shell-language-menu" id="thanarah-shell-language-menu" data-locale-skip role="group" aria-label="' +
+      (ar ? 'اختيار اللغة' : 'Choose language') + '" hidden>' +
+      '<button type="button" data-locale-choice="ar" lang="ar" dir="rtl" aria-pressed="' + String(ar) +
+      '"><span>العربية</span></button><button type="button" data-locale-choice="en" lang="en" dir="ltr" aria-pressed="' +
+      String(!ar) + '"><span>English</span></button></div></div>';
+  }
+
   function header(ar) {
     var mainAudience = isStaffRoute ? 'staff' : 'customer';
     var links = navItems(ar).map(function (item) {
       return '<a href="' + item[0] + '"' + (activeNav(item) ? ' aria-current="page"' : '') +
         '>' + item[1] + '</a>';
     }).join('');
-    var languageText = ar ? 'English' : 'العربية';
-    var languageLabel = ar ? 'Switch to English' : 'التبديل إلى العربية';
     var authControls = mainAudience === 'staff'
       ? '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
         (ar ? 'دخول' : 'Sign in') + '</button>'
@@ -151,9 +165,8 @@
       '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a>' +
       '<nav class="thanarah-shell-nav" id="thanarah-main-navigation" aria-label="' +
       (ar ? 'التنقل الرئيسي' : 'Main navigation') + '">' + links + '</nav>' +
-      '<div class="thanarah-shell-actions"><button class="thanarah-shell-language" type="button" ' +
-      'data-locale-toggle aria-label="' + languageLabel + '" lang="' + (ar ? 'en' : 'ar') +
-      '">' + languageText + '</button><span class="thanarah-shell-auth-actions">' +
+      '<div class="thanarah-shell-actions">' + languageControl(ar) +
+      '<span class="thanarah-shell-auth-actions">' +
       authControls + '</span>' +
       '<button class="thanarah-shell-menu" type="button" aria-expanded="false" aria-controls="thanarah-main-navigation" ' +
       'aria-label="' + (ar ? 'فتح القائمة' : 'Open menu') + '"><span class="thanarah-shell-menu-glyph" aria-hidden="true"><i></i><i></i></span></button>' +
@@ -214,15 +227,27 @@
 
   function setLocaleUI(ar) {
     var button = document.querySelector('.thanarah-shell-language');
+    var languageLabel = button && button.querySelector('.thanarah-shell-language-label');
+    var languageMenu = document.querySelector('.thanarah-shell-language-menu');
     var brandContext = document.querySelector('.thanarah-shell-header .thanarah-shell-brand small');
     var nav = document.querySelector('.thanarah-shell-nav');
     var menu = document.querySelector('.thanarah-shell-menu');
     var actions = document.querySelector('.thanarah-shell-auth-actions');
     if (brandContext) brandContext.textContent = pageName(ar);
     if (button) {
-      button.textContent = ar ? 'English' : 'العربية';
-      button.setAttribute('aria-label', ar ? 'Switch to English' : 'التبديل إلى العربية');
-      button.setAttribute('lang', ar ? 'en' : 'ar');
+      if (languageLabel) languageLabel.textContent = ar ? 'العربية' : 'English';
+      button.setAttribute('aria-label', ar
+        ? 'اختيار اللغة، الحالية العربية'
+        : 'Choose language, currently English');
+      button.setAttribute('lang', ar ? 'ar' : 'en');
+      button.setAttribute('aria-expanded', 'false');
+    }
+    if (languageMenu) {
+      languageMenu.setAttribute('aria-label', ar ? 'اختيار اللغة' : 'Choose language');
+      languageMenu.hidden = true;
+      languageMenu.querySelectorAll('[data-locale-choice]').forEach(function (choice) {
+        choice.setAttribute('aria-pressed', String(choice.dataset.localeChoice === (ar ? 'ar' : 'en')));
+      });
     }
     if (nav) {
       nav.setAttribute('aria-label', ar ? 'التنقل الرئيسي' : 'Main navigation');
@@ -285,6 +310,25 @@
     nav.classList.remove('is-open');
   }
 
+  function closeLanguageMenu(returnFocus) {
+    var button = document.querySelector('.thanarah-shell-language');
+    var menu = document.querySelector('.thanarah-shell-language-menu');
+    if (!button || !menu || menu.hidden) return;
+    if (returnFocus) button.focus({ preventScroll: true });
+    menu.hidden = true;
+    button.setAttribute('aria-expanded', 'false');
+  }
+
+  function openLanguageMenu() {
+    var button = document.querySelector('.thanarah-shell-language');
+    var menu = document.querySelector('.thanarah-shell-language-menu');
+    if (!button || !menu) return;
+    menu.hidden = false;
+    button.setAttribute('aria-expanded', 'true');
+    var current = menu.querySelector('[data-locale-choice][aria-pressed="true"]');
+    if (current) current.focus();
+  }
+
   language = readLanguage();
   var existingApp = document.getElementById('app') || document.getElementById('encounter-app');
   var headerHost = document.createElement('div');
@@ -308,6 +352,7 @@
   document.addEventListener('click', function (event) {
     var target = event.target instanceof Element ? event.target : null;
     if (!target) return;
+    if (!target.closest('.thanarah-shell-language-wrap')) closeLanguageMenu(false);
     var menu = target.closest('.thanarah-shell-menu');
     if (menu) {
       var nav = document.querySelector('.thanarah-shell-nav');
@@ -321,11 +366,14 @@
     }
     if (target.closest('.thanarah-shell-nav a')) closeMenu();
 
-    var localeButton = target.closest('.thanarah-shell-language');
-    if (localeButton) {
-      var next = language === 'ar' ? 'en' : 'ar';
+    var localeChoice = target.closest('[data-locale-choice]');
+    if (localeChoice) {
+      var next = localeChoice.dataset.localeChoice === 'en' ? 'en' : 'ar';
+      closeLanguageMenu(true);
+      if (next === language) return;
       if (root.ThanarahLocale) {
         language = next;
+        root.ThanarahLocale.setLocale(next);
         setLocaleUI(next === 'ar');
         return;
       }
@@ -340,11 +388,22 @@
       root.dispatchEvent(new CustomEvent('thanarah:locale-changed', { detail: { locale: next } }));
       return;
     }
+    var localeButton = target.closest('.thanarah-shell-language');
+    if (localeButton) {
+      if (localeButton.getAttribute('aria-expanded') === 'true') closeLanguageMenu(false);
+      else openLanguageMenu();
+      return;
+    }
     if (!target.closest('.thanarah-shell-header')) closeMenu();
   });
 
   document.addEventListener('keydown', function (event) {
     if (event.key !== 'Escape') return;
+    var languageMenu = document.querySelector('.thanarah-shell-language-menu:not([hidden])');
+    if (languageMenu) {
+      closeLanguageMenu(true);
+      return;
+    }
     var menu = document.querySelector('.thanarah-shell-menu[aria-expanded="true"]');
     if (!menu) return;
     closeMenu();

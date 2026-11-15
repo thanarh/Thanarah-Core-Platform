@@ -83,7 +83,7 @@ function harness(mode = 'register') {
     source.replace(
       '})(window);',
       `root.testAuth = {
-      submit, drafts,
+      submit, drafts, filterCountries, normalizePhoneNumber,
       setup: (value, nextMode) => { dialog=value; mode=nextMode; audience='customer'; pagePosition={top:213,left:0}; },
       snapshot: () => ({busy, pendingRegistration, registered})
     }; })(window);`,
@@ -93,6 +93,8 @@ function harness(mode = 'register') {
   const auth = root.testAuth as {
     setup: (dialog: unknown, mode: string) => void;
     submit: (event: unknown) => Promise<void>;
+    filterCountries: (query: string) => { region: string; callingCode: string }[];
+    normalizePhoneNumber: (value: string, region: string) => string | null;
     snapshot: () => {
       busy: boolean;
       pendingRegistration: { operationId: string } | null;
@@ -216,5 +218,31 @@ describe('Shared sign-in and customer registration dialog', () => {
     expect(source).toContain('التحقق برقم الجوال عبر واتساب غير مفعّل بعد');
     expect(source).toContain('لم تُرسل أي رسالة');
     expect(source).not.toMatch(/\/(?:send-otp|verify-otp|phone-login)/u);
+  });
+  it('defaults the phone country to Saudi Arabia and searches names and calling codes', () => {
+    const h = harness('login');
+    expect(h.auth.drafts.login.phoneCountry).toBe('SA');
+    expect(h.auth.filterCountries('السعودية').map((country) => country.region)).toContain('SA');
+    expect(h.auth.filterCountries('Saudi Arabia').map((country) => country.region)).toContain('SA');
+    expect(h.auth.filterCountries('+20').map((country) => country.region)).toContain('EG');
+  });
+  it('normalizes local and international phone input without authenticating', () => {
+    const h = harness('login');
+    expect(h.auth.normalizePhoneNumber('٠٥٥ ١٢٣ ٤٥٦٧', 'SA')).toBe('+966551234567');
+    expect(h.auth.normalizePhoneNumber('+971 50 123 4567', 'SA')).toBe('+971501234567');
+    expect(h.auth.normalizePhoneNumber('00 966 55 123 4567', 'SA')).toBe('+966551234567');
+    expect(h.auth.normalizePhoneNumber('020 7946 0018', 'GB')).toBe('+442079460018');
+    expect(h.auth.normalizePhoneNumber('06 30 123 4567', 'HU')).toBe('+36301234567');
+    expect(h.auth.normalizePhoneNumber('123', 'SA')).toBeNull();
+    expect(h.auth.normalizePhoneNumber('0551234567', 'XX')).toBeNull();
+    expect(h.login).not.toHaveBeenCalled();
+    expect(h.root.dispatchEvent).not.toHaveBeenCalled();
+  });
+  it('exposes an accessible searchable country picker and keeps verification disabled', () => {
+    expect(source).toContain('aria-haspopup="listbox"');
+    expect(source).toContain('role="combobox"');
+    expect(source).toContain('aria-activedescendant');
+    expect(source).toContain('data-country-option');
+    expect(source).toContain('type="button" disabled');
   });
 });

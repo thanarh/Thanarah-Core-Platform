@@ -1,0 +1,272 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#f2eee5">
+  <title>مساحة العميل · ثنارة</title>
+  <link rel="icon" href="/__mockup/assets/logo-mark.svg">
+  <style>
+    @font-face{font-family:Tajawal;src:url('/__mockup/assets/tajawal-regular.ttf') format('truetype');font-weight:400 500;font-display:swap}
+    @font-face{font-family:Tajawal;src:url('/__mockup/assets/tajawal-bold.ttf') format('truetype');font-weight:600 900;font-display:swap}
+    :root{color-scheme:light;--paper:#f2eee5;--surface:#fbf9f4;--cream:#e9e1d4;--ink:#292d26;--muted:#686c62;--line:#d9d0c2;--green:#1b412f;--green2:#315d43;--sage:#dce6d7;--lime:#c6d29a;--ochre:#b18b42;--warn:#765c24;--warnwash:#f4ebd1;--red:#a24e41;--radius:12px;font-family:Tajawal,sans-serif}
+    *{box-sizing:border-box}
+    html{scroll-behavior:smooth;scroll-padding-top:86px}
+    body{margin:0;min-height:100dvh;background:var(--paper);color:var(--ink);font:16px/1.55 Tajawal,sans-serif}
+    button,input,select{font:inherit}
+    button{cursor:pointer}
+    a{color:inherit}
+    button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:3px solid #82966e;outline-offset:3px}
+    .masthead{position:sticky;top:0;z-index:8;border-bottom:1px solid var(--line);background:rgba(242,238,229,.96)}
+    .masthead-inner{width:min(1190px,calc(100% - 48px));height:68px;margin:auto;display:flex;align-items:center;gap:32px}
+    .brand{display:flex;align-items:center;gap:10px;text-decoration:none;color:var(--green);flex:0 0 auto}
+    .brand img{width:38px;height:38px;object-fit:contain}
+    .brand strong{font-size:21px;line-height:1}
+    .brand small{display:block;color:#707366;font-size:11px;margin-top:4px}
+    .nav{display:flex;align-items:center;gap:25px;margin-inline-start:auto}
+    .nav a{font-size:14px;color:#5f6258;text-decoration:none;white-space:nowrap}
+    .nav a:hover,.nav a[aria-current=page]{color:var(--green);font-weight:700}
+    .head-actions{display:flex;align-items:center;gap:10px}
+    .account-chip{display:flex;align-items:center;gap:8px;padding-inline-start:13px;border-inline-start:1px solid var(--line);font-size:13px;font-weight:700;white-space:nowrap}
+    .avatar{display:grid;place-items:center;width:34px;height:34px;border-radius:50%;background:#d9e2d1;color:var(--green);font-weight:800}
+    .icon-button{display:none}
+    .btn{min-height:42px;display:inline-flex;justify-content:center;align-items:center;gap:8px;padding:9px 17px;border:1px solid transparent;border-radius:8px;font-weight:700;text-decoration:none;transition:background-color .16s,border-color .16s,transform .16s,color .16s}
+    .btn:hover{transform:translateY(-1px)}
+    .btn-primary{color:#fbf8ef;background:var(--green);border-color:var(--green)}
+    .btn-primary:hover{background:var(--green2)}
+    .btn-secondary{color:var(--green);background:#fbf9f4;border-color:#c9cbbb}
+    .btn-secondary:hover{background:#edf0e5;border-color:#aeba9e}
+    .btn-quiet{min-height:38px;padding-inline:12px;color:#596055;background:transparent;border-color:transparent}
+    .btn-quiet:hover{background:#e8e5db}
+    .btn-small{min-height:36px;padding:6px 12px;font-size:13px}
+    .wrap{width:min(1190px,calc(100% - 48px));margin-inline:auto}
+    main{padding:26px 0 54px}
+    .welcome{position:relative;overflow:hidden;display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:26px;min-height:144px;padding:25px 30px;margin-bottom:17px;border:1px solid #d6cdbd;border-radius:var(--radius);background:#eae4d8}
+    .welcome:after{content:"";position:absolute;inset-inline-start:-40px;top:-112px;width:270px;height:270px;border:1px solid #b8c2ab;border-radius:50%;box-shadow:0 0 0 22px rgba(160,177,148,.12),0 0 0 50px rgba(160,177,148,.08);pointer-events:none}
+    .welcome-copy,.welcome-ref{position:relative;z-index:1}
+    .eyebrow{color:#54734f;font-size:12px;font-weight:800}
+    h1,h2,h3,p{margin-top:0}
+    .welcome h1{font-size:clamp(27px,3.2vw,38px);line-height:1.23;margin:4px 0 6px;font-weight:800}
+    .welcome p{margin:0;color:#60645b;font-size:14px}
+    .welcome-ref{min-width:177px;padding:12px 16px;border-right:1px solid #c9c0b2}
+    .welcome-ref span{display:block;color:#6b6e63;font-size:11px}
+    .welcome-ref strong{display:block;margin-top:3px;color:var(--green);font:700 15px/1.5 ui-monospace,monospace;direction:ltr;text-align:right}
+    .journey{display:grid;grid-template-columns:minmax(230px,.75fr) minmax(0,1.65fr);align-items:center;gap:27px;padding:19px 22px;margin-bottom:20px;border:1px solid #cbd5c7;border-radius:var(--radius);background:#e3eadd}
+    .journey-copy h2{font-size:19px;margin:2px 0 4px}
+    .journey-copy p{font-size:13px;color:#656b60;margin:0 0 12px;max-width:34ch}
+    .journey-steps{position:relative;display:grid;grid-template-columns:repeat(5,minmax(0,1fr));list-style:none;padding:0;margin:0}
+    .journey-steps:before{content:"";position:absolute;height:1px;top:16px;right:10%;left:10%;background:#b7c4b2}
+    .journey-steps li{position:relative;z-index:1;display:grid;justify-items:center;gap:5px;min-width:0;text-align:center}
+    .step-number{display:grid;place-items:center;width:33px;height:33px;border:1px solid #bac6b6;border-radius:50%;background:#f7f7f0;color:#66725f;font-size:12px;font-weight:700}
+    .journey-steps .done .step-number{background:var(--green);color:#fff;border-color:var(--green)}
+    .journey-steps [aria-current=step] .step-number{border:2px solid var(--green);background:#f7f7f0;color:var(--green)}
+    .journey-steps b{font-size:12px;line-height:1.3}
+    .journey-steps small{font-size:10px;color:#72766d;line-height:1.2}
+    .dashboard{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(310px,.8fr);gap:18px;align-items:start}
+    .primary-column,.side-column{display:grid;gap:16px;min-width:0}
+    .section-label{display:flex;align-items:center;gap:9px;margin:0 2px 9px;color:#77786d;font-size:12px;font-weight:700}
+    .section-label:after{content:"";height:1px;flex:1;background:#d9d1c4}
+    .panel{overflow:hidden;border:1px solid var(--line);border-radius:var(--radius);background:var(--surface)}
+    .panel-head{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:16px 18px;border-bottom:1px solid #e4ddd1}
+    .panel-head h2{font-size:18px;margin:0}
+    .panel-head p{font-size:12px;color:var(--muted);margin:2px 0 0}
+    .panel-body{padding:17px 18px}
+    .pill{display:inline-flex;align-items:center;gap:7px;padding:5px 10px;border-radius:99px;background:var(--warnwash);color:var(--warn);font-size:12px;font-weight:700;white-space:nowrap}
+    .pill-dot{width:7px;height:7px;border-radius:50%;background:#ac8333}
+    .order-card{padding:17px 18px 16px}
+    .order-top{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+    .order-title{font-size:20px;margin:0 0 3px}
+    .order-meta{font-size:12px;color:#73766d;margin:0}
+    .order-details{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px;margin:18px 0 15px;padding:12px 0;border-block:1px solid #e6dfd4}
+    .detail-item small{display:block;color:#777a71;font-size:11px;margin-bottom:3px}
+    .detail-item strong{font-size:14px}
+    .order-foot{display:flex;justify-content:space-between;align-items:center;gap:12px}
+    .order-foot .hint{color:#676c61;font-size:12px;margin:0}
+    .profile-panel .panel-head{padding-bottom:13px}
+    .profile-headline{display:flex;align-items:center;gap:11px}
+    .profile-mark{display:grid;place-items:center;width:38px;height:38px;border-radius:10px;background:#e5ebdf;color:var(--green);font-size:17px;font-weight:800}
+    .profile-status{font-size:11px;color:#777b70}
+    .profile-form{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .field{display:grid;gap:5px;min-width:0}
+    .field label{font-size:12px;color:#666b60;font-weight:700}
+    .field input{width:100%;min-width:0;height:40px;border:1px solid #d8d1c5;border-radius:7px;padding:8px 10px;color:var(--ink);background:#fffdf8;outline:none}
+    .field input:focus{border-color:#6b8766}
+    .span-two{grid-column:1/-1}
+    .form-actions{display:flex;justify-content:space-between;align-items:center;gap:10px;grid-column:1/-1;padding-top:3px}
+    .save-note{font-size:11px;color:#73776c;margin:0}
+    .verification{display:flex;align-items:flex-start;gap:12px}
+    .verification-icon{display:grid;place-items:center;flex:0 0 auto;width:38px;height:38px;border:1px solid #e2d5b5;border-radius:50%;background:#f7f0dd;color:#8a6c28;font-size:17px;font-weight:700}
+    .verification h3{margin:0 0 3px;font-size:15px}
+    .verification p{margin:0;color:#73766d;font-size:12px}
+    .verification .pill{margin-top:10px}
+    .verify-action{margin-top:14px}
+    .help-band{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:13px 16px;border-radius:10px;background:#eae4d8}
+    .help-band strong{display:block;font-size:14px}
+    .help-band span{display:block;color:#70746a;font-size:11px}
+    footer{border-top:1px solid var(--line);padding:17px 0;color:#74766d;font-size:12px}
+    .footer-inner{display:flex;justify-content:space-between;gap:12px;align-items:center}
+    .footer-brand{display:flex;align-items:center;gap:8px;color:var(--green);font-weight:800}
+    .footer-brand img{width:23px;height:23px}
+    .toast{position:fixed;z-index:30;inset:auto 20px 20px auto;max-width:min(400px,calc(100vw - 40px));padding:13px 17px;border-radius:9px;background:var(--green);color:#fff;box-shadow:0 8px 28px rgba(31,48,34,.18);opacity:0;transform:translateY(8px);pointer-events:none;transition:opacity .2s,transform .2s}
+    .toast.show{opacity:1;transform:translateY(0)}
+    dialog{width:min(460px,calc(100% - 28px));padding:0;border:1px solid #d5cbbb;border-radius:14px;background:var(--surface);color:var(--ink)}
+    dialog::backdrop{background:rgba(26,39,29,.4)}
+    .dialog-head{padding:17px 19px;border-bottom:1px solid #e3dccc}
+    .dialog-head h2{margin:0;font-size:20px}
+    .dialog-body{padding:18px}
+    .dialog-body p{color:#70746a;font-size:13px}
+    .dialog-actions{display:flex;justify-content:flex-start;gap:8px;padding-top:18px}
+    .select{width:100%;height:43px;border:1px solid #d8d1c5;border-radius:7px;padding:8px 10px;background:#fffdf8;color:var(--ink)}
+    .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0}
+    @media(max-width:900px){.masthead-inner,.wrap{width:min(100% - 32px,720px)}.masthead-inner{gap:14px}.nav{gap:14px}.nav a{font-size:13px}.dashboard{grid-template-columns:minmax(0,1.1fr) minmax(280px,.9fr)}.journey{grid-template-columns:1fr;gap:15px}.journey-copy{display:flex;align-items:center;justify-content:space-between;gap:15px}.journey-copy p{margin:0}.journey-copy .eyebrow{display:none}}
+    @media(max-width:700px){.masthead-inner{height:62px}.brand img{width:34px;height:34px}.brand strong{font-size:19px}.nav{display:none}.head-actions{margin-inline-start:auto}.account-chip{font-size:12px}.account-chip .avatar{width:32px;height:32px}.icon-button{display:inline-flex;align-items:center;justify-content:center;min-height:40px;padding:5px 11px;border:1px solid var(--line);border-radius:8px;background:transparent;color:#53594f;font-size:12px}.wrap{width:calc(100% - 28px)}main{padding:15px 0 32px}.welcome{min-height:120px;padding:18px 17px;grid-template-columns:1fr auto;gap:12px;margin-bottom:12px}.welcome:after{width:190px;height:190px;top:-80px;inset-inline-start:-80px}.welcome h1{font-size:27px}.welcome p{font-size:12px;max-width:34ch}.welcome-ref{min-width:auto;padding:6px 0 6px 11px}.welcome-ref span{font-size:10px}.welcome-ref strong{font-size:12px}.journey{padding:14px 12px;gap:14px;margin-bottom:14px}.journey-copy{align-items:flex-start}.journey-copy h2{font-size:16px}.journey-copy p{font-size:11px;max-width:25ch;text-align:left}.journey-steps:before{top:14px;right:10%;left:10%}.step-number{width:29px;height:29px;font-size:11px}.journey-steps{gap:4px}.journey-steps b{font-size:10px}.journey-steps small{font-size:9px}.dashboard{grid-template-columns:1fr;gap:13px}.primary-column,.side-column{gap:13px}.section-label{margin-bottom:6px}.panel-head{padding:13px 14px}.panel-body{padding:14px}.order-card{padding:14px}.order-title{font-size:18px}.order-details{margin:13px 0 12px;gap:5px}.detail-item small{font-size:10px}.detail-item strong{font-size:12px}.order-foot{align-items:flex-start;flex-direction:column}.order-foot .btn{width:100%}.order-foot .hint{font-size:11px}.profile-form{gap:10px}.field input{height:39px}.form-actions{align-items:flex-start;flex-direction:column}.form-actions .btn{width:100%}.help-band{padding:12px 13px}.footer-inner{flex-wrap:wrap;justify-content:center;text-align:center}.footer-inner>span{width:100%}}
+    @media(max-width:370px){.account-chip{gap:5px;padding-inline-start:8px}.account-name{max-width:70px;overflow:hidden;text-overflow:ellipsis}.welcome{grid-template-columns:1fr}.welcome-ref{display:none}.welcome h1{font-size:25px}.journey-copy p{max-width:20ch}.journey-steps b{font-size:9px}.order-top{flex-direction:column;gap:8px}.profile-form{grid-template-columns:1fr}.span-two{grid-column:auto}.form-actions{grid-column:auto}}
+    @media(prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;transition-duration:.01ms!important}}
+  </style>
+</head>
+<body>
+  <header class="masthead">
+    <div class="masthead-inner">
+      <a class="brand" href="#top" aria-label="ثنارة، مساحة العميل">
+        <img src="/__mockup/assets/logo-mark.svg" alt="">
+        <span><strong>ثنارة</strong><small>مساحة العميل</small></span>
+      </a>
+      <nav class="nav" aria-label="التنقل الرئيسي">
+        <a href="#orders" aria-current="page">طلباتي</a>
+        <a href="#profile">بيانات المنشأة</a>
+        <a href="#verification">حالة التحقق</a>
+      </nav>
+      <div class="head-actions">
+        <div class="account-chip"><span class="avatar" aria-hidden="true">ن</span><span class="account-name">نورة العتيبي</span></div>
+        <button class="icon-button" id="logout" type="button">خروج</button>
+      </div>
+    </div>
+  </header>
+  <main id="top" class="wrap">
+    <section class="welcome" aria-labelledby="welcome-title">
+      <div class="welcome-copy">
+        <span class="eyebrow">مساحة خاصة بمنشأتك الصحية</span>
+        <h1 id="welcome-title">أهلًا نورة، نتابع التأسيس معك.</h1>
+        <p>من ملف المنشأة إلى استلام العيادة — تفاصيلك وطلبك في مكان واحد.</p>
+      </div>
+      <div class="welcome-ref"><span>رقم الحساب</span><strong>TN-5831</strong></div>
+    </section>
+    <section class="journey" aria-label="رحلة إعداد العيادة">
+      <div class="journey-copy">
+        <div><span class="eyebrow">رحلتك مع ثنارة</span><h2>خطوة واضحة في كل مرة</h2></div>
+        <p>ملفك مكتمل. طلبك الآن لدى فريق المراجعة.</p>
+      </div>
+      <ol class="journey-steps">
+        <li class="done"><span class="step-number">١</span><b>إنشاء الحساب</b><small>مكتمل</small></li>
+        <li class="done"><span class="step-number">٢</span><b>ملف المنشأة</b><small>مكتمل</small></li>
+        <li class="done"><span class="step-number">٣</span><b>إرسال الطلب</b><small>مكتمل</small></li>
+        <li aria-current="step"><span class="step-number">٤</span><b>مراجعة الفريق</b><small>الآن</small></li>
+        <li><span class="step-number">٥</span><b>استلام العيادة</b><small>لاحقًا</small></li>
+      </ol>
+    </section>
+    <div class="dashboard">
+      <section class="primary-column" id="orders" aria-labelledby="orders-label">
+        <div>
+          <div class="section-label" id="orders-label"><span>طلبات المنشأة · ١</span><button class="btn btn-secondary btn-small" id="new-order" type="button">طلب جديد</button></div>
+          <article class="panel">
+            <div class="panel-head">
+              <div><h2>طلب التأسيس</h2><p>باقة الانطلاقة · طلب جديد</p></div>
+              <span class="pill"><span class="pill-dot"></span>قيد المراجعة</span>
+            </div>
+            <div class="order-card">
+              <div class="order-top">
+                <div><h3 class="order-title">تجهيز مركز سكينة الطبي</h3><p class="order-meta">أُرسل للمراجعة في ١٢ نوفمبر ٢٠٢٦</p></div>
+              </div>
+              <div class="order-details">
+                <div class="detail-item"><small>رقم الطلب</small><strong dir="ltr">TH-2048</strong></div>
+                <div class="detail-item"><small>المدينة</small><strong>جدة</strong></div>
+                <div class="detail-item"><small>آخر تحديث</small><strong>قبل يومين</strong></div>
+              </div>
+              <div class="order-foot">
+                <p class="hint">نراجع التفاصيل، وسنحدّث حالته هنا.</p>
+                <button class="btn btn-secondary btn-small" id="order-details" type="button">عرض تفاصيل الطلب <span aria-hidden="true">←</span></button>
+              </div>
+            </div>
+          </article>
+        </div>
+        <div class="help-band">
+          <div><strong>هل تحتاجين مساعدة؟</strong><span>فريق ثنارة قريب لمساندتك في خطوات التأسيس.</span></div>
+          <a class="btn btn-quiet btn-small" href="mailto:support@thanarah.example">تواصلي معنا</a>
+        </div>
+      </section>
+      <aside class="side-column">
+        <section class="panel profile-panel" id="profile" aria-labelledby="profile-title">
+          <div class="panel-head">
+            <div class="profile-headline"><span class="profile-mark" aria-hidden="true">م</span><div><h2 id="profile-title">ملف المنشأة</h2><span class="profile-status">بياناتك تساعدنا على تجهيز الطلب</span></div></div>
+            <span class="pill" style="background:#e5ecdf;color:#31563c">مكتمل</span>
+          </div>
+          <div class="panel-body">
+            <form class="profile-form" id="profile-form">
+              <div class="field"><label for="legal">الاسم القانوني للمنشأة</label><input id="legal" name="legalName" value="شركة سكينة للرعاية الطبية" required></div>
+              <div class="field"><label for="display">الاسم التجاري</label><input id="display" name="displayName" value="مركز سكينة الطبي" required></div>
+              <div class="field"><label for="registration">رقم السجل</label><input id="registration" name="registrationNumber" value="4030291847" inputmode="numeric" required></div>
+              <div class="field"><label for="city">المدينة</label><input id="city" name="city" value="جدة" required></div>
+              <div class="field span-two"><label for="address">العنوان</label><input id="address" name="address" value="حي الروضة، شارع الأمير سلطان" required></div>
+              <div class="field"><label for="contact">اسم جهة التواصل</label><input id="contact" name="contactName" value="نورة العتيبي" required></div>
+              <div class="field"><label for="phone">رقم الجوال بصيغة دولية</label><input id="phone" name="phoneE164" value="+966 55 321 4086" dir="ltr" required></div>
+              <div class="form-actions">
+                <p class="save-note" id="save-note">آخر حفظ: ١٢ نوفمبر ٢٠٢٦</p>
+                <button class="btn btn-primary btn-small" type="submit">حفظ بيانات المنشأة</button>
+              </div>
+            </form>
+          </div>
+        </section>
+        <section class="panel" id="verification" aria-labelledby="verification-title">
+          <div class="panel-head"><div><h2 id="verification-title">التحقق من رقم الجوال</h2><p>خطوة مستقلة عن مراجعة الطلب</p></div></div>
+          <div class="panel-body">
+            <div class="verification">
+              <span class="verification-icon" aria-hidden="true">✓</span>
+              <div><h3>بانتظار التحقق</h3><p>نحتاج تأكيد رقم التواصل المسجل للمنشأة.</p><span class="pill">لم يتم التحقق بعد</span></div>
+            </div>
+            <button class="btn btn-secondary btn-small verify-action" id="verify" type="button">طلب التحقق عبر واتساب</button>
+          </div>
+        </section>
+      </aside>
+    </div>
+  </main>
+  <footer><div class="wrap footer-inner"><span class="footer-brand"><img src="/__mockup/assets/logo-mark.svg" alt="">ثنارة · شريكك في تأسيس العيادة</span><span>مساحة خاصة وآمنة لمتابعة طلب منشأتك</span></div></footer>
+  <dialog id="order-dialog" aria-labelledby="dialog-title">
+    <div class="dialog-head"><h2 id="dialog-title">تفاصيل طلب التأسيس</h2></div>
+    <div class="dialog-body">
+      <p>طلبك لدى فريق ثنارة للمراجعة. ستجدين أي تحديث جديد في مساحة العميل.</p>
+      <div class="order-details">
+        <div class="detail-item"><small>الباقة</small><strong>باقة الانطلاقة</strong></div>
+        <div class="detail-item"><small>الحالة</small><strong>قيد المراجعة</strong></div>
+        <div class="detail-item"><small>مسؤول الحساب</small><strong>سيظهر عند التعيين</strong></div>
+      </div>
+      <div class="dialog-actions"><button class="btn btn-primary btn-small" id="close-details" type="button">تم</button></div>
+    </div>
+  </dialog>
+  <dialog id="new-order-dialog" aria-labelledby="new-order-title">
+    <div class="dialog-head"><h2 id="new-order-title">بدء طلب جديد</h2></div>
+    <div class="dialog-body">
+      <p>اختاري الباقة المناسبة. سيبدأ الطلب كمسودة ويمكنك استكماله لاحقًا.</p>
+      <label class="field" for="package-choice">الباقة
+        <select class="select" id="package-choice"><option>باقة الانطلاقة</option><option>باقة النمو</option></select>
+      </label>
+      <div class="dialog-actions"><button class="btn btn-primary btn-small" id="create-order" type="button">إنشاء الطلب</button><button class="btn btn-secondary btn-small" id="cancel-new" type="button">إلغاء</button></div>
+    </div>
+  </dialog>
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+  <script>
+    const toast = document.getElementById('toast');
+    let toastTimer;
+    function notify(message){toast.textContent=message;toast.classList.add('show');clearTimeout(toastTimer);toastTimer=setTimeout(()=>toast.classList.remove('show'),3200)}
+    const detailsDialog=document.getElementById('order-dialog');
+    document.getElementById('order-details').addEventListener('click',()=>detailsDialog.showModal());
+    document.getElementById('close-details').addEventListener('click',()=>detailsDialog.close());
+    const newOrderDialog=document.getElementById('new-order-dialog');
+    document.getElementById('new-order').addEventListener('click',()=>newOrderDialog.showModal());
+    document.getElementById('create-order').addEventListener('click',()=>{newOrderDialog.close();notify('تم تجهيز مسودة الطلب في هذه المعاينة.')});
+    document.getElementById('cancel-new').addEventListener('click',()=>newOrderDialog.close());
+    document.getElementById('profile-form').addEventListener('submit',event=>{event.preventDefault();document.getElementById('save-note').textContent='تم الحفظ الآن';notify('تم حفظ بيانات المنشأة في هذه المعاينة.')});
+    document.getElementById('verify').addEventListener('click',()=>notify('خدمة التحقق عبر واتساب غير متاحة في هذه المعاينة.'));
+    document.getElementById('logout').addEventListener('click',()=>notify('هذه مساحة معاينة؛ لم يتم إنهاء الجلسة.'));
+  </script>
+</body>
+</html>

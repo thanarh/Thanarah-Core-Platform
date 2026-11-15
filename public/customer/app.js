@@ -5,7 +5,7 @@
  const labels={DRAFT:'مسودة',SUBMITTED:'قيد المراجعة',CHANGES_REQUESTED:'مطلوب استكمال',REJECTED:'مرفوض',APPROVED:'مقبول',ACTIVE:'مفعّل',DELIVERED:'تم التسليم',CANCELLED:'ملغي'};
  const op=()=>crypto.randomUUID(),money=n=>{if(n==null)return'—';try{const v=BigInt(String(n));return v/100n?`${(v/100n).toLocaleString('ar-SA')}.${String(v%100n).padStart(2,'0')} ر.س`:`0.${String(v%100n).padStart(2,'0')} ر.س`}catch{return'—'}};
  let meData=null,activeOrder=null,detail=null,catalog=null,operation=null,detailId=null;
- window.addEventListener?.('thanarah:authenticated',event=>{if(event.detail.audience==='customer')void loadPortal().catch(error=>auth('login',error.message))});
+  window.addEventListener?.('thanarah:authenticated',event=>{if(event.detail.audience==='customer')void loadPortal().catch(handlePortalError)});
  const toast=(msg,bad=false)=>{let e=document.createElement('div');e.className='toast'+(bad?' bad':'');e.setAttribute('role',bad?'alert':'status');e.setAttribute('aria-live',bad?'assertive':'polite');e.textContent=bad&&operation&&!msg.includes(operation.id)?`${msg} مرجع إعادة المحاولة: ${operation.id}`:msg;document.body.append(e);setTimeout(()=>e.remove(),6000)};
  function operationCall(key,fn){if(operation&&operation.key!==key)throw Object.assign(new Error('هناك عملية سابقة غير مؤكدة. أعد المحاولة بالبيانات نفسها أولًا.'),{status:503});if(!operation)operation={key,id:op()};const operationId=operation.id;return fn(operationId).then(result=>{if(operation?.id===operationId)operation=null;return result}).catch(e=>{if((e.status&&e.status<500)||e.code==='CUSTOMER_WHATSAPP_UNAVAILABLE')operation=null;throw e})}
  function appbar(){return `<header class="appbar"><div class="wrap appbar-inner"><a class="brand" href="/welcome/"><img src="/assets/logo-mark.svg"><span>ثنارة<small>حساب العيادة</small></span></a><div><a class="btn outline small" href="/welcome/">العودة للخدمات</a> <button class="btn outline small" id="logout">خروج</button></div></div></header>`}
@@ -13,8 +13,61 @@
  document.getElementById('auth-form').onsubmit=async ev=>{ev.preventDefault();const form=ev.currentTarget,b=form.querySelector('button[type=submit]'),d=Object.fromEntries(new FormData(form));if(registering&&!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{12,}$/.test(d.password)){form.querySelector('.auth-error').textContent='تحقق من متطلبات كلمة المرور الموضحة قبل المتابعة.';return}b.disabled=true;try{if(registering){await operationCall('register:'+d.email,id=>A.register({operationId:id,fullName:d.fullName,email:d.email,password:d.password}));if(!await A.login(d.email,d.password))throw Error('تم إنشاء الحساب؛ تعذر بدء الجلسة. سجّل الدخول الآن.')}else if(!await A.login(d.email,d.password))throw Error('تعذر تسجيل الدخول.');await loadPortal()}catch(e){const msg=registering&&(e.code==='CUSTOMER_ACCOUNT_CONFLICT'||e.status===409)?'تعذر إنشاء الحساب بهذه البيانات. تحقق منها أو جرّب تسجيل الدخول.':e.message||'تعذر إتمام العملية.';form.querySelector('.auth-error').textContent=msg;if(!e.status||e.status>=500){form.querySelector('.retry-ref').textContent='لم يتأكد الخادم من النتيجة. أعد المحاولة بالبيانات نفسها. مرجع العملية: '+(operation?.id||'');form.querySelectorAll('input').forEach(input=>{input.readOnly=true;input.setAttribute('aria-readonly','true')});b.textContent='إعادة المحاولة بالبيانات نفسها'}else{operation=null;form.querySelectorAll('input').forEach(input=>{input.readOnly=false;input.removeAttribute('aria-readonly')});b.textContent=registering?'إنشاء الحساب':'دخول'}}finally{b.disabled=false}};
  }
  function profileForm(p){p=p||{};let fields=[['legalName','الاسم القانوني للمنشأة'],['displayName','الاسم التجاري'],['registrationNumber','رقم السجل'],['city','المدينة'],['address','العنوان'],['contactName','اسم جهة التواصل'],['phoneE164','رقم الجوال بصيغة دولية (+966…)']];return `<form id="profile-form" class="form-grid">${fields.map(([k,l])=>`<div class="field ${k==='address'?'span2':''}"><label for="profile-${k}">${l}</label><input id="profile-${k}" class="input" name="${k}" value="${esc(p[k]||'')}" ${k==='phoneE164'?'placeholder="+966500000001"':''} required></div>`).join('')}<p class="span2" id="profile-error" role="alert"></p><div class="span2 actions"><button class="btn primary">حفظ بيانات المنشأة</button><p class="retry-ref text-muted span2" aria-live="polite"></p></div></form>`}
- function portal(){let a=meData.account,orders=meData.orders||[];app.innerHTML=`${appbar()}<main class="wrap app-main"><div class="page-title"><div><span class="eyebrow">مساحة العميل</span><h1>مرحبًا، ${esc(a.fullName)}</h1><p>تابع بيانات المنشأة والطلبات وسجل المراجعة من هنا.</p></div><button class="btn primary" id="new-order">طلب جديد</button></div><div class="grid-main"><div class="stack"><section class="panel"><div class="panel-head"><h2>طلباتك</h2><span class="tag">${orders.length} طلب</span></div><div class="panel-body">${orders.length?orders.map(o=>`<div class="row"><div><div class="row-title">${esc(o.packageCode)} <span class="tag ${o.status==='CHANGES_REQUESTED'?'warn':''}">${labels[o.status]||esc(o.status)}</span></div><div class="text-muted">${o.purpose==='RENEWAL'?'طلب تجديد · دورة مراجعة جديدة':'طلب جديد'} · ${new Date(o.updatedAt||o.createdAt).toLocaleDateString('ar-SA')}</div></div><button class="btn outline small" data-open="${esc(o._id)}">التفاصيل</button></div>`).join(''):'<div class="empty">لا توجد طلبات حتى الآن. ابدأ بطلب جديد عند جاهزيتك.</div>'}</div></section><section id="order-view"></section></div><aside class="stack"><section class="panel"><div class="panel-head"><h2>ملف المنشأة</h2></div><div class="panel-body">${profileForm(a.profile)}</div></section><section class="panel"><div class="panel-head"><h2>حالة التحقق</h2></div><div class="panel-body"><span class="tag ${a.phoneVerification?.status==='VERIFIED'?'':'warn'}">${a.phoneVerification?.status==='VERIFIED'?'تم التحقق':'غير متحقق'}</span><p class="text-muted">لا يمكن إجراء التحقق عبر واتساب حاليًا. لن نعرض تحققًا غير مؤكد.</p><button class="btn outline small" id="whatsapp">طلب التحقق عبر واتساب</button><div id="wa-msg"></div></div></section></aside></div></main>`;
- document.getElementById('logout').onclick=async()=>{await A.logout();auth()};document.getElementById('profile-form').onsubmit=saveProfile;document.getElementById('new-order').onclick=()=>newOrder();
+  function customerJourneyMarkup(data=meData){
+    const account=data?.account||{},profile=account.profile||{},orders=Array.isArray(data?.orders)?data.orders:[];
+    const required=['legalName','displayName','registrationNumber','city','address','contactName','phoneE164'];
+    const profileComplete=required.every(key=>String(profile[key]||'').trim().length>0);
+    const latest=orders.slice().sort((left,right)=>{
+      const leftTime=Date.parse(left.updatedAt||left.createdAt||'')||0;
+      const rightTime=Date.parse(right.updatedAt||right.createdAt||'')||0;
+      return rightTime-leftTime;
+    })[0]||null;
+    const status=latest?.status||'';
+    const sent=!!latest&&['SUBMITTED','APPROVED','ACTIVE','DELIVERED','REJECTED'].includes(status);
+    const reviewed=!!latest&&['APPROVED','ACTIVE','DELIVERED','REJECTED'].includes(status);
+    const delivered=status==='DELIVERED';
+    let action='profile',actionLabel='أكمل ملف المنشأة',hint='أدخل بيانات منشأتك أولًا لتسهيل متابعة الطلبات.';
+    if(profileComplete){
+      if(!latest||status==='CANCELLED'){
+        action='new-order';actionLabel='ابدأ طلبك الأول';hint='اختر الباقة المناسبة وابدأ مسودة طلبك للمراجعة.';
+      }else{
+        action='open-order';actionLabel=status==='REJECTED'?'راجع قرار الطلب':status==='DELIVERED'?'عرض استلام العيادة':'تابع طلبك';
+        hint=status==='DRAFT'?'أكمل تفاصيل الطلب والمستندات المطلوبة قبل إرساله.':
+          status==='CHANGES_REQUESTED'?'راجع ملاحظات الفريق واستكمل المطلوب.':
+          status==='SUBMITTED'?'طلبك لدى الفريق للمراجعة؛ يمكنك متابعة حالته من التفاصيل.':
+          status==='APPROVED'?'تم اعتماد الطلب، وستظهر خطوة التسليم عند تجهيز الحساب.':
+          status==='ACTIVE'?'أصبح الحساب جاهزًا؛ افتح التفاصيل لمراجعة خطوة الاستلام.':
+          status==='DELIVERED'?'تم تسجيل الاستلام؛ افتح التفاصيل لمتابعة التقييم أو التجديد.':
+          'افتح تفاصيل الطلب لمراجعة حالته.';
+      }
+    }
+    const currentStep=!profileComplete?1:!latest||['DRAFT','CHANGES_REQUESTED','CANCELLED'].includes(status)?2:
+      status==='SUBMITTED'?3:['APPROVED','ACTIVE'].includes(status)?4:null;
+    const steps=[
+      {label:'إنشاء الحساب',complete:true},
+      {label:'ملف المنشأة',complete:profileComplete},
+      {label:'إرسال الطلب',complete:sent},
+      {label:'مراجعة الفريق',complete:reviewed},
+      {label:'استلام العيادة',complete:delivered},
+    ];
+    return `<section class="customer-journey-card" aria-label="مسار العميل في ثنارة"><div class="customer-journey-intro"><span class="eyebrow">مسار العميل</span><h2>من إنشاء الحساب إلى استلام العيادة</h2><p>${esc(hint)}</p><button id="customer-journey-next" class="btn primary" type="button" data-journey-action="${action}" ${latest&&action==='open-order'?`data-order-id="${esc(latest._id)}"`:''}>${esc(actionLabel)}</button></div><ol class="customer-journey-steps">${steps.map((step,index)=>`<li class="${step.complete?'is-complete':''}" ${currentStep===index?'aria-current="step"':''}><span class="customer-journey-number">${String(index+1).padStart(2,'0')}</span><span>${esc(step.label)}</span><small>${step.complete?'مكتمل':currentStep===index?'الخطوة التالية':'لاحقًا'}</small></li>`).join('')}</ol></section>`;
+  }
+  function portal(){let a=meData.account,orders=meData.orders||[];app.innerHTML=`${appbar()}<main class="wrap app-main"><div class="page-title"><div><span class="eyebrow">مساحة العميل</span><h1>مرحبًا، ${esc(a.fullName)}</h1><p>تابع بيانات المنشأة والطلبات وسجل المراجعة من هنا.</p></div><button class="btn primary" id="new-order">طلب جديد</button></div><div class="grid-main"><div class="stack"><section class="panel"><div class="panel-head"><h2>طلباتك</h2><span class="tag">${orders.length} طلب</span></div><div class="panel-body">${orders.length?orders.map(o=>`<div class="row"><div><div class="row-title">${esc(o.packageCode)} <span class="tag ${o.status==='CHANGES_REQUESTED'?'warn':''}">${labels[o.status]||esc(o.status)}</span></div><div class="text-muted">${o.purpose==='RENEWAL'?'طلب تجديد · دورة مراجعة جديدة':'طلب جديد'} · ${new Date(o.updatedAt||o.createdAt).toLocaleDateString('ar-SA')}</div></div><button class="btn outline small" data-open="${esc(o._id)}">التفاصيل</button></div>`).join(''):'<div class="empty">لا توجد طلبات حتى الآن. ابدأ بطلب جديد عند جاهزيتك.</div>'}</div></section><section id="order-view"></section></div><aside class="stack"><section class="panel"><div class="panel-head"><h2>ملف المنشأة</h2></div><div class="panel-body">${profileForm(a.profile)}</div></section><section class="panel"><div class="panel-head"><h2>حالة التحقق</h2></div><div class="panel-body"><span class="tag ${a.phoneVerification?.status==='VERIFIED'?'':'warn'}">${a.phoneVerification?.status==='VERIFIED'?'تم التحقق':'غير متحقق'}</span><p class="text-muted">لا يمكن إجراء التحقق عبر واتساب حاليًا. لن نعرض تحققًا غير مؤكد.</p><button class="btn outline small" id="whatsapp">طلب التحقق عبر واتساب</button><div id="wa-msg"></div></div></section></aside></div></main>`;
+  const pageTitle=app.querySelector('.page-title');
+  if(pageTitle)pageTitle.insertAdjacentHTML('afterend',customerJourneyMarkup());
+  document.getElementById('customer-journey-next').onclick=()=>{
+    const button=document.getElementById('customer-journey-next');
+    if(button.dataset.journeyAction==='profile'){
+      const form=document.getElementById('profile-form');
+      if(form){
+        form.scrollIntoView({block:'center'});
+        const firstMissing=Array.from(form.querySelectorAll('[required]')).find(field=>!String(field.value||'').trim());
+        (firstMissing||form.querySelector('input'))?.focus({preventScroll:true});
+      }
+    }else if(button.dataset.journeyAction==='new-order')void newOrder();
+    else if(button.dataset.orderId)void openOrder(button.dataset.orderId);
+  };
+  document.getElementById('logout').onclick=async()=>{await A.logout();auth()};document.getElementById('profile-form').onsubmit=saveProfile;document.getElementById('new-order').onclick=()=>newOrder();
  document.querySelectorAll('[data-open]').forEach(b=>b.onclick=()=>openOrder(b.dataset.open));
   document.getElementById('whatsapp').onclick=async()=>{const b=document.getElementById('whatsapp');b.disabled=true;try{await operationCall('whatsapp',id=>A.sendWhatsApp({operationId:id}))}catch(e){b.textContent='إعادة المحاولة بالمرجع نفسه';document.getElementById('wa-msg').innerHTML=`<p class="text-muted" role="status">${esc(e.message||'التحقق عبر واتساب غير متاح حاليًا.')}${operation?` مرجع إعادة المحاولة: ${esc(operation.id)}`:''}</p>`}finally{b.disabled=false}};
  const requested=new URLSearchParams(location.search).get('package');if(requested)newOrder(requested);
@@ -40,8 +93,10 @@
  }
  function objectView(value,title){if(value==null)return'';if(typeof value!=='object')return`<div class="row"><b>${esc(title)}</b><span>${esc(value)}</span></div>`;if(Array.isArray(value))return value.length?`<section><h4>${esc(title)}</h4>${value.map((v,i)=>objectView(v,`${title} ${i+1}`)).join('')}</section>`:`<p class="text-muted">${esc(title)}: لا توجد سجلات.</p>`;return`<section class="panel" style="margin:10px 0"><div class="panel-head"><h4>${esc(title)}</h4></div><div class="panel-body">${Object.entries(value).filter(([k,v])=>!/(token|secret|password)/i.test(k)&&v!=null&&typeof v!=='object').map(([k,v])=>`<div class="row"><span class="text-muted">${esc(k)}</span><b>${esc(v)}</b></div>`).join('')}${Object.entries(value).filter(([k,v])=>!/(token|secret|password)/i.test(k)&&v&&typeof v==='object').map(([k,v])=>objectView(v,k)).join('')}</div></section>`}
  function deliveryView(delivery){if(!delivery)return'';if(delivery.available&&delivery.url){let href='';try{const u=new URL(delivery.url,location.origin);if(u.protocol==='https:'||u.origin===location.origin)href=u.href}catch{}return href?`<section class="notice"><b>رابط حساب العيادة متاح:</b> <a href="${esc(href)}" target="_blank" rel="noopener noreferrer">فتح رابط التسليم</a><p style="margin:5px 0 0">احفظ بيانات الدخول بأمان؛ لن نرسل كلمة المرور عبر واتساب.</p></section>`:'<div class="statusline">رابط التسليم الوارد غير صالح للفتح من هذه الصفحة. تواصل مع مسؤول الحساب.</div>'}return'<div class="statusline">رابط حساب العيادة غير متاح حاليًا. لن نعرض التسليم على أنه مكتمل قبل توفره.</div>'}
- async function loadMe(){meData=await A.me()}
- async function loadPortal(){await loadMe();try{catalog=catalog||await A.catalog()}catch{}portal()}
- async function init(){try{if(await A.restoreSession()){await loadPortal();return}}catch{}auth(new URLSearchParams(location.search).get('mode')==='register'?'register':'login')}
+  async function loadMe(){meData=await A.me()}
+  async function loadPortal(){await loadMe();try{catalog=catalog||await A.catalog()}catch{}portal()}
+  function sessionRestoreError(error){app.innerHTML=`<main class="auth"><section class="auth-main"><div class="auth-form"><span class="eyebrow">مساحة العميل</span><h2>تعذر التحقق من الجلسة</h2><p class="text-muted">تعذر الاتصال بخدمة الجلسات مؤقتًا. لم يتم إنهاء الجلسة؛ أعد المحاولة.</p>${error?.message?`<div class="statusline" role="alert">${esc(error.message)}</div>`:''}<button class="btn primary" id="retry-session" type="button">إعادة المحاولة</button><p><a class="text-muted" href="/welcome/">العودة للخدمات</a></p></div></section></main>`;document.getElementById('retry-session')?.addEventListener('click',()=>void init())}
+  function handlePortalError(error){if(!error?.status||error.status>=500)sessionRestoreError(error);else auth('login',error.message||'انتهت الجلسة. سجّل الدخول مجددًا.')}
+  async function init(){let restored=false;try{restored=await A.restoreSession()}catch(error){sessionRestoreError(error);return}if(!restored){auth(new URLSearchParams(location.search).get('mode')==='register'?'register':'login');return}try{await loadPortal()}catch(error){handlePortalError(error)}}
  init();
 })();

@@ -9,6 +9,7 @@
 - [Appointment branch scope](appointment-branch-scope.md) — include the selected branch in appointment queries for branch-scoped staff.
 - [Headless Chromium cleanup](headless-chromium-cleanup.md) — terminate the isolated browser process group before deleting its temporary profile.
 - [Refresh outage semantics](auth-refresh-outage.md) — refresh database failures are dependency outages, not credential failures; preserve the refresh cookie.
+- [Replit preview cookie partitioning](auth-preview-cookie-partitioning.md) — scope `SameSite=None; Secure; Partitioned` refresh cookies to embedded development previews only.
 - [Failure-injection isolation](failure-injection-isolation.md) — bound injected-failure requests and always clear server failpoints so timed-out tests cannot contaminate later cases.
 - [Disposable integration fixtures](disposable-integration-fixtures.md) — integration tests selected with `-t` must provision their own fixture data, not rely on state seeded by earlier tests.
 - [Encounter uncertain-mutation UI](encounter-uncertain-mutation-ui.md) — every clinical mutation error path must preserve the operation reference as well as the draft so status recovery remains available.
@@ -39,3 +40,4 @@
 - [شخصية موقع ثنارة](thanarah-public-brand.md) — منظومة تقنية صحية ذات شخصية؛ لا قوالب SaaS مكررة أو صور مختلقة أو حركة زخرفية.
 - [Modal scroll preservation](modal-scroll-preservation.md) — off-screen triggers can scroll into view before the click handler captures the page offset.
 - [Brand image transparency](brand-image-transparency.md) — verify encoded PNG transparency; palette conversion can drop alpha despite a transparent intermediate buffer.
+- [Mockup write quotas](mockup-write-quotas.md) — workspace writes may hit `-122` despite free disk; stop package retries and prefer an existing runtime or static preview.

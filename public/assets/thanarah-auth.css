@@ -208,3 +208,113 @@ body.thanarah-needs-auth .thanarah-auth-gate { display: block; min-height: 40dvh
 .thanarah-auth input, .thanarah-auth .ta-submit { border-radius: 7px; }
 .thanarah-auth .ta-description { font-size: 13px; }
 .thanarah-auth .ta-message:empty, .thanarah-auth [data-auth-reference]:empty { display: none; }
+
+.thanarah-auth .ta-country-field {
+  position: relative;
+  display: grid;
+  gap: 6px;
+}
+.thanarah-auth .ta-country-trigger {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-color: #c9c7b9;
+  border-radius: 7px;
+  background: #fbf9f4;
+  text-align: start;
+}
+.thanarah-auth .ta-country-trigger-code {
+  flex: 0 0 auto;
+  color: #183c2b;
+  font-weight: 800;
+}
+.thanarah-auth .ta-country-chevron {
+  color: #66675f;
+  font-size: 18px;
+  line-height: 1;
+}
+.thanarah-auth .ta-country-panel {
+  position: absolute;
+  inset-inline: 0;
+  top: calc(100% + 4px);
+  z-index: 5;
+  display: grid;
+  gap: 7px;
+  padding: 8px;
+  border: 1px solid #c9c7b9;
+  border-radius: 9px;
+  background: #fbf9f4;
+  box-shadow: 0 8px 24px rgb(41 44 37 / 14%);
+}
+.thanarah-auth .ta-country-panel input {
+  min-height: 42px;
+  font-size: 16px;
+}
+.thanarah-auth .ta-country-options {
+  max-height: min(260px, 38dvh);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+.thanarah-auth .ta-country-options [role="option"] {
+  display: flex;
+  min-height: 46px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 9px;
+  border-radius: 5px;
+  color: #292c25;
+  cursor: pointer;
+}
+.thanarah-auth .ta-country-options [role="option"]:hover,
+.thanarah-auth .ta-country-options [role="option"].is-active,
+.thanarah-auth .ta-country-options [role="option"][aria-selected="true"] {
+  color: #183c2b;
+  background: #e9e8df;
+}
+.thanarah-auth .ta-country-option-names {
+  display: grid;
+  min-width: 0;
+  line-height: 1.35;
+}
+.thanarah-auth .ta-country-option-names small {
+  overflow: hidden;
+  color: #66675f;
+  font-size: 11px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.thanarah-auth .ta-country-options [role="option"] > bdi {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+.thanarah-auth .ta-country-empty {
+  margin: 4px 0;
+  padding: 8px;
+  color: #66675f;
+  font-size: 13px;
+}
+.thanarah-auth .ta-visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+.thanarah-auth .ta-phone-preview {
+  margin: 0;
+  color: #45574b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+@media (max-width: 520px) {
+  .thanarah-auth .ta-country-options { max-height: 30dvh; }
+}

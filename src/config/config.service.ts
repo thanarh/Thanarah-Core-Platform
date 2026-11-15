@@ -122,6 +122,10 @@ export class ConfigService {
     return this.nodeEnv === 'development';
   }
 
+  get isReplitPreview(): boolean {
+    return this.isDevelopment && Boolean(process.env.REPLIT_DEV_DOMAIN);
+  }
+
   get trustedProxies(): string[] {
     return this.config.get('AUTH_TRUSTED_PROXIES', { infer: true });
   }

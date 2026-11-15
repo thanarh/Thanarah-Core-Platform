@@ -1,0 +1,94 @@
+@import url('/__mockup/brand/journey-ui.css');
+@import url('/__mockup/brand/thanarah-web-experience.css');
+@import url('/__mockup/brand/thanarah-shell.css');
+
+:root {
+  --ink: #19343b;
+  --muted: #657b7b;
+  --paper: #f2f5ef;
+  --surface: #fffef9;
+  --line: #d9e4da;
+  --deep: #123f3c;
+  --teal: #1c5c3c;
+  --sage: #87ac96;
+  --citrus: #d9b75e;
+  --red: #a34e45;
+  --soft: #e5efe6;
+  --font: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+  --ar: 'Noto Sans Arabic', 'Tajawal', sans-serif;
+  --mono: 'IBM Plex Mono', monospace;
+}
+
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/__mockup/assets/tajawal-regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Noto Sans Arabic';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/__mockup/assets/tajawal-bold.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 100 500;
+  font-display: swap;
+  src: url('/__mockup/assets/tajawal-regular.ttf') format('truetype');
+}
+
+@font-face {
+  font-family: 'Tajawal';
+  font-style: normal;
+  font-weight: 600 900;
+  font-display: swap;
+  src: url('/__mockup/assets/tajawal-bold.ttf') format('truetype');
+}
+
+.customer-current,
+.customer-current * {
+  box-sizing: border-box;
+}
+
+.customer-current {
+  min-height: 100dvh;
+  color: var(--ink);
+  background: var(--paper);
+  font: 15px/1.65 var(--font);
+}
+
+.customer-current .brand img {
+  width: 37px;
+  height: 37px;
+}
+
+.customer-current .appbar {
+  position: relative;
+}
+
+.customer-current .current-main {
+  padding-bottom: 40px;
+}
+
+.customer-current .current-journey {
+  margin-bottom: 23px;
+}
+
+.customer-current .current-order-state {
+  display: inline-flex;
+  margin-top: 8px;
+}
+
+.customer-current .current-nav-login {
+  white-space: nowrap;
+}
+
+.customer-current .current-shell-placeholder {
+  display: none;
+}
