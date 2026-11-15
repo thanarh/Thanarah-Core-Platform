@@ -25,6 +25,7 @@
   var publicLocaleKey = 'thanarah.public-locale';
   var workspaceLocaleKey = 'thanarah.ui-language';
   var path = (root.location.pathname.replace(/\/+$/, '') || '/');
+  var customerPage = path === '/customer';
   var language = 'ar';
   var authenticatedAudience = '';
   var staffRoutes = [
@@ -34,6 +35,33 @@
     '/finance', '/communications', '/website-inquiries'
   ];
   var isStaffRoute = staffRoutes.indexOf(path) !== -1;
+  var pageNames = {
+    '/': ['الرئيسية', 'Home'],
+    '/welcome': ['الرئيسية', 'Home'],
+    '/site': ['الرئيسية', 'Home'],
+    '/about': ['من نحن', 'About'],
+    '/services': ['الخدمات', 'Services'],
+    '/packages': ['الباقات', 'Packages'],
+    '/why-thanarah': ['لماذا ثنارة', 'Why Thanarah'],
+    '/contact': ['التواصل', 'Contact'],
+    '/customer': ['مساحة العميل', 'Customer workspace'],
+    '/platform': ['مساحات العمل', 'Workspaces'],
+    '/platform-saas': ['اشتراكات المنصة', 'Platform subscriptions'],
+    '/platform-setup': ['إعداد المنصة', 'Platform setup'],
+    '/clinic-setup': ['إعداد العيادة', 'Clinic setup'],
+    '/doctor-setup': ['الأطباء والخدمات', 'Doctors and services'],
+    '/team-setup': ['الفريق والصلاحيات', 'Team and access'],
+    '/catalog-setup': ['كتالوج الخدمات', 'Service catalog'],
+    '/customer-admin': ['مكتب خدمة العيادات', 'Clinic service desk'],
+    '/company': ['عمليات الشركة', 'Company operations'],
+    '/website-inquiries': ['استفسارات الموقع', 'Website inquiries'],
+    '/ai-admin': ['إدارة الذكاء الاصطناعي', 'AI administration'],
+    '/appointments': ['المواعيد', 'Appointments'],
+    '/patients': ['المرضى', 'Patients'],
+    '/encounters': ['الزيارات الطبية', 'Encounters'],
+    '/finance': ['المالية', 'Finance'],
+    '/communications': ['التواصل', 'Communications']
+  };
 
   function readLanguage() {
     try {
@@ -55,6 +83,23 @@
   }
 
   function navItems(ar) {
+    if (isStaffRoute) {
+      return [
+        ['/platform/', ar ? 'مساحات العمل' : 'Workspaces', 'workspace'],
+        ['/customer-admin/', ar ? 'خدمة العملاء' : 'Customer service', 'customer-admin'],
+        ['/company/', ar ? 'عمليات الشركة' : 'Company operations', 'company'],
+        ['/website-inquiries/', ar ? 'استفسارات الموقع' : 'Website inquiries', 'website-inquiries'],
+        ['/', ar ? 'الموقع العام' : 'Public site', 'home']
+      ];
+    }
+    if (customerPage) {
+      return [
+        ['/customer/', ar ? 'طلباتي' : 'My requests', 'customer'],
+        ['/packages/', ar ? 'الباقات' : 'Packages', 'packages'],
+        ['/contact/', ar ? 'الدعم والتواصل' : 'Support', 'contact'],
+        ['/', ar ? 'الرئيسية' : 'Home', 'home']
+      ];
+    }
     return [
       ['/', ar ? 'الرئيسية' : 'Home', 'home'],
       ['/about/', ar ? 'من نحن' : 'About', 'about'],
@@ -68,10 +113,20 @@
 
   function activeNav(item) {
     var key = item[2];
+    if (key === 'workspace') return path === '/platform';
+    if (key === 'customer-admin') return path === '/customer-admin';
+    if (key === 'company') return path === '/company';
+    if (key === 'website-inquiries') return path === '/website-inquiries';
     if (key === 'home') return path === '/' || path === '/welcome' || path === '/site';
     if (key === 'platform') return isStaffRoute && path !== '/customer-admin';
     if (key === 'customer') return path === '/customer' || path === '/customer-admin';
     return path === '/' + key || path.indexOf('/' + key + '/') === 0;
+  }
+
+  function pageName(ar) {
+    var labels = pageNames[path];
+    if (!labels && isStaffRoute) return ar ? 'مساحة الفريق' : 'Team workspace';
+    return labels ? labels[ar ? 0 : 1] : (ar ? 'ثنارة' : 'Thanarah');
   }
 
   function header(ar) {
@@ -93,7 +148,7 @@
       '<a class="thanarah-shell-skip" href="#main">' + (ar ? 'تجاوز إلى المحتوى' : 'Skip to content') + '</a>' +
       '<div class="thanarah-shell-inner"><a class="thanarah-shell-brand" href="/" aria-label="' +
       (ar ? 'ثنارة | الرئيسية' : 'Thanarah | Home') + '"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
-      '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>Thanarah · ثنارة</small></span></a>' +
+      '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a>' +
       '<nav class="thanarah-shell-nav" id="thanarah-main-navigation" aria-label="' +
       (ar ? 'التنقل الرئيسي' : 'Main navigation') + '">' + links + '</nav>' +
       '<div class="thanarah-shell-actions"><button class="thanarah-shell-language" type="button" ' +
@@ -107,6 +162,36 @@
 
   function footer(ar) {
     var quick = ar ? 'روابط سريعة' : 'Explore';
+    if (isStaffRoute) {
+      return '<footer class="thanarah-shell thanarah-shell-footer thanarah-shell-footer-workspace" data-thanarah-shell>' +
+        '<div class="thanarah-shell-footer-main"><div class="thanarah-shell-footer-brand">' +
+        '<a class="thanarah-shell-brand" href="/platform/"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
+        '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a><p>' +
+        (ar ? 'مساحة عمل موحدة؛ تتغير أدواتها بحسب صلاحيات الحساب.' :
+          'A shared workspace with tools determined by account permissions.') +
+        '</p></div><div class="thanarah-shell-footer-col"><h2>' + (ar ? 'مساحات العمل' : 'Workspaces') + '</h2>' +
+        '<a href="/platform/">' + (ar ? 'المنصة' : 'Platform') + '</a><a href="/company/">' +
+        (ar ? 'عمليات الشركة' : 'Company operations') + '</a><a href="/customer-admin/">' +
+        (ar ? 'خدمة العملاء' : 'Customer service') + '</a></div><div class="thanarah-shell-footer-col">' +
+        '<h2>' + (ar ? 'المساعدة' : 'Help') + '</h2><a href="/website-inquiries/">' +
+        (ar ? 'استفسارات الموقع' : 'Website inquiries') + '</a><a href="/contact/?topic=technical">' +
+        (ar ? 'الدعم الفني' : 'Technical support') + '</a></div></div>' +
+        '<div class="thanarah-shell-footer-bottom"><span>© ' + new Date().getFullYear() +
+        ' THANARAH</span><span>' + (ar ? 'مساحة عمل ثنارة' : 'Thanarah workspace') + '</span></div></footer>';
+    }
+    if (customerPage) {
+      return '<footer class="thanarah-shell thanarah-shell-footer thanarah-shell-footer-customer" data-thanarah-shell>' +
+        '<div class="thanarah-shell-footer-main"><div class="thanarah-shell-footer-brand">' +
+        '<a class="thanarah-shell-brand" href="/"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
+        '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a><p>' +
+        (ar ? 'تابع طلباتك ووثائقك ضمن مساحة العميل.' : 'Follow your requests and documents in your customer workspace.') +
+        '</p></div><div class="thanarah-shell-footer-col"><h2>' + (ar ? 'مساحة العميل' : 'Customer workspace') + '</h2>' +
+        '<a href="/customer/">' + (ar ? 'طلباتي' : 'My requests') + '</a><a href="/packages/">' +
+        (ar ? 'الباقات' : 'Packages') + '</a><a href="/contact/">' +
+        (ar ? 'الدعم والتواصل' : 'Support') + '</a></div></div>' +
+        '<div class="thanarah-shell-footer-bottom"><span>© ' + new Date().getFullYear() +
+        ' THANARAH</span><span>' + (ar ? 'مساحة العميل' : 'Customer workspace') + '</span></div></footer>';
+    }
     return '<footer class="thanarah-shell thanarah-shell-footer" data-thanarah-shell>' +
       '<div class="thanarah-shell-footer-main"><div class="thanarah-shell-footer-brand">' +
       '<a class="thanarah-shell-brand" href="/"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
@@ -129,9 +214,11 @@
 
   function setLocaleUI(ar) {
     var button = document.querySelector('.thanarah-shell-language');
+    var brandContext = document.querySelector('.thanarah-shell-header .thanarah-shell-brand small');
     var nav = document.querySelector('.thanarah-shell-nav');
     var menu = document.querySelector('.thanarah-shell-menu');
     var actions = document.querySelector('.thanarah-shell-auth-actions');
+    if (brandContext) brandContext.textContent = pageName(ar);
     if (button) {
       button.textContent = ar ? 'English' : 'العربية';
       button.setAttribute('aria-label', ar ? 'Switch to English' : 'التبديل إلى العربية');

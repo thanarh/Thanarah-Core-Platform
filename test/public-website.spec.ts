@@ -207,7 +207,7 @@ describe('Public website route and reusable component regressions', () => {
       expect(html).toContain('width="1400" height="946"');
       expect(html).toContain('decoding="async"');
       expect(html).toContain(
-        language === 'ar' ? 'ليس صورة مقر فعلي' : 'not a photograph of an actual office',
+        language === 'ar' ? 'مشهد تصوري لاستقبال ثنارة' : 'Conceptual Thanarah reception scene',
       );
       expect(html).toContain(
         language === 'ar' ? 'لا يعرض واجهة تشغيل فعلية' : 'not a live product interface',

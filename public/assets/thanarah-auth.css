@@ -56,7 +56,7 @@ body.thanarah-needs-auth .thanarah-auth-gate { display: block; min-height: 40dvh
   font-family: 'Tajawal', 'Manrope', sans-serif;
   line-height: 1.65;
 }
-.thanarah-auth::backdrop { background: rgb(18 28 26 / 72%); }
+.thanarah-auth::backdrop { background: rgb(77 68 54 / 20%); }
 .thanarah-auth .ta-head {
   min-height: 42px;
   padding-bottom: 16px;

@@ -87,4 +87,28 @@ describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
     expect(css).toContain('font-size: 16px');
     expect(auth).toContain("dialog.querySelector('input') ||");
   });
+  it('uses a beige shared frame and navigation that reflects each workspace', () => {
+    expect(shellCss).toContain('--thanarah-frame-graphite: #e7ddcf;');
+    expect(shellCss).toMatch(/\.thanarah-shell-header\s*\{[^}]*background: var\(--thanarah-frame-cream\)/u);
+    expect(shellCss).not.toContain('background: #2d2f27');
+    expect(shellCss).not.toContain('--thanarah-frame-graphite: #121c1a');
+    expect(homeCss).toContain('.reference-home-header { position: relative; z-index: 20; color: #292c25;');
+    expect(homeCss).toContain('.reference-home-footer { padding: 20px max(6vw,38px) 12px; color: #292c25;');
+    expect(homeCss).not.toContain('background: #2d2f27');
+    expect(homeCss).not.toContain('background: #121c1a');
+    expect(shell).toContain("var customerPage = path === '/customer';");
+    expect(shell).toContain("if (isStaffRoute)");
+    expect(shell).toContain("['/company/', ar ? 'عمليات الشركة' : 'Company operations', 'company']");
+    expect(shell).toContain("'/customer-admin': ['مكتب خدمة العيادات', 'Clinic service desk']");
+    expect(shell).toContain('brandContext.textContent = pageName(ar);');
+    expect(shell).toContain('thanarah-shell-footer-workspace');
+    expect(shell).toContain('thanarah-shell-footer-customer');
+  });
+  it('names the protected workspace in the shared sign-in dialog', () => {
+    const auth = readFileSync('public/assets/thanarah-auth.js', 'utf8');
+    const css = readFileSync('public/assets/thanarah-auth.css', 'utf8');
+    expect(auth).toContain("document.querySelector('.thanarah-shell-brand small')");
+    expect(auth).toContain('Sign in to ');
+    expect(css).toContain('rgb(77 68 54 / 20%)');
+  });
 });

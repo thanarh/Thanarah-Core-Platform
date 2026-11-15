@@ -1,13 +1,13 @@
-/* Thanarah's shared frame: a restrained graphite / ivory / clinic-green system. */
+/* Thanarah's shared frame: warm sand, clear ink and clinic green. */
 :root {
   --thanarah-frame-ink: #292c25;
-  --thanarah-frame-graphite: #121c1a;
+  --thanarah-frame-graphite: #e7ddcf;
   --thanarah-frame-green: #183c2b;
   --thanarah-frame-green-soft: #294631;
-  --thanarah-frame-paper: #f0eae3;
-  --thanarah-frame-cream: #f5f0e9;
-  --thanarah-frame-line: #d8d0c7;
-  --thanarah-frame-muted: #66675f;
+  --thanarah-frame-paper: #f4efe7;
+  --thanarah-frame-cream: #eee5d8;
+  --thanarah-frame-line: #d6cbbb;
+  --thanarah-frame-muted: #5f6259;
   --thanarah-frame-header-height: 72px;
 }
 
@@ -31,7 +31,7 @@ body {
 .thanarah-shell {
   position: relative;
   z-index: 0;
-  color: #f5f0e8;
+  color: var(--thanarah-frame-ink);
   font-family: 'Tajawal', 'Manrope', sans-serif;
 }
 
@@ -44,8 +44,9 @@ body {
   position: sticky;
   top: 0;
   z-index: 6;
-  color: #f5f0e8;
-  background: #2d2f27;
+  color: var(--thanarah-frame-ink);
+  border-bottom: 1px solid var(--thanarah-frame-line);
+  background: var(--thanarah-frame-cream);
 }
 
 .thanarah-shell-inner {
@@ -63,7 +64,7 @@ body {
   flex: 0 0 auto;
   align-items: center;
   gap: 8px;
-  color: #fbf6ef;
+  color: var(--thanarah-frame-green);
   text-decoration: none;
 }
 
@@ -94,7 +95,7 @@ body {
 
 .thanarah-shell-nav a {
   padding-block: 10px;
-  color: #e6e1d8;
+  color: #4d554c;
   font-size: 13px;
   text-decoration: none;
   white-space: nowrap;
@@ -102,16 +103,16 @@ body {
 
 .thanarah-shell-nav a:hover,
 .thanarah-shell-nav a[aria-current="page"] {
-  color: #fff4d9;
+  color: var(--thanarah-frame-green);
 }
 
 .thanarah-shell-nav-staff {
   min-height: 34px;
   padding: 0 12px;
-  border: 1px solid rgba(244, 238, 227, .42);
+  border: 1px solid var(--thanarah-frame-line);
   border-radius: 99px;
-  color: #f5f0e8;
-  background: transparent;
+  color: var(--thanarah-frame-green);
+  background: #f7f3ed;
   font-size: 12px;
   white-space: nowrap;
   cursor: pointer;
@@ -131,10 +132,10 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0 13px;
-  border: 1px solid rgba(244, 238, 227, .42);
+  border: 1px solid var(--thanarah-frame-line);
   border-radius: 99px;
-  color: #f5f0e8;
-  background: transparent;
+  color: var(--thanarah-frame-ink);
+  background: #f7f3ed;
   font-size: 12px;
   text-decoration: none;
   white-space: nowrap;
@@ -142,9 +143,9 @@ body {
 }
 
 .thanarah-shell-action-primary {
-  border-color: #f1e9d9;
-  color: #34352d;
-  background: #f1e9d9;
+  border-color: var(--thanarah-frame-green);
+  color: #f7f3ed;
+  background: var(--thanarah-frame-green);
 }
 
 .thanarah-shell-language {
@@ -159,10 +160,10 @@ body {
   min-height: 40px;
   place-items: center;
   padding: 0;
-  border: 1px solid rgba(244, 238, 227, .42);
+  border: 1px solid var(--thanarah-frame-line);
   border-radius: 50%;
-  color: #f5f0e8;
-  background: transparent;
+  color: var(--thanarah-frame-green);
+  background: #f7f3ed;
   cursor: pointer;
 }
 
@@ -180,8 +181,9 @@ body {
 
 .thanarah-shell-footer {
   padding: 22px max(6vw, 38px) 12px;
-  color: #e6e5dd;
+  color: var(--thanarah-frame-ink);
   background: var(--thanarah-frame-graphite);
+  border-top: 1px solid var(--thanarah-frame-line);
 }
 
 .thanarah-shell-footer-main {
@@ -196,14 +198,14 @@ body {
 .thanarah-shell-footer-brand p {
   max-width: 255px;
   margin: 9px 0 0;
-  color: #b5bcb4;
+  color: #565c53;
   font-size: 11px;
   line-height: 1.7;
 }
 
 .thanarah-shell-footer-col h2 {
   margin: 0 0 8px;
-  color: #d6d9d0;
+  color: var(--thanarah-frame-green);
   font-size: 12px;
   font-weight: 800;
 }
@@ -212,13 +214,13 @@ body {
   display: block;
   width: fit-content;
   margin-block: 5px;
-  color: #bbc1b9;
+  color: #4d554c;
   font-size: 11px;
   text-decoration: none;
 }
 
 .thanarah-shell-footer-col a:hover {
-  color: #fff4dc;
+  color: var(--thanarah-frame-green);
 }
 
 .thanarah-shell-footer-bottom {
@@ -229,9 +231,9 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 15px;
-  border-top: 1px solid rgba(232, 235, 222, .15);
+  border-top: 1px solid #cfc3b2;
   padding-top: 9px;
-  color: #9da79d;
+  color: #60645a;
   font: 500 9px 'Manrope', 'Tajawal', sans-serif;
 }
 
@@ -425,14 +427,14 @@ body {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    background: #2d2f27;
+    background: var(--thanarah-frame-cream);
   }
   .thanarah-shell-nav.is-open {
     display: flex;
   }
   .thanarah-shell-nav a {
     padding: 11px 2px;
-    border-bottom: 1px solid rgba(255, 255, 255, .12);
+    border-bottom: 1px solid var(--thanarah-frame-line);
     font-size: 13px;
   }
   .thanarah-shell-nav-staff {
@@ -526,7 +528,7 @@ html:lang(ar) body * {
     flex-direction: column;
     align-items: stretch;
     gap: 0;
-    background: #2d2f27;
+    background: var(--thanarah-frame-cream);
   }
   .thanarah-shell-nav.is-open { display: flex; }
   .thanarah-shell-auth-actions {
