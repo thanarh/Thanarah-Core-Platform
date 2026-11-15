@@ -291,6 +291,7 @@ describe('AuthCookieService', () => {
         isReplitPreview: true,
         refreshCookieSecure: false,
         refreshCookieSameSite: 'strict',
+        refreshCookieDomain: 'thanarah.example',
       }),
     );
     const reply = { setCookie: vi.fn(), clearCookie: vi.fn() } as unknown as FastifyReply;
@@ -304,6 +305,7 @@ describe('AuthCookieService', () => {
         secure: true,
         sameSite: 'none',
         partitioned: true,
+        domain: undefined,
       }),
     );
 
@@ -316,6 +318,7 @@ describe('AuthCookieService', () => {
         sameSite: 'none',
         partitioned: true,
         path: '/',
+        domain: undefined,
       }),
     );
   });

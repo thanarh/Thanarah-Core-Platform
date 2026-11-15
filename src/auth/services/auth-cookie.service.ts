@@ -31,7 +31,9 @@ export class AuthCookieService {
       httpOnly: true,
       secure: partitionedPreview || this.config.refreshCookieSecure,
       sameSite: partitionedPreview ? 'none' : this.config.refreshCookieSameSite,
-      domain: this.config.refreshCookieDomain,
+      // Replit preview hosts vary per workspace and partitioned cookies should
+      // remain host-only there, even when a production cookie domain is set.
+      domain: partitionedPreview ? undefined : this.config.refreshCookieDomain,
       path: '/',
       ...(partitionedPreview ? { partitioned: true as const } : {}),
     };
