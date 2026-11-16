@@ -11,6 +11,7 @@ import { JourneyAdmin } from './journey.admin';
 import { JourneyBilling } from './journey.billing';
 import { JourneyAccess } from './journey.access';
 import { JourneyInquiries } from './journey.inquiries';
+import { JourneyIntegrations } from './journey.integrations';
 import {
   JourneyAdminInquiryController,
   JourneyPublicInquiryController,
@@ -31,6 +32,7 @@ import {
     JourneyBilling,
     JourneyAccess,
     JourneyInquiries,
+    JourneyIntegrations,
   ],
   controllers: [
     JourneyPublicController,

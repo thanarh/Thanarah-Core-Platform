@@ -35,3 +35,12 @@
 @media(max-width:760px){.customer-dashboard-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){.customer-order-progress{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:430px){.customer-dashboard-summary{gap:8px}.customer-summary-card{padding:12px}.customer-document-item{align-items:flex-start;flex-direction:column;gap:7px}.customer-order-progress{grid-template-columns:repeat(2,minmax(0,1fr))}}
+.customer-ai-dialog{width:min(1100px,calc(100vw - 28px));height:min(860px,calc(100dvh - 28px));padding:0;border:1px solid var(--line);border-radius:12px;background:var(--surface);color:var(--ink);box-shadow:0 20px 80px #132f2d55}
+.customer-ai-dialog::backdrop{background:#0f2827aa}
+.customer-ai-dialog-head{height:58px;padding:9px 14px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--line)}
+.customer-ai-dialog-head h2{margin:0;font-size:15px}
+.customer-ai-dialog iframe{display:block;width:100%;height:calc(100% - 58px);border:0;background:#fff}
+.customer-ai-card .panel-body>p{margin-top:0}
+#wa-verify-form{margin-top:12px}
+#wa-verify-form .btn{align-self:end}
+@media(max-width:520px){.customer-ai-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-width:none;max-height:none;border-radius:8px}.customer-ai-dialog-head{height:52px}.customer-ai-dialog iframe{height:calc(100% - 52px)}}

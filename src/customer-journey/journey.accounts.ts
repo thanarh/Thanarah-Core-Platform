@@ -6,6 +6,7 @@ import { PasswordPolicyService } from '../auth/security/password-policy.service'
 import { platformUserSchema, documentTimestamps } from '../platform-mongo/platform-mongo.models';
 import { fail } from '../internal-operations/operations.errors';
 import { JourneyStore, collection, parse, stored, expectVersion } from './journey.store';
+import { JourneyIntegrations } from './journey.integrations';
 import {
   accountSchema,
   command,
@@ -22,6 +23,7 @@ export class JourneyAccounts {
     readonly store: JourneyStore,
     readonly passwords: PasswordHasherService,
     readonly policy: PasswordPolicyService,
+    readonly integrations: JourneyIntegrations,
   ) {}
   async publicCatalog() {
     return this.store.run(async (tx) => {
@@ -124,12 +126,10 @@ export class JourneyAccounts {
       return { result: updated };
     });
   }
-  async sendWhatsApp(userId: string) {
-    await this.store.run((tx) => this.store.account(tx, userId));
-    fail(
-      'CUSTOMER_WHATSAPP_UNAVAILABLE',
-      'تحقق WhatsApp غير مفعّل. لم تُرسل رسالة ولم يتغير التحقق. يلزم ربط موفر معتمد.',
-      503,
-    );
+  sendWhatsApp(userId: string, input: unknown) {
+    return this.integrations.sendWhatsApp(userId, input);
+  }
+  verifyWhatsApp(userId: string, input: unknown) {
+    return this.integrations.verifyWhatsApp(userId, input);
   }
 }

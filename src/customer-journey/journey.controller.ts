@@ -26,6 +26,7 @@ import { JourneyOrders } from './journey.orders';
 import { JourneyDocuments } from './journey.documents';
 import { JourneyAdmin } from './journey.admin';
 import { JourneyBilling } from './journey.billing';
+import { JourneyIntegrations } from './journey.integrations';
 
 async function boundary<T>(run: () => Promise<T>): Promise<T> {
   try {
@@ -58,6 +59,7 @@ export class JourneyCustomerController {
     readonly accounts: JourneyAccounts,
     readonly orders: JourneyOrders,
     readonly documents: JourneyDocuments,
+    readonly integrations: JourneyIntegrations,
   ) {}
   @Get('me')
   me(@CurrentPlatformUser() actor: AuthenticatedPlatformUser) {
@@ -70,8 +72,25 @@ export class JourneyCustomerController {
   @Post('whatsapp/send')
   @HttpCode(200)
   @Throttle({ default: { limit: 3, ttl: 60000 } })
-  whatsapp(@CurrentPlatformUser() actor: AuthenticatedPlatformUser) {
-    return boundary(() => this.accounts.sendWhatsApp(actor.userId));
+  whatsapp(@CurrentPlatformUser() actor: AuthenticatedPlatformUser, @Body() body: unknown) {
+    return boundary(() => this.accounts.sendWhatsApp(actor.userId, body));
+  }
+  @Post('whatsapp/verify')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  verifyWhatsApp(@CurrentPlatformUser() actor: AuthenticatedPlatformUser, @Body() body: unknown) {
+    return boundary(() => this.accounts.verifyWhatsApp(actor.userId, body));
+  }
+  @Post('ai/bootstrap')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
+  aiBootstrap(
+    @CurrentPlatformUser() actor: AuthenticatedPlatformUser,
+    @Req() request: FastifyRequest,
+  ) {
+    const originHeader = request.headers.origin;
+    const origin = typeof originHeader === 'string' ? originHeader : undefined;
+    return boundary(() => this.integrations.embedBootstrap(actor.userId, origin));
   }
   @Post('orders')
   create(@CurrentPlatformUser() actor: AuthenticatedPlatformUser, @Body() body: unknown) {

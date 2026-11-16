@@ -145,4 +145,32 @@ export class ConfigService {
   get aiOllamaEnabled(): boolean {
     return this.config.get('AI_OLLAMA_ENABLED', { infer: true });
   }
+
+  get thanarahApiBaseUrl(): string {
+    return this.config.get('THANARAH_API_BASE_URL', { infer: true });
+  }
+
+  get thanarahApiKey(): string {
+    return this.config.get('THANARAH_API_KEY', { infer: true });
+  }
+
+  get thanarahEmbedKey(): string {
+    return this.config.get('THANARAH_EMBED_KEY', { infer: true });
+  }
+
+  get thanarahEmbedIntegrationId(): string {
+    return this.config.get('THANARAH_EMBED_INTEGRATION_ID', { infer: true });
+  }
+
+  get thanarahEmbedAllowedOrigins(): string[] {
+    return this.config
+      .get('THANARAH_EMBED_ALLOWED_ORIGINS', { infer: true })
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+  }
+
+  get whatsappOtpHmacSecret(): string {
+    return this.config.get('WHATSAPP_OTP_HMAC_SECRET', { infer: true });
+  }
 }

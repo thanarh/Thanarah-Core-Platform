@@ -8,7 +8,7 @@ function accountsFor(catalog: ReturnType<typeof defaultCatalog>) {
     run: async (work: (tx: unknown) => unknown) => work({}),
     catalog: async () => catalog,
   } as unknown as JourneyStore;
-  return new JourneyAccounts(store, {} as never, {} as never);
+  return new JourneyAccounts(store, {} as never, {} as never, {} as never);
 }
 
 describe('customer catalog demo defaults', () => {

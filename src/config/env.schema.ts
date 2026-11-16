@@ -88,6 +88,15 @@ export const envSchema = z
       .enum(['true', 'false'])
       .default('false')
       .transform((value) => value === 'true'),
+    THANARAH_API_BASE_URL: z.string().url().default('https://ai.thanarah.com'),
+    THANARAH_API_KEY: z.string().default(''),
+    THANARAH_EMBED_KEY: z.string().default(''),
+    THANARAH_EMBED_INTEGRATION_ID: z
+      .string()
+      .regex(/^[a-f0-9]{24}$/iu)
+      .default('6afa6048869da5a0dc6f4c21'),
+    THANARAH_EMBED_ALLOWED_ORIGINS: z.string().default('https://thanarah.com'),
+    WHATSAPP_OTP_HMAC_SECRET: z.string().default(''),
     AUTH_TRUSTED_PROXIES: trustedProxySchema,
     THROTTLE_TTL: z.coerce.number().int().positive().default(60000),
     THROTTLE_LIMIT: z.coerce.number().int().positive().default(100),
@@ -223,6 +232,71 @@ export const envSchema = z
           message: 'Hosted AI provider endpoint is invalid',
         });
       }
+    }
+    try {
+      const apiBaseUrl = new URL(config.THANARAH_API_BASE_URL);
+      if (
+        apiBaseUrl.protocol !== 'https:' ||
+        apiBaseUrl.username ||
+        apiBaseUrl.password ||
+        apiBaseUrl.search ||
+        apiBaseUrl.hash
+      ) {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['THANARAH_API_BASE_URL'],
+          message:
+            'Thanarah API base URL must be an HTTPS origin without credentials or query data',
+        });
+      }
+    } catch {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['THANARAH_API_BASE_URL'],
+        message: 'Thanarah API base URL is invalid',
+      });
+    }
+    const embedOrigins = config.THANARAH_EMBED_ALLOWED_ORIGINS.split(',')
+      .map((origin) => origin.trim())
+      .filter(Boolean);
+    if (embedOrigins.length === 0) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['THANARAH_EMBED_ALLOWED_ORIGINS'],
+        message: 'At least one embed origin must be configured',
+      });
+    }
+    for (const origin of embedOrigins) {
+      try {
+        const parsed = new URL(origin);
+        if (
+          parsed.protocol !== 'https:' ||
+          parsed.origin !== origin ||
+          parsed.username ||
+          parsed.password
+        ) {
+          context.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['THANARAH_EMBED_ALLOWED_ORIGINS'],
+            message: 'Embed origins must be exact HTTPS origins without paths or credentials',
+          });
+          break;
+        }
+      } catch {
+        context.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['THANARAH_EMBED_ALLOWED_ORIGINS'],
+          message: 'An embed origin is invalid',
+        });
+        break;
+      }
+    }
+    if (config.THANARAH_API_KEY.trim() && config.WHATSAPP_OTP_HMAC_SECRET.length < 32) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WHATSAPP_OTP_HMAC_SECRET'],
+        message: 'A separate OTP signing secret of at least 32 characters is required',
+      });
     }
   });
 

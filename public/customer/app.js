@@ -59,7 +59,49 @@
  document.getElementById('auth-form').onsubmit=async ev=>{ev.preventDefault();const form=ev.currentTarget,b=form.querySelector('button[type=submit]'),d=Object.fromEntries(new FormData(form));if(registering&&!/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z\d]).{12,}$/.test(d.password)){form.querySelector('.auth-error').textContent='تحقق من متطلبات كلمة المرور الموضحة قبل المتابعة.';return}b.disabled=true;try{if(registering){await operationCall('register:'+d.email,id=>A.register({operationId:id,fullName:d.fullName,email:d.email,password:d.password}));if(!await A.login(d.email,d.password))throw Error('تم إنشاء الحساب؛ تعذر بدء الجلسة. سجّل الدخول الآن.')}else if(!await A.login(d.email,d.password))throw Error('تعذر تسجيل الدخول.');await loadPortal()}catch(e){const msg=registering&&(e.code==='CUSTOMER_ACCOUNT_CONFLICT'||e.status===409)?'تعذر إنشاء الحساب بهذه البيانات. تحقق منها أو جرّب تسجيل الدخول.':e.message||'تعذر إتمام العملية.';form.querySelector('.auth-error').textContent=msg;if(!e.status||e.status>=500){form.querySelector('.retry-ref').textContent='لم يتأكد الخادم من النتيجة. أعد المحاولة بالبيانات نفسها. مرجع العملية: '+(operation?.id||'');form.querySelectorAll('input').forEach(input=>{input.readOnly=true;input.setAttribute('aria-readonly','true')});b.textContent='إعادة المحاولة بالبيانات نفسها'}else{operation=null;form.querySelectorAll('input').forEach(input=>{input.readOnly=false;input.removeAttribute('aria-readonly')});b.textContent=registering?'إنشاء الحساب':'دخول'}}finally{b.disabled=false}};
  }
  function profileForm(p){p=p||{};let fields=[['legalName','الاسم القانوني للمنشأة'],['displayName','الاسم التجاري'],['registrationNumber','رقم السجل'],['city','المدينة'],['address','العنوان'],['contactName','اسم جهة التواصل'],['phoneE164','رقم الجوال بصيغة دولية (+966…)']];return `<form id="profile-form" class="form-grid">${fields.map(([k,l])=>`<div class="field ${k==='address'?'span2':''}"><label for="profile-${k}">${l}</label><input id="profile-${k}" class="input" name="${k}" value="${esc(p[k]||'')}" ${k==='phoneE164'?'placeholder="+966500000001"':''} required></div>`).join('')}<p class="span2" id="profile-error" role="alert"></p><div class="span2 actions"><button class="btn primary">حفظ بيانات المنشأة</button><p class="retry-ref text-muted span2" aria-live="polite"></p></div></form>`}
-  function customerJourneyMarkup(data=meData){
+ async function sendWhatsAppCode(){
+  const button=document.getElementById('whatsapp'), consent=document.getElementById('wa-consent'), status=document.getElementById('wa-msg');
+  if(!button||!consent?.checked){if(status)status.textContent='وافق على إرسال رسالة التحقق أولًا.';return}
+  button.disabled=true;
+  try{
+   const result=await operationCall('whatsapp-send',id=>A.sendWhatsApp({operationId:id,consentAccepted:true}));
+   operation=null;
+   if(result.status==='VERIFIED'){toast('رقم الجوال متحقق بالفعل.');await loadPortal();return}
+   status.innerHTML=`<p class="text-muted" role="status">قُبل طلب الإرسال إلى رقم ملفك. لم يؤكد ذلك وصول الرسالة. مرجع المتابعة: ${esc(result.requestId||'—')}.</p><form id="wa-verify-form" class="form-grid"><div class="field"><label for="wa-code">رمز التحقق المكوّن من ستة أرقام</label><input id="wa-code" name="code" class="input" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></div><button class="btn primary" type="submit">تأكيد الرقم</button><p id="wa-verify-status" class="text-muted" role="status" aria-live="polite"></p></form>`;
+   const form=document.getElementById('wa-verify-form');
+   form.onsubmit=async event=>{
+    event.preventDefault();
+    const code=form.elements.code.value, submit=form.querySelector('button'), feedback=document.getElementById('wa-verify-status');
+    submit.disabled=true;
+    try{
+     await operationCall('whatsapp-verify:'+result.challengeId,id=>A.verifyWhatsApp({operationId:id,challengeId:result.challengeId,code}));
+     operation=null;toast('تم التحقق من رقم الجوال.');await loadPortal();
+    }catch(error){feedback.textContent=error.message||'تعذر تأكيد الرمز.'}
+    finally{submit.disabled=false}
+   };
+  }catch(error){
+   button.textContent=operation?.key==='whatsapp-send'?'إعادة المحاولة بالمرجع نفسه':'إرسال رمز التحقق';
+   status.textContent=(error.message||'تعذر طلب رمز التحقق.')+(operation?.id?` مرجع إعادة المحاولة: ${operation.id}`:'');
+  }finally{button.disabled=Boolean(consent&&!consent.checked)}
+ }
+ async function openAiAssistant(){
+  const button=document.getElementById('ai-open'), status=document.getElementById('ai-status'), dialog=document.getElementById('ai-dialog'), frame=document.getElementById('ai-frame');
+  if(!button||!dialog||!frame)return;
+  button.disabled=true;status.textContent='جارٍ التحقق من الجلسة وبدء المساعد…';
+  try{
+   const bootstrap=await A.aiBootstrap(), frameUrl=new URL(bootstrap.frameUrl);
+   if(frameUrl.origin!==bootstrap.frameOrigin||frameUrl.searchParams.has('code')||frameUrl.searchParams.has('token'))throw new Error('مسار المساعد غير آمن.');
+   frame.addEventListener('load',()=>{
+    if(frame.contentWindow)frame.contentWindow.postMessage({
+     type:'thanarah:bootstrap',integrationId:bootstrap.integrationId,code:bootstrap.code,nonce:bootstrap.nonce
+    },bootstrap.frameOrigin);
+   },{once:true});
+   frame.src=bootstrap.frameUrl;status.textContent='';
+   if(!dialog.open)dialog.showModal();
+  }catch(error){status.textContent=error.message||'المساعد غير متاح حاليًا.'}
+  finally{button.disabled=false}
+ }
+   function customerJourneyMarkup(data=meData){
     const account=data?.account||{},profile=account.profile||{},orders=Array.isArray(data?.orders)?data.orders:[];
     const required=['legalName','displayName','registrationNumber','city','address','contactName','phoneE164'];
     const profileComplete=required.every(key=>String(profile[key]||'').trim().length>0);
@@ -98,9 +140,11 @@
     ];
     return `<section class="customer-journey-card" aria-label="مسار العميل في ثنارة"><div class="customer-journey-intro"><span class="eyebrow">مسار العميل</span><h2>من إنشاء الحساب إلى استلام العيادة</h2><p>${esc(hint)}</p><button id="customer-journey-next" class="btn primary" type="button" data-journey-action="${action}" ${latest&&action==='open-order'?`data-order-id="${esc(latest._id)}"`:''}>${esc(actionLabel)}</button></div><ol class="customer-journey-steps">${steps.map((step,index)=>`<li class="${step.complete?'is-complete':''}" ${currentStep===index?'aria-current="step"':''}><span class="customer-journey-number">${String(index+1).padStart(2,'0')}</span><span>${esc(step.label)}</span><small>${step.complete?'مكتمل':currentStep===index?'الخطوة التالية':'لاحقًا'}</small></li>`).join('')}</ol></section>`;
   }
- function portal(){let a=meData.account,orders=meData.orders||[];app.innerHTML=`${appbar()}<main class="wrap app-main"><div class="page-title"><div><span class="eyebrow">مساحة العميل</span><h1>مرحبًا، ${esc(a.fullName)}</h1><p>تابع بيانات المنشأة والطلبات وسجل المراجعة من هنا.</p></div><button class="btn primary" id="new-order">طلب جديد</button></div>${customerDashboardMarkup(meData)}<div class="grid-main"><div class="stack"><section class="panel"><div class="panel-head"><h2>طلباتك</h2><span class="tag">${orders.length} طلب</span></div><div class="panel-body"><div class="field customer-order-filter"><label for="order-filter">تصفية الطلبات</label><select id="order-filter" class="select"><option value="all">كل الطلبات</option><option value="action">تحتاج إلى إجراء</option><option value="review">قيد المراجعة</option><option value="active">عيادات مفعّلة أو مستلمة</option><option value="closed">مرفوضة أو ملغاة</option></select></div><div id="customer-orders-list">${customerOrderRows(orders)}</div></div></section><section id="order-view"></section></div><aside class="stack"><section class="panel"><div class="panel-head"><h2>ملف المنشأة</h2></div><div class="panel-body">${profileForm(a.profile)}</div></section><section class="panel"><div class="panel-head"><h2>حالة التحقق</h2></div><div class="panel-body"><span class="tag ${a.phoneVerification?.status==='VERIFIED'?'':'warn'}">${a.phoneVerification?.status==='VERIFIED'?'تم التحقق':'غير متحقق'}</span><p class="text-muted">لا يمكن إجراء التحقق عبر واتساب حاليًا. لن نعرض تحققًا غير مؤكد.</p><button class="btn outline small" id="whatsapp">طلب التحقق عبر واتساب</button><div id="wa-msg"></div></div></section></aside></div></main>`;
+ function portal(){let a=meData.account,orders=meData.orders||[];app.innerHTML=`${appbar()}<main class="wrap app-main"><div class="page-title"><div><span class="eyebrow">مساحة العميل</span><h1>مرحبًا، ${esc(a.fullName)}</h1><p>تابع بيانات المنشأة والطلبات وسجل المراجعة من هنا.</p></div><button class="btn primary" id="new-order">طلب جديد</button></div>${customerDashboardMarkup(meData)}<div class="grid-main"><div class="stack"><section class="panel"><div class="panel-head"><h2>طلباتك</h2><span class="tag">${orders.length} طلب</span></div><div class="panel-body"><div class="field customer-order-filter"><label for="order-filter">تصفية الطلبات</label><select id="order-filter" class="select"><option value="all">كل الطلبات</option><option value="action">تحتاج إلى إجراء</option><option value="review">قيد المراجعة</option><option value="active">عيادات مفعّلة أو مستلمة</option><option value="closed">مرفوضة أو ملغاة</option></select></div><div id="customer-orders-list">${customerOrderRows(orders)}</div></div></section><section id="order-view"></section></div><aside class="stack"><section class="panel"><div class="panel-head"><h2>ملف المنشأة</h2></div><div class="panel-body">${profileForm(a.profile)}</div></section><section class="panel"><div class="panel-head"><h2>حالة التحقق</h2></div><div class="panel-body"><span class="tag ${a.phoneVerification?.status==='VERIFIED'?'':'warn'}">${a.phoneVerification?.status==='VERIFIED'?'تم التحقق':'غير متحقق'}</span>${a.phoneVerification?.status==='VERIFIED'?'<p class="text-muted">تم التحقق من رقم الجوال الحالي.</p>':`<p class="text-muted">سنرسل رمز تحقق إلى رقم ملف المنشأة. قبول الإرسال لا يؤكد وصول الرسالة.</p><label class="check"><input id="wa-consent" type="checkbox"><span>أوافق على إرسال رسالة WhatsApp واحدة إلى رقم الجوال المسجل لغرض التحقق.</span></label><button class="btn outline small" id="whatsapp" type="button" disabled>إرسال رمز التحقق</button>`}<div id="wa-msg" aria-live="polite"></div></div></section></aside></div></main><dialog id="ai-dialog" class="customer-ai-dialog" aria-labelledby="ai-title"><div class="customer-ai-dialog-head"><h2 id="ai-title">مساعد ثنارة</h2><button class="btn outline small" id="ai-close" type="button">إغلاق</button></div><iframe id="ai-frame" title="مساعد ثنارة الذكي" sandbox="allow-scripts allow-same-origin allow-forms allow-downloads allow-popups" referrerpolicy="no-referrer"></iframe></dialog>`;
   const pageTitle=app.querySelector('.page-title');
-  if(pageTitle)pageTitle.insertAdjacentHTML('afterend',customerJourneyMarkup());
+   if(pageTitle)pageTitle.insertAdjacentHTML('afterend',customerJourneyMarkup());
+   const customerAside=app.querySelector('.grid-main aside.stack');
+   customerAside?.insertAdjacentHTML('beforeend','<section class="panel customer-ai-card"><div class="panel-head"><h2>مساعد ثنارة الذكي</h2></div><div class="panel-body"><p class="text-muted">جلسة المساعد تبدأ بعد التحقق من حسابك. لا تشارك بيانات مرضى أو معلومات صحية حساسة.</p><button class="btn outline small" id="ai-open" type="button">فتح المساعد</button><p id="ai-status" class="text-muted" role="status" aria-live="polite"></p></div></section>');
   document.getElementById('customer-journey-next').onclick=()=>{
     const button=document.getElementById('customer-journey-next');
     if(button.dataset.journeyAction==='profile'){
@@ -117,7 +161,12 @@
   const orderList=document.getElementById('customer-orders-list');
   orderList.onclick=event=>{const button=event.target.closest('[data-open]');if(button)void openOrder(button.dataset.open)};
   document.getElementById('order-filter').onchange=event=>{orderList.innerHTML=customerOrderRows(orders,event.target.value)};
-  document.getElementById('whatsapp').onclick=async()=>{const b=document.getElementById('whatsapp');b.disabled=true;try{await operationCall('whatsapp',id=>A.sendWhatsApp({operationId:id}))}catch(e){b.textContent='إعادة المحاولة بالمرجع نفسه';document.getElementById('wa-msg').innerHTML=`<p class="text-muted" role="status">${esc(e.message||'التحقق عبر واتساب غير متاح حاليًا.')}${operation?` مرجع إعادة المحاولة: ${esc(operation.id)}`:''}</p>`}finally{b.disabled=false}};
+   const waConsent=document.getElementById('wa-consent');
+   if(waConsent)waConsent.onchange=()=>{document.getElementById('whatsapp').disabled=!waConsent.checked};
+   document.getElementById('whatsapp')?.addEventListener('click',()=>void sendWhatsAppCode());
+   document.getElementById('ai-open')?.addEventListener('click',()=>void openAiAssistant());
+   document.getElementById('ai-close')?.addEventListener('click',()=>document.getElementById('ai-dialog').close());
+   document.getElementById('ai-dialog')?.addEventListener('close',()=>{document.getElementById('ai-frame').src='about:blank'});
  const requested=new URLSearchParams(location.search).get('package');if(requested)newOrder(requested);
  }
   async function saveProfile(e){e.preventDefault();let f=e.currentTarget,b=f.querySelector('button'),profile=Object.fromEntries(new FormData(f));b.disabled=true;try{await operationCall('profile',id=>A.profile({operationId:id,version:meData.account.version,profile}));operation=null;toast('تم حفظ بيانات المنشأة.');await loadPortal()}catch(x){const msg=x.message||'تعذر حفظ البيانات.';f.querySelector('#profile-error').textContent=msg;if(!x.status||x.status>=500){f.querySelectorAll('input').forEach(i=>i.readOnly=true);b.textContent='إعادة المحاولة بالبيانات نفسها';f.querySelector('.retry-ref').textContent='مرجع العملية: '+(operation?.id||'')}else{f.querySelectorAll('input').forEach(i=>i.readOnly=false);b.textContent='حفظ بيانات المنشأة';f.querySelector('.retry-ref').textContent=''}toast(msg,true)}finally{b.disabled=false}}

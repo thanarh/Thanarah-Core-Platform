@@ -24,6 +24,7 @@ import { JourneyOrders } from '../src/customer-journey/journey.orders';
 import { JourneyDocuments } from '../src/customer-journey/journey.documents';
 import { JourneyAdmin } from '../src/customer-journey/journey.admin';
 import { JourneyBilling } from '../src/customer-journey/journey.billing';
+import { JourneyIntegrations } from '../src/customer-journey/journey.integrations';
 import { defaultCatalog, type Account, type Order } from '../src/customer-journey/journey.model';
 
 const expected = 'mongodb://127.0.0.1:45271,127.0.0.1:45272,127.0.0.1:45273/?replicaSet=rs0&retryWrites=true';
@@ -36,7 +37,21 @@ const manager = new PlatformMongoClientManager({
 } as ConfigService, new OfficialPlatformMongoClientFactory());
 const company = new OperationsStore(manager), records = new OperationsRecords(company);
 const store = new JourneyStore(manager, company);
-const accounts = new JourneyAccounts(store, new PasswordHasherService(), new PasswordPolicyService());
+const journeyConfig = {
+  thanarahApiBaseUrl: 'https://ai.thanarah.com',
+  thanarahApiKey: '',
+  thanarahEmbedKey: '',
+  thanarahEmbedIntegrationId: '6afa6048869da5a0dc6f4c21',
+  thanarahEmbedAllowedOrigins: ['https://thanarah.com'],
+  whatsappOtpHmacSecret: '',
+} as ConfigService;
+const integrations = new JourneyIntegrations(store, journeyConfig);
+const accounts = new JourneyAccounts(
+  store,
+  new PasswordHasherService(),
+  new PasswordPolicyService(),
+  integrations,
+);
 // Real isolated replica set for all business writes. Only the remote tenant ping
 // is replaced by a harmless test double; browser fixture never forges verification.
 const access = new JourneyAccess({
@@ -277,7 +292,9 @@ suite('Customer journey isolated business acceptance', () => {
   });
   it('does not send WhatsApp or allow activation without actual verification', async () => {
     const { account: a, order: o } = await approved();
-    await expect(accounts.sendWhatsApp(a.userId)).rejects.toMatchObject({ code: 'CUSTOMER_WHATSAPP_UNAVAILABLE', status: 503 });
+    await expect(accounts.sendWhatsApp(a.userId, {
+      operationId: randomUUID(), consentAccepted: true,
+    })).rejects.toMatchObject({ code: 'CUSTOMER_WHATSAPP_UNAVAILABLE', status: 503 });
     await expect(admin.action(root, o._id, { ...op(), version: o.version, action: 'activate',
       reason: 'Must not bypass verification', tenantId: randomUUID(), subscriptionId: randomUUID() }))
       .rejects.toMatchObject({ code: 'CUSTOMER_PHONE_NOT_VERIFIED' });
