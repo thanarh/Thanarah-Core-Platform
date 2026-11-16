@@ -194,6 +194,7 @@ describe('Public website route and reusable component regressions', () => {
     const html = renderers('en').packageCard(
       'Lite',
       {
+        ordersOpen: true,
         termsText: 'هذه مسودة تجريبية غير نهائية.',
         packages: [
           {
@@ -212,6 +213,7 @@ describe('Public website route and reusable component regressions', () => {
     expect(html).not.toContain('<script>');
     expect(html).toContain('Demo price — not final');
     expect(html).toContain('50 SAR');
+    expect(html).toContain('/customer/?package=Lite');
     expect(html).not.toContain('5000');
   });
   it('keeps a usable Arabic default when browser storage is unavailable', () => {
@@ -353,6 +355,17 @@ describe('Public website route and reusable component regressions', () => {
     for (const code of ['Lite', 'Pro', 'Customize']) {
       expect(html).toContain(`/contact/?package=${code}`);
     }
+  });
+  it('routes published home packages to customer ordering only when order intake is open', () => {
+    const html = renderers('en').referencePackages({
+      ordersOpen: true,
+      packages: [
+        { code: 'Lite', published: true, description: 'Approved demo', features: [], priceMinor: '29900' },
+      ],
+    });
+    expect(html).toContain('/customer/?package=Lite');
+    expect(html).toContain('/customer/?package=Customize');
+    expect(html).not.toContain('/contact/?package=Lite');
   });
   it('retains the original platform workspaces alongside the new public entry', () => {
     for (const path of [
