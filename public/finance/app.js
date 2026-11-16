@@ -19,6 +19,7 @@
     paymentSubmit: 'tenant.finance.payments.submit',
     paymentReview: 'tenant.finance.payments.review',
     paymentSettings: 'tenant.finance.payments.settings.manage',
+    patientRead: 'tenant.patients.read',
     subscriptionRead: 'tenant.subscriptions.read',
     subscriptionSubmit: 'tenant.subscriptions.payments.submit',
   };
@@ -33,6 +34,8 @@
     invoiceTransfers: [], transferLoading: false, transferBusy: false,
     savingPaymentSettings: false,
     transferError: null,
+    patientOptions: [], patientOptionsLoading: false, patientOptionsError: null,
+    patientSearch: '',
     invoice: null, detailLoading: false, detailError: null, detailId: null,
     editor: null, transition: null, busy: false, workspaceEpoch: 0, listRequestId: 0,
   };
@@ -149,6 +152,8 @@
     state.listRequestId++;
     state.invoices = []; state.total = 0; state.offset = 0; state.hasNext = false;
     state.listError = null; state.listLoading = false; state.settings = null;
+    state.patientOptions = []; state.patientOptionsLoading = false;
+    state.patientOptionsError = null; state.patientSearch = '';
     state.paymentSettings = null; state.paymentSettingsError = null;
     state.subscriptionPortal = null; state.subscriptionLoading = false;
     state.subscriptionError = null; state.subscriptionUploading = false;
@@ -497,6 +502,7 @@
     const currencyChanged = !!invoice && invoiceCurrency !== currencyCode;
     return {
       id: invoice?.id || null, version: invoice?.version || null, recipientName: invoice?.recipientName || '',
+      patientId: invoice?.patientId || '',
       currencyCode, currencyChanged,
       invoiceDate: invoice?.invoiceDate || today(), manualInvoiceNumber: invoice?.manualInvoiceNumber || '',
       taxPolicyId: invoice?.taxPolicyId || '', customFieldValues: { ...(invoice?.customFieldValues || {}) },
@@ -515,13 +521,51 @@
       return;
     }
     state.editor = editorDefaults(invoice);
+    state.patientOptions = [];
+    state.patientOptionsError = null;
+    state.patientSearch = '';
     renderModal();
+    void loadPatientOptions();
+  }
+  async function loadPatientOptions(search = state.patientSearch) {
+    if (!state.editor || !state.workspace) return;
+    state.patientSearch = String(search || '').trim();
+    state.patientOptions = [];
+    state.patientOptionsError = null;
+    if (!allowed(PERMISSIONS.patientRead)) {
+      state.patientOptionsError = new Error('يتطلب ربط الفاتورة بسجل مريض صلاحية قراءة المرضى.');
+      renderModal();
+      return;
+    }
+    state.patientOptionsLoading = true;
+    renderModal();
+    try {
+      const result = await api.listPatients(state.workspace.tenantId, {
+        limit: PAGE_SIZE, offset: 0, status: 'ACTIVE',
+        ...(state.patientSearch ? { search: state.patientSearch } : {}),
+      });
+      state.patientOptions = itemsOf(result);
+      const linkedId = state.editor?.patientId;
+      if (linkedId && !state.patientOptions.some((patient) => patient.id === linkedId)) {
+        const linked = await api.getPatient(state.workspace.tenantId, linkedId).catch(() => null);
+        if (linked?.id) state.patientOptions.push(linked);
+      }
+    } catch (error) {
+      state.patientOptionsError = error;
+    } finally {
+      state.patientOptionsLoading = false;
+      if (state.editor) renderModal();
+    }
   }
   function renderModal() {
     if (state.editor) { modalRoot.innerHTML = editorMarkup(); return; }
     if (state.transition) { modalRoot.innerHTML = transitionMarkup(); return; }
     if (state.detailId) {
       modalRoot.innerHTML = detailMarkup();
+      const detailBody = modalRoot.querySelector('.dialog-body');
+      if (detailBody && state.invoice) {
+        detailBody.insertAdjacentHTML('afterbegin', patientPortalLinkMarkup(state.invoice));
+      }
       const auditHeading = [...modalRoot.querySelectorAll('.detail-section h3')]
         .find((heading) => heading.textContent === 'سجل التدقيق');
       if (auditHeading && state.invoice) {
@@ -539,7 +583,8 @@
     const settings = state.settings || {};
     const currency = e.currencyCode || settings.currencyCode || 'SAR';
     const manual = settings.numberingPolicy?.mode === 'MANUAL';
-    const fields = (settings.customFields || []).map((field) => {
+    const patientField = `<label class="field"><span>ابحث عن سجل المريض</span><div class="detail-actions"><input class="control" name="patientSearch" maxlength="100" value="${esc(state.patientSearch)}" placeholder="الاسم أو رقم المريض"><button class="btn btn-secondary btn-small" type="button" data-action="search-patients" ${state.patientOptionsLoading || !allowed(PERMISSIONS.patientRead) ? 'disabled' : ''}>بحث</button></div></label><label class="field"><span>ربط سجل المريض</span><select class="control" name="patientId" ${state.patientOptionsLoading || state.patientOptionsError || !allowed(PERMISSIONS.patientRead) ? 'disabled' : ''}><option value="">بدون ربط</option>${state.patientOptions.map((patient) => `<option value="${esc(patient.id)}" ${e.patientId === patient.id ? 'selected' : ''}>${esc(patient.preferredName || `${patient.firstName} ${patient.lastName}`)} · ${esc(patient.patientNumber)}</option>`).join('')}</select>${state.patientOptionsError ? `<small class="form-note">${esc(state.patientOptionsError.message)}</small>` : ''}</label>`;
+    const fields = patientField + (settings.customFields || []).map((field) => {
       const id = `custom-${esc(field.key)}`;
       const value = e.customFieldValues[field.key];
       if (field.type === 'BOOLEAN') return `<label class="field"><span>${esc(field.label)}${field.required ? ' *' : ''}</span><select class="control" data-custom-key="${esc(field.key)}"><option value="">اختر</option><option value="true" ${value === true ? 'selected' : ''}>نعم</option><option value="false" ${value === false ? 'selected' : ''}>لا</option></select></label>`;
@@ -586,6 +631,12 @@
         : '';
     return `<section class="detail-section"><h3>التحويل البنكي وإيصالات المراجعة</h3>${configured ? `<div class="detail-grid"><div class="detail-item"><small>البنك</small><strong>${esc(bank.bankName)}</strong></div><div class="detail-item"><small>صاحب الحساب</small><strong>${esc(bank.accountHolder)}</strong></div><div class="detail-item"><small>IBAN</small><strong class="mono" dir="ltr">${esc(bank.iban)}</strong></div></div>` : '<p class="form-note">تعليمات التحويل غير مفعّلة أو غير مضبوطة لهذه الفاتورة.</p>'}${state.transferError ? `<div class="inline-message" role="alert">${esc(message(state.transferError))}</div>` : ''}${state.transferLoading ? loadingMarkup() : transferCards || (canReadTransfers ? '<p class="form-note">لا توجد إيصالات مسجلة.</p>' : '')}${uploadForm}${futurePaymentMethodsMarkup()}<p class="form-note">قبول الإيصال يسجل قرار المراجعة فقط؛ لا يغيّر حالة الفاتورة، ولا ينفذ تحصيلًا أو استردادًا.</p></section>`;
   }
+  function patientPortalLinkMarkup(invoice) {
+    if (!invoice || invoice.status !== 'ISSUED' || !invoice.patientId || !state.workspace?.tenantId) return '';
+    const url = new URL('/patient-portal/', window.location.origin);
+    url.searchParams.set('tenantId', state.workspace.tenantId);
+    return `<section class="detail-section"><h3>رابط بوابة المريض</h3><p class="form-note">هذا الرابط يفتح الفواتير بعد تسجيل الدخول ومطابقة بريد الحساب مع سجل المريض ثم التحقق برمز يصل إلى الجوال المسجل.</p><div class="detail-actions"><button class="btn btn-secondary" type="button" data-action="copy-patient-portal-link" data-link="${esc(url.toString())}">نسخ رابط بوابة المريض</button></div></section>`;
+  }
   function futurePaymentMethodsMarkup() {
     return `<section class="upcoming-payment-methods" aria-label="وسائل دفع قادمة"><h3>وسائل دفع أخرى</h3><div class="upcoming-payment-methods-list"><button class="btn btn-secondary btn-small" data-payment-method="card" type="button" disabled>بطاقة <span>قريبًا</span></button><button class="btn btn-secondary btn-small" data-payment-method="apple-pay" type="button" disabled>Apple Pay <span>قريبًا</span></button></div><p class="form-note">هذه الوسائل غير مفعّلة ولا ترسل أي طلب دفع.</p></section>`;
   }
@@ -614,6 +665,9 @@
     e.invoiceDate = String(data.get('invoiceDate') || '');
     e.manualInvoiceNumber = String(data.get('manualInvoiceNumber') || '').trim();
     e.taxPolicyId = String(data.get('taxPolicyId') || '');
+    if (allowed(PERMISSIONS.patientRead) && !state.patientOptionsLoading && !state.patientOptionsError) {
+      e.patientId = String(data.get('patientId') || '');
+    }
     const values = {};
     (state.settings?.customFields || []).forEach((field) => {
       const input = form.querySelector(`[data-custom-key="${CSS.escape(field.key)}"]`);
@@ -640,6 +694,7 @@
     }));
     const payload = {
       ...(e.id ? { currencyCode: e.currencyCode } : {}),
+      patientId: e.patientId || null,
       recipientName: e.recipientName,
       invoiceDate: e.invoiceDate,
       customFieldValues: e.customFieldValues,
@@ -976,6 +1031,22 @@
     if (action === 'retry-settings') { state.settingsForm = null; state.settingsError = null; await loadSettings(); return; }
     if (action === 'retry-payment-settings') { await loadPaymentSettings(); return; }
     if (action === 'retry-detail') { if (state.detailId) await openInvoice(state.detailId); return; }
+    if (action === 'copy-patient-portal-link') {
+      const link = button.dataset.link;
+      try {
+        await navigator.clipboard.writeText(link);
+        toast('تم نسخ رابط بوابة المريض.');
+      } catch (_) {
+        toast('تعذّر نسخ الرابط. انسخه من شريط العنوان بعد فتحه.', true);
+      }
+      return;
+    }
+    if (action === 'search-patients' && state.editor) {
+      const form = button.closest('form');
+      if (form) readEditorFields(form);
+      await loadPatientOptions(form?.querySelector('[name="patientSearch"]')?.value || '');
+      return;
+    }
     if (action === 'download-invoice-transfer') {
       if (!state.workspace || !allowed(PERMISSIONS.paymentRead)) return;
       try {

@@ -7,6 +7,7 @@ import {
   type PatientDuplicateIdentity,
   type PatientLifecycleMutationResult,
   type PatientMutationResult,
+  type PatientPortalClaim,
   type PatientRecord,
   type PatientStatus,
 } from './patient.model';
@@ -19,6 +20,7 @@ import {
   isWellFormedTrustedTenantContext,
 } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
 import {
   TenantStorageNotConfiguredError,
   TenantStorageUnavailableError,
@@ -74,6 +76,30 @@ export interface TenantPatientStorage {
     nextStatus: PatientStatus,
     changedAt: Date,
   ): Promise<PatientLifecycleMutationResult>;
+  findPortalCandidates(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    email: string,
+  ): Promise<PatientRecord[]>;
+  startPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    email: string,
+    claim: PatientPortalClaim,
+  ): Promise<PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'>;
+  verifyPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    operationId: string,
+    codeDigest: string,
+    now: Date,
+  ): Promise<'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'>;
+  findPatientByPortalUser(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<PatientRecord | null>;
 }
 
 /**
@@ -121,6 +147,9 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
       email: input.email ?? null,
       nationalId: input.nationalId ?? null,
       address: input.address ?? null,
+      portalAccountUserId: null,
+      portalLinkedAt: null,
+      portalClaim: null,
       status: 'ACTIVE',
       createdAt: now,
       updatedAt: now,
@@ -215,6 +244,13 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     const updated: PatientRecord = {
       ...current,
       ...definedFields,
+      ...(input.email !== undefined || input.phone !== undefined
+        ? {
+            portalAccountUserId: null,
+            portalLinkedAt: null,
+            portalClaim: null,
+          }
+        : {}),
       dateOfBirth:
         input.dateOfBirth === undefined
           ? cloneDate(current.dateOfBirth)
@@ -256,8 +292,144 @@ export class InMemoryTenantPatientStorage implements TenantPatientStorage {
     return { kind: 'changed', record: cloneRecord(updated) };
   }
 
+  async findPortalCandidates(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    email: string,
+  ): Promise<PatientRecord[]> {
+    this.assertPortalScope(context, route);
+    return [...(this.patientsByTenant.get(context.tenantId.toLowerCase())?.values() ?? [])]
+      .filter((patient) => patient.email === email)
+      .slice(0, 2)
+      .map(cloneRecord);
+  }
+
+  async startPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    email: string,
+    claim: PatientPortalClaim,
+  ): Promise<PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'> {
+    this.assertPortalScope(context, route);
+    const patients = this.patientsByTenant.get(context.tenantId.toLowerCase());
+    const patient = patients?.get(patientId);
+    if (!patients || !patient || patient.email !== email || patient.status !== 'ACTIVE') {
+      return 'not-found';
+    }
+    if (patient.portalAccountUserId === context.platformUserId) return 'already-linked';
+    if (patient.portalAccountUserId) return 'conflict';
+    if (
+      [...patients.values()].some(
+        (candidate) =>
+          candidate.id !== patientId && candidate.portalAccountUserId === context.platformUserId,
+      )
+    ) {
+      return 'conflict';
+    }
+    if (
+      patient.portalClaim &&
+      patient.portalClaim.expiresAt > claim.createdAt &&
+      patient.portalClaim.accountUserId !== context.platformUserId
+    ) {
+      return 'conflict';
+    }
+    if (
+      patient.portalClaim?.expiresAt &&
+      patient.portalClaim.expiresAt > claim.createdAt &&
+      patient.portalClaim.accountUserId === context.platformUserId &&
+      patient.portalClaim.operationId === claim.operationId
+    ) {
+      return structuredClone(patient.portalClaim);
+    }
+    if (
+      patient.portalClaim?.accountUserId === context.platformUserId &&
+      patient.portalClaim.createdAt.getTime() > claim.createdAt.getTime() - 60_000 &&
+      patient.portalClaim.expiresAt > claim.createdAt
+    ) {
+      return 'rate-limited';
+    }
+    patients.set(patientId, { ...patient, portalClaim: structuredClone(claim) });
+    return structuredClone(claim);
+  }
+
+  async verifyPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    operationId: string,
+    codeDigest: string,
+    now: Date,
+  ): Promise<'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'> {
+    this.assertPortalScope(context, route);
+    const patients = this.patientsByTenant.get(context.tenantId.toLowerCase());
+    const patient = patients?.get(patientId);
+    if (!patients || !patient || patient.status !== 'ACTIVE') return 'not-found';
+    if (patient.portalAccountUserId === context.platformUserId) return 'already-linked';
+    if (patient.portalAccountUserId) return 'not-found';
+    const claim = patient.portalClaim;
+    if (
+      !claim ||
+      claim.accountUserId !== context.platformUserId ||
+      claim.operationId !== operationId
+    ) {
+      return 'not-found';
+    }
+    if (claim.expiresAt <= now) return 'expired';
+    if (claim.attempts >= 5) return 'locked';
+    if (claim.codeDigest !== codeDigest) {
+      patients.set(patientId, {
+        ...patient,
+        portalClaim: { ...claim, attempts: claim.attempts + 1 },
+      });
+      return claim.attempts + 1 >= 5 ? 'locked' : 'invalid';
+    }
+    if (
+      [...patients.values()].some(
+        (candidate) =>
+          candidate.id !== patientId && candidate.portalAccountUserId === context.platformUserId,
+      )
+    ) {
+      return 'not-found';
+    }
+    patients.set(patientId, {
+      ...patient,
+      portalAccountUserId: context.platformUserId,
+      portalLinkedAt: new Date(now),
+      portalClaim: null,
+    });
+    return 'linked';
+  }
+
+  async findPatientByPortalUser(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<PatientRecord | null> {
+    this.assertPortalScope(context, route);
+    const patient = [
+      ...(this.patientsByTenant.get(context.tenantId.toLowerCase())?.values() ?? []),
+    ].find(
+      (candidate) =>
+        candidate.portalAccountUserId === context.platformUserId && candidate.status === 'ACTIVE',
+    );
+    return patient ? cloneRecord(patient) : null;
+  }
+
   private assertScope(context: TrustedTenantContext, route: TenantStorageRoute): void {
     if (!context || !isWellFormedTrustedTenantContext(context)) {
+      throw new TenantContextInvalidError();
+    }
+    if (!route || !Array.isArray(route.placements) || route.placements.length === 0) {
+      throw new TenantStorageNotConfiguredError();
+    }
+  }
+
+  private assertPortalScope(context: TrustedPatientPortalContext, route: TenantStorageRoute): void {
+    if (
+      !context ||
+      !/^[0-9a-f-]{36}$/iu.test(context.tenantId) ||
+      !/^[0-9a-f-]{36}$/iu.test(context.platformUserId)
+    ) {
       throw new TenantContextInvalidError();
     }
     if (!route || !Array.isArray(route.placements) || route.placements.length === 0) {
@@ -320,6 +492,26 @@ export class UnconfiguredTenantPatientStorage implements TenantPatientStorage {
   async changeStatusIfCurrent(): Promise<PatientLifecycleMutationResult> {
     throw new TenantStorageUnavailableError();
   }
+
+  async findPortalCandidates(): Promise<PatientRecord[]> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async startPortalClaim(): Promise<
+    PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'
+  > {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async verifyPortalClaim(): Promise<
+    'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'
+  > {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async findPatientByPortalUser(): Promise<PatientRecord | null> {
+    throw new TenantStorageUnavailableError();
+  }
 }
 
 function cloneDate(value: Date | null): Date | null {
@@ -329,6 +521,15 @@ function cloneDate(value: Date | null): Date | null {
 function cloneRecord(record: PatientRecord): PatientRecord {
   return {
     ...record,
+    portalLinkedAt: cloneDate(record.portalLinkedAt ?? null),
+    portalClaim: record.portalClaim
+      ? {
+          ...record.portalClaim,
+          createdAt: new Date(record.portalClaim.createdAt),
+          expiresAt: new Date(record.portalClaim.expiresAt),
+          consentAcceptedAt: new Date(record.portalClaim.consentAcceptedAt),
+        }
+      : null,
     dateOfBirth: cloneDate(record.dateOfBirth),
     createdAt: new Date(record.createdAt.getTime()),
     updatedAt: new Date(record.updatedAt.getTime()),

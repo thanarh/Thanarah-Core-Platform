@@ -3,6 +3,7 @@
   const publicPaths = ['/', '/welcome', '/site', '/about', '/services', '/packages', '/why-thanarah', '/contact'];
   const path = location.pathname.replace(/\/+$/, '') || '/';
   const customerPage = path === '/customer';
+  const patientPortalPage = path === '/patient-portal';
   const protectedPage = !publicPaths.includes(path) && path !== '/platform';
   const legacySelector = 'form#auth-form, form#staff-login, form#login-form, form#inbox-login, form#signin-form, form[data-form="signin"], form[data-form="login"]';
   let dialog, opener, busy = false, mode = 'login', method = 'email', audience = 'customer';
@@ -237,7 +238,12 @@
   function draw() {
     const register = mode === 'register';
     const draft = drafts[mode];
-    const description = audience === 'staff'
+    const description = patientPortalPage
+      ? text(
+        'سجّل الدخول بحسابك في ثنارة للوصول إلى فواتير العيادة بعد التحقق من ملكية سجل المريض.',
+        'Sign in with your Thanarah account to access clinic invoices after verifying the patient record.'
+      )
+      : audience === 'staff'
       ? text(
         'دخول حسابات الفريق المخوّلة إلى ' + workspaceName() + '. تحدد صلاحيات حسابك مساحات العمل المتاحة.',
         'Sign in to ' + workspaceName() + ' with an authorized team account. Your permissions determine available workspaces.'
@@ -341,7 +347,7 @@
     pagePosition = { top: root.scrollY, left: root.scrollX };
     opener = document.activeElement;
     // Never change the identity underneath a signed-in workspace or its drafts.
-    if (protectedPage && !formOnPage() && !document.body.classList.contains('thanarah-needs-auth')) {
+    if (protectedPage && !patientPortalPage && !formOnPage() && !document.body.classList.contains('thanarah-needs-auth')) {
       mode = 'login'; audience = isStaff() ? 'staff' : 'customer'; method = 'email';
       draw(); dialog.showModal();
       dialog.querySelectorAll('form, .ta-tabs').forEach(node => { node.hidden = true; });

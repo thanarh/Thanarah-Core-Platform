@@ -1,4 +1,7 @@
-import type { TrustedTenantContext } from './tenant-context.contract';
+import type {
+  TrustedTenantContext,
+  TrustedTenantStorageContext,
+} from './tenant-context.contract';
 
 declare const tenantStoragePlacementIdBrand: unique symbol;
 
@@ -23,12 +26,12 @@ export interface TenantStorageRoute {
 
 /** Server-side placement metadata lookup; never accepts a database name from a caller. */
 export interface TenantDatabaseRegistry {
-  getPlacements(context: TrustedTenantContext): Promise<readonly TenantStoragePlacement[]>;
+  getPlacements(context: TrustedTenantStorageContext): Promise<readonly TenantStoragePlacement[]>;
 }
 
 /** Resolves a non-empty route from trusted context through registry/policy infrastructure. */
 export interface TenantStorageResolver {
-  resolve(context: TrustedTenantContext): Promise<TenantStorageRoute>;
+  resolve(context: TrustedTenantStorageContext): Promise<TenantStorageRoute>;
 }
 
 /**

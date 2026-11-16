@@ -4,9 +4,9 @@ import { PrismaService } from '../database/prisma.service';
 import { isValidTenantMongoDatabaseName } from './tenant-mongo.constants';
 import {
   TenantContextInvalidError,
-  isWellFormedTrustedTenantContext,
+  isWellFormedTrustedTenantStorageContext,
 } from './tenant-context.contract';
-import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedTenantStorageContext } from './tenant-context.contract';
 import { TenantStorageUnavailableError } from './tenant-storage.errors';
 import type {
   TenantDatabaseRegistry,
@@ -35,7 +35,7 @@ export type TenantStorageTargetRecord = Prisma.TenantStorageTargetGetPayload<{
 
 export interface TenantStorageTargetResolver {
   findActivePrimaryTarget(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     placementId: string,
   ): Promise<TenantStorageTargetRecord | null>;
 }
@@ -50,7 +50,9 @@ export class TenantStorageRegistryService
 {
   constructor(private readonly prisma: PrismaService) {}
 
-  async getPlacements(context: TrustedTenantContext): Promise<readonly TenantStoragePlacement[]> {
+  async getPlacements(
+    context: TrustedTenantStorageContext,
+  ): Promise<readonly TenantStoragePlacement[]> {
     this.assertContext(context);
     const targets = await this.prisma.tenantStorageTarget.findMany({
       where: {
@@ -70,7 +72,7 @@ export class TenantStorageRegistryService
   }
 
   async findActivePrimaryTarget(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     placementId: string,
   ): Promise<TenantStorageTargetRecord | null> {
     this.assertContext(context);
@@ -108,8 +110,8 @@ export class TenantStorageRegistryService
     });
   }
 
-  private assertContext(context: TrustedTenantContext): void {
-    if (!context || !isWellFormedTrustedTenantContext(context)) {
+  private assertContext(context: TrustedTenantStorageContext): void {
+    if (!context || !isWellFormedTrustedTenantStorageContext(context)) {
       throw new TenantContextInvalidError();
     }
   }

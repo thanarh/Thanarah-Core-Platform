@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { randomUUID, timingSafeEqual } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import type { Collection, Document, Filter, IndexDescription, IndexSpecification } from 'mongodb';
 import type { CreatePatientInput, ListPatientsQuery, UpdatePatientInput } from './patient.dto';
@@ -8,6 +8,7 @@ import {
   type PatientDuplicateIdentity,
   type PatientLifecycleMutationResult,
   type PatientMutationResult,
+  type PatientPortalClaim,
   type PatientRecord,
   type PatientStatus,
 } from './patient.model';
@@ -19,8 +20,10 @@ import {
 import {
   TenantContextInvalidError,
   isWellFormedTrustedTenantContext,
+  isWellFormedTrustedPatientPortalContext,
 } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
 import type { TenantStorageRoute } from './tenant-storage.contract';
 import {
   TenantStorageNotConfiguredError,
@@ -36,6 +39,7 @@ import type {
 
 const PATIENT_COLLECTION_NAME = 'patients';
 const PATIENT_NUMBER_INDEX_NAME = 'tenant_patient_number_unique';
+const PATIENT_PORTAL_ACCOUNT_INDEX_NAME = 'tenant_patient_portal_account_unique';
 const PATIENT_DUPLICATE_INDEXES: PatientDuplicateUniqueIndexDefinition[] = [
   {
     name: 'tenant_patient_duplicate_phone_name_unique_idx',
@@ -115,6 +119,9 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
       email: input.email ?? null,
       nationalId: input.nationalId ?? null,
       address: input.address ?? null,
+      portalAccountUserId: null,
+      portalLinkedAt: null,
+      portalClaim: null,
       status: 'ACTIVE',
       createdAt: now,
       updatedAt: now,
@@ -257,11 +264,17 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
     const fields = Object.fromEntries(
       Object.entries(input).filter(([, value]) => value !== undefined),
     ) as Partial<Omit<PatientMongoDocument, '_id' | '_tenantId' | 'createdAt' | 'status'>>;
+    const unsetPortalLink = input.email !== undefined || input.phone !== undefined;
 
     try {
       const result = await collection.updateOne(
         { _id: id, _tenantId: context.tenantId },
-        { $set: { ...fields, updatedAt: new Date() } },
+        {
+          $set: { ...fields, updatedAt: new Date() },
+          ...(unsetPortalLink
+            ? { $unset: { portalAccountUserId: '', portalLinkedAt: '', portalClaim: '' } }
+            : {}),
+        },
       );
       if (result.matchedCount === 0) return { kind: 'not-found' };
 
@@ -310,6 +323,239 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
       : { kind: 'not-changed' };
   }
 
+  async findPortalCandidates(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    email: string,
+  ): Promise<PatientRecord[]> {
+    const collection = await this.getPortalCollection(context, route);
+    const documents = await collection
+      .find({ _tenantId: context.tenantId, email })
+      .collation({ locale: 'en', strength: 2 })
+      .limit(2)
+      .toArray();
+    return documents.map(toPatientRecord);
+  }
+
+  async startPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    email: string,
+    claim: PatientPortalClaim,
+  ): Promise<PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'> {
+    const collection = await this.getPortalCollection(context, route);
+    await this.assertPortalAccountIndex(collection);
+    const patient = await collection.findOne({
+      _id: patientId,
+      _tenantId: context.tenantId,
+      email,
+      status: 'ACTIVE',
+    });
+    if (!patient) return 'not-found';
+    if (patient.portalAccountUserId === context.platformUserId) return 'already-linked';
+    if (patient.portalAccountUserId) return 'conflict';
+
+    const accountLink = await collection.findOne({
+      _tenantId: context.tenantId,
+      portalAccountUserId: context.platformUserId,
+      _id: { $ne: patientId },
+    });
+    if (accountLink) return 'conflict';
+
+    const existingClaim = patient.portalClaim;
+    if (
+      existingClaim &&
+      existingClaim.expiresAt > claim.createdAt &&
+      existingClaim.accountUserId !== context.platformUserId
+    ) {
+      return 'conflict';
+    }
+    if (
+      existingClaim &&
+      existingClaim.expiresAt > claim.createdAt &&
+      existingClaim.accountUserId === context.platformUserId &&
+      existingClaim.operationId === claim.operationId
+    ) {
+      return {
+        ...existingClaim,
+        createdAt: new Date(existingClaim.createdAt),
+        expiresAt: new Date(existingClaim.expiresAt),
+        consentAcceptedAt: new Date(existingClaim.consentAcceptedAt),
+      };
+    }
+    if (
+      existingClaim &&
+      existingClaim.expiresAt > claim.createdAt &&
+      existingClaim.accountUserId === context.platformUserId &&
+      new Date(existingClaim.createdAt).getTime() > claim.createdAt.getTime() - 60_000
+    ) {
+      return 'rate-limited';
+    }
+
+    const result = await collection.updateOne(
+      {
+        _id: patientId,
+        _tenantId: context.tenantId,
+        email,
+        status: 'ACTIVE',
+        portalAccountUserId: null,
+        $and: [
+          {
+            $or: [
+              { portalClaim: null },
+              { 'portalClaim.expiresAt': { $lte: claim.createdAt } },
+              { 'portalClaim.accountUserId': context.platformUserId },
+            ],
+          },
+          existingClaim
+            ? {
+                'portalClaim.operationId': existingClaim.operationId,
+                'portalClaim.createdAt': existingClaim.createdAt,
+                'portalClaim.expiresAt': existingClaim.expiresAt,
+              }
+            : {
+                $or: [{ portalClaim: null }, { portalClaim: { $exists: false } }],
+              },
+        ],
+      },
+      { $set: { portalClaim: claim, updatedAt: claim.createdAt } },
+    );
+    if (result.matchedCount === 1) return claim;
+
+    const current = await collection.findOne({
+      _id: patientId,
+      _tenantId: context.tenantId,
+    });
+    if (current?.portalAccountUserId === context.platformUserId) return 'already-linked';
+    const currentClaim = current?.portalClaim;
+    if (
+      currentClaim?.accountUserId === context.platformUserId &&
+      currentClaim.operationId === claim.operationId
+    ) {
+      return {
+        ...currentClaim,
+        createdAt: new Date(currentClaim.createdAt),
+        expiresAt: new Date(currentClaim.expiresAt),
+        consentAcceptedAt: new Date(currentClaim.consentAcceptedAt),
+      };
+    }
+    if (
+      currentClaim?.accountUserId === context.platformUserId &&
+      currentClaim.expiresAt > claim.createdAt &&
+      new Date(currentClaim.createdAt).getTime() > claim.createdAt.getTime() - 60_000
+    ) {
+      return 'rate-limited';
+    }
+    return current ? 'conflict' : 'not-found';
+  }
+
+  async verifyPortalClaim(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    operationId: string,
+    codeDigest: string,
+    now: Date,
+  ): Promise<'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'> {
+    const collection = await this.getPortalCollection(context, route);
+    await this.assertPortalAccountIndex(collection);
+    const patient = await collection.findOne({
+      _id: patientId,
+      _tenantId: context.tenantId,
+      status: 'ACTIVE',
+    });
+    if (!patient) return 'not-found';
+    if (patient.portalAccountUserId === context.platformUserId) return 'already-linked';
+    if (patient.portalAccountUserId) return 'not-found';
+    const claim = patient.portalClaim;
+    if (
+      !claim ||
+      claim.accountUserId !== context.platformUserId ||
+      claim.operationId !== operationId
+    ) {
+      return 'not-found';
+    }
+    if (claim.expiresAt <= now) return 'expired';
+    if (claim.attempts >= 5) return 'locked';
+
+    const candidateDigest = Buffer.from(codeDigest, 'hex');
+    const expectedDigest = Buffer.from(claim.codeDigest, 'hex');
+    const digestMatches =
+      candidateDigest.length === expectedDigest.length &&
+      timingSafeEqual(candidateDigest, expectedDigest);
+    if (!digestMatches) {
+      const failed = await collection.updateOne(
+        {
+          _id: patientId,
+          _tenantId: context.tenantId,
+          status: 'ACTIVE',
+          'portalClaim.accountUserId': context.platformUserId,
+          'portalClaim.operationId': operationId,
+          'portalClaim.attempts': claim.attempts,
+          'portalClaim.expiresAt': { $gt: now },
+        },
+        { $inc: { 'portalClaim.attempts': 1 }, $set: { updatedAt: now } },
+      );
+      if (failed.matchedCount !== 1) return 'not-found';
+      return claim.attempts + 1 >= 5 ? 'locked' : 'invalid';
+    }
+
+    const linkedElsewhere = await collection.findOne({
+      _tenantId: context.tenantId,
+      portalAccountUserId: context.platformUserId,
+      _id: { $ne: patientId },
+    });
+    if (linkedElsewhere) return 'not-found';
+
+    try {
+      const linked = await collection.updateOne(
+        {
+          _id: patientId,
+          _tenantId: context.tenantId,
+          status: 'ACTIVE',
+          portalAccountUserId: null,
+          'portalClaim.accountUserId': context.platformUserId,
+          'portalClaim.operationId': operationId,
+          'portalClaim.attempts': claim.attempts,
+          'portalClaim.codeDigest': claim.codeDigest,
+          'portalClaim.expiresAt': { $gt: now },
+        },
+        {
+          $set: {
+            portalAccountUserId: context.platformUserId,
+            portalLinkedAt: now,
+            updatedAt: now,
+          },
+          $unset: { portalClaim: '' },
+        },
+      );
+      if (linked.matchedCount === 1) return 'linked';
+    } catch (error) {
+      if (isPatientPortalAccountDuplicate(error)) return 'not-found';
+      throw error;
+    }
+
+    const current = await collection.findOne({
+      _id: patientId,
+      _tenantId: context.tenantId,
+    });
+    return current?.portalAccountUserId === context.platformUserId ? 'already-linked' : 'not-found';
+  }
+
+  async findPatientByPortalUser(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<PatientRecord | null> {
+    const collection = await this.getPortalCollection(context, route);
+    const document = await collection.findOne({
+      _tenantId: context.tenantId,
+      portalAccountUserId: context.platformUserId,
+      status: 'ACTIVE',
+    });
+    return document ? toPatientRecord(document) : null;
+  }
+
   /**
    * Explicit operator action after provisioning an existing tenant database.
    * Never called at application startup or as part of a Patient request.
@@ -340,6 +586,14 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
           collation: PATIENT_DUPLICATE_COLLATION,
         });
       }
+      await collection.createIndex(
+        { _tenantId: 1, portalAccountUserId: 1 },
+        {
+          unique: true,
+          name: PATIENT_PORTAL_ACCOUNT_INDEX_NAME,
+          partialFilterExpression: { portalAccountUserId: { $type: 'string' } },
+        },
+      );
 
       const indexes = await collection.indexes();
       if (!hasRequiredPatientWriteIndexes(indexes)) throw new TenantStorageUnavailableError();
@@ -364,6 +618,24 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
   ): Promise<void> {
     const indexes = await collection.indexes();
     if (!hasPatientNumberUniqueIndex(indexes)) throw new TenantStorageUnavailableError();
+  }
+
+  private async assertPortalAccountIndex(
+    collection: Collection<PatientMongoDocument>,
+  ): Promise<void> {
+    const indexes = await collection.indexes();
+    const found = indexes.some((index) => {
+      const partial = index.partialFilterExpression as Document | undefined;
+      return (
+        index.name === PATIENT_PORTAL_ACCOUNT_INDEX_NAME &&
+        index.unique === true &&
+        sameIndexKey(index.key, { _tenantId: 1, portalAccountUserId: 1 }) &&
+        partial !== undefined &&
+        Object.keys(partial).length === 1 &&
+        (partial.portalAccountUserId as Document | undefined)?.$type === 'string'
+      );
+    });
+    if (!found) throw new TenantStorageUnavailableError();
   }
 
   private async getCollection(
@@ -396,6 +668,36 @@ export class MongoTenantPatientStorage implements TenantPatientStorage {
       throw new TenantStorageUnavailableError();
     }
 
+    const database = await this.clients.getDatabase(target);
+    return database.collection<PatientMongoDocument>(PATIENT_COLLECTION_NAME);
+  }
+
+  private async getPortalCollection(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<Collection<PatientMongoDocument>> {
+    if (!context || !isWellFormedTrustedPatientPortalContext(context)) {
+      throw new TenantContextInvalidError();
+    }
+    if (!route || !Array.isArray(route.placements) || route.placements.length !== 1) {
+      throw new TenantStorageNotConfiguredError();
+    }
+    const placement = route.placements[0];
+    if (!placement || typeof placement.placementId !== 'string') {
+      throw new TenantStorageUnavailableError();
+    }
+    const target = await this.targetResolver.findActivePrimaryTarget(
+      context,
+      placement.placementId,
+    );
+    if (!target) throw new TenantStorageNotConfiguredError();
+    if (
+      target.tenantId.toLowerCase() !== context.tenantId.toLowerCase() ||
+      target.status !== 'ACTIVE' ||
+      !target.isPrimary
+    ) {
+      throw new TenantStorageUnavailableError();
+    }
     const database = await this.clients.getDatabase(target);
     return database.collection<PatientMongoDocument>(PATIENT_COLLECTION_NAME);
   }
@@ -510,6 +812,21 @@ function isPatientDuplicateIndex(error: unknown): boolean {
   );
 }
 
+function isPatientPortalAccountDuplicate(error: unknown): boolean {
+  if (typeof error !== 'object' || error === null) return false;
+  const candidate = error as {
+    code?: unknown;
+    keyPattern?: Record<string, unknown>;
+    message?: unknown;
+  };
+  return (
+    candidate.code === 11000 &&
+    ((candidate.keyPattern?._tenantId === 1 && candidate.keyPattern.portalAccountUserId === 1) ||
+      (typeof candidate.message === 'string' &&
+        candidate.message.includes(PATIENT_PORTAL_ACCOUNT_INDEX_NAME)))
+  );
+}
+
 function toPatientRecord(document: PatientMongoDocument): PatientRecord {
   return {
     id: document._id,
@@ -524,6 +841,16 @@ function toPatientRecord(document: PatientMongoDocument): PatientRecord {
     email: document.email,
     nationalId: document.nationalId,
     address: document.address,
+    portalAccountUserId: document.portalAccountUserId ?? null,
+    portalLinkedAt: document.portalLinkedAt ? new Date(document.portalLinkedAt) : null,
+    portalClaim: document.portalClaim
+      ? {
+          ...document.portalClaim,
+          createdAt: new Date(document.portalClaim.createdAt),
+          expiresAt: new Date(document.portalClaim.expiresAt),
+          consentAcceptedAt: new Date(document.portalClaim.consentAcceptedAt),
+        }
+      : null,
     status: document.status,
     createdAt: new Date(document.createdAt),
     updatedAt: new Date(document.updatedAt),

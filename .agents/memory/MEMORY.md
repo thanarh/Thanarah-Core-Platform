@@ -33,6 +33,7 @@
 - [تشغيل ثنارة داخليًا](thanarah-internal-operations.md) — نطاق المرحلة الثانية؛ الإغلاق يتطلب صلاحيات دقيقة وتدقيقًا ومطابقة مالية.
 - [Strict shared-document fences](strict-document-fences.md) — reference locks must preserve owning schemas; sparse fixtures can miss a later authentication failure.
 - [رحلة العميل والباقات](thanarah-customer-journey.md) — نطاق المرحلة الثالثة؛ الإغلاق يتطلب رحلة مثبتة من التسجيل حتى استلام الحساب.
+- [هوية بوابة المريض](thanarah-patient-portal-identity.md) — فواتير المريض تتطلب مطابقة بريد الحساب مع سجل العيادة ثم OTP إلى الجوال المحفوظ.
 - [نطاق Smart Clinic](thanarah-smart-clinic-scope.md) — المرحلة الرابعة؛ القبول بسيناريو عيادة اصطناعي من الحجز حتى إغلاق الزيارة واختبار واجهات الأدوار.
 - [نطاق Website Builder](thanarah-website-builder-scope.md) — المرحلة الخامسة؛ الإغلاق يتطلب موقع عيادة منشورًا على نطاق تجريبي، لا معاينة فقط.
 - [نطاق المشاريع وGitHub](thanarah-projects-github-scope.md) — المرحلة السادسة؛ الإغلاق بدورة تعديل تجريبي من الطلب إلى الاختبار والنشر والتوثيق.

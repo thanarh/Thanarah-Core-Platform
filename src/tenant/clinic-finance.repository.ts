@@ -6,6 +6,8 @@ import {
   isWellFormedTrustedTenantContext,
 } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
+import type { TrustedTenantStorageContext } from './tenant-context.contract';
 import {
   TenantStorageNotConfiguredError,
   TenantStorageUnavailableError,
@@ -38,6 +40,14 @@ export class ClinicFinanceRepository {
     return this.withRoute(context, (route) => this.storage.getSettings(context, route));
   }
 
+  getPatientPortalPaymentSettings(
+    context: TrustedPatientPortalContext,
+  ): Promise<Pick<ClinicInvoiceSettings, 'currencyCode' | 'bankTransfer'>> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.getPatientPortalPaymentSettings(context, route),
+    );
+  }
+
   saveSettings(
     context: TrustedTenantContext,
     input: ClinicFinanceSettingsSaveInput,
@@ -61,6 +71,25 @@ export class ClinicFinanceRepository {
     query: ListClinicInvoicesQuery,
   ): Promise<ClinicInvoiceListResult> {
     return this.withRoute(context, (route) => this.storage.listInvoices(context, route, query));
+  }
+
+  listPatientInvoices(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+  ): Promise<ClinicInvoice[]> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.listPatientInvoices(context, route, patientId),
+    );
+  }
+
+  findPatientInvoice(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    invoiceId: string,
+  ): Promise<ClinicInvoice | null> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.findPatientInvoice(context, route, patientId, invoiceId),
+    );
   }
 
   findInvoice(context: TrustedTenantContext, invoiceId: string): Promise<ClinicInvoice | null> {
@@ -137,19 +166,21 @@ export class ClinicFinanceRepository {
   }
 
   createTransfer(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     transfer: ClinicInvoiceTransfer,
   ): Promise<ClinicInvoiceTransfer> {
-    return this.withRoute(context, (route) =>
+    return this.withStorageRoute(context, (route) =>
       this.storage.createTransfer(context, route, transfer),
     );
   }
 
   listTransfers(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
   ): Promise<ClinicInvoiceTransfer[]> {
-    return this.withRoute(context, (route) => this.storage.listTransfers(context, route, filters));
+    return this.withStorageRoute(context, (route) =>
+      this.storage.listTransfers(context, route, filters),
+    );
   }
 
   findTransfer(
@@ -191,6 +222,46 @@ export class ClinicFinanceRepository {
     if (!context || !isWellFormedTrustedTenantContext(context)) {
       throw new TenantContextInvalidError();
     }
+    try {
+      return await operation(await this.resolver.resolve(context));
+    } catch (error) {
+      if (
+        error instanceof TenantContextInvalidError ||
+        error instanceof TenantStorageNotConfiguredError ||
+        error instanceof TenantStorageUnavailableError ||
+        error instanceof HttpException
+      ) {
+        throw error;
+      }
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  private async withPortalRoute<T>(
+    context: TrustedPatientPortalContext,
+    operation: (route: Awaited<ReturnType<TenantStorageResolver['resolve']>>) => Promise<T>,
+  ): Promise<T> {
+    if (!context) throw new TenantContextInvalidError();
+    try {
+      return await operation(await this.resolver.resolve(context));
+    } catch (error) {
+      if (
+        error instanceof TenantContextInvalidError ||
+        error instanceof TenantStorageNotConfiguredError ||
+        error instanceof TenantStorageUnavailableError ||
+        error instanceof HttpException
+      ) {
+        throw error;
+      }
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  private async withStorageRoute<T>(
+    context: TrustedTenantStorageContext,
+    operation: (route: Awaited<ReturnType<TenantStorageResolver['resolve']>>) => Promise<T>,
+  ): Promise<T> {
+    if (!context) throw new TenantContextInvalidError();
     try {
       return await operation(await this.resolver.resolve(context));
     } catch (error) {

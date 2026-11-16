@@ -5,6 +5,16 @@ export const PatientStatus = {
 
 export type PatientStatus = (typeof PatientStatus)[keyof typeof PatientStatus];
 
+export interface PatientPortalClaim {
+  operationId: string;
+  accountUserId: string;
+  codeDigest: string;
+  createdAt: Date;
+  expiresAt: Date;
+  attempts: number;
+  consentAcceptedAt: Date;
+}
+
 export interface PatientRecord {
   id: string;
   patientNumber: string;
@@ -18,6 +28,9 @@ export interface PatientRecord {
   email: string | null;
   nationalId: string | null;
   address: string | null;
+  portalAccountUserId?: string | null;
+  portalLinkedAt?: Date | null;
+  portalClaim?: PatientPortalClaim | null;
   status: PatientStatus;
   createdAt: Date;
   updatedAt: Date;

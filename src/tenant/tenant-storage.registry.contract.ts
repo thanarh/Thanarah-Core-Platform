@@ -1,4 +1,4 @@
-import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedTenantStorageContext } from './tenant-context.contract';
 
 export const TENANT_STORAGE_TARGET_RESOLVER = Symbol('TENANT_STORAGE_TARGET_RESOLVER');
 
@@ -16,7 +16,7 @@ export interface TenantStorageTargetRecord {
 
 export interface TenantStorageTargetResolver {
   findActivePrimaryTarget(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     placementId: string,
   ): Promise<TenantStorageTargetRecord | null>;
 }

@@ -26,9 +26,13 @@ import {
 } from './clinic-finance.errors';
 import {
   TenantContextInvalidError,
-  isWellFormedTrustedTenantContext,
+  isWellFormedTrustedTenantStorageContext,
 } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type {
+  TrustedPatientPortalContext,
+  TrustedTenantStorageContext,
+} from './tenant-context.contract';
 import type { TenantStorageRoute } from './tenant-storage.contract';
 import {
   TenantStorageNotConfiguredError,
@@ -160,6 +164,30 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
             tenantId: context.tenantId,
             ...structuredClone(DEFAULT_CLINIC_INVOICE_SETTINGS),
           };
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  async getPatientPortalPaymentSettings(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<Pick<ClinicInvoiceSettings, 'currencyCode' | 'bankTransfer'>> {
+    const database = await this.getDatabase(context, route);
+    const collection = database.collection<ClinicInvoiceSettingsDocument>(SETTINGS_COLLECTION_NAME);
+    await this.assertSettingsIndex(collection);
+    try {
+      const document = await collection.findOne({ _tenantId: context.tenantId });
+      const settings = document
+        ? toSettings(document)
+        : {
+            tenantId: context.tenantId,
+            ...structuredClone(DEFAULT_CLINIC_INVOICE_SETTINGS),
+          };
+      return {
+        currencyCode: settings.currencyCode,
+        bankTransfer: structuredClone(settings.bankTransfer),
+      };
     } catch {
       throw new TenantStorageUnavailableError();
     }
@@ -320,6 +348,50 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
     }
   }
 
+  async listPatientInvoices(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+  ): Promise<ClinicInvoice[]> {
+    const collection = await this.getPatientInvoiceCollection(context, route);
+    try {
+      const documents = await collection
+        .find({
+          _tenantId: context.tenantId,
+          patientId,
+          status: 'ISSUED',
+          totals: { $ne: null },
+        })
+        .sort({ issuedAt: -1, _id: -1 })
+        .limit(100)
+        .toArray();
+      return documents.map(toInvoice);
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  async findPatientInvoice(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    invoiceId: string,
+  ): Promise<ClinicInvoice | null> {
+    const collection = await this.getPatientInvoiceCollection(context, route);
+    try {
+      const document = await collection.findOne({
+        _id: invoiceId,
+        _tenantId: context.tenantId,
+        patientId,
+        status: 'ISSUED',
+        totals: { $ne: null },
+      });
+      return document ? toInvoice(document) : null;
+    } catch {
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
   async findInvoice(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -351,6 +423,7 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
     const version = current.version + 1;
     const update = withoutUndefined({
       currencyCode: patch.currencyCode,
+      patientId: patch.patientId,
       recipientName: patch.recipientName,
       invoiceDate: patch.invoiceDate,
       customFieldValues: patch.customFieldValues,
@@ -581,7 +654,7 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async createTransfer(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     transfer: ClinicInvoiceTransfer,
   ): Promise<ClinicInvoiceTransfer> {
@@ -615,7 +688,7 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async listTransfers(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
   ): Promise<ClinicInvoiceTransfer[]> {
@@ -747,16 +820,27 @@ export class MongoTenantClinicFinanceStorage implements ClinicFinanceStorage {
     return database.collection<ClinicInvoiceDocument>(INVOICE_COLLECTION_NAME);
   }
 
+  private async getPatientInvoiceCollection(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<Collection<ClinicInvoiceDocument>> {
+    const database = await this.getDatabase(context, route);
+    return database.collection<ClinicInvoiceDocument>(INVOICE_COLLECTION_NAME);
+  }
+
   private async getTransferCollection(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
   ): Promise<Collection<ClinicInvoiceTransferDocument>> {
     const database = await this.getDatabase(context, route);
     return database.collection<ClinicInvoiceTransferDocument>(TRANSFER_COLLECTION_NAME);
   }
 
-  private async getDatabase(context: TrustedTenantContext, route: TenantStorageRoute): Promise<Db> {
-    if (!context || !isWellFormedTrustedTenantContext(context)) {
+  private async getDatabase(
+    context: TrustedTenantStorageContext,
+    route: TenantStorageRoute,
+  ): Promise<Db> {
+    if (!context || !isWellFormedTrustedTenantStorageContext(context)) {
       throw new TenantContextInvalidError();
     }
     if (!route || !Array.isArray(route.placements) || route.placements.length === 0) {
@@ -1081,6 +1165,7 @@ function toInvoice(document: ClinicInvoiceDocument): ClinicInvoice {
   return {
     id: document._id,
     tenantId: document._tenantId,
+    patientId: document.patientId ?? null,
     invoiceNumber: document.invoiceNumber ?? null,
     manualInvoiceNumber: document.manualInvoiceNumber ?? null,
     status: document.status,

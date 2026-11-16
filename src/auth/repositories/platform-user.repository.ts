@@ -20,6 +20,12 @@ export class PlatformUserRepository implements PlatformUserPersistencePort {
     });
   }
 
+  findEmailById(id: string): Promise<string | null> {
+    return this.prisma.user.findUnique({ where: { id }, select: { email: true } }).then((user) => {
+      return user?.email ?? null;
+    });
+  }
+
   findLoginRecordByEmail(email: string): Promise<PlatformLoginUserRecord | null> {
     return this.prisma.user.findUnique({
       where: { email },

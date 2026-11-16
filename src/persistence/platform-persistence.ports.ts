@@ -952,6 +952,7 @@ export interface PlatformLoginUserRecord extends PlatformUserAuthRecord {
 
 export interface PlatformUserPersistencePort {
   findAuthRecordById(id: string): Promise<PlatformUserAuthRecord | null>;
+  findEmailById(id: string): Promise<string | null>;
   findLoginRecordByEmail(email: string): Promise<PlatformLoginUserRecord | null>;
   recordFailedLogin(
     id: string,

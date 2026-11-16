@@ -40,7 +40,10 @@ export type PatientAuditContext = Pick<
   'requestId' | 'ipAddress' | 'userAgent'
 >;
 
-export type PatientResponse = Omit<PatientRecord, 'dateOfBirth'> & {
+export type PatientResponse = Omit<
+  PatientRecord,
+  'dateOfBirth' | 'portalAccountUserId' | 'portalLinkedAt' | 'portalClaim'
+> & {
   dateOfBirth: string | null;
 };
 
@@ -312,9 +315,15 @@ export class PatientService {
   }
 
   private present(record: PatientRecord): PatientResponse {
+    const {
+      portalAccountUserId: _portalAccountUserId,
+      portalLinkedAt: _portalLinkedAt,
+      portalClaim: _portalClaim,
+      ...publicRecord
+    } = record;
     return {
-      ...record,
-      dateOfBirth: record.dateOfBirth?.toISOString().slice(0, 10) ?? null,
+      ...publicRecord,
+      dateOfBirth: publicRecord.dateOfBirth?.toISOString().slice(0, 10) ?? null,
     };
   }
 

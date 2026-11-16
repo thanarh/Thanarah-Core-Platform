@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import type { AuthenticatedPlatformUser } from '../src/auth/auth.types';
 import {
   ClinicFinanceInputError,
@@ -18,7 +18,10 @@ import {
   DevelopmentTenantDatabaseRegistry,
   TenantStorageResolverService,
 } from '../src/tenant/tenant-storage.resolver';
-import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
+import type {
+  TrustedPatientPortalContext,
+  TrustedTenantContext,
+} from '../src/tenant/tenant-context.contract';
 
 const tenantId = '11111111-1111-4111-8111-111111111111';
 const otherTenantId = '55555555-5555-4555-8555-555555555555';
@@ -388,5 +391,103 @@ describe('ClinicFinanceService', () => {
       ],
     });
     expect((await service.getInvoice(context, issuedInvoice.id)).status).toBe('ISSUED');
+  });
+
+  it('limits patient transfer access to linked issued invoices and exposes review status only', async () => {
+    const storage = new InMemoryClinicFinanceStorage();
+    const resolver = new TenantStorageResolverService(new DevelopmentTenantDatabaseRegistry());
+    const repository = new ClinicFinanceRepository(storage, resolver);
+    const patientId = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
+    const patients = {
+      findByIdForTenant: vi.fn().mockResolvedValue({ id: patientId, status: 'ACTIVE' }),
+    };
+    const service = new ClinicFinanceService(repository, patients as never);
+    const context = trustedContext(tenantId);
+    const portalContext = {
+      tenantId,
+      platformUserId: userId,
+    } as TrustedPatientPortalContext;
+    const receipt: ReceiptUpload = {
+      bytes: Buffer.from('%PDF-1.4\nsynthetic receipt'),
+      fileName: 'receipt.pdf',
+      mimeType: 'application/pdf',
+      sha256: 'c'.repeat(64),
+    };
+
+    await service.updateSettings(context, settingsInput(), actor);
+    await service.updatePaymentSettings(
+      context,
+      {
+        expectedVersion: 1,
+        bankTransfer: {
+          enabled: true,
+          bankName: 'Configured Bank',
+          accountHolder: 'Clinic Account',
+          iban: 'SA0000000000000000000000',
+          currencyCode: 'SAR',
+        },
+      },
+      actor,
+    );
+    const draft = await service.createInvoice(context, { ...invoiceInput(), patientId }, actor);
+    const reviewed = await service.reviewInvoice(
+      context,
+      draft.id,
+      { expectedVersion: draft.version },
+      actor,
+    );
+    const issued = await service.issueInvoice(
+      context,
+      draft.id,
+      { expectedVersion: reviewed.version },
+      actor,
+    );
+
+    await expect(service.listPatientInvoices(portalContext, patientId)).resolves.toMatchObject([
+      {
+        id: issued.id,
+        status: 'ISSUED',
+        transferStatus: null,
+      },
+    ]);
+    await expect(
+      service.getPatientInvoice(
+        { ...portalContext, tenantId: otherTenantId } as TrustedPatientPortalContext,
+        patientId,
+        issued.id,
+      ),
+    ).rejects.toBeInstanceOf(ClinicInvoiceNotFoundError);
+
+    await expect(
+      service.submitPatientInvoiceTransfer(
+        portalContext,
+        patientId,
+        issued.id,
+        receipt,
+        actor,
+        'patient-transfer-1',
+      ),
+    ).resolves.toMatchObject({ status: 'PENDING_REVIEW' });
+    const pending = await service.listPatientInvoices(portalContext, patientId);
+    expect(pending[0]?.transferStatus).toMatchObject({ status: 'PENDING_REVIEW' });
+    expect(pending[0]?.transferStatus).not.toHaveProperty('submittedBy');
+    expect(pending[0]?.transferStatus).not.toHaveProperty('receiptSha256');
+
+    const staffTransfers = await service.listInvoiceTransfers(context, { invoiceId: issued.id });
+    await service.reviewInvoiceTransfer(
+      context,
+      staffTransfers[0]!.id,
+      { expectedVersion: staffTransfers[0]!.version, reason: 'Receipt checked' },
+      'APPROVED',
+      actor,
+    );
+    await expect(service.getInvoice(context, issued.id)).resolves.toMatchObject({
+      status: 'ISSUED',
+    });
+    await expect(
+      service.getPatientInvoice(portalContext, patientId, issued.id),
+    ).resolves.toMatchObject({
+      transferStatus: { status: 'APPROVED', reviewReason: 'Receipt checked' },
+    });
   });
 });

@@ -1,0 +1,63 @@
+:root {
+  --portal-green: #28583f;
+  --portal-dark: #173d2c;
+  --portal-paper: #fbfbf7;
+  --portal-line: #d9e1d7;
+  --portal-ink: #20352b;
+  --portal-soft: #596b60;
+}
+body { background: #f1f2eb; color: var(--portal-ink); }
+.patient-portal { min-height: 100dvh; padding: clamp(16px, 4vw, 42px); }
+.portal-wrap { max-width: 880px; margin: 0 auto; }
+.portal-card { background: var(--portal-paper); border: 1px solid var(--portal-line); border-radius: 15px; box-shadow: 0 20px 55px rgba(31,61,44,.08); padding: clamp(20px, 4vw, 36px); }
+.portal-brand { display: flex; align-items: center; gap: 12px; margin-bottom: 28px; }
+.portal-brand img { width: 45px; height: 45px; object-fit: contain; }
+.portal-brand div { display: grid; gap: 2px; }
+.portal-brand strong { color: var(--portal-dark); font-size: 21px; }
+.portal-brand span { color: #829087; font: 10px var(--font-mono); letter-spacing: .12em; }
+.portal-heading { display: flex; justify-content: space-between; align-items: start; gap: 16px; margin-bottom: 24px; }
+.portal-heading h1 { font-size: clamp(28px, 4vw, 38px); margin: 5px 0 8px; line-height: 1.2; }
+.portal-heading p, .portal-copy { color: var(--portal-soft); line-height: 1.9; margin: 0; }
+.portal-kicker { color: var(--portal-green); font-size: 12px; font-weight: 800; }
+.portal-form { display: grid; gap: 15px; max-width: 540px; margin-top: 22px; }
+.portal-consent { display: flex; align-items: start; gap: 10px; color: var(--portal-soft); line-height: 1.8; font-size: 13px; }
+.portal-consent input { margin-top: 7px; accent-color: var(--portal-green); }
+.portal-message { border: 1px solid #d7dfd5; background: #f5f7f1; border-radius: 8px; padding: 12px 14px; color: var(--portal-soft); line-height: 1.8; }
+.portal-message.error { border-color: #e6c9c1; background: #fbefeb; color: #863b33; }
+.portal-invoice-list { display: grid; gap: 12px; }
+.portal-invoice { background: #fff; border: 1px solid var(--portal-line); border-radius: 11px; padding: 17px; display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 10px 16px; align-items: center; }
+.portal-invoice h2 { font-size: 17px; margin: 0 0 4px; }
+.portal-invoice p { color: var(--portal-soft); font-size: 13px; margin: 0; }
+.portal-invoice-total { text-align: left; font-size: 18px; font-weight: 800; direction: ltr; }
+.portal-invoice-actions { grid-column: 1 / -1; display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; padding-top: 7px; }
+.portal-detail { margin-top: 22px; border-top: 1px solid var(--portal-line); padding-top: 22px; }
+.portal-detail h2 { font-size: 23px; margin: 0 0 14px; }
+.portal-lines { width: 100%; border-collapse: collapse; text-align: right; }
+.portal-lines th, .portal-lines td { border-bottom: 1px solid #e9ede6; padding: 12px 8px; font-size: 13px; }
+.portal-lines th { color: #718077; }
+.portal-bank { margin: 16px 0; padding: 17px; background: #f5f7f1; border: 1px solid var(--portal-line); border-radius: 9px; }
+.portal-bank h3 { margin: 0 0 12px; font-size: 16px; }
+.portal-bank-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.portal-bank-grid div { display: grid; gap: 4px; min-width: 0; }
+.portal-bank-grid small { color: #718077; }
+.portal-bank-grid strong { overflow-wrap: anywhere; }
+.portal-transfer { padding: 13px; border-radius: 8px; margin: 14px 0; background: #f5f7f1; line-height: 1.8; }
+.portal-transfer[data-status="REJECTED"] { background: #fbefeb; color: #863b33; }
+.portal-transfer[data-status="APPROVED"] { background: #e5eee5; color: #28583f; }
+.portal-transfer-form { display: grid; gap: 12px; margin-top: 16px; max-width: 540px; }
+.portal-toolbar { display: flex; align-items: center; gap: 8px; }
+.portal-toolbar .btn { min-height: 39px; }
+.portal-empty { padding: 26px 18px; border: 1px dashed #cdd8cc; border-radius: 10px; color: var(--portal-soft); text-align: center; line-height: 1.9; }
+.portal-note { color: #718077; font-size: 12px; line-height: 1.8; }
+.portal-loading { text-align: center; padding: 30px 12px; color: var(--portal-soft); }
+.portal-currency { display: inline-flex; align-items: center; gap: 5px; }
+.portal-currency img { width: 17px; height: 17px; object-fit: contain; vertical-align: middle; }
+.portal-copy-link { direction: ltr; text-align: left; font: 12px var(--font-mono); overflow-wrap: anywhere; }
+@media (max-width: 620px) {
+  .patient-portal { padding: 12px; }
+  .portal-card { padding: 20px 16px; border-radius: 11px; }
+  .portal-heading { flex-direction: column; }
+  .portal-invoice { grid-template-columns: 1fr; }
+  .portal-invoice-total { text-align: right; }
+  .portal-bank-grid { grid-template-columns: 1fr; }
+}

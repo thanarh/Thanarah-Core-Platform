@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module';
+import { ConfigModule } from '../config/config.module';
 import { DatabaseModule } from '../database/database.module';
 import { PlatformSecurityModule } from '../platform-security/platform-security.module';
 import { TenantController } from './tenant.controller';
@@ -58,10 +59,13 @@ import { ClinicFinanceService } from './clinic-finance.service';
 import { ClinicFinanceRepository } from './clinic-finance.repository';
 import { TenantSubscriptionPortalController } from './tenant-subscription-portal.controller';
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
+import { PatientPortalController } from './patient-portal.controller';
+import { PatientPortalService } from './patient-portal.service';
 
 @Module({
   imports: [
     AuthModule,
+    ConfigModule,
     DatabaseModule,
     PlatformSecurityModule,
     TenantEntitlementModule,
@@ -98,6 +102,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     TenantEncounterController,
     TenantClinicFinanceController,
     TenantSubscriptionPortalController,
+    PatientPortalController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -122,6 +127,7 @@ import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
     TenantRoleService,
     TenantService,
     TrustedTenantContextFactoryService,
+    PatientPortalService,
   ],
   exports: [
     TenantEntitlementModule,

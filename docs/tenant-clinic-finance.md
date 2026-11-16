@@ -80,11 +80,23 @@ The product owner and qualified reviewers still need to decide:
 2. Which tax treatments, rates, calculation bases, and rounding rules apply.
 3. Whether invoice numbering resets by year, facility, or another approved
    scope, and how duplicate or corrected numbers should be handled.
-4. Whether invoices should link to patients, appointments, or clinical
-   services, and what privacy and access rules that requires.
+4. Whether invoices should also link to appointments or clinical services.
 5. Whether voids, credit notes, refunds, or payment allocation are required.
-   Patient-facing invoice access also needs a secure patient-to-account link
-   and verified ownership; no patient portal is currently exposed.
+
+New invoices may be linked to an active patient record while still a draft.
+The patient portal at `/patient-portal/` requires a signed-in Thanarah account,
+an explicit consent checkbox, an exact email match to one active patient
+record, and a one-time code sent only to that record's stored phone. The
+patient sees only issued invoices linked to the verified record. The link is
+revoked if the record's email or phone changes. Issued invoices that were not
+linked before issuance are not shown in the portal.
+
+OTP delivery fails closed unless the Thanarah WhatsApp API key and OTP HMAC
+secret are configured. Saudi local mobile numbers are normalized to `+966`;
+other numbers must already be in international format. The portal never
+confirms whether an email matched. Codes expire after five minutes and allow
+at most five verification attempts. This OTP request is a messaging action
+only; it does not initiate a payment.
 
 No payment provider is called by these manual receipt flows. Paymob remains a
 separate final roadmap stage after both manual-transfer paths and product

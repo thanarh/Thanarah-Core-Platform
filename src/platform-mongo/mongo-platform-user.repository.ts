@@ -26,6 +26,14 @@ export class MongoPlatformUserRepository implements PlatformUserPersistencePort 
     });
   }
 
+  findEmailById(id: string): Promise<string | null> {
+    return this.read(async (collection) => {
+      const document = await collection.findOne({ _id: id }, { projection: { email: 1 } });
+      if (!document) return null;
+      return this.parse(document).email;
+    });
+  }
+
   findLoginRecordByEmail(email: string): Promise<PlatformLoginUserRecord | null> {
     return this.read(async (collection) => {
       const document = await collection.findOne(

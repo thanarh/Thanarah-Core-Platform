@@ -104,6 +104,7 @@ export interface ClinicInvoiceAuditEvent {
 export interface ClinicInvoice {
   id: string;
   tenantId: string;
+  patientId: string | null;
   invoiceNumber: string | null;
   manualInvoiceNumber: string | null;
   status: ClinicInvoiceStatus;
@@ -182,6 +183,31 @@ export type ClinicInvoiceView = Omit<
   | 'reviewedBy'
   | 'issuedBy'
 >;
+
+export interface PatientInvoiceTransferStatusView {
+  status: ClinicInvoiceTransferStatus;
+  submittedAt: Date;
+  reviewedAt: Date | null;
+  reviewReason: string | null;
+  version: number;
+}
+
+export type PatientClinicInvoiceView = Pick<
+  ClinicInvoiceView,
+  | 'id'
+  | 'invoiceNumber'
+  | 'status'
+  | 'recipientName'
+  | 'invoiceDate'
+  | 'customFieldValues'
+  | 'currencyCode'
+  | 'lines'
+  | 'totals'
+  | 'version'
+  | 'issuedAt'
+> & {
+  transferStatus: PatientInvoiceTransferStatusView | null;
+};
 
 export type ClinicInvoicePage = Omit<ClinicInvoiceListResult, 'items'> & {
   items: ClinicInvoiceView[];

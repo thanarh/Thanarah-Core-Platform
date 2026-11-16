@@ -67,6 +67,12 @@ const requiredPatientWriteIndexes = [
     partialFilterExpression: { dateOfBirth: { $type: 'date' } },
     collation: { locale: 'en', strength: 2 },
   },
+  {
+    name: 'tenant_patient_portal_account_unique',
+    key: { _tenantId: 1, portalAccountUserId: 1 },
+    unique: true,
+    partialFilterExpression: { portalAccountUserId: { $type: 'string' } },
+  },
 ];
 
 type TestMockFunction = ReturnType<typeof vi.fn>;
@@ -206,6 +212,57 @@ describe('MongoTenantPatientStorage', () => {
       targetId,
     );
     expect(setupState.clients.getDatabase).toHaveBeenCalledWith(target);
+  });
+
+  it('stores an OTP claim atomically against the matched tenant patient record', async () => {
+    const setupState = setup();
+    const portalContext = {
+      tenantId,
+      platformUserId: context.platformUserId,
+    } as import('../src/tenant/tenant-context.contract').TrustedPatientPortalContext;
+    const patientId = '66666666-6666-4666-8666-666666666666';
+    const now = new Date('2026-11-16T12:00:00.000Z');
+    const claim = {
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      accountUserId: context.platformUserId,
+      codeDigest: 'a'.repeat(64),
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 5 * 60_000),
+      attempts: 0,
+      consentAcceptedAt: now,
+    };
+    setupState.collection.findOne
+      .mockResolvedValueOnce(
+        makeDocument({
+          _id: patientId,
+          email: 'patient@example.test',
+          phone: '+966501234567',
+          portalClaim: null,
+          portalAccountUserId: null,
+        }),
+      )
+      .mockResolvedValueOnce(null);
+
+    await expect(
+      setupState.storage.startPortalClaim(
+        portalContext,
+        route,
+        patientId,
+        'patient@example.test',
+        claim,
+      ),
+    ).resolves.toEqual(claim);
+    expect(setupState.getLastUpdateFilter()).toMatchObject({
+      _id: patientId,
+      _tenantId: tenantId,
+      email: 'patient@example.test',
+      status: 'ACTIVE',
+      portalAccountUserId: null,
+    });
+    expect(setupState.getLastUpdateFilter()?.$and).toBeDefined();
+    expect(setupState.getLastUpdate()).toEqual({
+      $set: { portalClaim: claim, updatedAt: now },
+    });
   });
 
   it('scopes list, lookup, and updates by the trusted tenant and preserves ordering', async () => {
@@ -585,7 +642,7 @@ describe('MongoTenantPatientStorage', () => {
     ]);
     await setupState.storage.ensureIndexesForTarget(target);
 
-    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(6);
+    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(7);
     expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
       1,
       { _tenantId: 1, patientNumber: 1 },
@@ -631,6 +688,15 @@ describe('MongoTenantPatientStorage', () => {
         collation: { locale: 'en', strength: 2 },
       },
     );
+    expect(setupState.collection.createIndex).toHaveBeenNthCalledWith(
+      7,
+      { _tenantId: 1, portalAccountUserId: 1 },
+      {
+        unique: true,
+        name: 'tenant_patient_portal_account_unique',
+        partialFilterExpression: { portalAccountUserId: { $type: 'string' } },
+      },
+    );
     expect(setupState.collection.dropIndex.mock.calls).toEqual([
       ['tenant_patient_duplicate_phone_name_idx'],
       ['tenant_patient_duplicate_email_name_idx'],
@@ -645,7 +711,7 @@ describe('MongoTenantPatientStorage', () => {
     await expect(setupState.storage.ensureIndexesForTarget(target)).rejects.toBeInstanceOf(
       TenantStorageUnavailableError,
     );
-    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(6);
+    expect(setupState.collection.createIndex).toHaveBeenCalledTimes(7);
     expect(setupState.collection.dropIndex).not.toHaveBeenCalled();
     expect(setupState.collection.insertOne).not.toHaveBeenCalled();
     expect(setupState.collection.updateOne).not.toHaveBeenCalled();

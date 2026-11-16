@@ -5,11 +5,13 @@ import type {
   PatientDuplicateIdentity,
   PatientLifecycleMutationResult,
   PatientMutationResult,
+  PatientPortalClaim,
   PatientRecord,
   PatientStatus,
 } from './patient.model';
 import { TenantContextInvalidError, TenantContextRequiredError } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
 import {
   TenantStorageNotConfiguredError,
   TenantStorageUnavailableError,
@@ -49,6 +51,24 @@ export interface PatientRepository {
     nextStatus: PatientStatus,
     changedAt: Date,
   ): Promise<PatientLifecycleMutationResult>;
+  findPortalCandidates(
+    context: TrustedPatientPortalContext,
+    email: string,
+  ): Promise<PatientRecord[]>;
+  startPortalClaim(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    email: string,
+    claim: PatientPortalClaim,
+  ): Promise<PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'>;
+  verifyPortalClaim(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    operationId: string,
+    codeDigest: string,
+    now: Date,
+  ): Promise<'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'>;
+  findPatientByPortalUser(context: TrustedPatientPortalContext): Promise<PatientRecord | null>;
 }
 
 /** Patient persistence is resolved from trusted scope before every operation. */
@@ -112,8 +132,66 @@ export class TenantStoragePatientRepository implements PatientRepository {
     );
   }
 
+  findPortalCandidates(
+    context: TrustedPatientPortalContext,
+    email: string,
+  ): Promise<PatientRecord[]> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.findPortalCandidates(context, route, email),
+    );
+  }
+
+  startPortalClaim(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    email: string,
+    claim: PatientPortalClaim,
+  ): Promise<PatientPortalClaim | 'already-linked' | 'conflict' | 'not-found' | 'rate-limited'> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.startPortalClaim(context, route, patientId, email, claim),
+    );
+  }
+
+  verifyPortalClaim(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    operationId: string,
+    codeDigest: string,
+    now: Date,
+  ): Promise<'linked' | 'already-linked' | 'invalid' | 'expired' | 'locked' | 'not-found'> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.verifyPortalClaim(context, route, patientId, operationId, codeDigest, now),
+    );
+  }
+
+  findPatientByPortalUser(context: TrustedPatientPortalContext): Promise<PatientRecord | null> {
+    return this.withPortalRoute(context, (route) =>
+      this.storage.findPatientByPortalUser(context, route),
+    );
+  }
+
   private async withRoute<T>(
     context: TrustedTenantContext,
+    operation: (route: TenantStorageRoute) => Promise<T>,
+  ): Promise<T> {
+    try {
+      const route = await this.resolver.resolve(context);
+      return await operation(route);
+    } catch (error) {
+      if (
+        error instanceof TenantContextRequiredError ||
+        error instanceof TenantContextInvalidError ||
+        error instanceof TenantStorageNotConfiguredError ||
+        error instanceof TenantStorageUnavailableError
+      ) {
+        throw error;
+      }
+      throw new TenantStorageUnavailableError();
+    }
+  }
+
+  private async withPortalRoute<T>(
+    context: TrustedPatientPortalContext,
     operation: (route: TenantStorageRoute) => Promise<T>,
   ): Promise<T> {
     try {

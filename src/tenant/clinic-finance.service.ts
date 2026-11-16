@@ -12,6 +12,8 @@ import type {
   ClinicInvoiceTransfer,
   ClinicInvoiceTransferStatus,
   ClinicInvoiceTransferView,
+  PatientClinicInvoiceView,
+  PatientInvoiceTransferStatusView,
 } from './clinic-finance.model';
 import {
   calculateClinicInvoiceTotals,
@@ -35,6 +37,7 @@ import type {
   UpdateClinicPaymentSettingsInput,
   UpdateClinicInvoiceInput,
 } from './clinic-finance.dto';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
 import {
   ClinicFinanceInputError,
   ClinicFinanceSettingsConflictError,
@@ -48,6 +51,9 @@ import {
 import { ClinicFinanceRepository } from './clinic-finance.repository';
 import { createClinicInvoiceAuditEvent, newClinicInvoiceId } from './tenant-clinic-finance.storage';
 import type { ReceiptUpload } from '../common/receipt-upload';
+import { PATIENT_REPOSITORY, type PatientRepository } from './patient.repository';
+import { PatientStatus } from './patient.model';
+import { Optional } from '@nestjs/common';
 
 const IDEMPOTENCY_KEY_PATTERN = /^[\x21-\x7e]{1,128}$/u;
 const MAX_INVOICE_HISTORY = 1_000;
@@ -77,6 +83,7 @@ export interface ClinicFinanceRequestContext {
 export class ClinicFinanceService {
   constructor(
     @Inject(ClinicFinanceRepository) private readonly repository: ClinicFinanceRepository,
+    @Optional() @Inject(PATIENT_REPOSITORY) private readonly patients?: PatientRepository,
   ) {}
 
   async getSettings(context: Parameters<ClinicFinanceRepository['getSettings']>[0]) {
@@ -104,6 +111,22 @@ export class ClinicFinanceService {
 
   async getPaymentSettings(context: Parameters<ClinicFinanceRepository['getSettings']>[0]) {
     return presentPaymentSettings(await this.repository.getSettings(context));
+  }
+
+  async getPatientPortalPaymentSettings(context: TrustedPatientPortalContext) {
+    const settings = await this.repository.getPatientPortalPaymentSettings(context);
+    const configured =
+      settings.bankTransfer.enabled &&
+      Boolean(
+        settings.bankTransfer.bankName &&
+        settings.bankTransfer.accountHolder &&
+        settings.bankTransfer.iban &&
+        settings.bankTransfer.currencyCode,
+      );
+    return {
+      currencyCode: settings.currencyCode,
+      bankTransfer: configured ? settings.bankTransfer : null,
+    };
   }
 
   async updatePaymentSettings(
@@ -149,6 +172,38 @@ export class ClinicFinanceService {
     return { ...result, items: result.items.map(presentInvoice) };
   }
 
+  async listPatientInvoices(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+  ): Promise<PatientClinicInvoiceView[]> {
+    const invoices = await this.repository.listPatientInvoices(context, patientId);
+    return Promise.all(
+      invoices.map(async (invoice) => ({
+        ...presentPatientInvoice(invoice),
+        transferStatus: latestPatientTransferStatus(
+          await this.repository.listTransfers(context, { invoiceId: invoice.id }),
+        ),
+      })),
+    );
+  }
+
+  async getPatientInvoice(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    invoiceId: string,
+  ): Promise<PatientClinicInvoiceView> {
+    const parsedId = clinicInvoiceIdSchema.safeParse(invoiceId);
+    if (!parsedId.success) throw new ClinicFinanceInputError();
+    const invoice = await this.repository.findPatientInvoice(context, patientId, parsedId.data);
+    if (!invoice) throw new ClinicInvoiceNotFoundError();
+    return {
+      ...presentPatientInvoice(invoice),
+      transferStatus: latestPatientTransferStatus(
+        await this.repository.listTransfers(context, { invoiceId: invoice.id }),
+      ),
+    };
+  }
+
   async getInvoice(
     context: Parameters<ClinicFinanceRepository['getSettings']>[0],
     invoiceId: string,
@@ -173,6 +228,10 @@ export class ClinicFinanceService {
     }
     const settings = await this.repository.getSettings(context);
     validateInvoiceContents(parsed.data, settings, false);
+    if (parsed.data.patientId) {
+      const patient = await this.requireTenantPatient(context, parsed.data.patientId);
+      if (patient.status !== PatientStatus.ACTIVE) throw new ClinicFinanceInputError();
+    }
     const now = new Date();
     const id = newClinicInvoiceId();
     const creationKeyHash = idempotencyKey
@@ -182,6 +241,7 @@ export class ClinicFinanceService {
     const invoice: ClinicInvoice = {
       id,
       tenantId: context.tenantId,
+      patientId: parsed.data.patientId ?? null,
       invoiceNumber: null,
       manualInvoiceNumber: parsed.data.manualInvoiceNumber ?? null,
       status: 'DRAFT',
@@ -228,6 +288,10 @@ export class ClinicFinanceService {
       throw new ClinicInvoiceStateConflictError();
     }
     const settings = await this.repository.getSettings(context);
+    if (parsed.data.patientId) {
+      const patient = await this.requireTenantPatient(context, parsed.data.patientId);
+      if (patient.status !== PatientStatus.ACTIVE) throw new ClinicFinanceInputError();
+    }
     const nextCurrency = parsed.data.currencyCode ?? current.currencyCode;
     if (
       nextCurrency !== settings.currencyCode ||
@@ -414,6 +478,85 @@ export class ClinicFinanceService {
     return presentTransfer(saved);
   }
 
+  async submitPatientInvoiceTransfer(
+    context: TrustedPatientPortalContext,
+    patientId: string,
+    invoiceId: string,
+    receipt: ReceiptUpload,
+    actor: AuthenticatedPlatformUser,
+    idempotencyKey?: string,
+  ): Promise<PatientInvoiceTransferStatusView> {
+    if (!actor?.userId || actor.userId !== context.platformUserId) {
+      throw new ClinicFinanceInputError();
+    }
+    const id = clinicInvoiceIdSchema.safeParse(invoiceId);
+    if (!id.success || (idempotencyKey && !IDEMPOTENCY_KEY_PATTERN.test(idempotencyKey))) {
+      throw new ClinicFinanceInputError();
+    }
+    const settings = await this.repository.getPatientPortalPaymentSettings(context);
+    const invoice = await this.repository.findPatientInvoice(context, patientId, id.data);
+    if (!invoice) throw new ClinicInvoiceNotFoundError();
+    if (
+      !settings.bankTransfer.enabled ||
+      !settings.bankTransfer.bankName ||
+      !settings.bankTransfer.accountHolder ||
+      !settings.bankTransfer.iban ||
+      !settings.bankTransfer.currencyCode ||
+      !isSupportedCurrencyCode(settings.bankTransfer.currencyCode) ||
+      invoice.status !== 'ISSUED' ||
+      !invoice.totals ||
+      settings.bankTransfer.currencyCode !== invoice.currencyCode
+    ) {
+      throw new ClinicInvoicePaymentUnavailableError();
+    }
+    const keyHash = idempotencyKey
+      ? createHash('sha256').update(`${actor.userId}:${idempotencyKey}`).digest('hex')
+      : null;
+    const existing = await this.repository.listTransfers(context, { invoiceId: id.data });
+    const retry = existing.find(
+      (candidate) =>
+        keyHash &&
+        candidate.idempotencyKeyHash === keyHash &&
+        candidate.submittedBy === actor.userId,
+    );
+    if (retry) {
+      if (retry.receiptSha256 !== receipt.sha256) throw new ClinicInvoiceStateConflictError();
+      return presentPatientTransferStatus(retry);
+    }
+    if (existing.some(({ status }) => status === 'PENDING_REVIEW' || status === 'APPROVED')) {
+      throw new ClinicInvoiceStateConflictError();
+    }
+    const now = new Date();
+    const transfer: ClinicInvoiceTransfer = {
+      id: newClinicInvoiceId(),
+      tenantId: context.tenantId,
+      invoiceId: invoice.id,
+      status: 'PENDING_REVIEW',
+      amountMinor: invoice.totals.totalMinor,
+      currencyCode: invoice.currencyCode,
+      receiptFileName: receipt.fileName,
+      receiptMimeType: receipt.mimeType,
+      receiptSha256: receipt.sha256,
+      receiptBytes: Buffer.from(receipt.bytes),
+      submittedBy: actor.userId,
+      submittedAt: now,
+      reviewedBy: null,
+      reviewedAt: null,
+      reviewReason: null,
+      version: 1,
+      history: [{ action: 'SUBMITTED', actorUserId: actor.userId, at: now, reason: null }],
+      idempotencyKeyHash: keyHash,
+    };
+    const saved = await this.repository.createTransfer(context, transfer);
+    if (
+      saved.id !== transfer.id &&
+      (!keyHash || saved.idempotencyKeyHash !== keyHash || saved.receiptSha256 !== receipt.sha256)
+    ) {
+      throw new ClinicInvoiceStateConflictError();
+    }
+    return presentPatientTransferStatus(saved);
+  }
+
   async listInvoiceTransfers(
     context: Parameters<ClinicFinanceRepository['getSettings']>[0],
     filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
@@ -486,6 +629,16 @@ export class ClinicFinanceService {
       throw new ClinicInvoiceStateConflictError();
     }
     return invoice;
+  }
+
+  private async requireTenantPatient(
+    context: Parameters<ClinicFinanceRepository['getSettings']>[0],
+    patientId: string,
+  ) {
+    if (!this.patients) throw new ClinicFinanceInputError();
+    const patient = await this.patients.findByIdForTenant(context, patientId);
+    if (!patient) throw new ClinicFinanceInputError();
+    return patient;
   }
 
   private assertActor(
@@ -713,10 +866,54 @@ function presentInvoice(invoice: ClinicInvoice) {
   >;
 }
 
+function presentPatientInvoice(invoice: ClinicInvoice): PatientClinicInvoiceView {
+  return {
+    id: invoice.id,
+    invoiceNumber: invoice.invoiceNumber,
+    status: invoice.status,
+    recipientName: invoice.recipientName,
+    invoiceDate: invoice.invoiceDate,
+    customFieldValues: structuredClone(invoice.customFieldValues),
+    currencyCode: invoice.currencyCode,
+    lines: structuredClone(invoice.lines),
+    totals: invoice.totals ? structuredClone(invoice.totals) : null,
+    version: invoice.version,
+    issuedAt: invoice.issuedAt,
+    transferStatus: null,
+  };
+}
+
 function presentTransfer(transfer: ClinicInvoiceTransfer): ClinicInvoiceTransferView {
   const view = { ...transfer };
   delete (view as Partial<ClinicInvoiceTransfer>).tenantId;
   delete (view as Partial<ClinicInvoiceTransfer>).receiptBytes;
   delete (view as Partial<ClinicInvoiceTransfer>).idempotencyKeyHash;
   return view;
+}
+
+function latestPatientTransferStatus(
+  transfers: ClinicInvoiceTransfer[],
+): PatientInvoiceTransferStatusView | null {
+  const latest = transfers[0];
+  return latest
+    ? {
+        status: latest.status,
+        submittedAt: new Date(latest.submittedAt),
+        reviewedAt: latest.reviewedAt ? new Date(latest.reviewedAt) : null,
+        reviewReason: latest.reviewReason,
+        version: latest.version,
+      }
+    : null;
+}
+
+function presentPatientTransferStatus(
+  transfer: ClinicInvoiceTransfer,
+): PatientInvoiceTransferStatusView {
+  return {
+    status: transfer.status,
+    submittedAt: new Date(transfer.submittedAt),
+    reviewedAt: transfer.reviewedAt ? new Date(transfer.reviewedAt) : null,
+    reviewReason: transfer.reviewReason,
+    version: transfer.version,
+  };
 }

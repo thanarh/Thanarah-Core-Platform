@@ -3,6 +3,7 @@ import type { CreatePatientInput } from '../src/tenant/patient.dto';
 import {
   TenantContextInvalidError,
   TenantContextRequiredError,
+  type TrustedPatientPortalContext,
   type TrustedTenantContext,
 } from '../src/tenant/tenant-context.contract';
 import type {
@@ -128,6 +129,77 @@ describe('TenantStoragePatientRepository', () => {
     await expect(repository.list(contextB, { limit: 50, offset: 0 })).resolves.toMatchObject({
       total: 1,
     });
+  });
+
+  it('links one patient account only after email lookup and an OTP claim, then revokes on contact changes', async () => {
+    const { repository } = setup();
+    const created = await repository.create(contextA, {
+      ...createInput,
+      email: 'patient@example.test',
+      phone: '+966501234567',
+    });
+    expect(created.kind).toBe('changed');
+    if (created.kind !== 'changed') throw new Error('Expected a patient record');
+
+    const portalContext = {
+      tenantId: tenantA,
+      platformUserId: contextA.platformUserId,
+    } as TrustedPatientPortalContext;
+    const matches = await repository.findPortalCandidates(portalContext, 'patient@example.test');
+    expect(matches.map(({ id }) => id)).toEqual([created.record.id]);
+
+    const now = new Date('2026-11-16T12:00:00.000Z');
+    const claim = {
+      operationId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      accountUserId: contextA.platformUserId,
+      codeDigest: 'a'.repeat(64),
+      createdAt: now,
+      expiresAt: new Date(now.getTime() + 5 * 60_000),
+      attempts: 0,
+      consentAcceptedAt: now,
+    };
+    await expect(
+      repository.startPortalClaim(portalContext, created.record.id, 'patient@example.test', claim),
+    ).resolves.toEqual(claim);
+    await expect(
+      repository.startPortalClaim(portalContext, created.record.id, 'patient@example.test', claim),
+    ).resolves.toEqual(claim);
+    await expect(
+      repository.startPortalClaim(portalContext, created.record.id, 'patient@example.test', {
+        ...claim,
+        operationId: 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb',
+        createdAt: new Date(now.getTime() + 20_000),
+      }),
+    ).resolves.toBe('rate-limited');
+
+    await expect(
+      repository.verifyPortalClaim(
+        portalContext,
+        created.record.id,
+        claim.operationId,
+        'b'.repeat(64),
+        new Date(now.getTime() + 30_000),
+      ),
+    ).resolves.toBe('invalid');
+    await expect(
+      repository.verifyPortalClaim(
+        portalContext,
+        created.record.id,
+        claim.operationId,
+        claim.codeDigest,
+        new Date(now.getTime() + 31_000),
+      ),
+    ).resolves.toBe('linked');
+    await expect(repository.findPatientByPortalUser(portalContext)).resolves.toMatchObject({
+      id: created.record.id,
+      portalAccountUserId: contextA.platformUserId,
+    });
+
+    const updated = await repository.update(contextA, created.record.id, {
+      email: 'updated@example.test',
+    });
+    expect(updated.kind).toBe('changed');
+    await expect(repository.findPatientByPortalUser(portalContext)).resolves.toBeNull();
   });
 
   it('looks up an exact patient number only within the trusted tenant', async () => {

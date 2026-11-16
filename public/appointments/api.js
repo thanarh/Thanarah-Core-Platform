@@ -264,6 +264,13 @@
     return `/platform/tenants/${encodeURIComponent(tenantId)}${suffix}`;
   }
 
+  function patientPortalPath(tenantId, suffix = '') {
+    if (typeof tenantId !== 'string' || !tenantId.trim()) {
+      throw new TypeError('A clinic workspace is required.');
+    }
+    return `/patient-portal/tenants/${encodeURIComponent(tenantId)}${suffix}`;
+  }
+
   function withQuery(path, values) {
     const query = new URLSearchParams();
     for (const [key, value] of Object.entries(values || {})) {
@@ -528,6 +535,38 @@
       form.append('receipt', file);
       return request(
         tenantPath(tenantId, `/finance/invoices/${encodeURIComponent(invoiceId)}/transfers`),
+        {
+          method: 'POST',
+          headers: { 'Idempotency-Key': createIdempotencyKey() },
+          body: form,
+        },
+      );
+    },
+    startPatientPortalClaim(tenantId, operationId, consentAccepted) {
+      return request(patientPortalPath(tenantId, '/claim'), {
+        method: 'POST',
+        body: { operationId, consentAccepted },
+      });
+    },
+    verifyPatientPortalClaim(tenantId, challengeId, code) {
+      return request(patientPortalPath(tenantId, '/claim/verify'), {
+        method: 'POST',
+        body: { challengeId, code },
+      });
+    },
+    listPatientPortalInvoices(tenantId) {
+      return request(patientPortalPath(tenantId, '/invoices'));
+    },
+    getPatientPortalInvoice(tenantId, invoiceId) {
+      return request(
+        patientPortalPath(tenantId, `/invoices/${encodeURIComponent(invoiceId)}`),
+      );
+    },
+    submitPatientPortalInvoiceTransfer(tenantId, invoiceId, file) {
+      const form = new root.FormData();
+      form.append('receipt', file);
+      return request(
+        patientPortalPath(tenantId, `/invoices/${encodeURIComponent(invoiceId)}/transfers`),
         {
           method: 'POST',
           headers: { 'Idempotency-Key': createIdempotencyKey() },

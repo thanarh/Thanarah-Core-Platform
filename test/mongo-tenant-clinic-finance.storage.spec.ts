@@ -2,7 +2,10 @@ import { TenantStorageProvider, TenantStorageTargetStatus } from '@prisma/client
 import type { Db } from 'mongodb';
 import { describe, expect, it, vi } from 'vitest';
 import { MongoTenantClinicFinanceStorage } from '../src/tenant/mongo-tenant-clinic-finance.storage';
-import type { TrustedTenantContext } from '../src/tenant/tenant-context.contract';
+import type {
+  TrustedPatientPortalContext,
+  TrustedTenantContext,
+} from '../src/tenant/tenant-context.contract';
 import type { TenantMongoClientManager } from '../src/tenant/tenant-mongo-client.manager';
 import type { TenantStorageRoute } from '../src/tenant/tenant-storage.contract';
 import {
@@ -123,6 +126,28 @@ describe('MongoTenantClinicFinanceStorage', () => {
       TenantStorageUnavailableError,
     );
     expect(state.settings.findOne).not.toHaveBeenCalled();
+  });
+
+  it('queries only issued invoices for the verified patient in the trusted tenant', async () => {
+    const state = setup();
+    const patientContext = {
+      tenantId,
+      platformUserId: context.platformUserId,
+    } as TrustedPatientPortalContext;
+
+    await expect(
+      state.storage.listPatientInvoices(
+        patientContext,
+        route,
+        'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      ),
+    ).resolves.toEqual([]);
+    expect(state.getLastInvoiceFilter()).toEqual({
+      _tenantId: tenantId,
+      patientId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+      status: 'ISSUED',
+      totals: { $ne: null },
+    });
   });
 
   it('preserves the sequential counter across setting changes and numbering modes', async () => {

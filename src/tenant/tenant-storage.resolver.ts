@@ -2,9 +2,9 @@ import { Inject, Injectable } from '@nestjs/common';
 import {
   TenantContextInvalidError,
   TenantContextRequiredError,
-  isWellFormedTrustedTenantContext,
+  isWellFormedTrustedTenantStorageContext,
 } from './tenant-context.contract';
-import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedTenantStorageContext } from './tenant-context.contract';
 import {
   TenantStorageNotConfiguredError,
   TenantStorageUnavailableError,
@@ -28,8 +28,10 @@ const DEVELOPMENT_MEMORY_PLACEMENT: TenantStoragePlacement = {
 /** Explicit development-only logical placement; it does not represent a database. */
 @Injectable()
 export class DevelopmentTenantDatabaseRegistry implements TenantDatabaseRegistry {
-  async getPlacements(context: TrustedTenantContext): Promise<readonly TenantStoragePlacement[]> {
-    if (!isWellFormedTrustedTenantContext(context)) throw new TenantContextInvalidError();
+  async getPlacements(
+    context: TrustedTenantStorageContext,
+  ): Promise<readonly TenantStoragePlacement[]> {
+    if (!isWellFormedTrustedTenantStorageContext(context)) throw new TenantContextInvalidError();
     return [DEVELOPMENT_MEMORY_PLACEMENT];
   }
 }
@@ -37,8 +39,10 @@ export class DevelopmentTenantDatabaseRegistry implements TenantDatabaseRegistry
 /** No physical tenant database is configured in this environment. */
 @Injectable()
 export class UnconfiguredTenantDatabaseRegistry implements TenantDatabaseRegistry {
-  async getPlacements(context: TrustedTenantContext): Promise<readonly TenantStoragePlacement[]> {
-    if (!isWellFormedTrustedTenantContext(context)) throw new TenantContextInvalidError();
+  async getPlacements(
+    context: TrustedTenantStorageContext,
+  ): Promise<readonly TenantStoragePlacement[]> {
+    if (!isWellFormedTrustedTenantStorageContext(context)) throw new TenantContextInvalidError();
     return [];
   }
 }
@@ -50,9 +54,9 @@ export class TenantStorageResolverService implements TenantStorageResolver {
     private readonly registry: TenantDatabaseRegistry,
   ) {}
 
-  async resolve(context: TrustedTenantContext): Promise<TenantStorageRoute> {
+  async resolve(context: TrustedTenantStorageContext): Promise<TenantStorageRoute> {
     if (!context) throw new TenantContextRequiredError();
-    if (!isWellFormedTrustedTenantContext(context)) throw new TenantContextInvalidError();
+    if (!isWellFormedTrustedTenantStorageContext(context)) throw new TenantContextInvalidError();
 
     let placements: readonly TenantStoragePlacement[];
     try {

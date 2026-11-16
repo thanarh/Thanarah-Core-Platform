@@ -5,6 +5,7 @@ declare const tenantIdBrand: unique symbol;
 declare const tenantMembershipIdBrand: unique symbol;
 declare const validatedTenantMembershipBrand: unique symbol;
 declare const trustedTenantContextBrand: unique symbol;
+declare const trustedPatientPortalContextBrand: unique symbol;
 
 export type TenantId = string & { readonly [tenantIdBrand]: true };
 export type TenantMembershipId = string & { readonly [tenantMembershipIdBrand]: true };
@@ -42,6 +43,19 @@ export interface TrustedTenantContext {
   readonly [trustedTenantContextBrand]: true;
 }
 
+/**
+ * A narrowly scoped context for patient self-service. It is created only by
+ * the patient portal after matching the authenticated account and verifying
+ * control of the phone stored on that patient's tenant record.
+ */
+export interface TrustedPatientPortalContext {
+  readonly tenantId: TenantId;
+  readonly platformUserId: string;
+  readonly [trustedPatientPortalContextBrand]: true;
+}
+
+export type TrustedTenantStorageContext = TrustedTenantContext | TrustedPatientPortalContext;
+
 const tenantContextUuidPattern =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
@@ -55,6 +69,27 @@ export function isWellFormedTrustedTenantContext(value: unknown): value is Trust
     tenantContextUuidPattern.test(context.membershipId) &&
     typeof context.platformUserId === 'string' &&
     context.platformUserId.trim().length > 0
+  );
+}
+
+export function isWellFormedTrustedPatientPortalContext(
+  value: unknown,
+): value is TrustedPatientPortalContext {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false;
+  const context = value as Record<string, unknown>;
+  return (
+    typeof context.tenantId === 'string' &&
+    tenantContextUuidPattern.test(context.tenantId) &&
+    typeof context.platformUserId === 'string' &&
+    context.platformUserId.trim().length > 0
+  );
+}
+
+export function isWellFormedTrustedTenantStorageContext(
+  value: unknown,
+): value is TrustedTenantStorageContext {
+  return (
+    isWellFormedTrustedTenantContext(value) || isWellFormedTrustedPatientPortalContext(value)
   );
 }
 

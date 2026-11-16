@@ -94,6 +94,7 @@ const lineSchema = z.object({
 const customValuesSchema = z.record(z.string(), z.union([z.string().max(1000), z.boolean()]));
 
 export const createClinicInvoiceSchema = z.object({
+  patientId: z.string().uuid().nullable().optional(),
   recipientName: z.string().trim().min(1).max(191),
   invoiceDate: dateOnlySchema,
   customFieldValues: customValuesSchema.default({}),
@@ -112,6 +113,7 @@ export const updateClinicInvoiceSchema = z
       .regex(/^[A-Z]{3}$/u)
       .refine(isSupportedCurrencyCode)
       .optional(),
+    patientId: z.string().uuid().nullable().optional(),
     recipientName: z.string().trim().min(1).max(191).optional(),
     invoiceDate: dateOnlySchema.optional(),
     customFieldValues: customValuesSchema.optional(),

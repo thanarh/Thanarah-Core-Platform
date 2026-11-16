@@ -11,6 +11,7 @@ import type {
   ClinicInvoiceTransfer,
   ClinicInvoiceTransferStatus,
 } from './clinic-finance.model';
+import type { TrustedPatientPortalContext } from './tenant-context.contract';
 import type {
   ListClinicInvoicesQuery,
   UpdateClinicFinanceSettingsInput,
@@ -22,9 +23,10 @@ import {
 } from './clinic-finance.errors';
 import {
   TenantContextInvalidError,
-  isWellFormedTrustedTenantContext,
+  isWellFormedTrustedTenantStorageContext,
 } from './tenant-context.contract';
 import type { TrustedTenantContext } from './tenant-context.contract';
+import type { TrustedTenantStorageContext } from './tenant-context.contract';
 import type { TenantStorageRoute } from './tenant-storage.contract';
 import {
   TenantStorageNotConfiguredError,
@@ -48,6 +50,10 @@ export interface ClinicFinanceStorage {
     context: TrustedTenantContext,
     route: TenantStorageRoute,
   ): Promise<ClinicInvoiceSettings>;
+  getPatientPortalPaymentSettings(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<Pick<ClinicInvoiceSettings, 'currencyCode' | 'bankTransfer'>>;
   saveSettings(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -65,6 +71,17 @@ export interface ClinicFinanceStorage {
     route: TenantStorageRoute,
     query: ListClinicInvoicesQuery,
   ): Promise<ClinicInvoiceListResult>;
+  listPatientInvoices(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+  ): Promise<ClinicInvoice[]>;
+  findPatientInvoice(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    invoiceId: string,
+  ): Promise<ClinicInvoice | null>;
   findInvoice(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -107,12 +124,12 @@ export interface ClinicFinanceStorage {
     at: Date,
   ): Promise<ClinicInvoice | null>;
   createTransfer(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     transfer: ClinicInvoiceTransfer,
   ): Promise<ClinicInvoiceTransfer>;
   listTransfers(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
   ): Promise<ClinicInvoiceTransfer[]>;
@@ -145,6 +162,23 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
   ): Promise<ClinicInvoiceSettings> {
     this.assertScope(context, route);
     return clone(this.settingsByTenant.get(keyFor(context)) ?? this.defaultSettings(context));
+  }
+
+  async getPatientPortalPaymentSettings(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+  ): Promise<Pick<ClinicInvoiceSettings, 'currencyCode' | 'bankTransfer'>> {
+    this.assertPortalScope(context, route);
+    const settings =
+      this.settingsByTenant.get(context.tenantId.toLowerCase()) ??
+      ({
+        tenantId: context.tenantId,
+        ...clone(DEFAULT_CLINIC_INVOICE_SETTINGS),
+      } satisfies ClinicInvoiceSettings);
+    return {
+      currencyCode: settings.currencyCode,
+      bankTransfer: clone(settings.bankTransfer),
+    };
   }
 
   async saveSettings(
@@ -248,6 +282,36 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     };
   }
 
+  async listPatientInvoices(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+  ): Promise<ClinicInvoice[]> {
+    this.assertPortalScope(context, route);
+    return [...(this.invoicesByTenant.get(context.tenantId.toLowerCase())?.values() ?? [])]
+      .filter(
+        (invoice) =>
+          invoice.patientId === patientId && invoice.status === 'ISSUED' && invoice.totals !== null,
+      )
+      .sort(
+        (left, right) =>
+          (right.issuedAt?.getTime() ?? 0) - (left.issuedAt?.getTime() ?? 0) ||
+          right.id.localeCompare(left.id),
+      )
+      .map(clone);
+  }
+
+  async findPatientInvoice(
+    context: TrustedPatientPortalContext,
+    route: TenantStorageRoute,
+    patientId: string,
+    invoiceId: string,
+  ): Promise<ClinicInvoice | null> {
+    this.assertPortalScope(context, route);
+    const invoice = this.invoicesByTenant.get(context.tenantId.toLowerCase())?.get(invoiceId);
+    return invoice?.patientId === patientId && invoice.status === 'ISSUED' ? clone(invoice) : null;
+  }
+
   async findInvoice(
     context: TrustedTenantContext,
     route: TenantStorageRoute,
@@ -275,6 +339,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     const updated: ClinicInvoice = {
       ...current,
       ...(patch.currencyCode === undefined ? {} : { currencyCode: patch.currencyCode }),
+      ...(patch.patientId === undefined ? {} : { patientId: patch.patientId }),
       ...(patch.recipientName === undefined ? {} : { recipientName: patch.recipientName }),
       ...(patch.invoiceDate === undefined ? {} : { invoiceDate: patch.invoiceDate }),
       ...(patch.customFieldValues === undefined
@@ -428,7 +493,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async createTransfer(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     transfer: ClinicInvoiceTransfer,
   ): Promise<ClinicInvoiceTransfer> {
@@ -449,7 +514,7 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async listTransfers(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     route: TenantStorageRoute,
     filters: { invoiceId?: string; status?: ClinicInvoiceTransferStatus },
   ): Promise<ClinicInvoiceTransfer[]> {
@@ -548,7 +613,9 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     return invoices;
   }
 
-  private transferPartition(context: TrustedTenantContext): Map<string, ClinicInvoiceTransfer> {
+  private transferPartition(
+    context: TrustedTenantStorageContext,
+  ): Map<string, ClinicInvoiceTransfer> {
     const key = keyFor(context);
     let transfers = this.transfersByTenant.get(key);
     if (!transfers) {
@@ -558,8 +625,21 @@ export class InMemoryClinicFinanceStorage implements ClinicFinanceStorage {
     return transfers;
   }
 
-  private assertScope(context: TrustedTenantContext, route: TenantStorageRoute): void {
-    if (!context || !isWellFormedTrustedTenantContext(context)) {
+  private assertScope(context: TrustedTenantStorageContext, route: TenantStorageRoute): void {
+    if (!context || !isWellFormedTrustedTenantStorageContext(context)) {
+      throw new TenantContextInvalidError();
+    }
+    if (!route || !Array.isArray(route.placements) || route.placements.length === 0) {
+      throw new TenantStorageNotConfiguredError();
+    }
+  }
+
+  private assertPortalScope(context: TrustedPatientPortalContext, route: TenantStorageRoute): void {
+    if (
+      !context ||
+      !/^[0-9a-f-]{36}$/iu.test(context.tenantId) ||
+      !/^[0-9a-f-]{36}$/iu.test(context.platformUserId)
+    ) {
       throw new TenantContextInvalidError();
     }
     if (!route || !Array.isArray(route.placements) || route.placements.length === 0) {
@@ -574,6 +654,12 @@ export class UnconfiguredClinicFinanceStorage implements ClinicFinanceStorage {
     throw new TenantStorageUnavailableError();
   }
 
+  async getPatientPortalPaymentSettings(): Promise<
+    Pick<ClinicInvoiceSettings, 'currencyCode' | 'bankTransfer'>
+  > {
+    throw new TenantStorageUnavailableError();
+  }
+
   async saveSettings(): Promise<ClinicInvoiceSettings | null> {
     throw new TenantStorageUnavailableError();
   }
@@ -583,6 +669,14 @@ export class UnconfiguredClinicFinanceStorage implements ClinicFinanceStorage {
   }
 
   async listInvoices(): Promise<ClinicInvoiceListResult> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async listPatientInvoices(): Promise<ClinicInvoice[]> {
+    throw new TenantStorageUnavailableError();
+  }
+
+  async findPatientInvoice(): Promise<ClinicInvoice | null> {
     throw new TenantStorageUnavailableError();
   }
 
@@ -672,7 +766,7 @@ function formatSequentialNumber(prefix: string, sequence: number, minimumDigits:
   return `${prefix}${String(sequence).padStart(minimumDigits, '0')}`;
 }
 
-function keyFor(context: TrustedTenantContext): string {
+function keyFor(context: TrustedTenantStorageContext): string {
   return context.tenantId.toLowerCase();
 }
 

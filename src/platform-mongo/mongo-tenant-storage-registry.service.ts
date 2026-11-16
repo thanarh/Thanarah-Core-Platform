@@ -1,8 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { z } from 'zod';
-import type { TrustedTenantContext } from '../tenant/tenant-context.contract';
+import type { TrustedTenantStorageContext } from '../tenant/tenant-context.contract';
 import {
-  isWellFormedTrustedTenantContext,
+  isWellFormedTrustedTenantStorageContext,
   TenantContextInvalidError,
 } from '../tenant/tenant-context.contract';
 import type {
@@ -49,7 +49,9 @@ export class MongoTenantStorageRegistryService
 {
   constructor(private readonly manager: PlatformMongoClientManager) {}
 
-  async getPlacements(context: TrustedTenantContext): Promise<readonly TenantStoragePlacement[]> {
+  async getPlacements(
+    context: TrustedTenantStorageContext,
+  ): Promise<readonly TenantStoragePlacement[]> {
     this.assertContext(context);
     return this.run(async (tx) => {
       const targets = await tx.db
@@ -68,7 +70,7 @@ export class MongoTenantStorageRegistryService
   }
 
   async findActivePrimaryTarget(
-    context: TrustedTenantContext,
+    context: TrustedTenantStorageContext,
     placementId: string,
   ): Promise<TenantStorageTargetRecord | null> {
     this.assertContext(context);
@@ -121,8 +123,8 @@ export class MongoTenantStorageRegistryService
     }
   }
 
-  private assertContext(context: TrustedTenantContext): void {
-    if (!context || !isWellFormedTrustedTenantContext(context))
+  private assertContext(context: TrustedTenantStorageContext): void {
+    if (!context || !isWellFormedTrustedTenantStorageContext(context))
       throw new TenantContextInvalidError();
   }
 }
