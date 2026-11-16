@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { JourneyAccounts } from '../src/customer-journey/journey.accounts';
-import { catalogSchema, defaultCatalog } from '../src/customer-journey/journey.model';
+import {
+  catalogSchema,
+  defaultCatalog,
+  profileInputSchema,
+  profileSchema,
+} from '../src/customer-journey/journey.model';
 import type { JourneyStore } from '../src/customer-journey/journey.store';
 
 function accountsFor(catalog: ReturnType<typeof defaultCatalog>) {
@@ -38,9 +43,28 @@ describe('customer catalog defaults', () => {
     expect(catalog.draft.packages[2].features).toEqual([]);
     expect(catalog.draft.documents.map((item) => item.key)).toEqual([
       'commercial-register',
-      'vat-number',
+      'vat-certificate',
       'clinic-logo',
     ]);
+    expect(catalog.draft.packages[0].description).toContain('ثابت 10%');
+    expect(catalog.draft.termsText).toBe('');
+  });
+
+  it('requires a tax number on new profiles while reading older saved profiles', () => {
+    const oldProfile = {
+      legalName: 'Test clinic',
+      displayName: 'Test clinic',
+      registrationNumber: 'TEST-REG',
+      city: 'Riyadh',
+      address: 'Test address',
+      contactName: 'Test contact',
+      phoneE164: '+966500000001',
+    };
+    expect(profileSchema.safeParse(oldProfile).success).toBe(true);
+    expect(profileInputSchema.safeParse(oldProfile).success).toBe(false);
+    expect(profileInputSchema.safeParse({ ...oldProfile, taxNumber: 'TEST-VAT' }).success).toBe(
+      true,
+    );
   });
 
   it('exposes package names only, never draft prices, features, terms, or documents', async () => {

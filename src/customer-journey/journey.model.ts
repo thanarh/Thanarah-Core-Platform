@@ -80,11 +80,15 @@ export const profileSchema = z
     legalName: short,
     displayName: short,
     registrationNumber: short,
+    taxNumber: z.string().trim().max(40).optional(),
     city: short,
     address: z.string().trim().min(5).max(500),
     contactName: short,
     phoneE164: z.string().regex(/^\+[1-9]\d{7,14}$/u),
   })
+  .strict();
+export const profileInputSchema = profileSchema
+  .extend({ taxNumber: z.string().trim().min(1).max(40) })
   .strict();
 export const accountSchema = z
   .object({
@@ -256,14 +260,14 @@ export function defaultCatalog(): Catalog {
       services: [],
       documents: [
         { key: 'commercial-register', label: 'السجل التجاري', required: true },
-        { key: 'vat-number', label: 'الرقم الضريبي', required: true },
+        { key: 'vat-certificate', label: 'وثيقة الرقم الضريبي', required: true },
         { key: 'clinic-logo', label: 'شعار العيادة', required: true },
       ],
       seller: null,
       packages: [
         {
           code: 'Lite' as const,
-          description: '199 ر.س شهريًا. الخصم السنوي 10%؛ طريقة خصم السنوات الإضافية بانتظار التوضيح.',
+          description: '199 ر.س شهريًا. خصم سنوي ثابت 10% لكل سنة، غير تراكمي.',
           features: ['نظام العيادة', 'WhatsApp', 'بوت عبر WhatsApp'],
           planId: null,
           priceMinor: '19900',

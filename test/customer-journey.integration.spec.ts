@@ -65,7 +65,8 @@ const op = () => ({ operationId: randomUUID() });
 const password = 'Synthetic-Customer-Only!2026';
 const profile = {
   legalName: 'Synthetic Clinic', displayName: 'Synthetic Clinic Display',
-  registrationNumber: 'SYNTHETIC-ONLY', city: 'Test city', address: 'Synthetic test address',
+  registrationNumber: 'SYNTHETIC-ONLY', taxNumber: 'SYNTHETIC-VAT',
+  city: 'Test city', address: 'Synthetic test address',
   contactName: 'Synthetic client', phoneE164: '+966500000001',
 };
 async function customer(email = `${randomUUID()}@example.test`) {
@@ -262,6 +263,31 @@ suite('Customer journey isolated business acceptance', () => {
     const account = await customer();
     await expect(orders.create(account.userId, { ...op(), packageCode: 'Lite' }))
       .rejects.toMatchObject({ code: 'CUSTOMER_ORDERS_CLOSED' });
+  });
+  it('allows an unpublished draft without terms but refuses to publish it', async () => {
+    const data = defaultCatalog().draft;
+    data.termsText = '';
+    data.ordersOpen = false;
+    const saved = await admin.saveCatalog(root, { ...op(), version: 0, data });
+    expect(saved.draft.termsText).toBe('');
+    await expect(
+      admin.publish(reviewer, {
+        ...op(),
+        version: saved.version,
+        reason: 'Synthetic draft without terms',
+      }),
+    ).rejects.toMatchObject({ code: 'CUSTOMER_TERMS_UNCONFIGURED' });
+  });
+  it('requires legacy clinic profiles to add a tax number before opening an order', async () => {
+    await publish();
+    const account = await customer();
+    await db.collection('customer_accounts').updateOne(
+      { userId: account.userId },
+      { $unset: { 'profile.taxNumber': '' } } as never,
+    );
+    await expect(
+      orders.create(account.userId, { ...op(), packageCode: 'Lite' }),
+    ).rejects.toMatchObject({ code: 'CUSTOMER_TAX_NUMBER_REQUIRED' });
   });
   it('requires an independent catalog publisher and published terms before orders', async () => {
     const a = await customer();

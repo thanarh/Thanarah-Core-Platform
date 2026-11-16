@@ -11,7 +11,7 @@ import {
   accountSchema,
   command,
   version,
-  profileSchema,
+  profileInputSchema,
   orderSchema,
   registerSchema,
   WHATSAPP,
@@ -116,7 +116,10 @@ export class JourneyAccounts {
     });
   }
   async profile(userId: string, input: unknown) {
-    const data = parse(z.object({ ...command, version, profile: profileSchema }).strict(), input);
+    const data = parse(
+      z.object({ ...command, version, profile: profileInputSchema }).strict(),
+      input,
+    );
     return this.store.command(userId, data.operationId, 'customer.profile', data, async (tx) => {
       const account = await this.store.account(tx, userId);
       expectVersion(account.version, data.version);

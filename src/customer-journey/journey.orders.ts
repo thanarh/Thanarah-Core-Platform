@@ -39,6 +39,8 @@ export class JourneyOrders {
       async (tx) => {
         const account = await this.store.account(tx, userId);
         if (!account.profile) fail('CUSTOMER_PROFILE_REQUIRED', 'أكمل ملف المنشأة أولًا.');
+        if (!account.profile.taxNumber)
+          fail('CUSTOMER_TAX_NUMBER_REQUIRED', 'أدخل الرقم الضريبي في ملف المنشأة أولًا.');
         const catalog = await this.store.catalog(tx);
         if (!catalog.live || !catalog.publishedBy || !catalog.publishedAt)
           fail(
