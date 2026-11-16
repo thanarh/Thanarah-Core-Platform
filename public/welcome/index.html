@@ -4,30 +4,34 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="theme-color" content="#f5f4ef" />
-    <meta name="description" content="ثنارة شريك البنية الرقمية لمقدمي الرعاية الصحية." />
+    <meta name="description" content="استكشف خدمات وباقات ثنارة المنشورة، وتابع طلب تأسيس عيادتك من الحساب إلى الاستلام." />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Thanarah" />
-    <meta property="og:title" content="ثنارة | بنية رقمية للرعاية الصحية" />
-    <meta property="og:description" content="بنية رقمية مدروسة لمقدمي الرعاية الصحية." />
-    <link rel="canonical" href="/" />
+    <meta property="og:title" content="خدمات وباقات ثنارة | من الطلب إلى الاستلام" />
+    <meta property="og:description" content="تفاصيل الخدمات والباقات المعتمدة فقط، مع مسار واضح لمتابعة طلب العيادة." />
+    <link rel="canonical" href="/welcome/" />
     <link rel="icon" type="image/svg+xml" href="/assets/logo-mark.svg" />
-    <link rel="stylesheet" href="/site/site.css" />
-    <link rel="stylesheet" href="/site/reference-home.css" />
+    <link rel="stylesheet" href="/journey/ui.css" />
     <link rel="stylesheet" href="/assets/thanarah-web-experience.css" />
     <link rel="stylesheet" href="/assets/thanarah-shell.css" />
-    <link rel="stylesheet" href="/site/service-promo.css" />
-    <title>ثنارة | بنية رقمية للرعاية الصحية</title>
-    <script defer src="/site/content.js"></script>
+    <title>خدمات وباقات ثنارة | من الطلب إلى الاستلام</title>
+    <script defer src="/company/api.js"></script>
+    <script defer src="/journey/api.js"></script>
     <script defer src="/assets/thanarah-currency.js"></script>
-    <script defer src="/site/reference-home.js"></script>
-    <script defer src="/site/app.js"></script>
+    <script defer src="/journey/presentation.js"></script>
+    <script defer src="/welcome/app.js"></script>
   </head>
   <body>
-    <noscript><header class="topbar"><div class="wrap header-inner"><a class="brand" href="/"><img src="/assets/logo-mark.svg" alt=""><span class="brand-name">ثنارة<small class="brand-note">بنية رقمية للرعاية الصحية</small></span></a><nav class="main-nav" aria-label="التنقل الرئيسي"><a href="/">الرئيسية</a><a href="/about/">من نحن</a><a href="/packages/">الباقات</a><a href="/services/">الخدمات</a><a href="/why-thanarah/">لماذا ثنارة</a><a href="/contact/">تواصل معنا</a></nav></div></header><main id="main"><section class="page-intro"><div class="wrap page-intro-inner"><h1>الخدمات والباقات</h1><p>تعرّف على القدرات الحالية والخدمات المنشورة فقط. تفاصيل الخدمة التفاعلية تتطلب JavaScript. لا ترسل معلومات المرضى.</p><a class="button" href="/services/">استكشف الخدمات</a></div></section></main></noscript>
+    <noscript>
+      <main class="wrap app-main">
+        <h1>خدمات وباقات ثنارة</h1>
+        <p>تحتاج هذه الصفحة إلى JavaScript لعرض الخدمات والباقات المنشورة من الكتالوج.</p>
+        <a href="/">العودة إلى موقع ثنارة</a>
+      </main>
+    </noscript>
     <div id="app">
-      <main class="wrap" aria-busy="true"><div class="skeleton-row"></div></main>
+      <main class="loading wrap" aria-busy="true"><span class="skeleton"></span></main>
     </div>
     <script defer src="/assets/thanarah-auth.js"></script>
-    <script defer src="/assets/thanarah-shell.js"></script>
   </body>
 </html>

@@ -29,13 +29,23 @@ export class JourneyAccounts {
     return this.store.run(async (tx) => {
       const catalog = await this.store.catalog(tx);
       const live = catalog.live ?? defaultCatalog().draft;
+      const packages = catalog.live
+        ? catalog.live.packages.filter((x) => x.published)
+        : defaultCatalog().draft.packages.map((item) => ({
+            code: item.code,
+            description: '',
+            features: [],
+            planId: null,
+            priceMinor: null,
+            published: false,
+          }));
       return {
         version: catalog.liveVersion,
         registrationOpen: live.registrationOpen,
         ordersOpen: live.ordersOpen,
         termsText: catalog.live?.termsText ?? '',
         services: catalog.live?.services.filter((x) => x.published) ?? [],
-        packages: catalog.live?.packages.filter((x) => x.published) ?? [],
+        packages,
         documents: catalog.live?.documents ?? [],
         whatsapp: WHATSAPP,
       };

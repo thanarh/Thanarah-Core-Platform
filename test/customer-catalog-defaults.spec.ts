@@ -26,14 +26,23 @@ describe('customer catalog demo defaults', () => {
     expect(catalog.draft.packages.every((item) => item.features.length > 0)).toBe(true);
   });
 
-  it('does not expose draft prices, features, terms, or services publicly', async () => {
+  it('exposes package names only, never draft prices, features, terms, or services', async () => {
     const catalog = defaultCatalog();
     const published = await accountsFor(catalog).publicCatalog();
     expect(published.registrationOpen).toBe(true);
     expect(published.ordersOpen).toBe(false);
     expect(published.termsText).toBe('');
     expect(published.services).toEqual([]);
-    expect(published.packages).toEqual([]);
+    expect(published.packages.map((item) => item.code)).toEqual(['Lite', 'Pro', 'Customize']);
+    expect(
+      published.packages.every(
+        (item) =>
+          !item.published &&
+          item.priceMinor === null &&
+          item.features.length === 0 &&
+          item.description === '',
+      ),
+    ).toBe(true);
   });
 
   it('exposes only independently published package content', async () => {

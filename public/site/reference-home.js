@@ -62,7 +62,7 @@
         '<button class="language-button rh-language" type="button" data-language aria-label="' +
         (ar ? 'Switch to English' : 'التبديل إلى العربية') + '">' + esc(t.language) + '</button>' +
         '<a class="rh-signin" href="/customer/">' + (ar ? 'تسجيل الدخول' : 'Sign in') + '</a>' +
-        '<a class="rh-start" href="/contact/">' + (ar ? 'ابدأ الآن' : 'Get started') + '</a>' +
+        '<a class="rh-start" href="/welcome/">' + (ar ? 'ابدأ الآن' : 'Get started') + '</a>' +
         '<button class="menu-button rh-menu" type="button" aria-expanded="false" aria-controls="main-navigation" aria-label="' +
         (ar ? 'فتح القائمة' : 'Open menu') + '"><span class="menu-glyph" aria-hidden="true"><i></i><i></i></span></button>' +
         '</div></div></header>';
@@ -132,7 +132,7 @@
         (ar ? 'تشغّل، تنظّم، وتنمّي<br>أعمالك الصحية.' : 'Operate, organise and grow<br>your healthcare practice.') +
         '</h2><p>' + (ar ? 'منصة موحدة لإدارة العيادات والمراكز الطبية، تبدأ من التشغيل السريري وتوضح ما هو قائم وما يحتاج إلى تقييم.' :
           'A unified platform for clinics and medical centres, starting with clinical operations and clarifying what exists today and what needs assessment.') +
-        '</p><div class="rh-hero-actions"><a class="rh-pill rh-pill-primary" href="/contact/">' +
+        '</p><div class="rh-hero-actions"><a class="rh-pill rh-pill-primary" href="/welcome/">' +
         (ar ? 'ابدأ رحلتك مع ثنارة' : 'Start your Thanarah journey') + '<span aria-hidden="true">←</span></a>' +
         '<a class="rh-pill rh-pill-outline" href="#clinic">' + (ar ? 'شاهد كيف نعمل' : 'See how we work') +
         '<span aria-hidden="true">◉</span></a></div></div></section>' +
@@ -181,7 +181,7 @@
         (ar ? 'خطوتك القادمة' : 'YOUR NEXT STEP') + '</span><h2>' +
         (ar ? 'ابدأ الآن، وطوّر تجربة الرعاية في عيادتك.' : 'Start today. Build a better care experience.') +
         '</h2><p>' + (ar ? 'انضم إلى ثنارة واستفد من منظومة متكاملة تدعم نمو منشأتك.' :
-          'Talk with Thanarah about a connected foundation for your practice.') + '</p></div><a class="rh-pill rh-cta-button" href="/contact/">' +
+          'Talk with Thanarah about a connected foundation for your practice.') + '</p></div><a class="rh-pill rh-cta-button" href="/welcome/">' +
         (ar ? 'ابدأ الآن' : 'Get started') + '<span aria-hidden="true">←</span></a><div class="rh-chair">' +
         '<img src="/assets/home-chair.webp" width="266" height="196" loading="lazy" decoding="async" alt="' +
         (ar ? 'مشهد تصوري لكرسي عيادة ضمن مساحة رعاية صحية' : 'Conceptual clinical chair in a healthcare space') +

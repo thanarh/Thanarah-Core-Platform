@@ -234,7 +234,16 @@ suite('Customer journey isolated business acceptance', () => {
     data.packages[0].priceMinor = '99999'; data.packages[0].features = ['UNPUBLISHED'];
     await admin.saveCatalog(root, { ...op(), version: 0, data });
     const c = await accounts.publicCatalog();
-    expect(c.packages).toEqual([]);
+    expect(c.packages.map((item) => item.code)).toEqual(['Lite', 'Pro', 'Customize']);
+    expect(
+      c.packages.every(
+        (item) =>
+          !item.published &&
+          item.priceMinor === null &&
+          item.features.length === 0 &&
+          item.description === '',
+      ),
+    ).toBe(true);
     expect(c.services).toEqual([]);
     expect(c.termsText).toBe('');
   });

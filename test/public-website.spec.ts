@@ -299,18 +299,24 @@ describe('Public website route and reusable component regressions', () => {
       }
     }
   });
-  it('loads the reference renderer only for the homepage and its welcome alias, in dependency order', () => {
-    for (const path of ['public/index.html', 'public/welcome/index.html']) {
-      const html = readFileSync(path, 'utf8');
-      expect(html.indexOf('/site/content.js')).toBeLessThan(
-        html.indexOf('/site/reference-home.js'),
-      );
-      expect(html.indexOf('/site/reference-home.js')).toBeLessThan(html.indexOf('/site/app.js'));
-      expect(html).toContain('/site/reference-home.css');
-      expect(html).toContain('/site/service-promo.css');
-    }
+  it('keeps the public homepage separate from the customer journey route', () => {
+    const html = readFileSync('public/index.html', 'utf8');
+    expect(html.indexOf('/site/content.js')).toBeLessThan(
+      html.indexOf('/site/reference-home.js'),
+    );
+    expect(html.indexOf('/site/reference-home.js')).toBeLessThan(html.indexOf('/site/app.js'));
+    expect(html).toContain('/site/reference-home.css');
+    expect(html).toContain('/site/service-promo.css');
+
+    const journey = readFileSync('public/welcome/index.html', 'utf8');
+    expect(journey).toContain('/journey/api.js');
+    expect(journey).toContain('/journey/presentation.js');
+    expect(journey).toContain('/welcome/app.js');
+    expect(journey).not.toContain('/site/reference-home.js');
+    expect(readFileSync('public/site/reference-home.js', 'utf8')).toContain('class="rh-start" href="/welcome/"');
+
     expect(readFileSync('public/site/index.html', 'utf8')).toContain('/site/service-promo.css');
-    for (const route of routes.slice(1)) {
+    for (const route of routes.slice(1).filter((route) => route !== '/welcome/')) {
       expect(readFileSync(`public${route}index.html`, 'utf8')).not.toContain(
         '/site/reference-home.',
       );
@@ -395,7 +401,7 @@ describe('Public website route and reusable component regressions', () => {
     const launcher = readFileSync('public/platform/index.html', 'utf8');
     expect(launcher).toContain('/appointments/');
     expect(launcher).toContain('/website-inquiries/');
-    expect(readFileSync('public/welcome/index.html', 'utf8')).toContain('/site/app.js');
+    expect(readFileSync('public/welcome/index.html', 'utf8')).toContain('/welcome/app.js');
   });
   it('provides mobile layout, keyboard focus and reduced-motion overrides without a UI framework', () => {
     const css = readFileSync('public/site/site.css', 'utf8');

@@ -44,3 +44,45 @@
 #wa-verify-form{margin-top:12px}
 #wa-verify-form .btn{align-self:end}
 @media(max-width:520px){.customer-ai-dialog{width:calc(100vw - 12px);height:calc(100dvh - 12px);max-width:none;max-height:none;border-radius:8px}.customer-ai-dialog-head{height:52px}.customer-ai-dialog iframe{height:calc(100% - 52px)}}
+@media(max-width:760px){
+  .hero{padding:40px 0}
+  .hero-grid{grid-template-columns:minmax(0,1.1fr) minmax(0,.9fr);gap:12px}
+  .hero h1{font-size:clamp(25px,6vw,34px)}
+  .hero p{font-size:13px}
+  .hero-visual{min-height:150px}
+  .orbit{width:135px;height:135px}
+  .mark-large{width:60px}
+  .orbit-label{right:-18px;bottom:9px;padding:7px 9px;font-size:9px}
+  .service-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .packages{grid-template-columns:repeat(3,minmax(0,1fr));gap:8px}
+  .package{padding:11px}
+  .package:nth-child(2){transform:none}
+  .package h3{font-size:18px}
+  .package .text-muted,.package li{font-size:10px}
+  .package .price{font-size:12px}
+  .package ul{padding-right:13px}
+  .package .btn{padding:6px 4px;font-size:10px}
+  .flow{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .flow article{padding:13px;border-bottom:1px solid var(--line)}
+  .flow article:nth-child(2){border-left:0}
+  .flow article:last-child{border-bottom:0}
+}
+@media(max-width:430px){
+  .hero{padding:30px 0}
+  .hero-grid{grid-template-columns:minmax(0,1fr) minmax(105px,.72fr);gap:4px}
+  .hero h1{font-size:clamp(22px,6vw,28px)}
+  .hero p{font-size:11px}
+  .hero .btn{min-height:35px;padding:5px 8px;font-size:10px}
+  .hero-visual{min-height:120px}
+  .orbit{width:108px;height:108px}
+  .mark-large{width:47px}
+  .orbit-label{right:-17px;bottom:4px;padding:5px;font-size:8px}
+  .packages{gap:5px}
+  .package{padding:8px}
+  .package .eyebrow{font-size:8px;letter-spacing:.04em}
+  .package h3{font-size:15px}
+  .package .text-muted,.package li{font-size:9px}
+  .package .price{margin:9px 0;font-size:10px}
+  .package ul{padding-right:11px}
+  .package .btn{min-height:32px;padding:4px 2px;font-size:8px}
+}

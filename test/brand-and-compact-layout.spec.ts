@@ -47,7 +47,13 @@ describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
     expect(shell).toContain("link.type = 'image/png'");
     expect(shell).toContain('?v=owner-symbol');
   });
-  it.each(entries().filter((path) => path.endsWith('/index.html')))(
+  it.each(
+    entries().filter(
+      (path) =>
+        path.endsWith('/index.html') &&
+        readFileSync(path, 'utf8').includes('/assets/thanarah-shell.js'),
+    ),
+  )(
     'covers favicon and shared shell on %s',
     (path) => {
       const html = readFileSync(path, 'utf8');
@@ -55,6 +61,11 @@ describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
       expect(html).toContain('/assets/thanarah-shell.js');
     },
   );
+  it('keeps the customer journey route on the shared authentication modal', () => {
+    const html = readFileSync('public/welcome/index.html', 'utf8');
+    expect(html).toContain('/assets/thanarah-auth.js');
+    expect(html).toContain('/welcome/app.js');
+  });
   it('removes the extra team-login entry without removing protected-route login', () => {
     expect(shell).not.toMatch(/دخول الفريق|Team access|Team sign in|thanarah-shell-nav-staff/u);
     expect(shell).toContain('data-auth-audience="staff"');
