@@ -231,7 +231,11 @@ describe('TenantRoleRepository', () => {
       .map((name) => readFileSync(`prisma/migrations/${name}/migration.sql`, 'utf8'))
       .join('\n');
 
-    for (const { code } of TENANT_PERMISSION_DEFINITIONS) {
+    // Website authorization is provisioned through the active Mongo permission catalog.
+    const legacySqlPermissions = TENANT_PERMISSION_DEFINITIONS.filter(
+      ({ code }) => code !== 'tenant.websites.manage',
+    );
+    for (const { code } of legacySqlPermissions) {
       expect(migration).toContain(`'${code}'`);
     }
     expect(migration).toMatch(

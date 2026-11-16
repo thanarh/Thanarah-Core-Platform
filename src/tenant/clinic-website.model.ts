@@ -16,10 +16,14 @@ export const clinicWebsiteSectionSchema = z
     content: z
       .object({
         heading: z.string().trim().max(120).optional(),
+        title: z.string().trim().max(120).optional(),
         text: plainTextSchema.optional(),
+        body: plainTextSchema.optional(),
+        note: plainTextSchema.optional(),
         buttonLabel: z.string().trim().max(60).optional(),
+        buttonText: z.string().trim().max(60).optional(),
         phone: z.string().trim().max(40).optional(),
-        email: z.string().trim().email().max(254).optional(),
+        email: z.string().trim().email().max(254).or(z.literal('')).optional(),
       })
       .strict(),
     sourceIds: z.array(uuidSchema).max(100).default([]),
@@ -43,7 +47,7 @@ export const clinicWebsitePageSchema = z
 export const clinicWebsiteDraftSchema = z
   .object({
     slug: clinicWebsiteSlugSchema,
-    templateId: z.enum(['olive-care', 'clear-clinic', 'warm-practice']),
+    templateId: z.enum(['clinic-calm', 'editorial', 'coastal']),
     brand: z
       .object({
         name: z.string().trim().min(1).max(100),
@@ -51,7 +55,7 @@ export const clinicWebsiteDraftSchema = z
         logoText: z.string().trim().max(4),
         primaryColor: z.string().regex(/^#[0-9a-f]{6}$/iu),
         accentColor: z.string().regex(/^#[0-9a-f]{6}$/iu),
-        fontFamily: z.enum(['system', 'arabic-sans', 'serif']),
+        fontFamily: z.enum(['Tajawal', 'IBM Plex Sans Arabic', 'Noto Sans Arabic']),
       })
       .strict(),
     pages: z.array(clinicWebsitePageSchema).min(1).max(12),
@@ -101,6 +105,7 @@ export const clinicWebsiteDraftSchema = z
 export const clinicWebsitePublishedSchema = z
   .object({
     version: z.number().int().nonnegative(),
+    slug: clinicWebsiteSlugSchema,
     draft: clinicWebsiteDraftSchema,
     publishedAt: z.date(),
     publishedBy: uuidSchema,
@@ -143,14 +148,14 @@ export type ClinicWebsiteVersion = z.infer<typeof clinicWebsiteVersionSchema>;
 export function defaultClinicWebsiteDraft(slug: string): ClinicWebsiteDraft {
   return {
     slug,
-    templateId: 'olive-care',
+    templateId: 'clinic-calm',
     brand: {
       name: 'اسم العيادة',
       tagline: '',
       logoText: '',
       primaryColor: '#286557',
       accentColor: '#d4a756',
-      fontFamily: 'arabic-sans',
+      fontFamily: 'Tajawal',
     },
     pages: [
       {
@@ -168,7 +173,7 @@ export function defaultClinicWebsiteDraft(slug: string): ClinicWebsiteDraft {
           {
             id: '846c2250-7881-41ce-a02c-f88a47f600e6',
             type: 'contact',
-            content: { heading: 'تواصل مع العيادة', text: '', phone: '', email: '' },
+            content: { title: 'تواصل مع العيادة', text: '', phone: '', email: '' },
             sourceIds: [],
           },
         ],

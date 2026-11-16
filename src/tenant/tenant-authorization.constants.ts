@@ -74,6 +74,7 @@ export const TENANT_PERMISSION_CODES = [
   'tenant.communications.manage',
   'tenant.communications.consent.manage',
   'tenant.communications.simulate',
+  'tenant.websites.manage',
 ] as const;
 
 export type TenantPermissionCode = (typeof TENANT_PERMISSION_CODES)[number];
@@ -289,6 +290,10 @@ export const TENANT_PERMISSION_DEFINITIONS: ReadonlyArray<{
     code: 'tenant.communications.simulate',
     description: 'Run synthetic communication scenarios without external delivery',
   },
+  {
+    code: 'tenant.websites.manage',
+    description: 'Manage clinic website drafts, publishing, and version history',
+  },
 ];
 
 export const TENANT_OWNER_PERMISSION_CODE: TenantPermissionCode = 'tenant.roles.permissions.manage';
@@ -361,6 +366,7 @@ export const DEFAULT_TENANT_ROLES = [
       'tenant.communications.manage',
       'tenant.communications.consent.manage',
       'tenant.communications.simulate',
+      'tenant.websites.manage',
     ],
   },
   {

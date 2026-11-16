@@ -1,5 +1,3 @@
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans+Arabic:wght@400;500;600;700&family=Noto+Sans+Arabic:wght@400;500;600;700&family=Tajawal:wght@400;500;600;700;800&display=swap');
-
 :root {
   color-scheme: light;
   --canvas: #f1f3ed;
@@ -18,7 +16,7 @@
   --danger-pale: #f8eae5;
   --shadow: 0 12px 36px rgba(34, 57, 43, .08);
   --ui: 'Tajawal', sans-serif;
-  --mono: 'IBM Plex Mono', monospace;
+  --mono: ui-monospace, SFMono-Regular, Consolas, monospace;
   font-family: var(--ui);
   color: var(--ink);
   background: var(--canvas);
@@ -192,6 +190,8 @@ input[type="color"].input { padding: 4px; height: 39px; cursor: pointer; }
 .site-top { padding: 20px clamp(18px,4vw,42px); border-bottom: 1px solid #e3e9e2; display: flex; justify-content: space-between; align-items: center; gap: 15px; }
 .site-logo { font-weight: 800; font-size: 18px; color: var(--site-primary, #315d48); }
 .site-nav { display: flex; gap: 14px; color: #64756a; font-size: 12px; flex-wrap: wrap; }
+.site-nav a { color: inherit; text-decoration: none; }
+.site-nav a:hover, .site-nav a:focus-visible { color: var(--site-primary, #315d48); text-decoration: underline; }
 .site-hero { padding: clamp(35px,7vw,75px) clamp(18px,7vw,76px); background: #f2f6ef; border-bottom: 1px solid #e3e9e2; }
 .site-hero h1 { color: var(--site-primary, #315d48); font-size: clamp(27px,5vw,47px); max-width: 700px; margin: 0 0 13px; }
 .site-hero p, .site-copy p { max-width: 690px; white-space: pre-wrap; line-height: 1.95; color: #53645a; margin: 0; }

@@ -13,6 +13,7 @@ import {
   type ClinicWebsiteVersion,
 } from './clinic-website.model';
 import {
+  ClinicWebsiteInputError,
   ClinicWebsiteNotPublishedError,
   ClinicWebsiteSlugConflictError,
   ClinicWebsiteVersionConflictError,
@@ -61,14 +62,22 @@ export class ClinicWebsiteStore {
     expectedVersion: number,
     draftInput: unknown,
   ): Promise<ClinicWebsiteState> {
-    const draft = clinicWebsiteDraftSchema.parse(draftInput);
-    return this.mutate(tenantId, actorId, expectedVersion, 'DRAFT_SAVED', (current, version, now) => ({
-      ...current,
-      version,
-      draft,
-      updatedAt: now,
-      updatedBy: actorId,
-    }));
+    const parsed = clinicWebsiteDraftSchema.safeParse(draftInput);
+    if (!parsed.success) throw new ClinicWebsiteInputError();
+    const draft = parsed.data;
+    return this.mutate(
+      tenantId,
+      actorId,
+      expectedVersion,
+      'DRAFT_SAVED',
+      (current, version, now) => ({
+        ...current,
+        version,
+        draft,
+        updatedAt: now,
+        updatedBy: actorId,
+      }),
+    );
   }
 
   async publish(
@@ -86,6 +95,7 @@ export class ClinicWebsiteStore {
         version,
         published: {
           version,
+          slug: current.draft.slug,
           draft: current.draft,
           publishedAt: now,
           publishedBy: actorId,
@@ -118,12 +128,6 @@ export class ClinicWebsiteStore {
         ...current,
         version,
         draft: target.draft,
-        published: {
-          version,
-          draft: target.draft,
-          publishedAt: now,
-          publishedBy: actorId,
-        },
         updatedAt: now,
         updatedBy: actorId,
       }),
@@ -145,12 +149,17 @@ export class ClinicWebsiteStore {
   async findPublishedBySlug(slug: string): Promise<PublishedClinicWebsite> {
     const db = await this.mongo.getDatabase();
     const raw = await db.collection<WebsiteRow>('clinic_website_sites').findOne({
-      slug,
+      'published.slug': slug.toLowerCase(),
       'published.draft': { $exists: true },
     });
     if (!raw) throw new ClinicWebsiteNotPublishedError();
     const record = this.parseRecord(raw);
     if (!record.published) throw new ClinicWebsiteNotPublishedError();
+    const activeTenant = await db.collection<{ _id: string; status: string }>('tenants').findOne({
+      _id: record.tenantId,
+      status: 'ACTIVE',
+    });
+    if (!activeTenant) throw new ClinicWebsiteNotPublishedError();
     return {
       tenantId: record.tenantId,
       version: record.published.version,
@@ -164,11 +173,7 @@ export class ClinicWebsiteStore {
     actorId: string,
     expectedVersion: number,
     action: ClinicWebsiteVersion['action'],
-    update: (
-      current: ClinicWebsiteRecord,
-      nextVersion: number,
-      now: Date,
-    ) => ClinicWebsiteRecord,
+    update: (current: ClinicWebsiteRecord, nextVersion: number, now: Date) => ClinicWebsiteRecord,
     restoredFromVersion: number | null = null,
   ): Promise<ClinicWebsiteState> {
     const db = await this.mongo.getDatabase();
@@ -184,11 +189,9 @@ export class ClinicWebsiteStore {
         const next = update(current, nextVersion, now);
         let result;
         try {
-          result = await sites.replaceOne(
-            { _id: tenantId, version: expectedVersion },
-            next,
-            { session },
-          );
+          result = await sites.replaceOne({ _id: tenantId, version: expectedVersion }, next, {
+            session,
+          });
         } catch (error) {
           if (isDuplicateKeyError(error)) throw new WebsiteStoreConflict('slug');
           throw error;
@@ -221,7 +224,7 @@ export class ClinicWebsiteStore {
   }
 
   private newRecord(tenantId: string, actorId: string, now: Date): ClinicWebsiteRecord {
-    const suffix = tenantId.replace(/-/gu, '').slice(0, 8);
+    const suffix = tenantId.replace(/-/gu, '');
     return {
       _id: tenantId,
       tenantId,

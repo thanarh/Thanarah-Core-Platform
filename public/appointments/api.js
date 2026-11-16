@@ -73,6 +73,11 @@
       'تقبل المحاكاة مراجع اصطناعية فقط ولا ترسل أي رسالة أو مكالمة.',
     COMMUNICATION_PROVIDER_UNAVAILABLE:
       'موفرو التواصل الحي غير معتمدين أو غير مهيئين لهذه المساحة.',
+    CLINIC_WEBSITE_INPUT_INVALID: 'تحقق من محتوى الموقع أو رقم الإصدار.',
+    CLINIC_WEBSITE_VERSION_CONFLICT: 'تغيّر الموقع منذ فتحه. حدّث النسخة قبل الحفظ.',
+    CLINIC_WEBSITE_SLUG_CONFLICT: 'هذا الرابط التجريبي مستخدم لموقع منشور آخر.',
+    CLINIC_WEBSITE_VERSION_NOT_FOUND: 'إصدار الموقع المطلوب غير متاح.',
+    CLINIC_WEBSITE_NOT_PUBLISHED: 'لا يوجد موقع منشور بهذا الرابط.',
   };
 
   class ApiError extends Error {
@@ -318,6 +323,42 @@
 
     listWorkspaces() {
       return request('/session/tenants');
+    },
+
+    getClinicWebsite(tenantId) {
+      return request(tenantPath(tenantId, '/clinic-website'));
+    },
+
+    getClinicWebsiteCatalog(tenantId) {
+      return request(tenantPath(tenantId, '/clinic-website/catalog'));
+    },
+
+    saveClinicWebsiteDraft(tenantId, input) {
+      return request(tenantPath(tenantId, '/clinic-website/draft'), {
+        method: 'POST',
+        body: input,
+      });
+    },
+
+    publishClinicWebsite(tenantId, expectedVersion) {
+      return request(tenantPath(tenantId, '/clinic-website/publish'), {
+        method: 'POST',
+        body: { expectedVersion },
+      });
+    },
+
+    listClinicWebsiteVersions(tenantId) {
+      return request(tenantPath(tenantId, '/clinic-website/versions'));
+    },
+
+    restoreClinicWebsiteVersion(tenantId, version, expectedVersion) {
+      return request(
+        tenantPath(
+          tenantId,
+          `/clinic-website/versions/${encodeURIComponent(version)}/restore`,
+        ),
+        { method: 'POST', body: { expectedVersion } },
+      );
     },
 
     listPlatformTenants(options = {}) {

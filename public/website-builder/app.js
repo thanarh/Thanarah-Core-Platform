@@ -198,7 +198,10 @@
           ${records.length ? records.map(record => `<label class="toggle-line"><input type="checkbox" data-source-id="${esc(record.id)}" ${selected.has(String(record.id)) ? 'checked' : ''}>
             ${esc(record.displayName || record.name || '')}</label>`).join('') : '<span class="form-note">لا توجد سجلات متاحة في الكتالوج الحالي.</span>'}</fieldset>`;
     } else if (type === 'contact') {
-      fields = textField('عنوان القسم', 'title', data.title) + textArea('معلومات التواصل المتاحة', 'text', data.text || data.body);
+      fields = textField('عنوان القسم', 'title', data.title) +
+        textArea('معلومات التواصل المتاحة', 'text', data.text || data.body) +
+        textField('رقم التواصل', 'phone', data.phone) +
+        textField('البريد الإلكتروني', 'email', data.email);
     } else {
       fields = textField('عنوان القسم', 'title', data.title) + textArea('ملاحظة الحجز', 'text', data.text || data.body);
     }
@@ -225,8 +228,8 @@
       ${error ? `<div class="section-empty">${esc(error)}<br><button class="btn btn-light btn-sm" data-action="history" type="button">إعادة المحاولة</button></div>` : ''}
       ${!error && state.versionsLoaded && !list.length ? '<div class="section-empty">لا توجد إصدارات محفوظة حتى الآن. بعد النشر ستظهر النسخ هنا.</div>' : ''}
       <div class="history-list">${list.map(row => `<article class="history-item">
-        <div><strong>الإصدار ${esc(row.version)} <span class="status-badge ${String(row.status).toLowerCase() === 'draft' ? 'draft' : ''}">${esc(row.status || 'منشور')}</span></strong>
-          <small>${esc(row.authorId || '—')} · ${esc(formatDate(row.createdAt))}</small><div class="history-summary">${esc(row.summary || '')}</div></div>
+        <div><strong>الإصدار ${esc(row.version)} <span class="status-badge ${row.action === 'DRAFT_SAVED' ? 'draft' : ''}">${esc(historyAction(row.action))}</span></strong>
+          <small>${esc(row.actorId || '—')} · ${esc(formatDate(row.createdAt))}</small><div class="history-summary">${esc(row.restoredFromVersion ? `استعادة الإصدار ${row.restoredFromVersion}` : '')}</div></div>
         <button class="btn btn-subtle btn-sm" type="button" data-restore-version="${esc(row.version)}" ${state.busy ? 'disabled' : ''}>استعادة هذه النسخة</button>
       </article>`).join('')}</div>
     </section>`;
@@ -235,6 +238,13 @@
     if (!value) return 'وقت غير متاح';
     const date = new Date(value);
     return Number.isNaN(date.getTime()) ? String(value) : new Intl.DateTimeFormat('ar', { dateStyle: 'medium', timeStyle: 'short' }).format(date);
+  }
+  function historyAction(action) {
+    return ({
+      DRAFT_SAVED: 'حفظ مسودة',
+      PUBLISHED: 'نشر',
+      RESTORED: 'استعادة إلى المسودة'
+    }[action] || 'إصدار محفوظ');
   }
   function renderPreview() {
     const page = currentPage();
@@ -287,8 +297,12 @@
     const pages = state.draft.pages || [];
     if (!pages.some(page => page.id === state.activePageId)) state.activePageId = pages[0] ? pages[0].id : null;
   }
-  function newId(prefix) {
-    return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
+  function newId() {
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') return window.crypto.randomUUID();
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, character => {
+      const random = Math.random() * 16 | 0;
+      return (character === 'x' ? random : (random & 3 | 8)).toString(16);
+    });
   }
   function slugify(value) {
     return String(value || '').trim().toLowerCase().normalize('NFKD')
@@ -301,10 +315,10 @@
     original.brand = Object.assign({ name: '', tagline: '', logoText: '', primaryColor: '#315d48', accentColor: '#8b6849', fontFamily: 'Tajawal' }, original.brand || {});
     original.pages = Array.isArray(original.pages) ? original.pages : [];
     original.pages = original.pages.map(page => ({
-      id: String(page.id || newId('page')), slug: String(page.slug || ''),
+      id: String(page.id || newId()), slug: String(page.slug || ''),
       title: String(page.title || ''), visible: page.visible !== false,
       sections: Array.isArray(page.sections) ? page.sections.filter(section => labels[section.type]).map(section => ({
-        id: String(section.id || newId('section')), type: section.type,
+        id: String(section.id || newId()), type: section.type,
         content: section.content && typeof section.content === 'object' ? section.content : { text: String(section.content || '') },
         sourceIds: Array.isArray(section.sourceIds) ? section.sourceIds : []
       })) : []
@@ -545,7 +559,7 @@
       state.data = result && typeof result === 'object' ? Object.assign({}, state.data, result) : state.data;
       state.busy = false;
       renderEditor();
-      notify('تم إرسال طلب النشر.');
+       notify('تم نشر النسخة الحالية.');
       await loadHistory();
     } catch (error) {
       state.busy = false;
@@ -601,7 +615,7 @@
     let slug = baseSlug, suffix = 2;
     while (existing.has(slug)) slug = `${baseSlug}-${suffix++}`;
     checkpoint();
-    const page = { id: newId('page'), slug, title: title.trim(), visible: true, sections: [] };
+    const page = { id: newId(), slug, title: title.trim(), visible: true, sections: [] };
     state.draft.pages.push(page);
     state.activePageId = page.id;
     state.activeView = 'pages';
@@ -747,7 +761,7 @@
           type === 'richText' ? { title: '', text: '' } :
             ['doctorList', 'serviceList'].includes(type) ? { title: '' } : { title: '', text: '' };
         checkpoint();
-        page.sections.push({ id: newId('section'), type, content, sourceIds: [] });
+        page.sections.push({ id: newId(), type, content, sourceIds: [] });
         setDirty();
         renderEditor();
         break;

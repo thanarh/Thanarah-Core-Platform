@@ -91,6 +91,18 @@ export const PLATFORM_MONGO_INDEXES: Readonly<Record<string, readonly IndexDescr
       name: 'ix_service_tenant_status_created',
     },
   ],
+  clinic_website_sites: [
+    {
+      key: { 'published.slug': 1 },
+      name: 'ux_clinic_website_published_slug',
+      unique: true,
+      partialFilterExpression: { 'published.slug': { $type: 'string' } },
+    },
+    { key: { tenantId: 1 }, name: 'ux_clinic_website_tenant', unique: true },
+  ],
+  clinic_website_versions: [
+    { key: { tenantId: 1, version: -1 }, name: 'ux_clinic_website_version', unique: true },
+  ],
   subscriptions: [
     {
       key: { tenantId: 1, status: 1, startsAt: -1, _id: -1 },

@@ -1,7 +1,9 @@
 (function () {
   'use strict';
   const host = document.getElementById('public-site');
-  const slug = new URLSearchParams(location.search).get('slug');
+  const params = new URLSearchParams(location.search);
+  const slug = params.get('slug');
+  const pageSlug = params.get('page');
   function show(title, message, retry) {
     const card = document.createElement('section');
     card.className = 'state-card';
@@ -58,7 +60,7 @@
       document.title = (draft.brand && draft.brand.name ? draft.brand.name : 'موقع العيادة') + ' · موقع العيادة';
       host.className = '';
       host.replaceChildren();
-      window.ThanarahClinicRenderer.render(host, draft, payload.catalog || {}, {});
+      window.ThanarahClinicRenderer.render(host, draft, payload.catalog || {}, { slug, pageSlug });
     } catch (_) {
       show('تعذّر الاتصال', 'تحقق من اتصالك ثم حاول تحميل الموقع مرة أخرى.', true);
     }

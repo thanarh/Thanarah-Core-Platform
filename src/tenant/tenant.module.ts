@@ -61,6 +61,12 @@ import { TenantSubscriptionPortalController } from './tenant-subscription-portal
 import { SubscriptionsModule } from '../subscriptions/subscriptions.module';
 import { PatientPortalController } from './patient-portal.controller';
 import { PatientPortalService } from './patient-portal.service';
+import {
+  ClinicWebsiteController,
+  PublicClinicWebsiteController,
+} from './clinic-website.controller';
+import { ClinicWebsiteService } from './clinic-website.service';
+import { ClinicWebsiteStore } from './clinic-website.store';
 
 @Module({
   imports: [
@@ -103,6 +109,8 @@ import { PatientPortalService } from './patient-portal.service';
     TenantClinicFinanceController,
     TenantSubscriptionPortalController,
     PatientPortalController,
+    ClinicWebsiteController,
+    PublicClinicWebsiteController,
   ],
   providers: [
     TenantAuthorizationGuard,
@@ -128,6 +136,8 @@ import { PatientPortalService } from './patient-portal.service';
     TenantService,
     TrustedTenantContextFactoryService,
     PatientPortalService,
+    ClinicWebsiteStore,
+    ClinicWebsiteService,
   ],
   exports: [
     TenantEntitlementModule,

@@ -60,7 +60,15 @@
     const header = el('header', 'site-top');
     header.append(el('div', 'site-logo', brand.logoText || brand.name || ''));
     const nav = el('nav', 'site-nav');
-    pages.filter(row => privatePreview || row.visible !== false).forEach(row => nav.append(el('span', '', row.title || '')));
+    pages.filter(row => privatePreview || row.visible !== false).forEach(row => {
+      if (privatePreview || !options || !options.slug) {
+        nav.append(el('span', '', row.title || ''));
+        return;
+      }
+      const link = el('a', '', row.title || '');
+      link.href = `/clinic-sites/?slug=${encodeURIComponent(options.slug)}&page=${encodeURIComponent(row.slug)}`;
+      nav.append(link);
+    });
     header.append(nav);
     site.append(header);
     if (page) {
@@ -90,6 +98,10 @@
         } else if (section.type === 'contact' || section.type === 'booking') {
           const copy = clean(data.text || data.body || data.note);
           if (copy) block.append(el('p', 'site-copy', copy));
+          if (section.type === 'contact') {
+            if (clean(data.phone)) block.append(el('p', 'site-copy', `الهاتف: ${data.phone}`));
+            if (clean(data.email)) block.append(el('p', 'site-copy', `البريد الإلكتروني: ${data.email}`));
+          }
           if (section.type === 'booking' && !copy) block.append(el('p', 'site-empty', 'تُعرض خيارات الحجز عند تهيئة هذا القسم.'));
         }
         site.append(block);
