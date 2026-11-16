@@ -15,7 +15,7 @@ THROTTLE_TTL = "60000"
 
 [userenv.development]
 PLATFORM_MONGO_DATABASE = "thanarah_platform_dev_probe"
-THANARAH_EMBED_ALLOWED_ORIGINS = "https://thanarah.com,https://68445d38-0ae6-4308-a310-953d54402b3a-00-1bflpp4diulbd.sisko.replit.dev"
+THANARAH_EMBED_ALLOWED_ORIGINS = "https://thanarah.com,https://68445d38-0ae6-4308-a310-953d54402b3a-00-1bflpp4diulbd.sisko.replit.dev,https://68445d38-0ae6-4308-a310-953d54402b3a-00-1bflpp4diulbd.sisko.replit.dev:5000"
 
 [workflows]
 runButton = "Project"
