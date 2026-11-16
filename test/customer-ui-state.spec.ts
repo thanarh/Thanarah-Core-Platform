@@ -8,7 +8,16 @@ function ui() {
   const app = { innerHTML: '' };
   const retryButton = { addEventListener: () => undefined };
   const context = {
-    window: { JourneyApi: {} }, document: { getElementById: (id: string) => id === 'app' ? app : retryButton },
+    window: {
+      JourneyApi: {},
+      JourneyFormat: {
+        orderStatus: (value: string) => value,
+        documentStatus: (value: string) => value,
+        invoiceStatus: (value: string) => value,
+        eventAction: (value: string) => value,
+        money: (value: unknown) => String(value),
+      },
+    }, document: { getElementById: (id: string) => id === 'app' ? app : retryButton },
     crypto: { randomUUID: () => 'synthetic-operation' },
     location: { origin: 'https://example.test', search: '' }, URL, URLSearchParams,
     app,
@@ -16,9 +25,12 @@ function ui() {
     testOperation: undefined as unknown as (key: string, run: (id: string) => Promise<unknown>) => Promise<unknown>,
     testJourney: undefined as unknown as (data: unknown) => string,
     testRestoreError: undefined as unknown as (error: { message?: string }) => void,
+    testPrimaryOrderAction: undefined as unknown as (
+      orders: Array<Record<string, unknown>>,
+    ) => { type: string; orderId?: string },
   };
   runInNewContext(source.replace(ending,
-    '\n globalThis.testRender=renderDetail;globalThis.testOperation=operationCall;globalThis.testJourney=(data)=>customerJourneyMarkup(data);globalThis.testDashboard=(data)=>customerDashboardMarkup(data);globalThis.testFilterOrders=filterCustomerOrders;globalThis.testDocuments=(order,documents)=>documentRequirementsMarkup(order,documents);globalThis.testProgress=(order)=>orderProgressMarkup(order);globalThis.testCatalogIssue=catalogOrderIssue;globalThis.testConfiguredPackages=configuredPackages;globalThis.testRestoreError=sessionRestoreError;\n})();'), context);
+     '\n globalThis.testRender=renderDetail;globalThis.testOperation=operationCall;globalThis.testJourney=(data)=>customerJourneyMarkup(data);globalThis.testDashboard=(data)=>customerDashboardMarkup(data);globalThis.testFilterOrders=filterCustomerOrders;globalThis.testDocuments=(order,documents)=>documentRequirementsMarkup(order,documents);globalThis.testProgress=(order)=>orderProgressMarkup(order);globalThis.testCatalogIssue=catalogOrderIssue;globalThis.testConfiguredPackages=configuredPackages;globalThis.testRestoreError=sessionRestoreError;globalThis.testPrimaryOrderAction=primaryOrderAction;\n})();'), context);
   return context;
 }
 function detail(status: string, available = false) {
@@ -99,6 +111,40 @@ describe('Customer portal state and uncertain-operation regression', () => {
     expect(html).toContain('data-journey-action="open-order"');
     expect(html).toContain('data-order-id="synthetic-order"');
     expect(html).toContain('طلبك لدى الفريق للمراجعة');
+  });
+  it('prioritizes an open request over a newer delivered order in the journey card', () => {
+    const profile = {
+      legalName: 'Synthetic Clinic',
+      displayName: 'Synthetic Clinic',
+      registrationNumber: 'SYNTHETIC',
+      city: 'Test',
+      address: 'Test',
+      contactName: 'Synthetic Contact',
+      phoneE164: '+966500000001',
+    };
+    const html = ui().testJourney({
+      account: { profile },
+      orders: [
+        { _id: 'open-order', status: 'SUBMITTED', open: true, updatedAt: '2026-01-01T00:00:00Z' },
+        { _id: 'delivered-order', status: 'DELIVERED', updatedAt: '2026-02-01T00:00:00Z' },
+      ],
+    });
+    expect(html).toContain('data-order-id="open-order"');
+    expect(html).toContain('طلبك لدى الفريق للمراجعة');
+  });
+  it('routes the main action to an existing open order instead of creating a duplicate', () => {
+    const action = ui().testPrimaryOrderAction([
+      { _id: 'delivered-order', status: 'DELIVERED', deliveredAt: '2026-02-01T00:00:00Z' },
+      { _id: 'open-order', status: 'SUBMITTED', open: true },
+    ]);
+    expect(action).toEqual({ type: 'open', orderId: 'open-order' });
+  });
+  it('offers renewal from the latest delivered order when no order is open', () => {
+    const action = ui().testPrimaryOrderAction([
+      { _id: 'older-delivery', status: 'DELIVERED', deliveredAt: '2026-01-01T00:00:00Z' },
+      { _id: 'latest-delivery', status: 'DELIVERED', deliveredAt: '2026-02-01T00:00:00Z' },
+    ]);
+    expect(action).toMatchObject({ type: 'renew', orderId: 'latest-delivery' });
   });
   it('marks the full journey complete only after customer receipt', () => {
     const profile = {
