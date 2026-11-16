@@ -194,6 +194,7 @@ describe('Public website route and reusable component regressions', () => {
     const html = renderers('en').packageCard(
       'Lite',
       {
+        termsText: 'هذه مسودة تجريبية غير نهائية.',
         packages: [
           {
             code: 'Lite',
@@ -209,6 +210,8 @@ describe('Public website route and reusable component regressions', () => {
     expect(html).toContain('Approved scope');
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<script>');
+    expect(html).toContain('Demo price — not final');
+    expect(html).toContain('50 SAR');
     expect(html).not.toContain('5000');
   });
   it('keeps a usable Arabic default when browser storage is unavailable', () => {
@@ -328,12 +331,14 @@ describe('Public website route and reusable component regressions', () => {
   });
   it('uses only published package details in the new reference cards and escapes catalog text', () => {
     const html = renderers('en').referencePackages({
+      termsText: 'هذه مسودة تجريبية غير نهائية.',
       packages: [
         {
           code: 'Lite',
           published: true,
           description: '<img onerror=alert(1)>',
           features: ['<script>bad</script>'],
+          priceMinor: '5000',
         },
         { code: 'Pro', published: false, description: 'UNPUBLISHED_SCOPE', priceMinor: '999900' },
       ],
@@ -342,8 +347,9 @@ describe('Public website route and reusable component regressions', () => {
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<img');
     expect(html).not.toContain('UNPUBLISHED_SCOPE');
+    expect(html).toContain('Demo price — not final');
+    expect(html).toContain('50 SAR');
     expect(html).not.toContain('999900');
-    expect(html).not.toContain('SAR');
     for (const code of ['Lite', 'Pro', 'Customize']) {
       expect(html).toContain(`/contact/?package=${code}`);
     }

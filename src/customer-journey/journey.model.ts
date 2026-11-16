@@ -30,6 +30,7 @@ export const sellerSchema = z
 export const catalogDataSchema = z
   .object({
     registrationOpen: z.boolean(),
+    ordersOpen: z.boolean().optional(),
     termsText: z.string().trim().max(10000),
     services: z
       .array(
@@ -56,7 +57,11 @@ export const catalogDataSchema = z
     ])
       if (new Set(list).size !== list.length)
         ctx.addIssue({ code: 'custom', message: 'Duplicate catalog key' });
-  });
+  })
+  .transform((data) => ({
+    ...data,
+    ordersOpen: data.ordersOpen ?? data.registrationOpen,
+  }));
 export const catalogSchema = z
   .object({
     _id: z.literal('catalog'),
@@ -246,18 +251,62 @@ export function defaultCatalog(): Catalog {
     live: null,
     draft: {
       registrationOpen: true,
-      termsText: '',
-      services: [],
+      ordersOpen: false,
+      termsText: [
+        'تنبيه: هذه مسودة تجريبية غير ملزمة وليست اتفاقًا أو سياسة قانونية معتمدة.',
+        'الأسعار والخصائص المعروضة أمثلة للاختبار فقط، ولا تحدد مدة الاشتراك أو الضرائب أو الرسوم.',
+        'يبدأ أي عمل بعد مراجعة الطلب وتأكيد نطاق الخدمة والسعر والمدة كتابةً من الطرفين.',
+        'يقر مقدم الطلب بصحة بيانات المنشأة وبأن لديه صلاحية مشاركة المستندات المقدمة.',
+        'لا ترفع بيانات مرضى أو معلومات صحية حساسة ضمن مستندات التسجيل أو التواصل.',
+        'قد يطلب فريق ثنارة معلومات إضافية قبل قبول الطلب أو تحديد موعد التنفيذ.',
+        'لا يعني وصف أي ميزة أو خدمة توفر تكامل خارجي أو واتساب أو ذكاء اصطناعي ما لم ينشر ويعتمد صراحةً.',
+        'سياسة الخصوصية والاحتفاظ بالبيانات والإلغاء والاسترداد والضرائب تحتاج مراجعة واعتمادًا مستقلًا قبل استقبال طلبات فعلية.',
+      ].join('\n\n'),
+      services: [
+        {
+          key: 'clinic-foundation',
+          title: 'تشغيل العيادة الذكية',
+          description:
+            'خدمة تجريبية لتهيئة أساس تشغيل العيادة: إدارة المرضى والمواعيد والزيارات السريرية وأدوار الفريق. التفاصيل قابلة للمراجعة قبل النشر.',
+          published: true,
+        },
+      ],
       documents: [],
       seller: null,
-      packages: ['Lite', 'Pro', 'Customize'].map((code) => ({
-        code: code as 'Lite' | 'Pro' | 'Customize',
-        description: '',
-        features: [],
-        planId: null,
-        priceMinor: null,
-        published: true,
-      })),
+      packages: [
+        {
+          code: 'Lite' as const,
+          description: 'باقة تجريبية للعمليات الأساسية في العيادة؛ السعر والنطاق غير نهائيين.',
+          features: ['إدارة المرضى', 'تنظيم المواعيد', 'توثيق الزيارات السريرية'],
+          planId: null,
+          priceMinor: '29900',
+          published: true,
+        },
+        {
+          code: 'Pro' as const,
+          description: 'باقة تجريبية موسعة؛ لا تمثل هذه القائمة حدود الصلاحيات النهائية لكل خطة.',
+          features: [
+            'تشمل مزايا Lite',
+            'أدوار وصلاحيات الفريق',
+            'تنظيم بيانات المنشأة وسير العمل',
+          ],
+          planId: null,
+          priceMinor: '79900',
+          published: true,
+        },
+        {
+          code: 'Customize' as const,
+          description: 'نطاق تجريبي يُحدد بعد تقييم احتياج المنشأة ومراجعة ما هو متاح فعليًا.',
+          features: [
+            'مراجعة احتياج المنشأة',
+            'تحديد نطاق التنفيذ قبل الاتفاق',
+            'التكاملات والتطويرات تتطلب موافقة منفصلة',
+          ],
+          planId: null,
+          priceMinor: '149900',
+          published: true,
+        },
+      ],
     },
     updatedBy: null,
     updatedAt: null,

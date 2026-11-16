@@ -60,6 +60,7 @@ async function customer(email = `${randomUUID()}@example.test`) {
 }
 async function publish() {
   const data = defaultCatalog().draft;
+  data.ordersOpen = true;
   data.termsText = 'Synthetic test-only terms, not a real commercial or legal policy.';
   data.documents = [{ key: 'license', label: 'Test license', required: true }];
   data.packages = data.packages.map(p => ({ ...p, planId, priceMinor: '10005', features: ['Synthetic only'] }));
@@ -218,7 +219,19 @@ suite('Customer journey isolated business acceptance', () => {
     data.packages[0].priceMinor = '99999'; data.packages[0].features = ['UNPUBLISHED'];
     await admin.saveCatalog(root, { ...op(), version: 0, data });
     const c = await accounts.publicCatalog();
-    expect(c.packages[0].priceMinor).toBeNull(); expect(c.packages[0].features).toEqual([]);
+    expect(c.packages).toEqual([]);
+    expect(c.services).toEqual([]);
+    expect(c.termsText).toBe('');
+  });
+  it('keeps customer registration separate from new-order intake', async () => {
+    const data = defaultCatalog().draft;
+    data.termsText = 'Synthetic test-only terms, not a real commercial or legal policy.';
+    data.ordersOpen = false;
+    const saved = await admin.saveCatalog(root, { ...op(), version: 0, data });
+    await admin.publish(reviewer, { ...op(), version: saved.version, reason: 'Synthetic independent review' });
+    const account = await customer();
+    await expect(orders.create(account.userId, { ...op(), packageCode: 'Lite' }))
+      .rejects.toMatchObject({ code: 'CUSTOMER_ORDERS_CLOSED' });
   });
   it('requires an independent catalog publisher and published terms before orders', async () => {
     const a = await customer();

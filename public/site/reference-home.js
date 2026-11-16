@@ -8,6 +8,16 @@
         return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char];
       });
     };
+    function packagePrice(value) {
+      try {
+        var minor = BigInt(String(value));
+        var whole = (minor / 100n).toLocaleString(ar ? 'ar-SA' : 'en-US');
+        var fraction = String(minor % 100n).padStart(2, '0');
+        return whole + (fraction === '00' ? '' : '.' + fraction) + (ar ? ' ر.س' : ' SAR');
+      } catch (_) {
+        return null;
+      }
+    }
     var icon = function (name) {
       var paths = {
         shield: '<path d="M12 3 19 6v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z"/><path d="m9 12 2 2 4-5"/>',
@@ -191,14 +201,28 @@
       });
       var description = item && item.description ? esc(item.description) : esc(t.unconfirmed);
       var features = item && Array.isArray(item.features) ? item.features : [];
+      var price = item && item.priceMinor !== null && item.priceMinor !== undefined
+        ? packagePrice(item.priceMinor)
+        : null;
+      var priceLabel = String((catalog && catalog.termsText) || '').includes('تجريبي')
+        ? t.demoPriceLabel
+        : t.publishedPriceLabel;
+      var orderOpen = catalog && catalog.ordersOpen === true;
+      var actionUrl = orderOpen
+        ? '/customer/?package=' + encodeURIComponent(code)
+        : '/contact/?package=' + encodeURIComponent(code);
+      var actionLabel = orderOpen
+        ? (ar ? 'ابدأ طلب الباقة' : 'Start this package')
+        : (code === 'Customize' ? (ar ? 'ناقش احتياجك' : 'Discuss your needs') :
+          (ar ? 'اطلب الباقة' : 'Discuss this package'));
       return '<article class="rh-package-card' + (code === 'Pro' ? ' rh-package-pro' : '') +
         '"><span class="rh-package-icon">' + icon(code === 'Lite' ? 'bolt' : code === 'Pro' ? 'layers' : 'compass') +
         '</span><h3 dir="ltr">' + code + '</h3><strong class="rh-package-code">' + pack[1] + '</strong><p>' +
-        description + '</p>' + (features.length ? '<ul>' + features.map(function (feature) {
+        description + '</p>' + (price ? '<strong class="rh-package-price">' + esc(priceLabel) + ' · ' +
+        esc(price) + '</strong>' : '') + (features.length ? '<ul>' + features.map(function (feature) {
           return '<li>' + esc(feature) + '</li>';
-        }).join('') + '</ul>' : '') + '<a href="/contact/?package=' + code + '">' +
-        (code === 'Customize' ? (ar ? 'ناقش احتياجك' : 'Discuss your needs') :
-          (ar ? 'اطلب الباقة' : 'Discuss this package')) + '<span aria-hidden="true">←</span></a></article>';
+        }).join('') + '</ul>' : '') + '<a href="' + esc(actionUrl) + '">' +
+        esc(actionLabel) + '<span aria-hidden="true">←</span></a></article>';
     }
     function packages(data) {
       var labels = ar ? {

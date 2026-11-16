@@ -102,6 +102,8 @@
 .rh-package-code { color: #58614c; font: 700 18px 'Tajawal',sans-serif; }
 .rh-package-card.rh-package-pro .rh-package-icon, .rh-package-card.rh-package-pro .rh-package-code, .rh-package-card.rh-package-pro p, .rh-package-card.rh-package-pro li { color: #f3eddd; }
 .rh-package-card p { max-width: 210px; margin: 8px 0 10px; color: #64645a; font-size: 11px; line-height: 1.45; }
+.rh-package-price { margin: 0 0 8px; color: #38543c; font-size: 10px; line-height: 1.4; }
+.rh-package-pro .rh-package-price { color: #f3eddd; }
 .rh-package-card ul { align-self: stretch; margin: 0 0 8px; padding-inline-start: 16px; color: #64645a; text-align: start; font-size: 10px; line-height: 1.45; }
 .rh-package-card a { min-height: 28px; display: inline-flex; align-items: center; gap: 8px; margin-top: auto; padding: 0 15px; border: 1px solid #aeb0a4; border-radius: 99px; font-size: 10px; font-weight: 700; text-decoration: none; }
 .rh-package-pro a { color: #254732; border-color: #eaeed9; background: #f2f0df; }

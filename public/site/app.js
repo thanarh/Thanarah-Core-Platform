@@ -1017,8 +1017,33 @@
       return p.code === code && p.published === true;
     });
   }
+  function packagePrice(value) {
+    try {
+      var minor = BigInt(String(value));
+      var whole = (minor / 100n).toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US');
+      var fraction = String(minor % 100n).padStart(2, '0');
+      return whole + (fraction === '00' ? '' : '.' + fraction) + (locale === 'ar' ? ' ر.س' : ' SAR');
+    } catch (_) {
+      return null;
+    }
+  }
+  function packagePriceLabel(catalog, pack) {
+    var price = pack && pack.priceMinor !== null && pack.priceMinor !== undefined
+      ? packagePrice(pack.priceMinor)
+      : null;
+    if (!price) return esc(t.quoteBased);
+    var label = String(catalog.termsText || '').includes('تجريبي')
+      ? t.demoPriceLabel
+      : t.publishedPriceLabel;
+    return esc(label) + ' · ' + esc(price);
+  }
   function packageCard(code, catalog, compact) {
     var p = packageData(code, catalog);
+    var orderOpen = catalog && catalog.ordersOpen === true;
+    var actionUrl = orderOpen
+      ? '/customer/?package=' + encodeURIComponent(code)
+      : packageContact(code);
+    var actionLabel = orderOpen ? t.startPackage : t.askQuote;
     var description = p && p.description ? esc(p.description) : esc(t.unconfirmed);
     var list =
       p && Array.isArray(p.features) && p.features.length
@@ -1046,18 +1071,18 @@
       '</p>' +
       list +
       '<span class="quote">' +
-      esc(t.quoteBased) +
+      packagePriceLabel(catalog, p) +
       '</span>' +
       (compact
         ? '<a class="text-link" href="' +
-          packageContact(code) +
+          esc(actionUrl) +
           '">' +
-          esc(t.askQuote) +
+          esc(actionLabel) +
           ' <span aria-hidden="true">←</span></a>'
         : '<a class="button small" href="' +
-          packageContact(code) +
+          esc(actionUrl) +
           '">' +
-          esc(t.askQuote) +
+          esc(actionLabel) +
           iconArrow() +
           '</a>') +
       '</article>'

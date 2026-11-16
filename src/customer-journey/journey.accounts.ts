@@ -30,9 +30,10 @@ export class JourneyAccounts {
       return {
         version: catalog.liveVersion,
         registrationOpen: live.registrationOpen,
+        ordersOpen: live.ordersOpen,
         termsText: catalog.live?.termsText ?? '',
         services: catalog.live?.services.filter((x) => x.published) ?? [],
-        packages: live.packages.filter((x) => x.published),
+        packages: catalog.live?.packages.filter((x) => x.published) ?? [],
         documents: catalog.live?.documents ?? [],
         whatsapp: WHATSAPP,
       };

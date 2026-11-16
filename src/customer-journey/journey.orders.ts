@@ -48,8 +48,8 @@ export class JourneyOrders {
         const selected = catalog.live.packages.find(
           (x) => x.code === data.packageCode && x.published,
         );
-        if (!catalog.live.registrationOpen && !data.parentOrderId)
-          fail('CUSTOMER_REGISTRATION_CLOSED', 'استقبال طلبات العملاء الجدد مغلق حاليًا.', 403);
+        if (!catalog.live.ordersOpen && !data.parentOrderId)
+          fail('CUSTOMER_ORDERS_CLOSED', 'استقبال الطلبات الجديدة مغلق حاليًا.', 403);
         if (!selected) fail('CUSTOMER_PACKAGE_UNAVAILABLE', 'الباقة غير متاحة حاليًا.');
         if (
           await collection(tx, 'customer_orders').findOne(
