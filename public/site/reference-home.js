@@ -13,7 +13,8 @@
         var minor = BigInt(String(value));
         var whole = (minor / 100n).toLocaleString(ar ? 'ar-SA' : 'en-US');
         var fraction = String(minor % 100n).padStart(2, '0');
-        return whole + (fraction === '00' ? '' : '.' + fraction) + (ar ? ' ر.س' : ' SAR');
+        var amount = whole + (fraction === '00' ? '' : '.' + fraction);
+        return root.ThanarahCurrency.valueMarkup(amount, 'SAR');
       } catch (_) {
         return null;
       }
@@ -219,7 +220,7 @@
         '"><span class="rh-package-icon">' + icon(code === 'Lite' ? 'bolt' : code === 'Pro' ? 'layers' : 'compass') +
         '</span><h3 dir="ltr">' + code + '</h3><strong class="rh-package-code">' + pack[1] + '</strong><p>' +
         description + '</p>' + (price ? '<strong class="rh-package-price">' + esc(priceLabel) + ' · ' +
-        esc(price) + '</strong>' : '') + (features.length ? '<ul>' + features.map(function (feature) {
+        price + '</strong>' : '') + (features.length ? '<ul>' + features.map(function (feature) {
           return '<li>' + esc(feature) + '</li>';
         }).join('') + '</ul>' : '') + '<a href="' + esc(actionUrl) + '">' +
         esc(actionLabel) + '<span aria-hidden="true">←</span></a></article>';

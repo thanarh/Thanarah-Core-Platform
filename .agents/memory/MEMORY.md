@@ -40,4 +40,5 @@
 - [شخصية موقع ثنارة](thanarah-public-brand.md) — منظومة تقنية صحية ذات شخصية؛ لا قوالب SaaS مكررة أو صور مختلقة أو حركة زخرفية.
 - [Modal scroll preservation](modal-scroll-preservation.md) — off-screen triggers can scroll into view before the click handler captures the page offset.
 - [Brand image transparency](brand-image-transparency.md) — verify encoded PNG transparency; palette conversion can drop alpha despite a transparent intermediate buffer.
+- [Saudi-riyal display symbol](saudi-riyal-symbol.md) — use the supplied transparent mark for displayed amounts; preserve SAR as the stored currency code.
 - [Mockup write quotas](mockup-write-quotas.md) — workspace writes may hit `-122` despite free disk; stop package retries and prefer an existing runtime or static preview.

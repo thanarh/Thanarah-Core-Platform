@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 function formatter() {
   const context = { window: {} as Record<string, unknown> };
+  runInNewContext(readFileSync('public/assets/thanarah-currency.js', 'utf8'), context);
   runInNewContext(readFileSync('public/journey/presentation.js', 'utf8'), context);
   return context.window.JourneyFormat as {
     orderStatus: (value: string) => string;
@@ -17,8 +18,11 @@ function formatter() {
 describe('customer journey presentation', () => {
   it('formats Saudi currency without mixing decimal digit systems', () => {
     const format = formatter();
-    expect(format.money('10006')).toBe('١٠٠٫٠٦ ر.س');
-    expect(format.money('0')).toBe('٠٫٠٠ ر.س');
+    expect(format.money('10006')).toContain('١٠٠٫٠٦');
+    expect(format.money('10006')).toContain('src="/assets/saudi-riyal-symbol.png"');
+    expect(format.money('10006')).not.toContain('ر.س');
+    expect(format.money('0')).toContain('٠٫٠٠');
+    expect(format.money('0')).toContain('src="/assets/saudi-riyal-symbol.png"');
     expect(format.money(null)).toBe('—');
   });
 

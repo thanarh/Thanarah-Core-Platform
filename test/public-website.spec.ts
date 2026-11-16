@@ -42,6 +42,7 @@ function renderers(language: 'ar' | 'en', blockedStorage = false): SiteRenderers
     siteRenderers: undefined as unknown as SiteRenderers,
   };
   runInNewContext(readFileSync('public/site/content.js', 'utf8'), context);
+  runInNewContext(readFileSync('public/assets/thanarah-currency.js', 'utf8'), context);
   runInNewContext(readFileSync('public/site/reference-home.js', 'utf8'), context);
   runInNewContext(
     source.replace(
@@ -71,6 +72,9 @@ describe('Public website route and reusable component regressions', () => {
       expect(source).toContain('property="og:title"');
       expect(source).toContain('<noscript>');
       expect(source.indexOf('/site/content.js')).toBeLessThan(source.indexOf('/site/app.js'));
+      expect(source.indexOf('/assets/thanarah-currency.js')).toBeLessThan(
+        source.indexOf('/site/app.js'),
+      );
       expect(source).not.toContain('mailto:');
     },
   );
@@ -212,7 +216,8 @@ describe('Public website route and reusable component regressions', () => {
     expect(html).toContain('&lt;script&gt;');
     expect(html).not.toContain('<script>');
     expect(html).toContain('Demo price — not final');
-    expect(html).toContain('50 SAR');
+    expect(html).toContain('src="/assets/saudi-riyal-symbol.png"');
+    expect(html).not.toContain('50 SAR');
     expect(html).toContain('/customer/?package=Lite');
     expect(html).not.toContain('5000');
   });
@@ -347,10 +352,11 @@ describe('Public website route and reusable component regressions', () => {
     });
     expect(html).toContain('&lt;img');
     expect(html).toContain('&lt;script&gt;');
-    expect(html).not.toContain('<img');
+    expect(html).not.toContain('<img onerror=alert(1)>');
     expect(html).not.toContain('UNPUBLISHED_SCOPE');
     expect(html).toContain('Demo price — not final');
-    expect(html).toContain('50 SAR');
+    expect(html).toContain('src="/assets/saudi-riyal-symbol.png"');
+    expect(html).not.toContain('50 SAR');
     expect(html).not.toContain('999900');
     for (const code of ['Lite', 'Pro', 'Customize']) {
       expect(html).toContain(`/contact/?package=${code}`);
@@ -360,7 +366,13 @@ describe('Public website route and reusable component regressions', () => {
     const html = renderers('en').referencePackages({
       ordersOpen: true,
       packages: [
-        { code: 'Lite', published: true, description: 'Approved demo', features: [], priceMinor: '29900' },
+        {
+          code: 'Lite',
+          published: true,
+          description: 'Approved demo',
+          features: [],
+          priceMinor: '29900',
+        },
       ],
     });
     expect(html).toContain('/customer/?package=Lite');

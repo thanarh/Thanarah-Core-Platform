@@ -65,7 +65,7 @@
         minimumIntegerDigits: 2,
         maximumFractionDigits: 0,
       }).format(absolute % 100n);
-      return `${negative ? '−' : ''}${whole}٫${fraction} ر.س`;
+      return root.ThanarahCurrency.valueMarkup(`${negative ? '−' : ''}${whole}٫${fraction}`, 'SAR');
     } catch {
       return '—';
     }

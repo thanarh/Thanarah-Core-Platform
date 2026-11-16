@@ -37,7 +37,8 @@ reconciled on retry without assigning the same sequence twice.
 
 ## Configurable behavior
 
-- Currency starts at `SAR` as a configurable value; no price is prefilled.
+- Currency is stored as the configurable ISO code `SAR`; visible amounts use
+  the owner-supplied Saudi-riyal symbol. No price is prefilled.
 - Tax rules, including an explicit no-tax choice, are tenant settings. No rate
   or tax treatment is enabled by default.
 - Line and tax rounding are explicit settings.
@@ -49,6 +50,22 @@ reconciled on retry without assigning the same sequence twice.
   are rejected within the tenant.
 - Amounts are calculated with integer currency-minor units and quantity
   thousandths, using `BigInt` intermediates to avoid floating-point drift.
+
+## Manual bank-transfer receipts
+
+The clinic finance workspace can collect a receipt for an issued invoice only
+when transfer instructions are explicitly configured and the invoice currency
+matches. A separate payment permission controls receipt submission; a separate
+review permission controls approve/reject decisions and requires a reason.
+Receipts remain tenant-scoped and are not returned in ordinary invoice
+responses. Approving a receipt records a review only: it does not mark an
+invoice paid or move money.
+
+The clinic subscription portal uses a separate central subscription workflow
+for receipt submission and platform-side review. It does not infer an
+subscription amount or extend a subscription when a receipt is accepted.
+Card and Apple Pay are visible only as disabled “قريبًا” options in both
+payment views.
 
 Settings updates are versioned and recorded in revision history. Invoice audit
 events are bounded; reaching the configured limit stops further mutations and
@@ -65,8 +82,10 @@ The product owner and qualified reviewers still need to decide:
    scope, and how duplicate or corrected numbers should be handled.
 4. Whether invoices should link to patients, appointments, or clinical
    services, and what privacy and access rules that requires.
-5. Whether voids, credit notes, refunds, payment allocation, or receipt flows
-   are required.
+5. Whether voids, credit notes, refunds, or payment allocation are required.
+   Patient-facing invoice access also needs a secure patient-to-account link
+   and verified ownership; no patient portal is currently exposed.
 
-No payment provider is called by this feature. Geidea remains a separate final
-roadmap stage; this foundation does not authorize sandbox or production charges.
+No payment provider is called by these manual receipt flows. Paymob remains a
+separate final roadmap stage after both manual-transfer paths and product
+acceptance; this foundation does not authorize sandbox or production charges.

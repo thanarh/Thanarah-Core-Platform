@@ -41,7 +41,7 @@
     employees:{ title:'الموظفون', singular:'موظف', permission:'people.read', write:'people.manage',
       fields:[['name','الاسم','text',true],['userId','معرّف حساب المنصة','text',false],['unitId','الوحدة التنظيمية','ref',true,'units'],['jobTitle','المسمى الوظيفي','text',true],['roleIds','الأدوار','roles',true],['status','الحالة','select',true,['ACTIVE','INACTIVE']]] },
     contracts:{ title:'العقود والاستحقاقات الشهرية', singular:'عقد', permission:'hr.read', write:'hr.manage',
-      fields:[['employeeId','الموظف','ref',true,'employees'],['title','عنوان العقد','text',true],['startDate','تاريخ البداية','date',true],['endDate','تاريخ النهاية','date',false],['monthlyMinor','الأجر الشهري (ريال)','money',true],['status','الحالة','select',true,['DRAFT']]] },
+     fields:[['employeeId','الموظف','ref',true,'employees'],['title','عنوان العقد','text',true],['startDate','تاريخ البداية','date',true],['endDate','تاريخ النهاية','date',false],['monthlyMinor','الأجر الشهري','money',true],['status','الحالة','select',true,['DRAFT']]] },
     clients:{ title:'العملاء والفرص', singular:'عميل أو فرصة', permission:'crm.read', write:'crm.manage',
       fields:[['name','اسم العميل','text',true],['contact','بيانات التواصل','text',false],['ownerId','مدير الحساب','ref',true,'employees'],['stage','المرحلة','select',true,['LEAD','QUALIFIED','PROPOSAL','WON','LOST']]] },
     requests:{ title:'الطلبات الداخلية', singular:'طلب', permission:'requests.read', write:'requests.manage',
@@ -49,7 +49,7 @@
     accounts:{ title:'دليل الحسابات', singular:'حساب', permission:'finance.read', write:'finance.manage',
       fields:[['code','رمز الحساب','text',true],['name','اسم الحساب','text',true],['type','النوع','select',true,['ASSET','LIABILITY','EQUITY','REVENUE','EXPENSE']],['status','الحالة','select',true,['ACTIVE','ARCHIVED']]] },
     policies:{ title:'سياسات الاستحقاق', singular:'سياسة', permission:'policies.read', write:'policies.manage',
-      fields:[['name','اسم السياسة','text',true],['type','نوع السياسة','select',true,['PAYROLL','COMMISSION','PROFIT']],['rateBps','معدل الاستحقاق (%)','percent',true],['maxAmountMinor','الحد الأعلى (ريال)','money',true],['debitAccountId','حساب المدين','ref',true,'accounts'],['creditAccountId','حساب الدائن','ref',true,'accounts'],['effectiveFrom','سارية من','date',true],['effectiveTo','سارية حتى','date',false],['status','الحالة','select',true,['DRAFT']]] },
+       fields:[['name','اسم السياسة','text',true],['type','نوع السياسة','select',true,['PAYROLL','COMMISSION','PROFIT']],['rateBps','معدل الاستحقاق (%)','percent',true],['maxAmountMinor','الحد الأعلى','money',true],['debitAccountId','حساب المدين','ref',true,'accounts'],['creditAccountId','حساب الدائن','ref',true,'accounts'],['effectiveFrom','سارية من','date',true],['effectiveTo','سارية حتى','date',false],['status','الحالة','select',true,['DRAFT']]] },
     journals:{ title:'القيود المالية', singular:'قيد', permission:'finance.read', write:'finance.manage',
       fields:[['memo','البيان','text',true],['kind','نوع القيد','select',true,['GENERAL','DEPOSIT','WITHDRAWAL']],['date','التاريخ','date',true],['clientId','العميل المرتبط بالإيراد','ref',false,'clients'],['lines','بنود القيد','lines',true]] },
   };
@@ -59,7 +59,8 @@
   const has = (permission) => Boolean(state.session?.isRoot || state.session?.permissions?.includes(permission));
   const moneyMinor = (minor) => {
     if (minor === null || minor === undefined || !Number.isSafeInteger(Number(minor))) return '—';
-    return new Intl.NumberFormat('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(minor)/100) + ' ر.س';
+    const amount = new Intl.NumberFormat('ar-SA',{minimumFractionDigits:2,maximumFractionDigits:2}).format(Number(minor)/100);
+    return window.ThanarahCurrency.valueMarkup(amount, 'SAR');
   };
   const decimalToMinor = (value) => {
     const text = String(value).trim().replace(/٬/g,'').replace(/٫/g,'.');
@@ -107,7 +108,7 @@
           <div class="sidebar-actions"><button class="quiet-btn" data-logout>تسجيل الخروج</button><button class="quiet-btn" data-refresh>تحديث</button></div></div>
       </aside>
       <main class="main"><header class="topbar"><div class="top-actions"><button class="btn btn-outline mobile-menu" data-menu aria-label="القائمة">القائمة</button><span class="crumb ar">عمليات الشركة / ${esc(viewName)}</span></div>
-        <div class="top-actions">${has('finance.read')?`<label class="help" for="global-period">الفترة</label><input id="global-period" class="input period-input" type="month" value="${esc(state.period)}" aria-label="الفترة المالية">`:''}<span class="pill">SAR</span></div></header>
+        <div class="top-actions">${has('finance.read')?`<label class="help" for="global-period">الفترة</label><input id="global-period" class="input period-input" type="month" value="${esc(state.period)}" aria-label="الفترة المالية">`:''}<span class="pill">${window.ThanarahCurrency.symbolMarkup()}</span></div></header>
         <section class="content">${content}</section></main></div>`;
     bindShell();
   }
@@ -343,15 +344,15 @@
       return `<div class="field span-2"><label>${esc(title)}</label><div class="permission-grid">${[...builtins.map(role=>({id:role.id,name:role.name})),...custom.filter(r=>r.data?.status==='ACTIVE').map(r=>({id:r._id,name:r.data.name}))].map(role=>`<label class="permission-item"><input type="checkbox" name="roleIds" value="${esc(role.id)}" ${selected.includes(role.id)?'checked':''}>${esc(role.name)}</label>`).join('')||'<span class="help">لا توجد أدوار متاحة.</span>'}</div></div>`;
     }
     if(type==='permissions') return `<div class="field span-2"><label>${esc(title)}</label><div class="permission-grid">${PERMS.map(permission=>`<label class="permission-item"><input type="checkbox" name="permissions" value="${permission}" ${(value||[]).includes(permission)?'checked':''}><span>${esc(arPermission(permission))}</span></label>`).join('')}</div></div>`;
-    if(type==='lines') return `<div class="field span-2"><label>${esc(title)}</label><div class="line-editor" id="journal-lines">${state.modal.lines.map((line,index)=>lineMarkup(line,index)).join('')}</div><button type="button" class="btn btn-outline btn-small" data-add-line>إضافة بند</button><p class="help">أدخل المبالغ بالريال؛ تتحول إلى هللات صحيحة. يجب توازن إجمالي المدين والدائن.</p></div>`;
-    if(type==='money') return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" inputmode="decimal" placeholder="0.00" value="${value!=null?(Number(value)/100).toFixed(2):''}" ${attr}><span class="help">ريال سعودي، حتى منزلتين عشريتين.</span></div>`;
+    if(type==='lines') return `<div class="field span-2"><label>${esc(title)}</label><div class="line-editor" id="journal-lines">${state.modal.lines.map((line,index)=>lineMarkup(line,index)).join('')}</div><button type="button" class="btn btn-outline btn-small" data-add-line>إضافة بند</button><p class="help">أدخل المبالغ بوحدة ${window.ThanarahCurrency.symbolMarkup()}؛ تتحول إلى هللات صحيحة. يجب توازن إجمالي المدين والدائن.</p></div>`;
+    if(type==='money') return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" inputmode="decimal" placeholder="0.00" value="${value!=null?(Number(value)/100).toFixed(2):''}" ${attr}><span class="help">المبلغ بوحدة ${window.ThanarahCurrency.symbolMarkup()}، حتى منزلتين عشريتين.</span></div>`;
     if(type==='percent') return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" type="number" min="0" max="100" step=".01" value="${value!=null?(Number(value)/100).toFixed(2):''}" ${attr}><span class="help">يدخل كنسبة مئوية؛ يحفظ كأساس نقاط (0–10,000).</span></div>`;
     if(key==='userId') return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" value="${esc(value||'')}" placeholder="UUID أو اتركه فارغًا" ${attr}><span class="help">ربط حساب موجود فقط؛ إدارة الهوية في /platform-setup/.</span></div>`;
     if(key==='endDate'||key==='effectiveTo') return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" type="date" value="${esc(value||'')}" ${attr}></div>`;
     return `<div class="field"><label for="f-${key}">${esc(title)}</label><input class="input" id="f-${key}" name="${key}" type="${type}" value="${esc(value||'')}" ${attr} ${key==='code'?'maxlength="20"':''}></div>`;
   }
   function lineMarkup(line,index) {
-    return `<div class="journal-line" data-line="${index}"><select class="select account-picker" data-line-account aria-label="الحساب">${recordOptions('accounts',line.accountId,item=>item.data.status==='ACTIVE')}</select><input class="input" data-line-debit inputmode="decimal" placeholder="مدين (ر.س)" value="${esc(line.debitInput ?? (line.debitMinor?Number(line.debitMinor/100).toFixed(2):''))}" aria-label="مدين بالريال"><input class="input" data-line-credit inputmode="decimal" placeholder="دائن (ر.س)" value="${esc(line.creditInput ?? (line.creditMinor?Number(line.creditMinor/100).toFixed(2):''))}" aria-label="دائن بالريال">${index>1?`<button type="button" class="btn btn-danger btn-small" data-remove-line="${index}">إزالة</button>`:'<span></span>'}</div>`;
+    return `<div class="journal-line" data-line="${index}"><select class="select account-picker" data-line-account aria-label="الحساب">${recordOptions('accounts',line.accountId,item=>item.data.status==='ACTIVE')}</select><input class="input" data-line-debit inputmode="decimal" placeholder="مدين" value="${esc(line.debitInput ?? (line.debitMinor?Number(line.debitMinor/100).toFixed(2):''))}" aria-label="مدين بالريال"><input class="input" data-line-credit inputmode="decimal" placeholder="دائن" value="${esc(line.creditInput ?? (line.creditMinor?Number(line.creditMinor/100).toFixed(2):''))}" aria-label="دائن بالريال">${index>1?`<button type="button" class="btn btn-danger btn-small" data-remove-line="${index}">إزالة</button>`:'<span></span>'}</div>`;
   }
   function modalRecordId() { return state.modal?.id||''; }
   async function formMarkup(modal) {
@@ -488,8 +489,8 @@
       state.modal=null;state.records={};state.refs={};toast('اكتمل الإجراء.');await renderView();
     } catch(error) { button.disabled=false;toast(error.message||'تعذّر تنفيذ الإجراء.',true); }
   }
-  function statCard(title,value,note='') {
-    return `<article class="stat-card"><div class="stat-label ar">${esc(title)}</div><div class="stat-value">${esc(value??'—')}</div>${note?`<div class="stat-note ar">${esc(note)}</div>`:''}</article>`;
+  function statCard(title,value,note='',valueIsMarkup=false) {
+    return `<article class="stat-card"><div class="stat-label ar">${esc(title)}</div><div class="stat-value">${valueIsMarkup?value:esc(value??'—')}</div>${note?`<div class="stat-note ar">${esc(note)}</div>`:''}</article>`;
   }
   function summaryNumber(value) {
     if(value===null||value===undefined) return '—';
@@ -503,7 +504,7 @@
     const cards=countItems.map(([key,value])=>statCard(label(key)||key,summaryNumber(value),'حسب السجلات المصرح بها'));
     if(!cards.length) cards.push(statCard('السجلات المتاحة','—','لا يعرض الخادم إحصاءات إضافية'));
     const finance=data.finance&&has('finance.read')?data.finance:null;
-    if(finance) cards.push(statCard('صافي الفترة',moneyMinor(finance.profitMinor),'من القيود المرحلة فقط'));
+    if(finance) cards.push(statCard('صافي الفترة',moneyMinor(finance.profitMinor),'من القيود المرحلة فقط',true));
     const queue=[['طلبات متأخرة',requests.overdue],['قيد المراجعة',requests.pending],['طلبات مصعّدة',requests.escalated]];
     const financePanel=finance?`<section class="panel"><div class="panel-title"><h2 class="ar">لمحة مالية · ${esc(finance.period||state.period)}</h2><button class="btn btn-outline btn-small" data-go-finance>ميزان المراجعة</button></div><div class="panel-body"><div class="finance-summary"><div class="finance-cell"><span class="stat-label">الإيرادات</span><strong>${moneyMinor(finance.revenueMinor)}</strong></div><div class="finance-cell"><span class="stat-label">المصروفات</span><strong>${moneyMinor(finance.expenseMinor)}</strong></div><div class="finance-cell"><span class="stat-label">صافي الربح</span><strong>${moneyMinor(finance.profitMinor)}</strong></div></div></div></section>`:'';
     const content=`${pageHead(title,'مؤشرات مأخوذة من سجلات الشركة الفعلية فقط.') }<div class="stat-grid">${cards.join('')}</div><div class="dash-grid"><section class="panel"><div class="panel-title"><h2 class="ar">حالة الطلبات</h2><span class="pill">مباشر</span></div><div class="panel-body list-stack">${queue.map(([title,value])=>`<div class="brief-row"><span class="brief-title ar">${title}</span><span class="mono">${value===undefined?'—':summaryNumber(value)}</span></div>`).join('')}<p class="help">لا تُعرض أرقام تشغيل أو مؤشرات غير متاحة في واجهة الخدمة.</p></div></section>
@@ -515,8 +516,8 @@
     const data=await api.finance(state.period);
     const accounts=data.accounts||[];
     const table=accounts.length?`<div class="panel table-wrap"><table><thead><tr><th>رمز الحساب</th><th>الحساب</th><th>النوع</th><th>مدين</th><th>دائن</th><th>الرصيد</th></tr></thead><tbody>${accounts.map(item=>`<tr><td class="mono">${esc(item.data?.code||'—')}</td><td class="td-main">${esc(item.data?.name||'—')}</td><td>${esc(label(item.data?.type))}</td><td class="mono">${moneyMinor(item.debitMinor)}</td><td class="mono">${moneyMinor(item.creditMinor)}</td><td class="mono">${moneyMinor(item.balanceMinor)}</td></tr>`).join('')}</tbody></table></div>`:`<div class="panel empty-state"><div class="empty-mark">=</div><h2>لا توجد قيود مرحلة لهذه الفترة</h2><p>هذا التقرير يغطي الفترة كاملة، ولا يعتمد على قائمة القيود المعروضة.</p></div>`;
-    return `${pageHead('ميزان المراجعة',`تسوية دورية من القيود المرحلة فقط · ${data.period||state.period}`)}<div class="stat-grid">${statCard('إجمالي المدين',moneyMinor(data.debitMinor),'SAR')}${statCard('إجمالي الدائن',moneyMinor(data.creditMinor),'SAR')}${statCard('الفرق',moneyMinor(data.differenceMinor),data.balanced?'متوازن':'يتطلب مراجعة')}${statCard('القيود المرحلة',summaryNumber(data.postedCount),'للفترة كاملة')}</div>
-      <section class="panel" style="margin-bottom:15px"><div class="panel-title"><h2 class="ar">ملخص الفترة</h2>${data.balanced?'<span class="pill">متوازن</span>':'<span class="pill pill-bad">غير متوازن</span>'}</div><div class="panel-body"><div class="finance-summary"><div class="finance-cell"><span class="stat-label">الإيرادات</span><strong>${moneyMinor(data.revenueMinor)}</strong></div><div class="finance-cell"><span class="stat-label">المصروفات</span><strong>${moneyMinor(data.expenseMinor)}</strong></div><div class="finance-cell"><span class="stat-label">الربح</span><strong>${moneyMinor(data.profitMinor)}</strong></div></div><p class="help" style="margin:15px 0 0">عملة التقرير: ${esc(data.currency||'SAR')} · لا توجد رسوم بيانية أو تقديرات.</p></div></section>
+    return `${pageHead('ميزان المراجعة',`تسوية دورية من القيود المرحلة فقط · ${data.period||state.period}`)}<div class="stat-grid">${statCard('إجمالي المدين',moneyMinor(data.debitMinor),'',true)}${statCard('إجمالي الدائن',moneyMinor(data.creditMinor),'',true)}${statCard('الفرق',moneyMinor(data.differenceMinor),data.balanced?'متوازن':'يتطلب مراجعة',true)}${statCard('القيود المرحلة',summaryNumber(data.postedCount),'للفترة كاملة')}</div>
+      <section class="panel" style="margin-bottom:15px"><div class="panel-title"><h2 class="ar">ملخص الفترة</h2>${data.balanced?'<span class="pill">متوازن</span>':'<span class="pill pill-bad">غير متوازن</span>'}</div><div class="panel-body"><div class="finance-summary"><div class="finance-cell"><span class="stat-label">الإيرادات</span><strong>${moneyMinor(data.revenueMinor)}</strong></div><div class="finance-cell"><span class="stat-label">المصروفات</span><strong>${moneyMinor(data.expenseMinor)}</strong></div><div class="finance-cell"><span class="stat-label">الربح</span><strong>${moneyMinor(data.profitMinor)}</strong></div></div><p class="help" style="margin:15px 0 0">عملة التقرير: ${data.currency === 'SAR' || !data.currency ? window.ThanarahCurrency.symbolMarkup() : esc(data.currency)} · لا توجد رسوم بيانية أو تقديرات.</p></div></section>
       <div class="panel-title" style="padding-inline:2px;border:0"><h2 class="ar">أرصدة الحسابات</h2><span class="help">${accounts.length} حسابًا في التقرير</span></div>${table}`;
   }
   async function hierarchyPage() {

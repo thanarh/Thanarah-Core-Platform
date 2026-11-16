@@ -1022,7 +1022,8 @@
       var minor = BigInt(String(value));
       var whole = (minor / 100n).toLocaleString(locale === 'ar' ? 'ar-SA' : 'en-US');
       var fraction = String(minor % 100n).padStart(2, '0');
-      return whole + (fraction === '00' ? '' : '.' + fraction) + (locale === 'ar' ? ' ر.س' : ' SAR');
+      var amount = whole + (fraction === '00' ? '' : '.' + fraction);
+      return window.ThanarahCurrency.valueMarkup(amount, 'SAR');
     } catch (_) {
       return null;
     }
@@ -1035,7 +1036,7 @@
     var label = String(catalog.termsText || '').includes('تجريبي')
       ? t.demoPriceLabel
       : t.publishedPriceLabel;
-    return esc(label) + ' · ' + esc(price);
+    return esc(label) + ' · ' + price;
   }
   function packageCard(code, catalog, compact) {
     var p = packageData(code, catalog);
