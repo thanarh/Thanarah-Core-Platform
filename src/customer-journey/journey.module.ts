@@ -3,6 +3,7 @@ import { AuthModule } from '../auth/auth.module';
 import { PlatformMongoModule } from '../platform-mongo/platform-mongo.module';
 import { OperationsModule } from '../internal-operations/operations.module';
 import { TenantStorageModule } from '../tenant/tenant-storage.module';
+import { ConfigModule } from '../config/config.module';
 import { JourneyStore } from './journey.store';
 import { JourneyAccounts } from './journey.accounts';
 import { JourneyOrders } from './journey.orders';
@@ -22,7 +23,7 @@ import {
   JourneyPublicController,
 } from './journey.controller';
 @Module({
-  imports: [AuthModule, PlatformMongoModule, OperationsModule, TenantStorageModule],
+  imports: [AuthModule, PlatformMongoModule, OperationsModule, TenantStorageModule, ConfigModule],
   providers: [
     JourneyStore,
     JourneyAccounts,
