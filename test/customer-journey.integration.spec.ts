@@ -78,7 +78,13 @@ async function publish() {
   data.ordersOpen = true;
   data.termsText = 'Synthetic test-only terms, not a real commercial or legal policy.';
   data.documents = [{ key: 'license', label: 'Test license', required: true }];
-  data.packages = data.packages.map(p => ({ ...p, planId, priceMinor: '10005', features: ['Synthetic only'] }));
+  data.packages = data.packages.map(p => ({
+    ...p,
+    planId,
+    priceMinor: '10005',
+    features: ['Synthetic only'],
+    published: true,
+  }));
   data.seller = { name: 'Synthetic seller', address: 'Test-only address', taxNumber: 'TEST', prefix: 'TEST' };
   const current = await admin.catalog(root);
   const saved = await admin.saveCatalog(root, { ...op(), version: current.version, data });
@@ -229,7 +235,7 @@ suite('Customer journey isolated business acceptance', () => {
     const updated = await accounts.profile(a.userId, { ...op(), version: a.version, profile: { ...profile, phoneE164: '+966500000002' } });
     expect(updated.phoneVerification.status).toBe('UNVERIFIED');
   });
-  it('does not leak unpublished prices or invent default features', async () => {
+  it('does not expose unpublished prices or package features', async () => {
     const data = defaultCatalog().draft;
     data.packages[0].priceMinor = '99999'; data.packages[0].features = ['UNPUBLISHED'];
     await admin.saveCatalog(root, { ...op(), version: 0, data });

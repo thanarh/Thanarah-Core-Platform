@@ -11,28 +11,46 @@ function accountsFor(catalog: ReturnType<typeof defaultCatalog>) {
   return new JourneyAccounts(store, {} as never, {} as never, {} as never);
 }
 
-describe('customer catalog demo defaults', () => {
-  it('keeps editable demo content in draft and blocks new orders by default', () => {
+describe('customer catalog defaults', () => {
+  it('keeps owner-provided package details in draft and blocks orders by default', () => {
     const catalog = defaultCatalog();
     expect(catalog.live).toBeNull();
     expect(catalog.draft.registrationOpen).toBe(true);
     expect(catalog.draft.ordersOpen).toBe(false);
-    expect(catalog.draft.termsText).toContain('مسودة تجريبية');
+    expect(catalog.draft.termsText).toBe('');
     expect(catalog.draft.packages.map((item) => item.priceMinor)).toEqual([
-      '29900',
-      '79900',
-      '149900',
+      '19900',
+      '35900',
+      null,
     ]);
-    expect(catalog.draft.packages.every((item) => item.features.length > 0)).toBe(true);
+    expect(catalog.draft.packages.map((item) => item.published)).toEqual([false, false, false]);
+    expect(catalog.draft.packages[0].features).toEqual([
+      'نظام العيادة',
+      'WhatsApp',
+      'بوت عبر WhatsApp',
+    ]);
+    expect(catalog.draft.packages[1].features).toEqual([
+      'الموقع/الرابط',
+      'WhatsApp',
+      'النظام الداخلي',
+      'كل المزايا الموجودة في النظام',
+    ]);
+    expect(catalog.draft.packages[2].features).toEqual([]);
+    expect(catalog.draft.documents.map((item) => item.key)).toEqual([
+      'commercial-register',
+      'vat-number',
+      'clinic-logo',
+    ]);
   });
 
-  it('exposes package names only, never draft prices, features, terms, or services', async () => {
+  it('exposes package names only, never draft prices, features, terms, or documents', async () => {
     const catalog = defaultCatalog();
     const published = await accountsFor(catalog).publicCatalog();
     expect(published.registrationOpen).toBe(true);
     expect(published.ordersOpen).toBe(false);
     expect(published.termsText).toBe('');
     expect(published.services).toEqual([]);
+    expect(published.documents).toEqual([]);
     expect(published.packages.map((item) => item.code)).toEqual(['Lite', 'Pro', 'Customize']);
     expect(
       published.packages.every(
@@ -48,13 +66,16 @@ describe('customer catalog demo defaults', () => {
   it('exposes only independently published package content', async () => {
     const catalog = defaultCatalog();
     const live = structuredClone(catalog.draft);
+    live.termsText = 'Approved test terms for this synthetic catalog.';
+    live.packages[0].published = true;
+    live.packages[2].published = true;
     live.packages[1].published = false;
     catalog.live = live;
     catalog.liveVersion = 1;
     const published = await accountsFor(catalog).publicCatalog();
-    expect(published.termsText).toContain('مسودة تجريبية');
+    expect(published.termsText).toBe('Approved test terms for this synthetic catalog.');
     expect(published.packages.map((item) => item.code)).toEqual(['Lite', 'Customize']);
-    expect(published.packages.map((item) => item.priceMinor)).toEqual(['29900', '149900']);
+    expect(published.packages.map((item) => item.priceMinor)).toEqual(['19900', null]);
   });
 
   it('preserves prior order intake settings when loading a catalog without the new toggle', () => {
