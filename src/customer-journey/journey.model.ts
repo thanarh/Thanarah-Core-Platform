@@ -257,7 +257,22 @@ export function defaultCatalog(): Catalog {
       registrationOpen: true,
       ordersOpen: false,
       termsText: '',
-      services: [],
+      services: [
+        {
+          key: 'clinic-operations',
+          title: 'إدارة العيادة',
+          description:
+            'مسودة تجريبية لخدمة إدارة المرضى والمواعيد والزيارات ضمن مساحة عمل العيادة. عدّل الوصف والنطاق من إدارة الكتالوج قبل النشر.',
+          published: true,
+        },
+        {
+          key: 'team-access',
+          title: 'إدارة أدوار الفريق',
+          description:
+            'مسودة تجريبية لتنظيم أدوار الفريق وصلاحيات الوصول. راجع التفاصيل وعدّلها من إدارة الكتالوج قبل النشر.',
+          published: true,
+        },
+      ],
       documents: [
         { key: 'commercial-register', label: 'السجل التجاري', required: true },
         { key: 'vat-certificate', label: 'وثيقة الرقم الضريبي', required: true },
@@ -267,27 +282,30 @@ export function defaultCatalog(): Catalog {
       packages: [
         {
           code: 'Lite' as const,
-          description: '199 ر.س شهريًا. خصم سنوي ثابت 10% لكل سنة، غير تراكمي.',
-          features: ['نظام العيادة', 'WhatsApp', 'بوت عبر WhatsApp'],
+          description:
+            'مسودة تجريبية للباقة الأساسية؛ نطاق المزايا قابل للتعديل من إدارة الكتالوج قبل النشر.',
+          features: ['إدارة المرضى والمواعيد والزيارات', 'تنظيم أدوار الفريق'],
           planId: null,
           priceMinor: '19900',
-          published: false,
+          published: true,
         },
         {
           code: 'Pro' as const,
-          description: '359 ر.س شهريًا. الخصم السنوي 15%.',
-          features: ['الموقع/الرابط', 'WhatsApp', 'النظام الداخلي', 'كل المزايا الموجودة في النظام'],
+          description:
+            'مسودة تجريبية للباقة الموسعة؛ راجع النطاق والمزايا من إدارة الكتالوج قبل النشر.',
+          features: ['إدارة المرضى والمواعيد والزيارات', 'تنظيم أدوار الفريق'],
           planId: null,
           priceMinor: '35900',
-          published: false,
+          published: true,
         },
         {
           code: 'Customize' as const,
-          description: 'يُحدد النطاق والسعر بحسب الميزات المطلوبة بعد التواصل ومراجعة الاحتياج.',
+          description:
+            'مسودة تجريبية؛ يُحدد النطاق والسعر بعد مراجعة احتياج المنشأة.',
           features: [],
           planId: null,
           priceMinor: null,
-          published: false,
+          published: true,
         },
       ],
     },

@@ -23,22 +23,24 @@ describe('customer catalog defaults', () => {
     expect(catalog.draft.registrationOpen).toBe(true);
     expect(catalog.draft.ordersOpen).toBe(false);
     expect(catalog.draft.termsText).toBe('');
+    expect(catalog.draft.services.map((item) => item.key)).toEqual([
+      'clinic-operations',
+      'team-access',
+    ]);
+    expect(catalog.draft.services.every((item) => item.published)).toBe(true);
     expect(catalog.draft.packages.map((item) => item.priceMinor)).toEqual([
       '19900',
       '35900',
       null,
     ]);
-    expect(catalog.draft.packages.map((item) => item.published)).toEqual([false, false, false]);
+    expect(catalog.draft.packages.map((item) => item.published)).toEqual([true, true, true]);
     expect(catalog.draft.packages[0].features).toEqual([
-      'نظام العيادة',
-      'WhatsApp',
-      'بوت عبر WhatsApp',
+      'إدارة المرضى والمواعيد والزيارات',
+      'تنظيم أدوار الفريق',
     ]);
     expect(catalog.draft.packages[1].features).toEqual([
-      'الموقع/الرابط',
-      'WhatsApp',
-      'النظام الداخلي',
-      'كل المزايا الموجودة في النظام',
+      'إدارة المرضى والمواعيد والزيارات',
+      'تنظيم أدوار الفريق',
     ]);
     expect(catalog.draft.packages[2].features).toEqual([]);
     expect(catalog.draft.documents.map((item) => item.key)).toEqual([
@@ -46,7 +48,7 @@ describe('customer catalog defaults', () => {
       'vat-certificate',
       'clinic-logo',
     ]);
-    expect(catalog.draft.packages[0].description).toContain('ثابت 10%');
+    expect(catalog.draft.packages[0].description).toContain('مسودة تجريبية');
     expect(catalog.draft.termsText).toBe('');
   });
 
@@ -67,24 +69,30 @@ describe('customer catalog defaults', () => {
     );
   });
 
-  it('exposes package names only, never draft prices, features, terms, or documents', async () => {
+  it('shows a clearly marked demo catalog without enabling registration or orders', async () => {
     const catalog = defaultCatalog();
     const published = await accountsFor(catalog).publicCatalog();
-    expect(published.registrationOpen).toBe(true);
+    expect(published.demo).toBe(true);
+    expect(published.registrationOpen).toBe(false);
     expect(published.ordersOpen).toBe(false);
     expect(published.termsText).toBe('');
-    expect(published.services).toEqual([]);
+    expect(published.services.map((item) => item.key)).toEqual([
+      'clinic-operations',
+      'team-access',
+    ]);
     expect(published.documents).toEqual([]);
     expect(published.packages.map((item) => item.code)).toEqual(['Lite', 'Pro', 'Customize']);
-    expect(
-      published.packages.every(
-        (item) =>
-          !item.published &&
-          item.priceMinor === null &&
-          item.features.length === 0 &&
-          item.description === '',
-      ),
-    ).toBe(true);
+    expect(published.packages.map((item) => item.priceMinor)).toEqual(['19900', '35900', null]);
+    expect(published.packages.every((item) => item.published)).toBe(true);
+  });
+
+  it('does not expose a saved but unpublished draft as the public demo catalog', async () => {
+    const catalog = defaultCatalog();
+    catalog.draft.services[0].description = 'Unreviewed private draft details';
+    catalog.draft.packages[0].priceMinor = '99900';
+    const published = await accountsFor(catalog).publicCatalog();
+    expect(published.services[0].description).not.toContain('Unreviewed private draft details');
+    expect(published.packages[0].priceMinor).toBe('19900');
   });
 
   it('exposes only independently published package content', async () => {
@@ -97,6 +105,7 @@ describe('customer catalog defaults', () => {
     catalog.live = live;
     catalog.liveVersion = 1;
     const published = await accountsFor(catalog).publicCatalog();
+    expect(published.demo).toBe(false);
     expect(published.termsText).toBe('Approved test terms for this synthetic catalog.');
     expect(published.packages.map((item) => item.code)).toEqual(['Lite', 'Customize']);
     expect(published.packages.map((item) => item.priceMinor)).toEqual(['19900', null]);
