@@ -300,8 +300,7 @@ export function defaultCatalog(): Catalog {
         },
         {
           code: 'Customize' as const,
-          description:
-            'مسودة تجريبية؛ يُحدد النطاق والسعر بعد مراجعة احتياج المنشأة.',
+          description: 'مسودة تجريبية؛ يُحدد النطاق والسعر بعد مراجعة احتياج المنشأة.',
           features: [],
           planId: null,
           priceMinor: null,

@@ -28,11 +28,7 @@ describe('customer catalog defaults', () => {
       'team-access',
     ]);
     expect(catalog.draft.services.every((item) => item.published)).toBe(true);
-    expect(catalog.draft.packages.map((item) => item.priceMinor)).toEqual([
-      '19900',
-      '35900',
-      null,
-    ]);
+    expect(catalog.draft.packages.map((item) => item.priceMinor)).toEqual(['19900', '35900', null]);
     expect(catalog.draft.packages.map((item) => item.published)).toEqual([true, true, true]);
     expect(catalog.draft.packages[0].features).toEqual([
       'إدارة المرضى والمواعيد والزيارات',
