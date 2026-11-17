@@ -34,7 +34,7 @@ export class JourneyAccounts {
       return {
         version: catalog.liveVersion,
         demo,
-        registrationOpen: demo ? false : live.registrationOpen,
+        registrationOpen: live.registrationOpen,
         ordersOpen: demo ? false : live.ordersOpen,
         termsText: catalog.live?.termsText ?? '',
         services: live.services.filter((x) => x.published),

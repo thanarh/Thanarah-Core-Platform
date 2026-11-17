@@ -73,7 +73,7 @@ describe('customer catalog defaults', () => {
     const catalog = defaultCatalog();
     const published = await accountsFor(catalog).publicCatalog();
     expect(published.demo).toBe(true);
-    expect(published.registrationOpen).toBe(false);
+    expect(published.registrationOpen).toBe(true);
     expect(published.ordersOpen).toBe(false);
     expect(published.termsText).toBe('');
     expect(published.services.map((item) => item.key)).toEqual([
