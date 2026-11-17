@@ -75,8 +75,11 @@ describe('Patient tenant-storage boundary', () => {
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
     expect(owner?.permissionCodes).toContain('tenant.patients.manage');
     expect(admin?.permissionCodes).toContain('tenant.patients.manage');
-    expect(member?.permissionCodes).toContain('tenant.patients.read');
+    expect(member?.permissionCodes).not.toContain('tenant.patients.read');
     expect(member?.permissionCodes).not.toContain('tenant.patients.manage');
+    expect(
+      DEFAULT_TENANT_ROLES.find(({ code }) => code === 'RECEPTIONIST')?.permissionCodes,
+    ).toContain('tenant.patients.manage');
     expect(migration).toContain("`role`.`code` IN ('OWNER', 'ADMIN', 'MEMBER')");
     expect(migration).toContain("`role`.`code` IN ('OWNER', 'ADMIN')");
   });

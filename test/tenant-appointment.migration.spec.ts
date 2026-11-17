@@ -41,14 +41,18 @@ describe('Tenant appointment permission and audit migration', () => {
     }
   });
 
-  it('grants only appointment read to MEMBER and appointment mutations to OWNER and ADMIN', () => {
+  it('limits appointment mutations to operations roles, not the generic viewer', () => {
     const owner = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'OWNER');
     const admin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'ADMIN');
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
+    const receptionist = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'RECEPTIONIST');
+    const doctor = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'DOCTOR');
     expect(owner?.permissionCodes).toEqual(expect.arrayContaining(appointmentPermissions));
     expect(admin?.permissionCodes).toEqual(expect.arrayContaining(appointmentPermissions));
-    expect(member?.permissionCodes).toContain('tenant.appointments.read');
-    for (const permission of appointmentPermissions.slice(1)) {
+    expect(receptionist?.permissionCodes).toEqual(expect.arrayContaining(appointmentPermissions));
+    expect(doctor?.permissionCodes).toContain('tenant.appointments.read');
+    expect(member?.permissionCodes).not.toContain('tenant.appointments.read');
+    for (const permission of appointmentPermissions) {
       expect(member?.permissionCodes).not.toContain(permission);
     }
     expect(migration).toContain("`role`.`code` IN ('OWNER', 'ADMIN', 'MEMBER')");

@@ -41,7 +41,10 @@ import { MongoTenantRoleRepository } from '../src/platform-mongo/mongo-tenant-ro
 import { MongoBranchRepository } from '../src/platform-mongo/mongo-branch.repository';
 import { MongoTenantMembershipRepository } from '../src/platform-mongo/mongo-tenant-membership.repository';
 import { MongoTenantStaffRepository } from '../src/platform-mongo/mongo-tenant-staff.repository';
-import { TENANT_PERMISSION_DEFINITIONS } from '../src/tenant/tenant-authorization.constants';
+import {
+  DEFAULT_TENANT_ROLES,
+  TENANT_PERMISSION_DEFINITIONS,
+} from '../src/tenant/tenant-authorization.constants';
 import {
   TenantOwnerBootstrapConflictError,
   TenantPermissionCatalogUnavailableError,
@@ -1614,8 +1617,10 @@ integration('Phase 65 isolated platform MongoDB foundation', () => {
       platformUserId,
     });
     expect(bootstrap.ownerMembershipId).toBe(membershipId);
-    expect(bootstrap.createdRoleCodes).toEqual(['OWNER', 'ADMIN', 'MEMBER']);
-    expect(bootstrap.roles.map((role) => role.code)).toEqual(['ADMIN', 'MEMBER', 'OWNER']);
+    expect(bootstrap.createdRoleCodes).toEqual(DEFAULT_TENANT_ROLES.map(({ code }) => code));
+    expect(bootstrap.roles.map((role) => role.code)).toEqual(
+      DEFAULT_TENANT_ROLES.map(({ code }) => code).sort(),
+    );
     expect(bootstrap.roles.find((role) => role.code === 'OWNER')?.permissions.length).toBe(
       TENANT_PERMISSION_DEFINITIONS.length,
     );

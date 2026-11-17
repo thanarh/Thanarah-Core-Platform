@@ -126,9 +126,13 @@ describe('Thanarah tenant communications foundation', () => {
     const owner = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'OWNER');
     const admin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'ADMIN');
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
+    const communicationsAdmin = DEFAULT_TENANT_ROLES.find(
+      ({ code }) => code === 'COMMUNICATIONS_ADMIN',
+    );
     for (const code of required) {
       expect(owner?.permissionCodes).toContain(code);
-      expect(admin?.permissionCodes).toContain(code);
+      expect(communicationsAdmin?.permissionCodes).toContain(code);
+      expect(admin?.permissionCodes).not.toContain(code);
       expect(member?.permissionCodes).not.toContain(code);
     }
 

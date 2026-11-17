@@ -189,7 +189,9 @@ describe('TenantRoleRepository', () => {
       select: { membershipId: true },
     });
     expect(transaction.tenantRole.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { tenantId, code: { in: ['OWNER', 'ADMIN', 'MEMBER'] } } }),
+      expect.objectContaining({
+        where: { tenantId, code: { in: DEFAULT_TENANT_ROLES.map(({ code }) => code) } },
+      }),
     );
   });
 

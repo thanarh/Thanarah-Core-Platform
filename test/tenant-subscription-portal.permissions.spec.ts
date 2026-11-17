@@ -15,10 +15,12 @@ describe('tenant subscription portal permissions', () => {
     const owner = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'OWNER');
     const admin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'ADMIN');
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
+    const payer = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'SUBSCRIPTION_PAYER');
     for (const code of ['tenant.subscriptions.read', 'tenant.subscriptions.payments.submit']) {
       expect(owner?.permissionCodes).toContain(code);
-      expect(admin?.permissionCodes).toContain(code);
+      expect(admin?.permissionCodes).not.toContain(code);
       expect(member?.permissionCodes).not.toContain(code);
+      expect(payer?.permissionCodes).toContain(code);
     }
   });
 

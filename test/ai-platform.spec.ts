@@ -81,11 +81,14 @@ describe('Thanarah tenant AI platform', () => {
     const owner = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'OWNER');
     const admin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'ADMIN');
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
-    for (const code of required) {
-      expect(owner?.permissionCodes).toContain(code);
-      expect(admin?.permissionCodes).toContain(code);
-      expect(member?.permissionCodes).not.toContain(code);
-    }
+    const aiAdmin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'AI_ADMIN');
+    const aiOperator = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'AI_OPERATOR');
+    for (const code of required) expect(owner?.permissionCodes).toContain(code);
+    for (const code of required.slice(0, 4)) expect(aiAdmin?.permissionCodes).toContain(code);
+    expect(aiAdmin?.permissionCodes).not.toContain('tenant.ai.run');
+    expect(aiOperator?.permissionCodes).toEqual(['tenant.ai.read', 'tenant.ai.run']);
+    expect(admin?.permissionCodes).not.toContain('tenant.ai.read');
+    expect(member?.permissionCodes).not.toContain('tenant.ai.read');
     expect(
       Reflect.getMetadata(TENANT_REQUIRED_PERMISSIONS, AiPlatformController.prototype.listAgents),
     ).toEqual(['tenant.ai.read']);

@@ -24,10 +24,30 @@ describe('clinic finance permissions', () => {
     const owner = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'OWNER');
     const admin = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'ADMIN');
     const member = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'MEMBER');
-    for (const code of required) {
-      expect(owner?.permissionCodes).toContain(code);
-      expect(admin?.permissionCodes).toContain(code);
+    const preparer = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'FINANCE_PREPARER');
+    const approver = DEFAULT_TENANT_ROLES.find(({ code }) => code === 'FINANCE_APPROVER');
+    for (const code of required) expect(owner?.permissionCodes).toContain(code);
+    for (const code of [
+      'tenant.finance.read',
+      'tenant.finance.manage',
+      'tenant.finance.payments.read',
+      'tenant.finance.payments.submit',
+    ]) {
+      expect(preparer?.permissionCodes).toContain(code);
     }
+    for (const code of [
+      'tenant.finance.read',
+      'tenant.finance.review',
+      'tenant.finance.issue',
+      'tenant.finance.payments.read',
+      'tenant.finance.payments.review',
+    ]) {
+      expect(approver?.permissionCodes).toContain(code);
+    }
+    expect(preparer?.permissionCodes).not.toContain('tenant.finance.issue');
+    expect(preparer?.permissionCodes).not.toContain('tenant.finance.review');
+    expect(approver?.permissionCodes).not.toContain('tenant.finance.manage');
+    expect(admin?.permissionCodes).not.toContain('tenant.finance.read');
     expect(member?.permissionCodes).not.toContain('tenant.finance.read');
   });
 
