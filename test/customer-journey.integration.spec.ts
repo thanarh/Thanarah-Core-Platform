@@ -236,22 +236,18 @@ suite('Customer journey isolated business acceptance', () => {
     const updated = await accounts.profile(a.userId, { ...op(), version: a.version, profile: { ...profile, phoneE164: '+966500000002' } });
     expect(updated.phoneVerification.status).toBe('UNVERIFIED');
   });
-  it('does not expose unpublished prices or package features', async () => {
+  it('shows only the fixed demo catalog, not saved unpublished draft details', async () => {
     const data = defaultCatalog().draft;
     data.packages[0].priceMinor = '99999'; data.packages[0].features = ['UNPUBLISHED'];
+    data.services[0].description = 'UNPUBLISHED SERVICE DETAILS';
     await admin.saveCatalog(root, { ...op(), version: 0, data });
     const c = await accounts.publicCatalog();
+    expect(c.demo).toBe(true);
     expect(c.packages.map((item) => item.code)).toEqual(['Lite', 'Pro', 'Customize']);
-    expect(
-      c.packages.every(
-        (item) =>
-          !item.published &&
-          item.priceMinor === null &&
-          item.features.length === 0 &&
-          item.description === '',
-      ),
-    ).toBe(true);
-    expect(c.services).toEqual([]);
+    expect(c.packages.map((item) => item.priceMinor)).toEqual(['19900', '35900', null]);
+    expect(c.packages[0].features).not.toContain('UNPUBLISHED');
+    expect(c.services).toHaveLength(2);
+    expect(c.services[0].description).not.toContain('UNPUBLISHED SERVICE DETAILS');
     expect(c.termsText).toBe('');
   });
   it('keeps customer registration separate from new-order intake', async () => {

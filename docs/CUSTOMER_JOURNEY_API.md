@@ -40,10 +40,14 @@ published, not promises of features. No fake testimonials or metrics.
 liveVersion:number,updatedBy,updatedAt,publishedBy,publishedAt}`.
 Edits do not change published content. Independent publication required.
 
-`PublicCatalog`: `{version,registrationOpen,termsText,services,packages,
-documents,whatsapp:{available:false,status:"NOT_CONFIGURED"}}`.
-Default packages have just their names, no prices/promises; default registration
-allows an account, but submitting an application requires published terms.
+`PublicCatalog`: `{version,demo,registrationOpen,ordersOpen,termsText,services,
+packages,documents,whatsapp:{available:false,status:"NOT_CONFIGURED"}}`.
+When no live catalog exists, `demo:true` exposes only the fixed, clearly labeled
+demo services and owner-approved package prices. It never exposes a saved
+unpublished draft; orders remain closed and terms/documents stay empty. Once an
+independent reviewer publishes a live catalog, `demo:false` returns only that
+catalog's published services and packages. Default registration allows an
+account, but submitting an application requires published terms and open orders.
 
 `Profile`: `{legalName,displayName,registrationNumber,city,address,
 contactName,phoneE164}`. All required, strings, phone e.g. `+966500000001`.
