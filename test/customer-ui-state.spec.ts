@@ -52,7 +52,7 @@ describe('Customer portal state and uncertain-operation regression', () => {
   it('offers a first request after the clinic profile is complete', () => {
     const profile = {
       legalName: 'Synthetic Clinic', displayName: 'Synthetic Clinic',
-      registrationNumber: 'SYNTHETIC', city: 'Test', address: 'Test',
+      registrationNumber: 'SYNTHETIC', taxNumber: 'SYNTHETIC-VAT', city: 'Test', address: 'Test',
       contactName: 'Synthetic Contact', phoneE164: '+966500000001',
     };
     const html = ui().testJourney({ account: { profile }, orders: [] });
@@ -102,7 +102,7 @@ describe('Customer portal state and uncertain-operation regression', () => {
   it('routes an existing request to its details and reflects its current stage', () => {
     const profile = {
       legalName: 'Synthetic Clinic', displayName: 'Synthetic Clinic',
-      registrationNumber: 'SYNTHETIC', city: 'Test', address: 'Test',
+      registrationNumber: 'SYNTHETIC', taxNumber: 'SYNTHETIC-VAT', city: 'Test', address: 'Test',
       contactName: 'Synthetic Contact', phoneE164: '+966500000001',
     };
     const html = ui().testJourney({ account: { profile }, orders: [
@@ -117,6 +117,7 @@ describe('Customer portal state and uncertain-operation regression', () => {
       legalName: 'Synthetic Clinic',
       displayName: 'Synthetic Clinic',
       registrationNumber: 'SYNTHETIC',
+      taxNumber: 'SYNTHETIC-VAT',
       city: 'Test',
       address: 'Test',
       contactName: 'Synthetic Contact',
@@ -149,7 +150,7 @@ describe('Customer portal state and uncertain-operation regression', () => {
   it('marks the full journey complete only after customer receipt', () => {
     const profile = {
       legalName: 'Synthetic Clinic', displayName: 'Synthetic Clinic',
-      registrationNumber: 'SYNTHETIC', city: 'Test', address: 'Test',
+      registrationNumber: 'SYNTHETIC', taxNumber: 'SYNTHETIC-VAT', city: 'Test', address: 'Test',
       contactName: 'Synthetic Contact', phoneE164: '+966500000001',
     };
     const html = ui().testJourney({ account: { profile }, orders: [

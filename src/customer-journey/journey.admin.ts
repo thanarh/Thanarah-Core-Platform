@@ -147,6 +147,16 @@ export class JourneyAdmin {
           );
         if (current.draft.termsText.length < 20)
           fail('CUSTOMER_TERMS_UNCONFIGURED', 'أدخل شروط التسجيل والمراجعة قبل النشر.');
+        const hasDemoText = [
+          current.draft.termsText,
+          ...current.draft.services.map((service) => service.description),
+          ...current.draft.packages.flatMap((item) => [item.description, ...item.features]),
+        ].some((text) => /مسودة تجريبية|تجريبي(?:ة)?/u.test(text));
+        if (hasDemoText)
+          fail(
+            'CUSTOMER_CATALOG_DEMO_CONTENT',
+            'استبدل النص التجريبي في الشروط والخدمات والباقات قبل النشر.',
+          );
         const result = catalogSchema.parse({
           ...current,
           live: current.draft,

@@ -256,7 +256,7 @@ export function defaultCatalog(): Catalog {
     draft: {
       registrationOpen: true,
       ordersOpen: false,
-      termsText: '',
+      termsText: 'مسودة تجريبية للشروط؛ استبدلها بنص معتمد قبل النشر واستقبال الطلبات.',
       services: [
         {
           key: 'clinic-operations',

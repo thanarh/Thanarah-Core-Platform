@@ -74,13 +74,25 @@ async function customer(email = `${randomUUID()}@example.test`) {
   const account = await db.collection('customer_accounts').findOne({ email });
   return (await accounts.profile(String(account!.userId), { ...op(), version: 1, profile })) as Account;
 }
-async function publish() {
+function reviewedCatalog() {
   const data = defaultCatalog().draft;
-  data.ordersOpen = true;
   data.termsText = 'Synthetic test-only terms, not a real commercial or legal policy.';
+  data.services = data.services.map((service) => ({
+    ...service,
+    description: 'Synthetic test-only service copy.',
+  }));
+  data.packages = data.packages.map((item) => ({
+    ...item,
+    description: 'Synthetic test-only package copy.',
+  }));
+  return data;
+}
+async function publish() {
+  const data = reviewedCatalog();
+  data.ordersOpen = true;
   data.documents = [{ key: 'license', label: 'Test license', required: true }];
   data.packages = data.packages.map(p => ({
-    ...p,
+    ...p, description: 'Synthetic test-only package copy.',
     planId,
     priceMinor: '10005',
     features: ['Synthetic only'],
@@ -251,8 +263,7 @@ suite('Customer journey isolated business acceptance', () => {
     expect(c.termsText).toBe('');
   });
   it('keeps customer registration separate from new-order intake', async () => {
-    const data = defaultCatalog().draft;
-    data.termsText = 'Synthetic test-only terms, not a real commercial or legal policy.';
+    const data = reviewedCatalog();
     data.ordersOpen = false;
     const saved = await admin.saveCatalog(root, { ...op(), version: 0, data });
     await admin.publish(reviewer, { ...op(), version: saved.version, reason: 'Synthetic independent review' });
@@ -260,19 +271,19 @@ suite('Customer journey isolated business acceptance', () => {
     await expect(orders.create(account.userId, { ...op(), packageCode: 'Lite' }))
       .rejects.toMatchObject({ code: 'CUSTOMER_ORDERS_CLOSED' });
   });
-  it('allows an unpublished draft without terms but refuses to publish it', async () => {
+  it('keeps demo terms private and refuses to publish demo catalog copy', async () => {
     const data = defaultCatalog().draft;
-    data.termsText = '';
+    data.termsText = 'مسودة تجريبية للشروط؛ استبدلها قبل النشر.';
     data.ordersOpen = false;
     const saved = await admin.saveCatalog(root, { ...op(), version: 0, data });
-    expect(saved.draft.termsText).toBe('');
+    expect(saved.draft.termsText).toContain('مسودة تجريبية');
     await expect(
       admin.publish(reviewer, {
         ...op(),
         version: saved.version,
-        reason: 'Synthetic draft without terms',
+        reason: 'Synthetic demo copy',
       }),
-    ).rejects.toMatchObject({ code: 'CUSTOMER_TERMS_UNCONFIGURED' });
+    ).rejects.toMatchObject({ code: 'CUSTOMER_CATALOG_DEMO_CONTENT' });
   });
   it('requires legacy clinic profiles to add a tax number before opening an order', async () => {
     await publish();
@@ -288,7 +299,7 @@ suite('Customer journey isolated business acceptance', () => {
   it('requires an independent catalog publisher and published terms before orders', async () => {
     const a = await customer();
     await expect(orders.create(a.userId, { ...op(), packageCode: 'Lite' })).rejects.toMatchObject({ code: 'CUSTOMER_CATALOG_UNPUBLISHED' });
-    const data = defaultCatalog().draft; data.termsText = 'Synthetic explicit test terms for publication.';
+    const data = reviewedCatalog();
     const c = await admin.saveCatalog(root, { ...op(), version: 0, data });
     await expect(admin.publish(root, { ...op(), version: c.version, reason: 'Self approval' })).rejects.toMatchObject({ code: 'CUSTOMER_INDEPENDENT_REVIEW_REQUIRED' });
     await admin.publish(reviewer, { ...op(), version: c.version, reason: 'Independent synthetic approval' });

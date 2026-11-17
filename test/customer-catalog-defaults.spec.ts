@@ -22,7 +22,7 @@ describe('customer catalog defaults', () => {
     expect(catalog.live).toBeNull();
     expect(catalog.draft.registrationOpen).toBe(true);
     expect(catalog.draft.ordersOpen).toBe(false);
-    expect(catalog.draft.termsText).toBe('');
+    expect(catalog.draft.termsText).toContain('مسودة تجريبية');
     expect(catalog.draft.services.map((item) => item.key)).toEqual([
       'clinic-operations',
       'team-access',
@@ -49,7 +49,7 @@ describe('customer catalog defaults', () => {
       'clinic-logo',
     ]);
     expect(catalog.draft.packages[0].description).toContain('مسودة تجريبية');
-    expect(catalog.draft.termsText).toBe('');
+    expect(catalog.draft.termsText).toContain('مسودة تجريبية');
   });
 
   it('requires a tax number on new profiles while reading older saved profiles', () => {
@@ -69,7 +69,7 @@ describe('customer catalog defaults', () => {
     );
   });
 
-  it('shows a clearly marked demo catalog without enabling registration or orders', async () => {
+  it('shows a clearly marked demo catalog without opening order intake', async () => {
     const catalog = defaultCatalog();
     const published = await accountsFor(catalog).publicCatalog();
     expect(published.demo).toBe(true);

@@ -48,6 +48,9 @@ unpublished draft; orders remain closed and terms/documents stay empty. Once an
 independent reviewer publishes a live catalog, `demo:false` returns only that
 catalog's published services and packages. Default registration allows an
 account, but submitting an application requires published terms and open orders.
+The admin draft includes an explicitly marked sample terms string; publication
+is rejected while demo markers remain in terms, service/package descriptions,
+or package features.
 
 `Profile`: `{legalName,displayName,registrationNumber,city,address,
 contactName,phoneE164}`. All required, strings, phone e.g. `+966500000001`.
