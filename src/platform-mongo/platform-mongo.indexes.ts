@@ -319,7 +319,16 @@ export async function provisionPlatformMongoIndexes(db: Db): Promise<void> {
       await db.collection(collectionName).createIndexes([...indexes]);
     }
     await verifyPlatformMongoIndexes(db);
-  } catch {
+  } catch (error) {
+    if (process.env.THANARAH_TEST_MONGO_DIAGNOSTICS === '1') {
+      const failure = error as { name?: string; code?: string | number; codeName?: string; message?: string };
+      console.error('Platform Mongo index provisioning diagnostic', {
+        name: failure.name,
+        code: failure.code,
+        codeName: failure.codeName,
+        message: failure.message?.replace(/mongodb(?:\+srv)?:\/\/[^@\s]+@/gi, 'mongodb://[redacted]@'),
+      });
+    }
     throw new PlatformMongoUnavailableError();
   }
 }
@@ -330,22 +339,45 @@ export async function verifyPlatformMongoIndexes(db: Db): Promise<void> {
       const actual = await db.collection(collectionName).listIndexes().toArray();
       for (const expected of required) {
         const found = actual.find((index) => index.name === expected.name);
-        if (
-          !found ||
-          JSON.stringify(found.key) !== JSON.stringify(expected.key) ||
-          Boolean(found.unique) !== Boolean(expected.unique) ||
-          (expected.collation &&
-            (found.collation?.locale !== expected.collation.locale ||
-              found.collation?.strength !== expected.collation.strength)) ||
-          (expected.partialFilterExpression &&
-            JSON.stringify(found.partialFilterExpression) !==
-              JSON.stringify(expected.partialFilterExpression))
-        ) {
+        const keyMatches = Boolean(found) && JSON.stringify(found.key) === JSON.stringify(expected.key);
+        const uniqueMatches = Boolean(found?.unique) === Boolean(expected.unique);
+        const collationMatches =
+          !expected.collation ||
+          (found?.collation?.locale === expected.collation.locale &&
+            found?.collation?.strength === expected.collation.strength);
+        const partialFilterMatches =
+          !expected.partialFilterExpression ||
+          JSON.stringify(found?.partialFilterExpression) ===
+            JSON.stringify(expected.partialFilterExpression);
+        if (!keyMatches || !uniqueMatches || !collationMatches || !partialFilterMatches) {
+          if (process.env.THANARAH_TEST_MONGO_DIAGNOSTICS === '1') {
+            console.error('Platform Mongo index verification mismatch', {
+              collectionName,
+              indexName: expected.name,
+              found: Boolean(found),
+              keyMatches,
+              uniqueMatches,
+              collationMatches,
+              partialFilterMatches,
+            });
+          }
           throw new PlatformMongoUnavailableError();
         }
       }
     }
-  } catch {
+  } catch (error) {
+    if (
+      process.env.THANARAH_TEST_MONGO_DIAGNOSTICS === '1' &&
+      !(error instanceof PlatformMongoUnavailableError)
+    ) {
+      const failure = error as { name?: string; code?: string | number; codeName?: string; message?: string };
+      console.error('Platform Mongo index verification diagnostic', {
+        name: failure.name,
+        code: failure.code,
+        codeName: failure.codeName,
+        message: failure.message?.replace(/mongodb(?:\+srv)?:\/\/[^@\s]+@/gi, 'mongodb://[redacted]@'),
+      });
+    }
     throw new PlatformMongoUnavailableError();
   }
 }
