@@ -53,6 +53,28 @@ body { background: #f1f2eb; color: var(--portal-ink); }
 .portal-currency { display: inline-flex; align-items: center; gap: 5px; }
 .portal-currency img { width: 17px; height: 17px; object-fit: contain; vertical-align: middle; }
 .portal-copy-link { direction: ltr; text-align: left; font: 12px var(--font-mono); overflow-wrap: anywhere; }
+:is(.portal-form, .portal-transfer-form) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="file"]), select, textarea) {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--portal-line);
+  border-radius: 10px;
+  color: var(--portal-ink);
+  background: var(--portal-paper);
+  font: inherit;
+  line-height: 1.45;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+:is(.portal-form, .portal-transfer-form) textarea { min-height: 112px; resize: vertical; }
+:is(.portal-form, .portal-transfer-form) :is(input, select, textarea):focus-visible {
+  outline: 3px solid rgb(40 88 63 / 20%);
+  outline-offset: 1px;
+  border-color: var(--portal-green);
+  box-shadow: 0 0 0 1px var(--portal-green);
+}
+.portal-form input[type="checkbox"],
+.portal-transfer-form input[type="checkbox"] { accent-color: var(--portal-green); }
 @media (max-width: 620px) {
   .patient-portal { padding: 12px; }
   .portal-card { padding: 20px 16px; border-radius: 11px; }

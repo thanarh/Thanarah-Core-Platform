@@ -39,6 +39,7 @@
 - [نطاق المشاريع وGitHub](thanarah-projects-github-scope.md) — المرحلة السادسة؛ الإغلاق بدورة تعديل تجريبي من الطلب إلى الاختبار والنشر والتوثيق.
 - [نطاق Thanarah AI](thanarah-ai-scope.md) — المرحلة السابعة؛ معرفة مستقلة لكل عيادة وقبول المعرفة والصلاحيات لكل نوع مساعد وقياس الجودة والسرعة والتكلفة.
 - [شخصية موقع ثنارة](thanarah-public-brand.md) — منظومة تقنية صحية ذات شخصية؛ لا قوالب SaaS مكررة أو صور مختلقة أو حركة زخرفية.
+- [Role-aware Thanarah UI](thanarah-role-aware-ui.md) — use server permission codes for navigation and presentation; do not alter backend grants without an approved role mapping.
 - [Modal scroll preservation](modal-scroll-preservation.md) — off-screen triggers can scroll into view before the click handler captures the page offset.
 - [Brand image transparency](brand-image-transparency.md) — verify encoded PNG transparency; palette conversion can drop alpha despite a transparent intermediate buffer.
 - [Saudi-riyal display symbol](saudi-riyal-symbol.md) — use the supplied transparent mark for displayed amounts; preserve SAR as the stored currency code.

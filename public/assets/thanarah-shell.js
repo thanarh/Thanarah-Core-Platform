@@ -32,7 +32,7 @@
     '/platform', '/platform-saas', '/platform-setup', '/clinic-setup',
     '/doctor-setup', '/team-setup', '/catalog-setup', '/customer-admin',
     '/company', '/ai-admin', '/appointments', '/patients', '/encounters',
-    '/finance', '/communications', '/website-inquiries'
+    '/finance', '/communications', '/website-inquiries', '/website-builder'
   ];
   var isStaffRoute = staffRoutes.indexOf(path) !== -1;
   var pageNames = {
@@ -55,6 +55,7 @@
     '/customer-admin': ['مكتب خدمة العيادات', 'Clinic service desk'],
     '/company': ['عمليات الشركة', 'Company operations'],
     '/website-inquiries': ['استفسارات الموقع', 'Website inquiries'],
+    '/website-builder': ['محرر موقع العيادة', 'Clinic website builder'],
     '/ai-admin': ['إدارة الذكاء الاصطناعي', 'AI administration'],
     '/appointments': ['المواعيد', 'Appointments'],
     '/patients': ['المرضى', 'Patients'],
@@ -83,15 +84,9 @@
   }
 
   function navItems(ar) {
-    if (isStaffRoute) {
-      return [
-        ['/platform/', ar ? 'مساحات العمل' : 'Workspaces', 'workspace'],
-        ['/customer-admin/', ar ? 'خدمة العملاء' : 'Customer service', 'customer-admin'],
-        ['/company/', ar ? 'عمليات الشركة' : 'Company operations', 'company'],
-        ['/website-inquiries/', ar ? 'استفسارات الموقع' : 'Website inquiries', 'website-inquiries'],
-        ['/', ar ? 'الموقع العام' : 'Public site', 'home']
-      ];
-    }
+    // Staff tools own their navigation. A second global menu mixed company,
+    // platform, and clinic links unrelated to the current role.
+    if (isStaffRoute) return [];
     if (customerPage) {
       return [
         ['/customer/', ar ? 'طلباتي' : 'My requests', 'customer'],
@@ -147,6 +142,7 @@
 
   function header(ar) {
     var mainAudience = isStaffRoute ? 'staff' : 'customer';
+    var showGlobalNavigation = !isStaffRoute;
     var links = navItems(ar).map(function (item) {
       return '<a href="' + item[0] + '"' + (activeNav(item) ? ' aria-current="page"' : '') +
         '>' + item[1] + '</a>';
@@ -158,18 +154,19 @@
         (ar ? 'دخول' : 'Sign in') + '</button>' +
         '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="register" data-auth-audience="customer">' +
         (ar ? 'إنشاء حساب' : 'Create account') + '</button>';
-    return '<header class="thanarah-shell thanarah-shell-header" data-thanarah-shell>' +
+    return '<header class="thanarah-shell thanarah-shell-header" data-thanarah-shell data-shell-audience="' +
+      mainAudience + '">' +
       '<a class="thanarah-shell-skip" href="#main">' + (ar ? 'تجاوز إلى المحتوى' : 'Skip to content') + '</a>' +
       '<div class="thanarah-shell-inner"><a class="thanarah-shell-brand" href="/" aria-label="' +
       (ar ? 'ثنارة | الرئيسية' : 'Thanarah | Home') + '"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
       '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a>' +
-      '<nav class="thanarah-shell-nav" id="thanarah-main-navigation" aria-label="' +
-      (ar ? 'التنقل الرئيسي' : 'Main navigation') + '">' + links + '</nav>' +
+      (showGlobalNavigation ? '<nav class="thanarah-shell-nav" id="thanarah-main-navigation" aria-label="' +
+      (ar ? 'التنقل الرئيسي' : 'Main navigation') + '">' + links + '</nav>' : '') +
       '<div class="thanarah-shell-actions">' + languageControl(ar) +
       '<span class="thanarah-shell-auth-actions">' +
       authControls + '</span>' +
-      '<button class="thanarah-shell-menu" type="button" aria-expanded="false" aria-controls="thanarah-main-navigation" ' +
-      'aria-label="' + (ar ? 'فتح القائمة' : 'Open menu') + '"><span class="thanarah-shell-menu-glyph" aria-hidden="true"><i></i><i></i></span></button>' +
+      (showGlobalNavigation ? '<button class="thanarah-shell-menu" type="button" aria-expanded="false" aria-controls="thanarah-main-navigation" ' +
+      'aria-label="' + (ar ? 'فتح القائمة' : 'Open menu') + '"><span class="thanarah-shell-menu-glyph" aria-hidden="true"><i></i><i></i></span></button>' : '') +
       '</div></div></header>';
   }
 
@@ -178,17 +175,13 @@
     if (isStaffRoute) {
       return '<footer class="thanarah-shell thanarah-shell-footer thanarah-shell-footer-workspace" data-thanarah-shell>' +
         '<div class="thanarah-shell-footer-main"><div class="thanarah-shell-footer-brand">' +
-        '<a class="thanarah-shell-brand" href="/platform/"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
+        '<a class="thanarah-shell-brand" href="/"><img src="/assets/logo-mark.svg" width="39" height="39" alt="">' +
         '<span>' + (ar ? 'ثنارة' : 'Thanarah') + '<small>' + pageName(ar) + '</small></span></a><p>' +
         (ar ? 'مساحة عمل موحدة؛ تتغير أدواتها بحسب صلاحيات الحساب.' :
           'A shared workspace with tools determined by account permissions.') +
-        '</p></div><div class="thanarah-shell-footer-col"><h2>' + (ar ? 'مساحات العمل' : 'Workspaces') + '</h2>' +
-        '<a href="/platform/">' + (ar ? 'المنصة' : 'Platform') + '</a><a href="/company/">' +
-        (ar ? 'عمليات الشركة' : 'Company operations') + '</a><a href="/customer-admin/">' +
-        (ar ? 'خدمة العملاء' : 'Customer service') + '</a></div><div class="thanarah-shell-footer-col">' +
-        '<h2>' + (ar ? 'المساعدة' : 'Help') + '</h2><a href="/website-inquiries/">' +
-        (ar ? 'استفسارات الموقع' : 'Website inquiries') + '</a><a href="/contact/?topic=technical">' +
-        (ar ? 'الدعم الفني' : 'Technical support') + '</a></div></div>' +
+        '</p></div><div class="thanarah-shell-footer-col"><h2>' + (ar ? 'المساعدة' : 'Help') + '</h2>' +
+        '<a href="/contact/?topic=technical">' + (ar ? 'الدعم الفني' : 'Technical support') +
+        '</a><a href="/welcome/">' + (ar ? 'الموقع العام' : 'Public site') + '</a></div></div>' +
         '<div class="thanarah-shell-footer-bottom"><span>© ' + new Date().getFullYear() +
         ' THANARAH</span><span>' + (ar ? 'مساحة عمل ثنارة' : 'Thanarah workspace') + '</span></div></footer>';
     }
@@ -225,6 +218,76 @@
       ' THANARAH</span><span>' + (ar ? 'جميع الحقوق محفوظة' : 'All rights reserved') + '</span></div></footer>';
   }
 
+  var tenantNavigation = [
+    { path: '/appointments', any: ['tenant.appointments.read'], ar: 'المواعيد', en: 'Appointments' },
+    { path: '/patients', any: ['tenant.patients.read'], ar: 'المرضى', en: 'Patients' },
+    {
+      path: '/encounters',
+      any: ['tenant.encounters.read', 'tenant.encounters.patient-history.read'],
+      ar: 'السجلات الطبية',
+      en: 'Medical records'
+    },
+    {
+      path: '/clinic-setup',
+      any: ['tenant.facilities.read', 'tenant.branches.read'],
+      ar: 'المنشآت والفروع',
+      en: 'Facilities and branches'
+    },
+    { path: '/doctor-setup', any: ['tenant.doctors.read'], ar: 'الأطباء', en: 'Doctors' },
+    {
+      path: '/catalog-setup',
+      any: ['tenant.departments.read', 'tenant.specialties.read', 'tenant.services.read'],
+      ar: 'التخصصات والخدمات',
+      en: 'Specialties and services'
+    },
+    {
+      path: '/team-setup',
+      any: ['tenant.members.read', 'tenant.staff.read'],
+      ar: 'الفريق والصلاحيات',
+      en: 'Team and access'
+    },
+    { path: '/finance', any: ['tenant.finance.read'], ar: 'المالية', en: 'Finance' },
+    {
+      path: '/communications',
+      any: ['tenant.communications.read'],
+      ar: 'التواصل',
+      en: 'Communications'
+    },
+    { path: '/ai-admin', any: ['tenant.ai.read'], ar: 'المساعد الذكي', en: 'AI assistant' }
+  ];
+  var activeWorkspacePermissions = null;
+
+  function renderTenantSidebars() {
+    if (!activeWorkspacePermissions) return;
+    var granted = new Set(activeWorkspacePermissions);
+    document.querySelectorAll('.sidebar .side-nav a[href]').forEach(function (link) {
+      var targetPath = (link.getAttribute('href') || '').split(/[?#]/u)[0].replace(/\/+$/u, '');
+      var item = tenantNavigation.find(function (entry) { return entry.path === targetPath; });
+      if (!item) return;
+      var visible = item.any.some(function (permission) { return granted.has(permission); });
+      link.hidden = !visible;
+      if (visible) link.removeAttribute('aria-hidden');
+      else link.setAttribute('aria-hidden', 'true');
+    });
+  }
+
+  root.ThanarahWorkspaceNavigation = Object.freeze({
+    setPermissions: function (permissionCodes) {
+      activeWorkspacePermissions = Array.isArray(permissionCodes) ? permissionCodes.slice() : [];
+      renderTenantSidebars();
+    },
+    clear: function () {
+      activeWorkspacePermissions = null;
+    }
+  });
+
+  if (typeof root.MutationObserver !== 'undefined' && document.body) {
+    new root.MutationObserver(renderTenantSidebars).observe(document.body, {
+      childList: true,
+      subtree: true
+    });
+  }
+
   function setLocaleUI(ar) {
     var button = document.querySelector('.thanarah-shell-language');
     var languageLabel = button && button.querySelector('.thanarah-shell-language-label');
@@ -233,6 +296,14 @@
     var nav = document.querySelector('.thanarah-shell-nav');
     var menu = document.querySelector('.thanarah-shell-menu');
     var actions = document.querySelector('.thanarah-shell-auth-actions');
+    var shellHeader = document.querySelector('.thanarah-shell-header');
+    if (shellHeader) {
+      if (authenticatedAudience === 'staff' && isStaffRoute) {
+        shellHeader.setAttribute('data-shell-actions-hidden', 'true');
+      } else {
+        shellHeader.removeAttribute('data-shell-actions-hidden');
+      }
+    }
     if (brandContext) brandContext.textContent = pageName(ar);
     if (button) {
       if (languageLabel) languageLabel.textContent = ar ? 'العربية' : 'English';
@@ -258,7 +329,11 @@
     }
     if (menu) menu.setAttribute('aria-label', ar ? 'فتح القائمة' : 'Open menu');
     if (actions) {
-      if (authenticatedAudience) {
+      if (authenticatedAudience === 'staff' && isStaffRoute) {
+        actions.innerHTML = '';
+        actions.hidden = true;
+      } else if (authenticatedAudience) {
+        actions.hidden = false;
         var destination = authenticatedAudience === 'staff'
           ? (staffRoutes.indexOf(path) !== -1 ? path + '/' : '/platform/')
           : '/customer/';
@@ -267,9 +342,11 @@
             ? (ar ? 'مساحة الفريق' : 'Team workspace')
             : (ar ? 'مساحة العملاء' : 'Customer workspace')) + '</a>';
       } else if (isStaffRoute) {
+        actions.hidden = false;
         actions.innerHTML = '<button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="login" data-auth-audience="staff">' +
           (ar ? 'دخول' : 'Sign in') + '</button>';
       } else {
+        actions.hidden = false;
         actions.innerHTML = '<button class="thanarah-shell-action" type="button" aria-label="' + (ar ? 'تسجيل الدخول' : 'Sign in') + '" data-thanarah-auth="login" data-auth-audience="customer">' +
           (ar ? 'دخول' : 'Sign in') + '</button><button class="thanarah-shell-action thanarah-shell-action-primary" type="button" data-thanarah-auth="register" data-auth-audience="customer">' +
           (ar ? 'إنشاء حساب' : 'Create account') + '</button>';
@@ -281,12 +358,16 @@
       holder.innerHTML = footer(ar);
       oldFooter.replaceWith(holder.firstElementChild);
     }
+    renderTenantSidebars();
   }
 
   function updateAuthState(event) {
     if (!event || !event.detail) return;
     if (event.detail.authenticated === false) {
       authenticatedAudience = '';
+      var shellHeader = document.querySelector('.thanarah-shell-header');
+      if (shellHeader) shellHeader.removeAttribute('data-shell-actions-hidden');
+      if (root.ThanarahWorkspaceNavigation) root.ThanarahWorkspaceNavigation.clear();
       setLocaleUI(language === 'ar');
       return;
     }
@@ -295,6 +376,16 @@
     var ar = language === 'ar';
     var actions = document.querySelector('.thanarah-shell-auth-actions');
     if (!actions) return;
+    if (audience === 'staff' && isStaffRoute) {
+      var shellHeader = document.querySelector('.thanarah-shell-header');
+      if (shellHeader) shellHeader.setAttribute('data-shell-actions-hidden', 'true');
+      actions.innerHTML = '';
+      actions.hidden = true;
+      return;
+    }
+    var shellHeader = document.querySelector('.thanarah-shell-header');
+    if (shellHeader) shellHeader.removeAttribute('data-shell-actions-hidden');
+    actions.hidden = false;
     var target = audience === 'staff' ? (staffRoutes.indexOf(path) !== -1 ? path + '/' : '/platform/') : '/customer/';
     actions.innerHTML = '<a class="thanarah-shell-action thanarah-shell-action-primary" data-authenticated-workspace href="' + esc(target) + '">' +
       (audience === 'staff' ? (ar ? 'مساحة الفريق' : 'Team workspace') :

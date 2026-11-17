@@ -94,6 +94,7 @@
     state.directoryRequestId += 1;
     state.detailRequestId += 1;
     state.workspace = w;
+    window.ThanarahWorkspaceNavigation?.setPermissions(w.permissionCodes);
     state.screen = 'workspace';
     state.members = [];
     state.staff = [];

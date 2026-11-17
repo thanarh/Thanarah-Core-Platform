@@ -126,6 +126,7 @@
       return render();
     }
     state.workspace = workspace;
+    window.ThanarahWorkspaceNavigation?.setPermissions(workspace.permissionCodes);
     state.screen = 'workspace';
     state.tab = 'overview';
     render();

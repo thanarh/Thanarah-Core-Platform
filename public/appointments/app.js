@@ -334,6 +334,7 @@
     clearTenantData();
     const epoch = state.workspaceEpoch;
     state.workspace = workspace;
+    window.ThanarahWorkspaceNavigation?.setPermissions(workspace.permissionCodes);
     state.view = permission(PERMISSIONS.appointmentsRead)
       ? 'appointments'
       : permission(PERMISSIONS.policyManage)

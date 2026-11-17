@@ -759,3 +759,80 @@ img[src*="/assets/logo-"] { object-fit: contain; filter: none !important; }
   .thanarah-shell-auth-actions .thanarah-shell-action { padding-inline: 4px; font-size: 10px; }
   .thanarah-shell-language { gap: 2px; padding-inline: 3px; }
 }
+
+/* Staff pages have their own permission-aware workspace navigation. */
+.thanarah-shell-header[data-shell-audience="staff"] .thanarah-shell-nav,
+.thanarah-shell-header[data-shell-audience="staff"] .thanarah-shell-menu {
+  display: none !important;
+}
+.thanarah-shell-header .thanarah-shell-auth-actions[hidden] {
+  display: none !important;
+}
+
+@media (max-width: 900px) {
+  .thanarah-shell-header[data-shell-audience="staff"] .thanarah-shell-inner {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+  }
+  .thanarah-shell-header[data-shell-audience="staff"] .thanarah-shell-language-wrap {
+    grid-column: 2;
+  }
+  .thanarah-shell-header[data-shell-audience="staff"] .thanarah-shell-auth-actions {
+    grid-column: 3;
+  }
+  .thanarah-shell-header[data-shell-audience="staff"][data-shell-actions-hidden="true"] .thanarah-shell-inner {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+}
+
+/* Shared clinic/patient form controls; page-specific layout remains local. */
+:is(#app, #encounter-app) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea
+) {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-height: 44px;
+  padding: 10px 12px;
+  border: 1px solid var(--thanarah-workspace-line, #d8d0c7);
+  border-radius: 10px;
+  color: var(--thanarah-workspace-ink, #292c25);
+  background: var(--thanarah-workspace-surface, #f8f5ef);
+  font: inherit;
+  line-height: 1.45;
+  transition: border-color 140ms ease, box-shadow 140ms ease, background-color 140ms ease;
+}
+
+:is(#app, #encounter-app) textarea {
+  min-height: 112px;
+  resize: vertical;
+}
+
+:is(#app, #encounter-app) :is(
+  input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+  select,
+  textarea
+):focus-visible {
+  outline: 3px solid rgb(49 95 70 / 20%);
+  outline-offset: 1px;
+  border-color: #315f46;
+  box-shadow: 0 0 0 1px #315f46;
+}
+
+:is(#app, #encounter-app) :is(
+  input[type="checkbox"],
+  input[type="radio"]
+) {
+  accent-color: #315f46;
+}
+
+:where(.app-frame, .app-shell) .sidebar .side-nav > .nav-item {
+  min-width: 0;
+  border-radius: 10px;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+:where(.app-frame, .app-shell) .sidebar .side-nav > a.nav-item[hidden] {
+  display: none !important;
+}

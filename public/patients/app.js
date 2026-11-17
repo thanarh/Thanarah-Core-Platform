@@ -65,6 +65,7 @@
     }
     clearPatientState();
     state.workspace = workspace;
+    window.ThanarahWorkspaceNavigation?.setPermissions(workspace.permissionCodes);
     state.screen = 'workspace';
     state.view = hasRead() ? 'directory' : 'no-access';
     render();

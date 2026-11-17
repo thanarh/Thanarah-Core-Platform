@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { runInNewContext } from 'node:vm';
 import { describe, expect, it } from 'vitest';
 
 function entries(directory = 'public'): string[] {
@@ -109,12 +110,70 @@ describe('Supplied Thanarah symbol and desktop-like compact layouts', () => {
     expect(homeCss).not.toContain('background: #2d2f27');
     expect(homeCss).not.toContain('background: #121c1a');
     expect(shell).toContain("var customerPage = path === '/customer';");
-    expect(shell).toContain("if (isStaffRoute)");
-    expect(shell).toContain("['/company/', ar ? 'عمليات الشركة' : 'Company operations', 'company']");
+    expect(shell).toContain('if (isStaffRoute) return [];');
+    expect(shell).toContain('root.ThanarahWorkspaceNavigation');
+    expect(shell).toContain("any: ['tenant.appointments.read']");
+    expect(shell).toContain("any: ['tenant.patients.read']");
+    expect(shell).toContain("any: ['tenant.finance.read']");
+    expect(shell).not.toContain(
+      "['/company/', ar ? 'عمليات الشركة' : 'Company operations', 'company']",
+    );
     expect(shell).toContain("'/customer-admin': ['مكتب خدمة العيادات', 'Clinic service desk']");
     expect(shell).toContain('brandContext.textContent = pageName(ar);');
     expect(shell).toContain('thanarah-shell-footer-workspace');
     expect(shell).toContain('thanarah-shell-footer-customer');
+  });
+  it('feeds server-resolved workspace permissions into each clinic screen navigation', () => {
+    for (const path of [
+      'appointments',
+      'patients',
+      'clinic-setup',
+      'doctor-setup',
+      'team-setup',
+      'catalog-setup',
+      'finance',
+      'communications',
+      'encounters',
+      'ai-admin',
+    ]) {
+      expect(readFileSync(`public/${path}/app.js`, 'utf8')).toContain(
+        'ThanarahWorkspaceNavigation?.setPermissions',
+      );
+    }
+  });
+  it('hides workspace links unless the active tenant grants their read permission', () => {
+    const start = shell.indexOf('var tenantNavigation = [');
+    const end = shell.indexOf('function setLocaleUI(ar)', start);
+    expect(start).toBeGreaterThanOrEqual(0);
+    expect(end).toBeGreaterThan(start);
+
+    const links = ['/appointments/', '/patients/', '/finance/', '/team-setup/'].map((href) => {
+      const attributes: Record<string, string> = { href };
+      return {
+        hidden: false,
+        getAttribute: (name: string) => attributes[name] ?? null,
+        setAttribute: (name: string, value: string) => {
+          attributes[name] = value;
+        },
+        removeAttribute: (name: string) => {
+          delete attributes[name];
+        },
+      };
+    });
+    const window: {
+      ThanarahWorkspaceNavigation?: { setPermissions: (codes: string[]) => void };
+    } = {};
+    const document = { querySelectorAll: () => links, body: null };
+    runInNewContext(
+      `(function (root, document) { ${shell.slice(start, end)} })(window, document);`,
+      { window, document },
+    );
+    window.ThanarahWorkspaceNavigation?.setPermissions([
+      'tenant.patients.read',
+      'tenant.finance.read',
+    ]);
+
+    expect(links.map((link) => link.hidden)).toEqual([true, false, false, true]);
   });
   it('names the protected workspace in the shared sign-in dialog', () => {
     const auth = readFileSync('public/assets/thanarah-auth.js', 'utf8');

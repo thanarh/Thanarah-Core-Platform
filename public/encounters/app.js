@@ -178,6 +178,7 @@
       return;
     }
     state.workspace = workspace;
+    window.ThanarahWorkspaceNavigation?.setPermissions(workspace.permissionCodes);
     state.resourceErrors = {};
     state.screen = 'workspace';
     state.view = can(PERMISSIONS.encounterRead)

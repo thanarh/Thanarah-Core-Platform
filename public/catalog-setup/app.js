@@ -105,6 +105,7 @@
   async function chooseWorkspace(workspace) {
     clearWorkspaceData();
     state.workspace = workspace;
+    window.ThanarahWorkspaceNavigation?.setPermissions(workspace.permissionCodes);
     state.screen = 'workspace';
     await loadItems();
   }
